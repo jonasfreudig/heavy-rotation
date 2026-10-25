@@ -23,6 +23,10 @@ class History private constructor(
 ) {
     val size get() = ts.size
 
+    /** Scrobbles left out because the user hid them ([Hidden]). */
+    var hiddenPlays = 0
+        private set
+
     /** First index with ts >= [t]. */
     fun lowerBound(t: Long): Int {
         var lo = 0
@@ -91,15 +95,22 @@ class History private constructor(
     }
 
     companion object {
-        /** Loads the store, counting features and collaborations for the main artist (see [Artists.main]). */
-        fun from(store: HistoryStore): History {
+        /**
+         * Loads the store, counting features and collaborations for the main artist (see [Artists.main])
+         * and leaving out what the user [hidden] (matched by the credited or the main artist).
+         */
+        fun from(store: HistoryStore, hidden: Hidden = Hidden.NONE): History {
             val raw = HashSet<String>()
             store.forEach { _, a, _, _ -> raw += a }
             val solo = raw.mapTo(HashSet()) { Text.norm(it) }
             val main = HashMap<String, String>()
             val b = Builder()
-            store.forEach { t, a, tr, al -> b.add(t, main.getOrPut(a) { Artists.main(a, solo) }, tr, al) }
-            return b.build()
+            var skipped = 0
+            store.forEach { t, a, tr, al ->
+                val m = main.getOrPut(a) { Artists.main(a, solo) }
+                if (hidden.hides(m, tr) || hidden.hides(a, tr)) skipped++ else b.add(t, m, tr, al)
+            }
+            return b.build().also { it.hiddenPlays = skipped }
         }
     }
 }

@@ -98,7 +98,7 @@ const Mock = (() => {
       ],
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
-    version: '0.3 (browser preview)',
+    version: '0.6 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -437,6 +437,7 @@ const Mock = (() => {
     out.personality = n < 30 ? { id: 'few' } : { id: scores[bestP[0]] >= 1 ? bestP[0] : 'allRounder', runnerUp: scores[bestP[1]] >= 1 ? bestP[1] : null,
       metrics: { night, morning: 0.08, weekend: (byDow[5] + byDow[6]) / Math.max(1, n), topShare, topArtist: order.length ? L.artists[order[0]] : '', newShare: 0.12, loop: 5, obsession: 12, vinyl: 0.03, genres: 7 } };
     out.storyExtra = { byHour, topT, tc, trackArtist, order, ac };
+    out.tidy = tidySummary();
     return out;
   }
 
@@ -461,6 +462,52 @@ const Mock = (() => {
       streak: s.streaks, insights: s.insights,
       first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
     };
+  }
+
+  // ---- tidy up: made-up junk scrobbles to hide ----
+  const TIDY_STATE = {
+    suggestions: [
+      { artist: 'Someone', title: 'Dubz', plays: 214, last: Date.now() - 40 * DAY, reasons: ['clip'] },
+      { artist: 'HBO Max', title: 'HBO Max', plays: 96, last: Date.now() - 12 * DAY, reasons: ['app', 'sameName'] },
+      { artist: 'Gaming Channel', title: 'Loop Hero Launch Trailer', plays: 41, last: Date.now() - 300 * DAY, reasons: ['video'] },
+      { artist: 'Caulse', title: 'CAULSE | V', plays: 22, last: Date.now() - 200 * DAY, reasons: ['videoTitle'] },
+      { artist: 'Podcast Corner', title: 'Folge 12: Vinyl', plays: 3, last: Date.now() - 90 * DAY, reasons: ['video'] },
+    ],
+    noAlbum: [
+      { artist: 'Ulepuschkinrose', title: 'Lied vom Meer', plays: 38, last: Date.now() - 5 * DAY, reasons: [] },
+      { artist: 'Fontaines D.C.', title: 'Starburster (Live at Glastonbury)', plays: 12, last: Date.now() - 30 * DAY, reasons: [] },
+      { artist: 'IDLES', title: 'Grace (Radio Edit)', plays: 7, last: Date.now() - 60 * DAY, reasons: [] },
+    ],
+    hidden: { artists: [], tracks: [], kept: [] },
+    hiddenPlays: 0,
+  };
+  const tidyOf = () => ({ ...TIDY_STATE, user: S.lastfm.user || '' });
+  function tidySummary() {
+    const sg = TIDY_STATE.suggestions;
+    return { count: sg.length, plays: sg.reduce((n, x) => n + x.plays, 0), examples: sg.slice(0, 3).map((x) => x.title), hiddenPlays: TIDY_STATE.hiddenPlays };
+  }
+  function tidyApply(t, items) {
+    const T = TIDY_STATE;
+    const same = (x, it) => x.artist === it.artist && x.title === it.title;
+    const take = (list, it) => { const i = list.findIndex((x) => same(x, it)); return i < 0 ? null : list.splice(i, 1)[0]; };
+    items.forEach((it) => {
+      if (t === 'keep') { take(T.suggestions, it); T.hidden.kept.push({ artist: it.artist, title: it.title }); return; }
+      if (it.kind === 'artist') {
+        if (t === 'hide' && !T.hidden.artists.includes(it.artist)) { T.hidden.artists.push(it.artist); T.hiddenPlays += 50; }
+        if (t === 'unhide') { T.hidden.artists = T.hidden.artists.filter((a) => a !== it.artist); T.hiddenPlays = Math.max(0, T.hiddenPlays - 50); }
+        return;
+      }
+      if (t === 'hide') {
+        const x = take(T.suggestions, it) || take(T.noAlbum, it) || { artist: it.artist, title: it.title, plays: 5, last: Date.now(), reasons: [] };
+        T.hidden.tracks.push(x);
+        T.hiddenPlays += x.plays;
+      } else {
+        const x = take(T.hidden.tracks, it);
+        if (x) { T.hiddenPlays -= x.plays; (x.reasons.length ? T.suggestions : T.noAlbum).push(x); }
+      }
+    });
+    T.suggestions.sort((a, b) => b.plays - a.plays);
+    T.noAlbum.sort((a, b) => b.plays - a.plays);
   }
 
   function fakeArtist(name) {
@@ -632,6 +679,11 @@ const Mock = (() => {
         case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
         case 'artist': later(250, () => onArtist(fakeArtist(m.name))); break;
         case 'tilt': break;
+        case 'tidy': later(200, () => onTidy(S.history.count ? tidyOf() : { empty: true })); break;
+        case 'hide': case 'unhide': case 'keep':
+          tidyApply(m.t, m.items || [m]);
+          later(300, () => { onTidy(tidyOf()); if (S.history.count) onStats(fakeStats(statsRange)); });
+          break;
         case 'historyImport': {
           const H = S.history;
           Object.assign(H, { importing: true, error: '', fetched: H.fetched || 0, total: 86012 });

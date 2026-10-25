@@ -215,7 +215,7 @@ window.onRelease = (r) => {
 };
 window.onToast = (m) => toast(m);
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
-window.onStats = (s) => { STATS = s; $('#statsBody').classList.remove('stale'); renderStats(); };
+window.onStats = (s) => { STATS = s; $('#statsBody').classList.remove('stale'); renderStats(); if (isOpen('settingsPage')) renderSettings(); };
 window.onOpenSpin = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
 window.onTheme = (th) => {
   const root = document.documentElement;
@@ -1409,7 +1409,8 @@ function renderArtist() {
     }
   }
   if (a.tracks.length) {
-    h += `<div class="viz"><h2>Top tracks</h2><div class="rank">${a.tracks.map((x, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span></div>`).join('')}</div></div>`;
+    h += `<div class="viz"><h2>Top tracks</h2><span class="sub">Not music? ${icon('eye-off', 'i inl')} hides a track from your stats.</span><div class="rank">${a.tracks.map((x, i) => `<div class="r with-act"><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span>
+      <button class="icon-btn small" data-hide ${hideAttrs('track', a.name, x.title)} aria-label="Hide ${esc(x.title)} from stats">${icon('eye-off')}</button></div>`).join('')}</div></div>`;
   }
   if (a.albums.length) {
     h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<div class="r with-cover">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></div>`).join('')}</div></div>`;
@@ -1419,6 +1420,98 @@ function renderArtist() {
   }
   $('#artistBody').innerHTML = h;
   drawRecords();
+}
+
+// ---- tidy up: videos, app sounds and clips out of the stats ----
+
+let TIDY = null;
+const TIDY_WHY = { app: 'named like an app', video: 'sounds like a video', videoTitle: 'video-style title', sameName: 'same name as the artist', clip: 'replayed seconds apart' };
+const hideAttrs = (kind, artist, title) => `data-kind="${kind}" data-a="${esc(artist)}" data-ti="${esc(title || '')}"`;
+const lastfmTrackUrl = (artist, title) => lastfmUrl(artist) + '/_/' + lfEnc(title);
+
+function openTidy() {
+  openPage('tidyPage');
+  renderTidy();
+  send({ t: 'tidy' });
+}
+window.onTidy = (t) => { TIDY = t; renderTidy(); };
+
+/** The banner on the Stats tab while there are suggestions. */
+function tidyBanner(t) {
+  if (!t || !t.count) return '';
+  const ex = (t.examples || []).map((x) => `“${esc(x)}”`).join(', ');
+  const more = t.count > (t.examples || []).length ? ` and ${t.count - t.examples.length} more` : '';
+  return `<button class="tidy-banner" data-tidy>${icon('clean')}<span><b>Some plays look like videos or apps</b>
+    <small>${ex}${more}: ${plural(t.plays, 'play')} in your history. Tap to tidy up.</small></span></button>`;
+}
+
+function tidyRow(x, acts) {
+  const why = (x.reasons || []).map((r) => `<span class="why">${esc(TIDY_WHY[r] || r)}</span>`).join('');
+  return `<div class="r"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)} · ${plural(x.plays, 'play')} · last ${esc(dateLabel(x.last))}</small>${why ? `<span class="whys">${why}</span>` : ''}</span>
+    <span class="acts">${acts}</span></div>`;
+}
+
+function renderTidy() {
+  if (!isOpen('tidyPage')) return;
+  const t = TIDY;
+  const body = $('#tidyBody');
+  if (!t) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
+  if (t.empty) { body.innerHTML = `<div class="empty">${icon('clean', 'i big')}<p>Import your Last.fm history on the Stats tab first.</p></div>`; return; }
+  const sg = t.suggestions || [];
+  const hd = t.hidden || { artists: [], tracks: [] };
+  let h = '<p class="body intro">Hidden plays stay out of your stats, stories and artist pages. Nothing changes on Last.fm, and you can show them again here anytime.</p>';
+  h += '<div class="section-head"><h2>Look like videos or apps</h2></div>';
+  if (sg.length) {
+    const plays = sg.reduce((n, x) => n + x.plays, 0);
+    h += `<p class="hint">Tracks without an album that carry an app's name or a video-style title, or that replay every few seconds like a clip on loop: ${plural(sg.length, 'track')}, ${plural(plays, 'play')}.</p>
+      <button class="btn filled wide hideall" data-hide-all>${icon('eye-off')}Hide all ${sg.length}</button>
+      <div class="rank tidy" id="tidySugg">${sg.map((x) => tidyRow(x, `<button class="btn text small" data-keep ${hideAttrs('track', x.artist, x.title)}>Keep</button><button class="btn tonal small" data-hide ${hideAttrs('track', x.artist, x.title)}>Hide</button>`)).join('')}</div>`;
+  } else {
+    h += '<p class="hint">Nothing suspicious left.</p>';
+  }
+  const na = t.noAlbum || [];
+  if (na.length) {
+    h += `<div class="section-head"><h2>Most played without an album</h2></div>
+      <p class="hint">Probably music, but this is where videos and app sounds hide. Hide anything that isn't.</p>
+      <div class="rank tidy">${na.map((x) => tidyRow(x, `<button class="btn tonal small" data-hide ${hideAttrs('track', x.artist, x.title)}>Hide</button>`)).join('')}</div>`;
+  }
+  h += `<div class="section-head"><h2>Hidden</h2>${t.hiddenPlays ? `<span class="sub">${plural(t.hiddenPlays, 'play')}</span>` : ''}</div>`;
+  if (hd.artists.length || hd.tracks.length) {
+    h += `<div class="rank tidy">${hd.artists.map((a) => `<div class="r"><span class="t"><b>${esc(a)}</b><small>Artist: all their tracks</small></span>
+        <span class="acts"><button class="btn text small" data-unhide ${hideAttrs('artist', a)}>Show</button></span></div>`).join('')}
+      ${hd.tracks.map((x) => `<div class="r"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span>
+        <span class="acts"><button class="icon-btn small" data-url="${esc(lastfmTrackUrl(x.artist, x.title))}" aria-label="Open on Last.fm">${icon('open')}</button>
+        <button class="btn text small" data-unhide ${hideAttrs('track', x.artist, x.title)}>Show</button></span></div>`).join('')}</div>
+      ${hd.tracks.length ? `<p class="hint">To delete them from Last.fm as well, open a track there (${icon('open', 'i inl')}) and delete its scrobbles from your library. Last.fm doesn't let apps delete scrobbles.</p>` : ''}`;
+  } else {
+    h += `<p class="hint">Nothing hidden yet. You can also hide an artist from their page (${icon('eye-off', 'i inl')} at the top), or a single track from the artist's top tracks.</p>`;
+  }
+  body.innerHTML = h;
+}
+
+/** Hide, show again or keep one track or artist; the stats come back without (or with) it. */
+function tidyAction(el) {
+  const it = { kind: el.dataset.kind, artist: el.dataset.a, title: el.dataset.ti };
+  const t = el.matches('[data-keep]') ? 'keep' : el.matches('[data-unhide]') ? 'unhide' : 'hide';
+  send({ t, ...it });
+  const row = el.closest('.r');
+  if (row) row.classList.add('gone');
+  if (t !== 'keep') {
+    $('#statsBody').classList.add('stale');
+    if (isOpen('artistPage') && ARTIST && ARTIST.name) send({ t: 'artist', name: ARTIST.name, range: statsRange });
+  }
+  const what = it.kind === 'artist' ? it.artist : `“${it.title}”`;
+  toast(t === 'hide' ? `${what} is hidden from your stats` : t === 'unhide' ? `${what} is back in your stats` : `${what} stays in your stats`);
+}
+
+function hideAllSuggestions() {
+  const sg = (TIDY && TIDY.suggestions) || [];
+  if (!sg.length) return;
+  const items = sg.map((x) => ({ kind: 'track', artist: x.artist, title: x.title }));
+  send({ t: 'hide', items });
+  $$('#tidyBody .hideall, #tidySugg .r').forEach((r) => r.classList.add('gone'));
+  $('#statsBody').classList.add('stale');
+  toast(`${plural(items.length, 'track')} hidden from your stats`);
 }
 
 function rarelyViz(r) {
@@ -1468,6 +1561,7 @@ function renderStats() {
       ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k))}
       ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k))}
     </div>`;
+  h += tidyBanner(s.tidy);
   h += highlightsViz(s);
   if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: periodName(s.range) };
   h += recordViz(s.record, 'stats', 'Your record') + timelineViz(s.timeline) + riverViz(s.river) + clockViz(s.clock, 'stats')
@@ -1700,6 +1794,11 @@ function statusLine(dot, title, sub) {
 
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
+  const td = (STATS && STATS.tidy) || {};
+  const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
+  $('#tidyStatus').textContent = td.hiddenPlays ? `${plural(td.hiddenPlays, 'play')} hidden from your stats. ${more}`
+    : more ? `${more} Hide them to keep your stats about music; nothing changes on Last.fm.`
+      : 'Videos, app sounds and other non-music scrobbles can be hidden from your stats. Nothing changes on Last.fm.';
   const mode = showKeyForm || !l.hasKey ? 'setup' : l.connected ? 'connected' : l.waiting ? 'waiting' : l.needsAuth ? 'reconnect' : 'setup';
   const lfStatus = {
     connected: statusLine('ok', `Connected as <b>${esc(l.user)}</b>`, l.keyHint ? `API key ${esc(l.keyHint)}` : ''),
@@ -1752,6 +1851,10 @@ function build() {
   document.addEventListener('click', (e) => {
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
+    if (e.target.closest('[data-tidy]')) { openTidy(); return; }
+    if (e.target.closest('[data-hide-all]')) { hideAllSuggestions(); return; }
+    const hide = e.target.closest('[data-hide],[data-unhide],[data-keep]');
+    if (hide) { tidyAction(hide); return; }
     const canvas = e.target.closest('canvas[data-record]');
     if (canvas) { onRecordTap(canvas, e); return; }
     const ar = e.target.closest('[data-artist]');
@@ -1838,6 +1941,16 @@ function build() {
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
   artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec); };
   $('#artistLastfm').onclick = () => { if (ARTIST && ARTIST.name) openUrl(lastfmUrl(ARTIST.name)); };
+  $('#artistHide').onclick = () => {
+    const name = ARTIST && ARTIST.name;
+    if (!name) return;
+    confirmSheet(`Hide ${name}?`, 'All their plays leave your stats, stories and top lists. Nothing changes on Last.fm; Settings → Stats → Tidy up shows them again.', 'Hide', () => {
+      send({ t: 'hide', kind: 'artist', artist: name });
+      $('#statsBody').classList.add('stale');
+      closePage();
+      toast(`${name} is hidden from your stats`);
+    });
+  };
   $('#tiltSw').onchange = (e) => {
     try { localStorage.setItem('tilt', e.target.checked ? 'on' : 'off'); } catch (_) { /* preview without storage */ }
     Tilt.refresh();

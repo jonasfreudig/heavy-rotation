@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.5 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.6 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -133,6 +133,24 @@ Tap any artist (in the lists, the phases, the record, or on a record page) for t
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays
 lit up on your record, top tracks and albums, and the records of theirs on your shelf.
 
+#### Tidy up: videos and app sounds
+
+A scrobbler that listened to every app may have sent things that aren't music: "HBO Max", a game
+trailer from YouTube, a short clip that played on loop. When the history has such scrobbles, a
+banner on the Stats tab opens **Tidy up stats** (also under Settings → Stats). It lists:
+
+- **Look like videos or apps**: tracks without an album that are named like an app, have a
+  video-style title (trailer, episode, "Title | Channel"), have the artist's name as their title,
+  or were scrobbled again every few seconds. **Hide** them one by one or all at once, or **Keep**
+  the ones that are music after all.
+- **Most played without an album**: probably music, but worth a look.
+- **Hidden**: everything you hid, with **Show** to bring it back.
+
+You can also hide a single track from an artist's top tracks, or a whole artist with the hide
+button at the top of their page. Hidden plays leave all the stats, the story and the artist
+pages. Nothing changes on Last.fm: apps can't delete scrobbles there. To delete them on Last.fm
+too, open a hidden track (↗) and delete its scrobbles from your library on the website.
+
 Features and collaborations count for the main artist, as long as that artist also appears on
 their own: "Fontaines D.C., ROSALÍA" counts for Fontaines D.C., and anything "feat." goes to the
 first name, but "Earth, Wind & Fire" stays one band.
@@ -214,6 +232,7 @@ already playing).
 | `history/HistorySync.kt` | Resumable import of user.getRecentTracks with a time cursor |
 | `history/History.kt`, `history/Stats.kt` | The history in memory and every figure on the Stats tab |
 | `history/Genres.kt` | Genres from Discogs styles and cleaned Last.fm tags |
+| `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |
 | `HistoryDb.kt` | SQLite store for the history, genre tags and cover URLs |
 | `Core.kt` | App state and work: sync, lookups, the spinning record, sending |
 | `Background.kt` | Alarms at track changes, the flush job for offline scrobbles, the notification |

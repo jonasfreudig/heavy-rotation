@@ -9,8 +9,10 @@ import com.example.recordshelf.discogs.DiscogsClient
 import com.example.recordshelf.discogs.DiscogsException
 import com.example.recordshelf.discogs.Release
 import com.example.recordshelf.history.Genres
+import com.example.recordshelf.history.Hidden
 import com.example.recordshelf.history.History
 import com.example.recordshelf.history.HistorySync
+import com.example.recordshelf.history.Junk
 import com.example.recordshelf.history.Stats
 import com.example.recordshelf.lastfm.LastfmClient
 import com.example.recordshelf.lastfm.LastfmException
@@ -54,6 +56,7 @@ object Core {
     }
 
     private const val HOUR = 3_600_000L
+    private const val HIDDEN_FILE = "hidden.json"
 
     private lateinit var ctx: Context
     lateinit var prefs: Prefs
@@ -126,6 +129,13 @@ object Core {
     @Volatile private var histError = ""
     @Volatile private var tagsDone = 0
     @Volatile private var tagsTotal = 0
+
+    /** What the user keeps out of the stats; loaded on first use. */
+    @Volatile private var hiddenCache: Hidden? = null
+
+    /** The tidy-up lists for [tidyFor] (see [tidy]). */
+    @Volatile private var tidyJson: JSONObject? = null
+    @Volatile private var tidyFor: History? = null
 
     private fun file(name: String) = JsonFile(File(files, name))
     private val spinFile get() = file("spin.json")
@@ -237,6 +247,35 @@ object Core {
                     val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
                     push("onArtist") { j }
                 }
+            }
+            "tidy" -> statsExec.execute { push("onTidy") { tidy() ?: JSONObject().put("empty", true) } }
+            "hide", "unhide" -> {
+                // One item, or several in "items" ("Hide all"), so the history is rebuilt once.
+                val list = msg.optJSONArray("items")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: listOf(msg)
+                val show = msg.optString("t") == "unhide"
+                statsExec.execute {
+                    var h = hidden()
+                    for (x in list) {
+                        val artist = x.optString("artist")
+                        val title = x.optString("title")
+                        val artistWide = x.optString("kind") == "artist"
+                        if (artist.isEmpty() || (!artistWide && title.isEmpty())) continue
+                        h = when {
+                            show && artistWide -> h.showArtist(artist)
+                            show -> h.showTrack(artist, title)
+                            artistWide -> h.hideArtist(artist)
+                            else -> h.hideTrack(artist, title)
+                        }
+                    }
+                    saveHidden(h)
+                    rebuildHistory()
+                }
+            }
+            "keep" -> statsExec.execute {
+                saveHidden(hidden().keep(msg.optString("artist"), msg.optString("title")))
+                tidyJson = null
+                push("onTidy") { tidy() ?: JSONObject().put("empty", true) }
+                statsInner()
             }
             "story" -> {
                 val id = msg.optString("range")
@@ -875,7 +914,7 @@ object Core {
             pushState()
         }
         if (added > 0 || force || history == null) {
-            history = History.from(db)
+            history = History.from(db, hidden())
             stats = null
             statsExec.execute { statsInner() }
             fetchTagsInner(c)
@@ -885,7 +924,7 @@ object Core {
     /** The stats for the current history, built on first use. */
     private fun currentStats(): Stats? {
         stats?.let { return it }
-        val h = history ?: if (db.count() > 0) History.from(db).also { history = it } else return null
+        val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null
         val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
         return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images())
             .also { stats = it }
@@ -900,9 +939,53 @@ object Core {
             return
         }
         val id = statsRange
-        push("onStats") { s.compute(s.range(id)) }
+        push("onStats") { s.compute(s.range(id)).put("tidy", tidySummary()) }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
+    }
+
+    // ---- hiding scrobbles from the stats ----
+
+    private fun hidden(): Hidden = hiddenCache ?: Hidden.fromJson(file(HIDDEN_FILE).read()).also { hiddenCache = it }
+
+    private fun saveHidden(h: Hidden) {
+        hiddenCache = h
+        file(HIDDEN_FILE).write(h.toJson().toString())
+    }
+
+    /** After the hidden list changed: the history without those scrobbles, new stats and tidy-up lists. On [statsExec]. */
+    private fun rebuildHistory() {
+        if (db.count() == 0) return
+        history = History.from(db, hidden())
+        stats = null
+        push("onTidy") { tidy() ?: JSONObject().put("empty", true) }
+        statsInner()
+    }
+
+    /** Suggestions of scrobbles that look like videos or apps, the most played ones without an album, and what is hidden. */
+    private fun tidy(): JSONObject? {
+        val h = history ?: (if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null)
+        if (tidyFor === h) tidyJson?.let { return it }
+        val (sugg, other) = Junk.scan(h, hidden())
+        return JSONObject()
+            .put("hiddenPlays", h.hiddenPlays)
+            .put("hidden", hidden().toJson())
+            .put("suggestions", JSONArray(sugg.map { Junk.toJson(h, it) }))
+            .put("noAlbum", JSONArray(other.map { Junk.toJson(h, it) }))
+            .put("user", prefs.lastfmUser)
+            .also {
+                tidyJson = it
+                tidyFor = h
+            }
+    }
+
+    /** For the banner on the Stats tab: how many suggestions wait, with a few examples. */
+    private fun tidySummary(): JSONObject {
+        val t = tidy() ?: return JSONObject()
+        val s = t.getJSONArray("suggestions")
+        return JSONObject().put("count", s.length()).put("hiddenPlays", t.optInt("hiddenPlays"))
+            .put("plays", (0 until s.length()).sumOf { s.getJSONObject(it).optInt("plays") })
+            .put("examples", JSONArray((0 until minOf(3, s.length())).map { s.getJSONObject(it).optString("title") }))
     }
 
     /** Last.fm tags for the most played artists Discogs can't give genres for. On [historyExec]. */
