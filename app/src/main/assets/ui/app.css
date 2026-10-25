@@ -689,3 +689,35 @@ input[type=datetime-local] { color-scheme: inherit; }
 .i.inl { width: 16px; height: 16px; vertical-align: -3px; }
 #tidyBody .intro { margin: 8px 4px 0; color: var(--md-on-surface-variant); }
 #tidyBody .hideall { margin-top: 12px; }
+
+/* Song, album and playlist pages, "listen on" chips, Explore */
+.listen { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.listen .chip .i { width: 18px; height: 18px; }
+.hero .dot { margin: 0 6px; color: var(--md-on-surface-variant); }
+.hint.center { text-align: center; }
+.item.act { cursor: pointer; }
+.viz.explore .xhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.viz.explore .xhead .btn { flex: none; }
+.xcards { display: flex; gap: 12px; overflow-x: auto; margin: 12px -16px 0; padding: 0 16px 4px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.xcards::-webkit-scrollbar { display: none; }
+.xcard { flex: none; width: 128px; text-align: left; scroll-snap-align: start; }
+.xcard .cover { width: 128px; height: 128px; margin: 0; border-radius: 12px; }
+.xcard b { display: block; margin-top: 8px; font: 500 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xcard small { display: block; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xcard small.meta { color: var(--md-primary); }
+.dig-card { display: flex; gap: 16px; align-items: flex-start; padding: 20px; margin: 12px 0; border-radius: 28px;
+  background: linear-gradient(150deg, var(--md-tertiary-container), var(--md-primary-container)); color: var(--md-on-tertiary-container); }
+.dig-card > .i { width: 40px; height: 40px; }
+.dig-card h2 { margin: 0 0 4px; font: 700 22px/28px var(--font); }
+.dig-card p { margin: 0 0 14px; font-size: 14px; line-height: 20px; }
+.otd .yr { display: flex; align-items: baseline; gap: 10px; margin: 16px 2px 0; min-width: 0; }
+.otd .yr b { font: 700 20px/24px var(--font); }
+.otd .yr small { color: var(--md-on-surface-variant); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank .n .i.small { color: var(--md-on-surface-variant); }
+.pl-head { display: flex; gap: 16px; align-items: center; margin: 12px 4px 16px; }
+.pl-icon { flex: none; width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.pl-icon .i { width: 32px; height: 32px; }
+.pl-head h1 { margin: 0; font: 700 24px/30px var(--font); }
+.pl-head p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; line-height: 18px; }
+#playlistBody > .btn-row { margin: 0 0 12px; }
+.card.how .steps { margin-top: 8px; }

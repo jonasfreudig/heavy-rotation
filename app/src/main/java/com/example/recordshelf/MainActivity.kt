@@ -2,6 +2,8 @@ package com.example.recordshelf
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -286,6 +288,29 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 applyNightMode(mode)
             }
             "openUrl" -> openUrl(msg.optString("url"))
+            "openApp" -> {
+                // A streaming app's own link (spotify:search:…), else the web page.
+                val uri = msg.optString("uri")
+                val ok = uri.startsWith("spotify:") && try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+                if (!ok) openUrl(msg.optString("url"))
+            }
+            "copyText" -> {
+                val cm = getSystemService(ClipboardManager::class.java)
+                cm.setPrimaryClip(ClipData.newPlainText(msg.optString("label", "Record Shelf"), msg.optString("text")))
+                // Android 13+ shows its own "copied" note.
+                if (Build.VERSION.SDK_INT < 33) Core.toast("Copied")
+            }
+            "shareText" -> try {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, msg.optString("text")).putExtra(Intent.EXTRA_SUBJECT, msg.optString("subject"))
+                startActivity(Intent.createChooser(send, msg.optString("subject")))
+            } catch (_: Exception) {
+            }
             "openNotifAccess" -> {
                 // Straight to this app's switch where Android supports it, else the list of apps.
                 val direct = if (Build.VERSION.SDK_INT >= 30) {

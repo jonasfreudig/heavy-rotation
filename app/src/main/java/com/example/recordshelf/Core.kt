@@ -58,6 +58,9 @@ object Core {
     private const val HOUR = 3_600_000L
     private const val HIDDEN_FILE = "hidden.json"
 
+    /** Album covers looked up for the activity list at a time (newest first). */
+    private const val COVER_BATCH = 40
+
     private lateinit var ctx: Context
     lateinit var prefs: Prefs
         private set
@@ -247,6 +250,34 @@ object Core {
                     val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
                     push("onArtist") { j }
                 }
+            }
+            "track", "album" -> {
+                val isTrack = msg.optString("t") == "track"
+                val artist = msg.optString("artist")
+                val title = msg.optString("title")
+                val id = msg.optString("range").ifEmpty { statsRange }
+                statsExec.execute {
+                    val s = currentStats()
+                    val r = s?.range(id)
+                    val j = (if (r == null) null else if (isTrack) s.track(artist, title, r) else s.album(artist, title, r))
+                        ?: JSONObject().put("missing", true).put("artist", artist).put("title", title)
+                    push(if (isTrack) "onTrack" else "onAlbum") { j }
+                    // No cover yet: Last.fm may have one; the page comes again if so.
+                    val info = j.optJSONObject(if (isTrack) "album" else "info")
+                    if (info != null && info.optString("cover").isEmpty()) {
+                        historyExec.execute { fetchImagesInner(listOf(Triple(info.getString("artist"), info.getString("title"), info.getString("key")))) { handle(msg) } }
+                    }
+                }
+            }
+            "explore" -> statsExec.execute {
+                val s = currentStats()
+                push("onExplore") { s?.explore() ?: JSONObject().put("empty", true) }
+                val missing = s?.exploreNeedingImages().orEmpty()
+                if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) { handle(msg) } }
+            }
+            "playlist" -> statsExec.execute {
+                val s = currentStats()
+                push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
             "tidy" -> statsExec.execute { push("onTidy") { tidy() ?: JSONObject().put("empty", true) } }
             "hide", "unhide" -> {
@@ -1014,7 +1045,7 @@ object Core {
     }
 
     /** Cover images for wishlist albums (from Last.fm's album info). On [historyExec]. */
-    private fun fetchImagesInner(missing: List<Triple<String, String, String>>) {
+    private fun fetchImagesInner(missing: List<Triple<String, String, String>>, after: (() -> Unit)? = null) {
         val c = lastfm() ?: return
         val tried = db.images().keys
         var any = false
@@ -1030,7 +1061,10 @@ object Core {
         }
         if (any) {
             stats = null
-            statsExec.execute { statsInner() }
+            statsExec.execute {
+                statsInner()
+                after?.invoke()
+            }
         }
     }
 
@@ -1061,7 +1095,30 @@ object Core {
         }
     }
 
-    private fun pushActivity() = push("onActivity") { activity.toJson() }
+    private fun pushActivity() = push("onActivity") { activityJson() }
+
+    /**
+     * The activity log with covers: a record's own, else your shelf's copy of the album, else
+     * Last.fm's album art (phone scrobbles carry none). Missing ones are looked up in the
+     * background and the list comes again.
+     */
+    private fun activityJson(): JSONArray {
+        val a = activity.toJson()
+        val owned = collection.associateBy { Text.albumKey(it.artist, it.title) }
+        val images = db.images()
+        val missing = LinkedHashMap<String, Triple<String, String, String>>()
+        for (i in 0 until a.length()) {
+            val e = JSONObject(a.getJSONObject(i).toString())
+            a.put(i, e)
+            val album = e.optString("album")
+            if (e.optString("cover").isNotEmpty() || album.isBlank()) continue
+            val key = Text.albumKey(e.optString("artist"), album)
+            val c = owned[key]?.let { it.cover.ifEmpty { it.thumb } } ?: images[key]
+            if (c == null) missing[key] = Triple(e.optString("artist"), album, key) else if (c.isNotEmpty()) e.put("cover", c)
+        }
+        if (missing.isNotEmpty() && lastfm() != null) historyExec.execute { fetchImagesInner(missing.values.toList().takeLast(COVER_BATCH)) { pushActivity() } }
+        return a
+    }
 
     fun toast(msg: String) = push("onToast") { JSONObject.quote(msg) }
 

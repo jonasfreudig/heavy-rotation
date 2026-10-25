@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.6 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.7 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -129,6 +129,38 @@ month, quarter or year. What the tab shows for the chosen period:
   aren't on your shelf; tap one to search Discogs.
 - **Top 10** artists, albums and tracks.
 
+#### Songs, albums and artists
+
+Tap a scrobble on the Activity tab, or a song in the stats lists, for the song's page: all-time
+plays and rank, this period's rank, first and last play, its biggest day, how much of the artist
+it makes up, plays per month, time of day, and what you tend to play right after it. Albums (Top
+10, an artist's albums, a record's **Your stats** chip) get the same, plus which of their songs you
+play.
+
+Song, album, artist and record pages have **Listen on** buttons that search TIDAL and Spotify
+for them. Pick the services under Settings → Listen on (YouTube Music, Apple Music and Deezer too).
+Spotify opens in its app; TIDAL opens its search page, which lists the match first.
+
+Phone scrobbles carry no cover, so the Activity tab takes one from your shelf (if you own the
+album) or from Last.fm's album art, looked up once and kept on the phone.
+
+#### Explore
+
+The **Explore** tab digs into what never makes the top lists:
+
+- **Lost favorites**: artists you played a lot that have gone quiet for half a year or more,
+  with the month they were big for you.
+- **Albums to rediscover**: albums you played through (several different songs), then left.
+- **Quiet regulars**: artists outside your top ones that come back month after month.
+- **One-day wonders**: played all day once, never again.
+- **Deep cuts**: songs by your favorite artists you've played only once or twice.
+- **On this day**: what you played on today's date in earlier years.
+
+Each list makes a **playlist** (up to 40 songs), and so do **Crate dig** (songs you played a few
+times and forgot, shuffled anew each time) and **Playlist of the top 40** under Top 10 on the
+Stats tab. **Copy list** puts it on the clipboard as "Artist - Title" lines; paste that into
+TuneMyMusic or Soundiiz (import from text) and send it to TIDAL. **Share** hands it to any app.
+
 Tap any artist (in the lists, the phases, the record, or on a record page) for their own page:
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays
 lit up on your record, top tracks and albums, and the records of theirs on your shelf.
@@ -230,7 +262,7 @@ already playing).
 | `scrobble/Compare.kt` | Shadow mode vs. what reached Last.fm |
 | `PhoneListener.kt`, `Phone.kt` | Media sessions of music apps (via notification access), app list, mode |
 | `history/HistorySync.kt` | Resumable import of user.getRecentTracks with a time cursor |
-| `history/History.kt`, `history/Stats.kt` | The history in memory and every figure on the Stats tab |
+| `history/History.kt`, `history/Stats.kt` | The history in memory; every figure on the Stats and Explore tabs, song and album pages, playlists |
 | `history/Genres.kt` | Genres from Discogs styles and cleaned Last.fm tags |
 | `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |
 | `HistoryDb.kt` | SQLite store for the history, genre tags and cover URLs |

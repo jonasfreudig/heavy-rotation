@@ -98,7 +98,7 @@ const Mock = (() => {
       ],
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
-    version: '0.6 (browser preview)',
+    version: '0.7 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -510,6 +510,144 @@ const Mock = (() => {
     T.noAlbum.sort((a, b) => b.plays - a.plays);
   }
 
+  // ---- song, album, explore and playlists, from the made-up log ----
+  function lifeOf(match) {
+    const L = history();
+    let plays = 0, first = -1, last = -1, days = 0, lastDay = -1, dc = 0, bestDay = 0, bestCount = 0;
+    const months = {};
+    const hours = new Array(24).fill(0);
+    for (let i = 0; i < L.ts.length; i++) {
+      if (!match(i)) continue;
+      plays++;
+      if (first < 0) first = i;
+      last = i;
+      const d = new Date(L.ts[i]);
+      const mk = d.getFullYear() * 12 + d.getMonth();
+      months[mk] = (months[mk] || 0) + 1;
+      hours[d.getHours()]++;
+      const di = dayIdx(L.ts[i]);
+      if (di !== lastDay) { days++; lastDay = di; dc = 0; }
+      if (++dc > bestCount) { bestCount = dc; bestDay = dayMs(di); }
+    }
+    if (!plays) return null;
+    const m0 = Math.min(...Object.keys(months).map(Number));
+    const now = new Date();
+    const arr = [];
+    for (let m = m0; m <= now.getFullYear() * 12 + now.getMonth(); m++) arr.push(months[m] || 0);
+    return { plays, days, first: L.ts[first], last: L.ts[last], monthsFrom: +new Date(Math.floor(m0 / 12), m0 % 12, 1), months: arr, hours, bestDay: { day: bestDay, count: bestCount } };
+  }
+  const rankIn = (c, k) => (c[k] ? Object.values(c).filter((v) => v > c[k]).length + 1 : 0);
+  const albumOf = (a) => RECORDS[a % RECORDS.length][1];
+  const findArtist = (name) => history().artists.findIndex((n) => n.toLowerCase() === String(name).toLowerCase());
+  function rangeCounts(key) {
+    const L = history();
+    const r = mockRange(statsRange);
+    return { r, c: counts(lowerBound(L.ts, r.from * 1000), lowerBound(L.ts, r.to * 1000), key) };
+  }
+  function fakeTrack(artist, title) {
+    const L = history();
+    const a = findArtist(artist);
+    const t = L.titles.findIndex((n) => n.toLowerCase() === String(title).toLowerCase());
+    const life = a >= 0 && t >= 0 ? lifeOf((i) => L.t[i] === t) : null;
+    if (!life) return { missing: true, artist, title };
+    const all = counts(0, L.ts.length, (L2, i) => L2.t[i]);
+    const { r, c } = rangeCounts((L2, i) => L2.t[i]);
+    const next = {};
+    for (let i = 0; i + 1 < L.ts.length; i++) {
+      if (L.t[i] === t && L.t[i + 1] !== t && L.ts[i + 1] - L.ts[i] < 20 * 60e3) next[L.t[i + 1]] = { a: L.a[i + 1], n: ((next[L.t[i + 1]] || {}).n || 0) + 1 };
+    }
+    const ap = counts(0, L.ts.length, (L2, i) => L2.a[i]);
+    return { ...life, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a],
+      range: { ...r, plays: c[t] || 0, rank: rankIn(c, t) },
+      next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
+      album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 } };
+  }
+  function fakeAlbum(artist, title) {
+    const L = history();
+    const a = findArtist(artist);
+    const life = a >= 0 ? lifeOf((i) => L.a[i] === a) : null;
+    if (!life) return { missing: true, artist, title };
+    const all = counts(0, L.ts.length, (L2, i) => L2.a[i]);
+    const { r, c } = rangeCounts((L2, i) => L2.a[i]);
+    const tc = counts(0, L.ts.length, (L2, i) => (L2.a[i] === a ? L2.t[i] : -1));
+    delete tc[-1];
+    return { ...life, title, artist: L.artists[a], rank: rankIn(all, a), albums: Object.keys(all).length,
+      info: { title, artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
+      range: { ...r, plays: c[a] || 0, rank: rankIn(c, a) },
+      trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })) };
+  }
+  function artistLives() {
+    const L = history();
+    const n = L.artists.length;
+    const x = Array.from({ length: n }, () => ({ plays: 0, first: 0, last: 0, months: new Set(), days: new Set(), peak: {} }));
+    for (let i = 0; i < L.ts.length; i++) {
+      const o = x[L.a[i]];
+      if (!o.plays++) o.first = L.ts[i];
+      o.last = L.ts[i];
+      const d = new Date(L.ts[i]);
+      const mk = +new Date(d.getFullYear(), d.getMonth(), 1);
+      o.months.add(mk);
+      o.days.add(dayIdx(L.ts[i]));
+      o.peak[mk] = (o.peak[mk] || 0) + 1;
+    }
+    return x.map((o, a) => {
+      const [pm, pc] = Object.entries(o.peak).sort((p, q) => q[1] - p[1])[0] || [0, 0];
+      return { a, name: L.artists[a], plays: o.plays, first: o.first, last: o.last, months: o.months.size, days: o.days.size, cover: '', peak: { start: +pm, count: pc } };
+    }).filter((o) => o.plays);
+  }
+  function topTrackOf(a) {
+    const L = history();
+    const tc = counts(0, L.ts.length, (L2, i) => (L2.a[i] === a ? L2.t[i] : -1));
+    delete tc[-1];
+    return Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[a], album: albumOf(a), plays: v }));
+  }
+  function fakeExplore() {
+    const L = history();
+    const lives = artistLives().sort((x, y) => y.plays - x.plays);
+    const withTrack = (o) => ({ ...o, track: (topTrackOf(o.a)[0] || {}).title || '' });
+    // The made-up log has few quiet artists, so the oldest last plays stand in for lost ones.
+    const lost = lives.slice().sort((x, y) => x.last - y.last).slice(0, 6).sort((x, y) => y.plays - x.plays).map(withTrack);
+    const regulars = lives.slice(8).filter((o) => o.months >= 4).sort((x, y) => y.months - x.months).slice(0, 8).map(withTrack);
+    const oneDay = lives.filter((o) => o.days <= 2).slice(0, 6).map(withTrack);
+    const deepCuts = lives.slice(0, 5).flatMap((o) => topTrackOf(o.a).slice(-2));
+    const today = new Date();
+    const otd = [today.getFullYear() - 1, today.getFullYear() - 2].map((y) => {
+      const from = +new Date(y, today.getMonth(), today.getDate());
+      const i0 = lowerBound(L.ts, from), i1 = lowerBound(L.ts, from + DAY);
+      if (i1 <= i0) return null;
+      const tc = counts(i0, i1, (L2, i) => L2.t[i]);
+      const ac = counts(i0, i1, (L2, i) => L2.a[i]);
+      const ta = {};
+      for (let i = i0; i < i1; i++) ta[L.t[i]] = L.a[i];
+      return { year: y, plays: i1 - i0, artists: ranked(ac).slice(0, 3).map((a) => L.artists[a]),
+        tracks: ranked(tc).slice(0, 4).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], album: albumOf(ta[t]), plays: tc[t] })) };
+    }).filter(Boolean);
+    return { tail: { artists: lives.length, few: lives.filter((o) => o.plays < 5).length, fewPlays: 5 },
+      lostArtists: lost, lostAlbums: lost.slice(0, 5).map((o) => ({ title: albumOf(o.a), artist: o.name, cover: '', key: '', owned: 0, plays: Math.round(o.plays * 0.6), last: o.last })),
+      regulars, oneDay, deepCuts, onThisDay: otd };
+  }
+  function fakePlaylist(kind) {
+    const L = history();
+    const x = fakeExplore();
+    const of = (list) => list.flatMap((o) => topTrackOf(o.a).slice(0, 2));
+    const names = { lost: ['Lost favorites', 'Artists you loved who have gone quiet', () => of(x.lostArtists)],
+      lostAlbums: ['Albums to rediscover', 'The songs you played most from albums gone quiet', () => of(x.lostArtists)],
+      regulars: ['Quiet regulars', 'Always around, never on top', () => of(x.regulars)],
+      oneDay: ['One-day wonders', 'Played all day once, never again', () => of(x.oneDay)],
+      deepCuts: ['Deep cuts', 'Songs by your favorite artists you hardly know', () => x.deepCuts],
+      onThisDay: ['On this day', 'What you played on this day in earlier years', () => x.onThisDay.flatMap((y) => y.tracks)],
+      dig: ['Crate dig', 'Songs you played a few times, then forgot', () => artistLives().flatMap((o) => topTrackOf(o.a).slice(-1)).sort(() => Math.random() - 0.5)] };
+    if (kind === 'top' || !names[kind]) {
+      const r = mockRange(statsRange);
+      const tc = counts(lowerBound(L.ts, r.from * 1000), lowerBound(L.ts, r.to * 1000), (L2, i) => L2.t[i]);
+      const ta = {};
+      L.t.forEach((t, i) => { ta[t] = L.a[i]; });
+      return { kind: 'top', range: r, tracks: ranked(tc).slice(0, 40).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], album: albumOf(ta[t]), plays: tc[t] })) };
+    }
+    const [name, note, fn] = names[kind];
+    return { kind, name, note, tracks: fn().slice(0, 40) };
+  }
+
   function fakeArtist(name) {
     const L = history();
     const ai = L.artists.indexOf(name);
@@ -680,6 +818,10 @@ const Mock = (() => {
         case 'artist': later(250, () => onArtist(fakeArtist(m.name))); break;
         case 'tilt': break;
         case 'tidy': later(200, () => onTidy(S.history.count ? tidyOf() : { empty: true })); break;
+        case 'track': later(250, () => onTrack(fakeTrack(m.artist, m.title))); break;
+        case 'album': later(250, () => onAlbum(fakeAlbum(m.artist, m.title))); break;
+        case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'playlist': later(300, () => onPlaylist(fakePlaylist(m.kind))); break;
         case 'hide': case 'unhide': case 'keep':
           tidyApply(m.t, m.items || [m]);
           later(300, () => { onTidy(tidyOf()); if (S.history.count) onStats(fakeStats(statsRange)); });

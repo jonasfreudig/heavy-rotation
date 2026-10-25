@@ -40,6 +40,17 @@ class Stats(
         const val WISH_MIN_PLAYS = 8
         const val WISH_MIN_TRACKS = 4
 
+        /** Explore: quiet for this long counts as lost. */
+        const val LOST_DAYS = 180L
+        const val LOST_MIN = 10
+        const val LOST_ALBUM_MIN = 8
+        const val EXPLORE_MAX = 15
+        const val REGULARS_SKIP_TOP = 25
+        const val REGULARS_MIN_MONTHS = 4
+        const val DEEP_CUT_ARTISTS = 12
+        const val TAIL_PLAYS = 5
+        const val PLAYLIST_SIZE = 40
+
         /** Scrobbles carry no length; "hours" assume an average track. */
         const val MINUTES_PER_PLAY = 3.5
         private const val DAY_SEC = 86_400L
@@ -845,6 +856,334 @@ class Stats(
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", h.albumKeys[it.key] in ownedKeys) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
+    }
+
+    // ---- one track, one album ----
+
+    private val trackIndex: Map<String, Int> by lazy {
+        h.trackTitles.indices.associateBy { Hidden.key(h.artistNames[h.trackArtist[it]], h.trackTitles[it]) }
+    }
+
+    /** The album each track was last scrobbled with, -1 if never. */
+    private val trackAlbum: IntArray by lazy {
+        IntArray(h.trackTitles.size) { -1 }.also { ta -> for (i in 0 until h.size) if (h.album[i] >= 0) ta[h.track[i]] = h.album[i] }
+    }
+
+    /** A track as a player or Last.fm credits it ("A feat. B", "Song (Remastered)", other spellings); -1 if it isn't in the history. */
+    fun findTrack(artist: String, title: String): Int {
+        trackIndex[Hidden.key(artist, title)]?.let { return it }
+        val main = Artists.main(artist, artistIndex.keys)
+        trackIndex[Hidden.key(main, title)]?.let { return it }
+        val a = artistIndex[Text.norm(main)] ?: return -1
+        val loose = Text.normLoose(title)
+        return h.trackTitles.indices.firstOrNull { h.trackArtist[it] == a && Text.normLoose(h.trackTitles[it]) == loose } ?: -1
+    }
+
+    private fun findAlbum(artist: String, title: String): Int =
+        albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)] ?: -1
+
+    private fun monthKey(t: Long) = date(t).let { it.year * 12 + it.monthValue - 1 }
+    private fun monthStart(mk: Int) = ms(LocalDate.of(mk / 12, mk % 12 + 1, 1))
+
+    /** Plays over time of whatever [match] picks: first and last play, days, plays per month, time of day, biggest day. */
+    private fun life(match: (Int) -> Boolean): JSONObject? {
+        var plays = 0
+        var first = -1
+        var last = -1
+        var days = 0
+        var lastDay = Long.MIN_VALUE
+        var dayCount = 0
+        var bestDay = 0L
+        var bestDayCount = 0
+        val months = HashMap<Int, Int>()
+        val hours = IntArray(24)
+        for (i in 0 until h.size) {
+            if (!match(i)) continue
+            plays++
+            if (first < 0) first = i
+            last = i
+            months.merge(monthKey(h.ts[i]), 1, Int::plus)
+            hours[hour(h.ts[i])]++
+            val d = day(h.ts[i])
+            if (d != lastDay) {
+                days++
+                lastDay = d
+                dayCount = 0
+            }
+            if (++dayCount > bestDayCount) {
+                bestDayCount = dayCount
+                bestDay = d
+            }
+        }
+        if (plays == 0) return null
+        val m0 = months.keys.minOrNull()!!
+        val m1 = monthKey(nowSec)
+        val busiest = months.maxByOrNull { it.value }!!
+        return JSONObject().put("plays", plays).put("days", days)
+            .put("first", h.ts[first] * 1000).put("last", h.ts[last] * 1000)
+            .put("monthsFrom", monthStart(m0)).put("months", JSONArray((m0..maxOf(m0, m1)).map { months[it] ?: 0 }))
+            .put("busiestMonth", JSONObject().put("start", monthStart(busiest.key)).put("count", busiest.value))
+            .put("hours", JSONArray(hours.toList()))
+            .put("bestDay", JSONObject().put("day", dayStart(bestDay) * 1000).put("count", bestDayCount))
+    }
+
+    /** Rank (1 = most) of [x] among [counts], and how many have any. */
+    private fun rank(counts: IntArray, x: Int) = if (counts[x] > 0) counts.count { it > counts[x] } + 1 else 0
+
+    /** One song: its life in plays, rank, the album it's on, and what you tend to play right after it. */
+    fun track(artist: String, title: String, r: Range): JSONObject? {
+        val t = findTrack(artist, title)
+        if (t < 0) return null
+        val o = life { h.track[it] == t } ?: return null
+        val i0 = h.lowerBound(r.from)
+        val i1 = h.lowerBound(r.to)
+        val all = IntArray(h.trackTitles.size)
+        val inRange = IntArray(h.trackTitles.size)
+        var artistPlays = 0
+        val next = HashMap<Int, Int>()
+        for (i in 0 until h.size) {
+            all[h.track[i]]++
+            if (i in i0 until i1) inRange[h.track[i]]++
+            if (h.artist[i] == h.trackArtist[t]) artistPlays++
+            // What followed it within 20 minutes, not counting repeats.
+            if (h.track[i] == t && i + 1 < h.size && h.track[i + 1] != t && h.ts[i + 1] - h.ts[i] < 1200) next.merge(h.track[i + 1], 1, Int::plus)
+        }
+        val al = trackAlbum[t]
+        o.put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
+            .put("rank", rank(all, t)).put("tracks", all.count { it > 0 })
+            .put("shareOfArtist", all[t].toDouble() / maxOf(1, artistPlays))
+            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[t]).put("rank", rank(inRange, t)))
+            .put("next", JSONArray(next.entries.sortedByDescending { it.value }.take(5).map { (n, c) -> JSONObject().put("title", h.trackTitles[n]).put("artist", h.artistNames[h.trackArtist[n]]).put("count", c) }))
+        if (al >= 0) o.put("album", albumJson(al))
+        return o
+    }
+
+    private fun albumJson(al: Int): JSONObject = JSONObject().put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
+        .put("cover", cover(al)).put("key", h.albumKeys[al]).put("owned", ownedKeys[h.albumKeys[al]]?.releaseId ?: 0)
+
+    /** One album: its life in plays, rank, and which of its tracks you play. */
+    fun album(artist: String, title: String, r: Range): JSONObject? {
+        val al = findAlbum(artist, title)
+        if (al < 0) return null
+        val o = life { h.album[it] == al } ?: return null
+        val i0 = h.lowerBound(r.from)
+        val i1 = h.lowerBound(r.to)
+        val all = IntArray(h.albumTitles.size)
+        val inRange = IntArray(h.albumTitles.size)
+        val tracks = HashMap<Int, Int>()
+        for (i in 0 until h.size) {
+            val x = h.album[i]
+            if (x < 0) continue
+            all[x]++
+            if (i in i0 until i1) inRange[x]++
+            if (x == al) tracks.merge(h.track[i], 1, Int::plus)
+        }
+        return o.put("info", albumJson(al)).put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
+            .put("rank", rank(all, al)).put("albums", all.count { it > 0 })
+            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[al]).put("rank", rank(inRange, al)))
+            .put("trackList", JSONArray(tracks.entries.sortedByDescending { it.value }.map { (t, c) -> JSONObject().put("title", h.trackTitles[t]).put("plays", c) }))
+    }
+
+    // ---- explore: the long tail, relative to today ----
+
+    private class ArtistLife(n: Int) {
+        val plays = IntArray(n)
+        val first = LongArray(n)
+        val last = LongArray(n)
+        val days = IntArray(n)
+        val months = IntArray(n)
+        val peakMonth = IntArray(n)
+        val peakCount = IntArray(n)
+        val lastDay = LongArray(n) { Long.MIN_VALUE }
+        val curMonth = IntArray(n) { -1 }
+        val curCount = IntArray(n)
+    }
+
+    private val artistLife: ArtistLife by lazy {
+        val l = ArtistLife(h.artistNames.size)
+        for (i in 0 until h.size) {
+            val a = h.artist[i]
+            val t = h.ts[i]
+            if (l.plays[a]++ == 0) l.first[a] = t
+            l.last[a] = t
+            val d = day(t)
+            if (d != l.lastDay[a]) {
+                l.days[a]++
+                l.lastDay[a] = d
+            }
+            val m = monthKey(t)
+            if (m != l.curMonth[a]) {
+                l.months[a]++
+                l.curMonth[a] = m
+                l.curCount[a] = 0
+            }
+            if (++l.curCount[a] > l.peakCount[a]) {
+                l.peakCount[a] = l.curCount[a]
+                l.peakMonth[a] = m
+            }
+        }
+        l
+    }
+
+    private val albumPlays: IntArray by lazy { IntArray(h.albumTitles.size).also { p -> for (x in h.album) if (x >= 0) p[x]++ } }
+    private val trackPlays: IntArray by lazy { IntArray(h.trackTitles.size).also { p -> for (x in h.track) p[x]++ } }
+
+    /** An artist's best covered album, for a picture. */
+    private fun artistPicture(a: Int): String {
+        var best = -1
+        for (al in albumPlays.indices) if (h.albumArtist[al] == a && albumPlays[al] > 0 && (best < 0 || albumPlays[al] > albumPlays[best]) && cover(al).isNotEmpty()) best = al
+        return if (best >= 0) cover(best) else ""
+    }
+
+    private val sinceSec get() = nowSec - LOST_DAYS * DAY_SEC
+
+    /** Artists you played a lot that have gone quiet for half a year or more, most played first. */
+    private val lostArtists: List<Int> by lazy {
+        val l = artistLife
+        l.plays.indices.filter { l.plays[it] >= LOST_MIN && l.last[it] < sinceSec }.sortedByDescending { l.plays[it] }.take(EXPLORE_MAX)
+    }
+
+    /** Albums (several different tracks played) gone quiet for half a year or more. */
+    private val lostAlbums: List<Int> by lazy {
+        val last = LongArray(h.albumTitles.size)
+        val tracks = Array(h.albumTitles.size) { HashSet<Int>() }
+        for (i in 0 until h.size) {
+            val x = h.album[i]
+            if (x < 0) continue
+            last[x] = h.ts[i]
+            if (tracks[x].size < 3) tracks[x] += h.track[i]
+        }
+        albumPlays.indices.filter { albumPlays[it] >= LOST_ALBUM_MIN && tracks[it].size >= 3 && last[it] < sinceSec }
+            .sortedByDescending { albumPlays[it] }.take(EXPLORE_MAX)
+    }
+
+    /** Artists outside your top ones who keep coming back: many different months, never many plays. */
+    private val regulars: List<Int> by lazy {
+        val l = artistLife
+        val top = l.plays.indices.sortedByDescending { l.plays[it] }.take(minOf(REGULARS_SKIP_TOP, l.plays.size / 5)).toSet()
+        l.plays.indices.filter { it !in top && l.months[it] >= REGULARS_MIN_MONTHS && l.last[it] >= nowSec - 365 * DAY_SEC }
+            .sortedWith(compareByDescending<Int> { l.months[it] }.thenByDescending { l.plays[it] }).take(EXPLORE_MAX)
+    }
+
+    /** Artists played several times on one single day and never again. */
+    private val oneDayers: List<Int> by lazy {
+        val l = artistLife
+        val today = day(nowSec)
+        l.plays.indices.filter { l.days[it] == 1 && l.plays[it] >= 3 && today - day(l.last[it]) >= 30 }.sortedByDescending { l.plays[it] }.take(EXPLORE_MAX)
+    }
+
+    /** Tracks of your favorite artists you've played only once or twice. */
+    private val deepCuts: List<Int> by lazy {
+        val l = artistLife
+        val top = l.plays.indices.sortedByDescending { l.plays[it] }.take(DEEP_CUT_ARTISTS)
+        val rankOf = top.withIndex().associate { (i, a) -> a to i }
+        val last = LongArray(h.trackTitles.size).also { lt -> for (i in 0 until h.size) lt[h.track[i]] = h.ts[i] }
+        h.trackTitles.indices.filter { h.trackArtist[it] in rankOf && trackPlays[it] in 1..2 }
+            .groupBy { h.trackArtist[it] }.toList().sortedBy { rankOf[it.first] }
+            .flatMap { (_, ts) -> ts.sortedByDescending { last[it] }.take(3) }.take(EXPLORE_MAX * 2)
+    }
+
+    /** Most played tracks of each of [artists], in that order. */
+    private fun topTracksOf(artists: List<Int>, per: Int): Map<Int, List<Int>> {
+        val want = artists.toSet()
+        val byArtist = HashMap<Int, MutableList<Int>>()
+        for (t in h.trackTitles.indices) if (h.trackArtist[t] in want) byArtist.getOrPut(h.trackArtist[t]) { ArrayList() } += t
+        return byArtist.mapValues { (_, ts) -> ts.sortedByDescending { trackPlays[it] }.take(per) }
+    }
+
+    private fun trackJson(t: Int): JSONObject = JSONObject().put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
+        .put("album", trackAlbum[t].let { if (it >= 0) h.albumTitles[it] else "" }).put("plays", trackPlays[t])
+
+    /** Everything on the Explore page. */
+    fun explore(): JSONObject {
+        val l = artistLife
+        val tops = topTracksOf(lostArtists + regulars + oneDayers, 1)
+        fun topTrack(a: Int) = tops[a]?.firstOrNull()?.let { h.trackTitles[it] } ?: ""
+        fun artistJson(a: Int) = JSONObject().put("name", h.artistNames[a]).put("plays", l.plays[a]).put("first", l.first[a] * 1000).put("last", l.last[a] * 1000)
+            .put("months", l.months[a]).put("days", l.days[a]).put("cover", artistPicture(a)).put("track", topTrack(a))
+            .put("peak", JSONObject().put("start", monthStart(l.peakMonth[a])).put("count", l.peakCount[a]))
+        val albumLast = LongArray(h.albumTitles.size).also { la -> for (i in 0 until h.size) if (h.album[i] >= 0) la[h.album[i]] = h.ts[i] }
+        // This day in earlier years.
+        val today = date(nowSec)
+        val years = java.util.TreeMap<Int, MutableList<Int>>(Comparator.reverseOrder())
+        for (i in 0 until h.size) {
+            val d = date(h.ts[i])
+            if (d.year < today.year && d.monthValue == today.monthValue && d.dayOfMonth == today.dayOfMonth) years.getOrPut(d.year) { ArrayList() } += i
+        }
+        val onThisDay = JSONArray(
+            years.map { (y, idx) ->
+                val ac = idx.groupingBy { h.artist[it] }.eachCount()
+                val tc = idx.groupingBy { h.track[it] }.eachCount()
+                JSONObject().put("year", y).put("plays", idx.size)
+                    .put("artists", JSONArray(ac.entries.sortedByDescending { it.value }.take(3).map { h.artistNames[it.key] }))
+                    .put("tracks", JSONArray(tc.entries.sortedByDescending { it.value }.take(4).map { trackJson(it.key).put("plays", it.value) }))
+            },
+        )
+        val few = l.plays.count { it in 1 until TAIL_PLAYS }
+        return JSONObject()
+            .put("tail", JSONObject().put("artists", l.plays.count { it > 0 }).put("few", few).put("fewPlays", TAIL_PLAYS))
+            .put("lostArtists", JSONArray(lostArtists.map { artistJson(it) }))
+            .put("lostAlbums", JSONArray(lostAlbums.map { albumJson(it).put("plays", albumPlays[it]).put("last", albumLast[it] * 1000) }))
+            .put("regulars", JSONArray(regulars.map { artistJson(it) }))
+            .put("oneDay", JSONArray(oneDayers.map { artistJson(it) }))
+            .put("deepCuts", JSONArray(deepCuts.map { trackJson(it) }))
+            .put("onThisDay", onThisDay)
+    }
+
+    /** Covers missing on the Explore page, to look up on Last.fm. */
+    fun exploreNeedingImages(): List<Triple<String, String, String>> =
+        lostAlbums.filter { cover(it).isEmpty() }.map { Triple(h.artistNames[h.albumArtist[it]], h.albumTitles[it], h.albumKeys[it]) }
+
+    // ---- playlists ----
+
+    /**
+     * A playlist from the Explore lists ([kind] lost, lostAlbums, regulars, oneDay, deepCuts,
+     * onThisDay, dig) or the top tracks of a period (top, with [rangeId]), as name, note and tracks.
+     */
+    fun playlist(kind: String, rangeId: String = "", size: Int = PLAYLIST_SIZE): JSONObject {
+        fun ofArtists(artists: List<Int>, per: Int): List<Int> {
+            val tops = topTracksOf(artists, per)
+            // Round-robin, so one artist's songs don't come in a block.
+            return (0 until per).flatMap { k -> artists.mapNotNull { tops[it]?.getOrNull(k) } }
+        }
+        val (name, note, tracks) = when (kind) {
+            "lost" -> Triple("Lost favorites", "Artists you loved who have gone quiet", ofArtists(lostArtists, 2))
+            "lostAlbums" -> {
+                val want = lostAlbums.toSet()
+                val counts = HashMap<Int, HashMap<Int, Int>>()
+                for (i in 0 until h.size) if (h.album[i] in want) counts.getOrPut(h.album[i]) { HashMap() }.merge(h.track[i], 1, Int::plus)
+                val per = lostAlbums.map { al -> counts[al].orEmpty().entries.sortedByDescending { it.value }.take(3).map { it.key } }
+                Triple("Albums to rediscover", "The songs you played most from albums gone quiet", (0 until 3).flatMap { k -> per.mapNotNull { it.getOrNull(k) } })
+            }
+            "regulars" -> Triple("Quiet regulars", "Always around, never on top", ofArtists(regulars, 2))
+            "oneDay" -> Triple("One-day wonders", "Played all day once, never again", ofArtists(oneDayers, 2))
+            "deepCuts" -> Triple("Deep cuts", "Songs by your favorite artists you hardly know", deepCuts)
+            "onThisDay" -> {
+                val today = date(nowSec)
+                val c = HashMap<Int, Int>()
+                for (i in 0 until h.size) {
+                    val d = date(h.ts[i])
+                    if (d.year < today.year && d.monthValue == today.monthValue && d.dayOfMonth == today.dayOfMonth) c.merge(h.track[i], 1, Int::plus)
+                }
+                Triple("On this day", "What you played on this day in earlier years", c.entries.sortedByDescending { it.value }.map { it.key })
+            }
+            "dig" -> {
+                // Songs you played a few times and not for months, shuffled anew each time.
+                val last = LongArray(h.trackTitles.size).also { lt -> for (i in 0 until h.size) lt[h.track[i]] = h.ts[i] }
+                val pool = h.trackTitles.indices.filter { trackPlays[it] in 2..6 && last[it] < nowSec - 120 * DAY_SEC }
+                Triple("Crate dig", "Songs you played a few times, then forgot", pool.shuffled())
+            }
+            else -> {
+                // The page names it after the period, in the phone's language.
+                val r = range(rangeId)
+                val tp = IntArray(h.trackTitles.size)
+                for (i in h.lowerBound(r.from) until h.lowerBound(r.to)) tp[h.track[i]]++
+                return JSONObject().put("kind", "top").put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("to", r.to))
+                    .put("tracks", JSONArray(tp.indices.filter { tp[it] > 0 }.sortedByDescending { tp[it] }.take(size).map { trackJson(it).put("plays", tp[it]) }))
+            }
+        }
+        return JSONObject().put("kind", kind).put("name", name).put("note", note)
+            .put("tracks", JSONArray(tracks.distinct().take(size).map { trackJson(it) }))
     }
 
     // ---- the story ----
