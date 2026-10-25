@@ -198,164 +198,300 @@ const Mock = (() => {
     };
   }
 
-  // ---- stats (made-up numbers with a realistic shape) ----
+  // ---- stats: a made-up history since December 2023, and the figures of Stats.kt, simplified ----
 
-  const MOCK_ARTISTS = ['Khruangbin', 'Tame Impala', 'Beach House', 'Radiohead', 'Fleetwood Mac', 'Bonobo', 'Air', 'Portishead', 'Frank Ocean', 'Kendrick Lamar', 'Mac DeMarco', 'Bon Iver'];
-  const GENRES = ['Indie Rock', 'Psychedelic Rock', 'Electronic', 'Soul', 'Dream Pop', 'Jazz', 'Other'];
-  function mockRanges() {
-    const y = new Date().getFullYear();
-    const out = [{ id: '12m', label: 'Last 12 months' }, { id: 'all', label: 'All time' }];
-    for (let k = y; k >= 2019; k--) out.push({ id: 'y' + k, label: String(k) });
-    return out;
-  }
-  function rangeInfo(id) {
-    const now = new Date();
-    if (id === 'all') return { id, label: 'All time', from: new Date(2019, 2, 14), to: now, scale: 7.3 };
-    if (id === '12m') return { id, label: 'Last 12 months', from: new Date(now.getFullYear() - 1, now.getMonth(), now.getDate() + 1), to: now, scale: 1 };
-    const y = +id.slice(1);
-    const to = y === now.getFullYear() ? now : new Date(y + 1, 0, 1);
-    return { id, label: String(y), from: new Date(Math.max(new Date(y, 0, 1), new Date(2019, 2, 14))), to, scale: (to - new Date(y, 0, 1)) / 365 / DAY };
-  }
-  function monthsBetween(a, b) { return (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() + 1; }
-  function fakeClock(r, total) {
-    const w = [];
-    for (let d = 0; d < 7; d++) for (let h = 0; h < 24; h++) {
-      const weekend = d >= 5;
-      let v = h < 7 ? (weekend && h < 2 ? 0.6 : 0.05) : h < 10 ? (weekend ? 0.3 : 1.1) : h < 17 ? (weekend ? 0.9 : 0.55) : h < 23 ? (d === 4 ? 1.9 : 1.4) : 0.7;
-      w.push(v * (0.75 + 0.5 * r()));
-    }
-    const sum = w.reduce((a, b) => a + b, 0);
-    return w.map((x) => Math.round((x / sum) * total));
-  }
-  function fakeStats(id) {
-    const ri = rangeInfo(id);
-    const r = rng(hashStr(id) + 5);
-    const scrobbles = Math.round(11800 * ri.scale);
-    const months = monthsBetween(ri.from, ri.to);
-    const yearly = months > 36;
-    const naBuckets = [];
-    if (yearly) for (let y = ri.from.getFullYear(); y <= ri.to.getFullYear(); y++) naBuckets.push({ start: +new Date(y, 0, 1), count: y === 2019 ? 412 : 120 + Math.round(r() * 90), historyStart: y === 2019 });
-    else for (let k = 0; k < months; k++) {
-      const d = new Date(ri.from.getFullYear(), ri.from.getMonth() + k, 1);
-      const start = d.getFullYear() === 2019 && d.getMonth() === 2;
-      naBuckets.push({ start: +d, count: start ? 212 : 4 + Math.round(r() * 22), historyStart: start });
-    }
-    naBuckets.forEach((b) => { b.top = MOCK_ARTISTS.slice(Math.floor(r() * 8)).slice(0, 3); });
-    const gUnit = months <= 15 ? 'month' : months <= 60 ? 'quarter' : 'year';
-    const per = gUnit === 'month' ? 1 : gUnit === 'quarter' ? 3 : 12;
-    const periods = [];
-    const n = Math.ceil(months / per);
-    for (let k = 0; k < n; k++) {
-      const t = k / Math.max(1, n - 1);
-      const raw = [0.30 - 0.12 * t, 0.12 + 0.14 * t, 0.16 + 0.04 * r(), 0.08 + 0.06 * t, 0.10 - 0.03 * t, 0.05 + 0.03 * r(), 0.15];
-      const sum = raw.reduce((a, b) => a + b, 0);
-      const d = new Date(ri.from.getFullYear(), Math.floor(ri.from.getMonth() / per) * per + k * per, 1);
-      periods.push({ start: +d, total: Math.round(scrobbles / n), shares: raw.map((x) => Math.round((x / sum) * 1000) / 1000) });
-    }
-    const owned = coll.slice().sort((a, b) => a.plays - b.plays);
-    const top = {
-      artists: MOCK_ARTISTS.slice(0, 10).map((name, i) => ({ name, plays: Math.round((620 - i * 48) * ri.scale * (0.9 + 0.2 * r())) })),
-      albums: RECORDS.slice(0, 10).map((x, i) => ({ title: x[1], artist: x[0], plays: Math.round((300 - i * 24) * ri.scale), cover: '', owned: i % 3 !== 2 })),
-      tracks: PHONE_TRACKS.concat(PHONE_TRACKS).slice(0, 6).map((x, i) => ({ title: i < 3 ? x[1] : `${x[1]} (Live)`, artist: x[0], plays: Math.round((88 - i * 9) * ri.scale) })),
-    };
-    top.artists.sort((a, b) => b.plays - a.plays);
-    const record = fakeRecord(ri, rng(hashStr(id) + 11));
-    return {
-      record, pulse: fakePulse(record),
-      loops: [{ track: 'Maria También', artist: 'Khruangbin', run: 7, at: Date.now() - 45 * DAY }, { track: 'Myth', artist: 'Beach House', run: 4, at: Date.now() - 12 * DAY }],
-      range: { id, label: ri.label, from: +ri.from / 1000, to: +ri.to / 1000 },
-      ranges: mockRanges(),
-      summary: { scrobbles, artists: Math.round(1450 * Math.sqrt(ri.scale)), tracks: Math.round(6900 * Math.sqrt(ri.scale)), albums: Math.round(2300 * Math.sqrt(ri.scale)), days: Math.round(331 * ri.scale), spanDays: Math.round(365 * ri.scale), perDay: Math.round((scrobbles / (365 * ri.scale)) * 10) / 10 },
-      clock: fakeClock(r, scrobbles),
-      streaks: { current: 12, currentFrom: Date.now() - 11 * DAY, longest: 41, longestFrom: Date.now() - 140 * DAY, longestTo: Date.now() - 100 * DAY,
-        artists: [{ artist: 'Khruangbin', days: 9, from: Date.now() - 60 * DAY, to: Date.now() - 52 * DAY }, { artist: 'Tame Impala', days: 7, from: Date.now() - 200 * DAY, to: Date.now() - 194 * DAY }, { artist: 'Beach House', days: 6, from: Date.now() - 30 * DAY, to: Date.now() - 25 * DAY }] },
-      newArtists: { unit: yearly ? 'year' : 'month', buckets: naBuckets },
-      genres: { names: GENRES, keys: GENRES.map((g) => g.toLowerCase()), unit: gUnit, periods, coverage: { discogs: 0.38, lastfm: 0.55, none: 0.07 } },
-      obsessions: [
-        { track: 'Maria También', artist: 'Khruangbin', week: Date.now() - 45 * DAY, count: 23 },
-        { track: 'Let It Happen', artist: 'Tame Impala', week: Date.now() - 180 * DAY, count: 17 },
-        { track: 'Myth', artist: 'Beach House', week: Date.now() - 20 * DAY, count: 11 },
-      ],
-      rarely: { items: owned.slice(0, 8).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', plays: Math.round(c.plays * ri.scale / 8), last: c.plays ? Date.now() - (60 + c.plays) * DAY : 0 })), owned: coll.length, unplayed: 4, neverPlayed: 2 },
-      wishlist: [
-        ['Tame Impala', 'Lonerism', 212, 12], ['Khruangbin', 'Mordechai', 164, 10], ['Frank Ocean', 'Channel Orange', 131, 14],
-        ['Bonobo', 'Migration', 96, 9], ['Beach House', 'Depression Cherry', 74, 8],
-      ].map(([artist, album, plays, tracks]) => ({ artist, album, plays: Math.round(plays * Math.min(ri.scale, 1.5)), tracks, last: Date.now() - 9 * DAY, key: '', image: '', search: 'https://www.discogs.com/search/?type=master&q=' + encodeURIComponent(artist + ' ' + album) })),
-      top,
-    };
-  }
-  /** A plausible year of plays: evenings and commutes, gaps, a few favourite artists, phases. */
-  function fakeRecord(ri, r) {
-    const days = Math.max(1, Math.round((ri.to - ri.from) / DAY));
-    const artists = MOCK_ARTISTS.concat(Array.from({ length: 60 }, (_, i) => `Artist ${i + 1}`));
-    const hourW = [0.2, 0.1, 0.05, 0.02, 0.02, 0.03, 0.3, 1, 1.2, 0.8, 0.6, 0.6, 0.7, 0.6, 0.6, 0.7, 0.9, 1.2, 1.4, 1.6, 1.7, 1.5, 1.1, 0.6];
-    const hsum = hourW.reduce((a, b) => a + b, 0);
+  const MOCK_ARTISTS = ['IDLES', 'Fontaines D.C.', 'Khruangbin', 'Shame', 'Tame Impala', 'Beach House', 'The Strokes', 'Little Simz', 'Gorillaz',
+    'Fleetwood Mac', 'Bonobo', 'Turnstile', 'Air', 'Portishead', 'Frank Ocean', 'Glass Animals'];
+  const GENRES = ['Post-Punk', 'Indie Rock', 'Psychedelic Rock', 'Hip Hop', 'Electronic', 'Dream Pop', 'Other'];
+  const genreOf = (ai) => [0, 0, 2, 0, 2, 5, 1, 3, 4, 1, 4, 0, 4, 4, 3, 1][ai] ?? (ai % 7 === 6 ? -1 : ai % 6);
+  let LOG = null;
+  function history() {
+    if (LOG) return LOG;
+    const r = rng(42);
+    const start = +new Date(2023, 11, 4);
+    const end = Date.now();
+    const artists = MOCK_ARTISTS.concat(Array.from({ length: 90 }, (_, i) => `Artist ${i + 1}`));
+    const hourW = [0.3, 0.15, 0.06, 0.02, 0.02, 0.03, 0.25, 0.9, 1.1, 0.8, 0.6, 0.6, 0.7, 0.6, 0.6, 0.7, 0.9, 1.2, 1.4, 1.6, 1.8, 1.6, 1.2, 0.7];
+    const hsum = hourW.reduce((x, y) => x + y, 0);
     const pickHour = () => { let x = r() * hsum; for (let h = 0; h < 24; h++) { x -= hourW[h]; if (x <= 0) return h; } return 20; };
-    const d = [], m = [], a = [], t = [], tracks = [];
-    const counts = new Array(artists.length).fill(0);
-    const trackIdx = {};
-    for (let k = 0; k < days; k++) {
-      if (r() < 0.08) continue; // a day without music
-      const n = Math.round(r() * r() * 70);
-      const phase = Math.floor((k / days) * 4); // each quarter favours other artists
+    const rows = [];
+    const titles = [];
+    const tIdx = {};
+    for (let day = start, k = 0; day < end; day += DAY, k++) {
+      if (r() < 0.07) continue; // a day without music
+      const n = Math.round(r() * r() * 42);
+      const phase = Math.floor(k / 110); // every few months other favourites
       for (let j = 0; j < n; j++) {
-        const fav = r() < 0.55;
-        const ai = fav ? (phase * 2 + Math.floor(r() * 4)) % MOCK_ARTISTS.length : Math.floor(Math.pow(r(), 2) * artists.length);
-        const tk = `${ai}:${Math.floor(r() * 6)}`;
-        if (trackIdx[tk] == null) { trackIdx[tk] = tracks.length; tracks.push(`${W1[Math.floor(r() * W1.length)]} ${W2[Math.floor(r() * W2.length)]}`); }
-        d.push(k); m.push(pickHour() * 60 + Math.floor(r() * 60)); a.push(ai); t.push(trackIdx[tk]);
-        counts[ai]++;
+        const fav = r() < 0.62;
+        const ai = fav ? (phase * 3 + Math.floor(r() * 4)) % MOCK_ARTISTS.length : Math.floor(Math.pow(r(), 1.5) * artists.length);
+        const tk = `${ai}:${Math.floor(r() * 7)}`;
+        if (tIdx[tk] == null) { tIdx[tk] = titles.length; titles.push(`${W1[Math.floor(r() * W1.length)]} ${W2[Math.floor(r() * W2.length)]}`); }
+        const ts = day + pickHour() * 3600e3 + Math.floor(r() * 3600e3);
+        if (ts < end) rows.push([ts, ai, tIdx[tk]]);
       }
     }
-    // Order artists by plays, like the app does.
-    const order = counts.map((c, i) => i).sort((x, y) => counts[y] - counts[x]).filter((i) => counts[i] > 0);
+    rows.sort((x, y) => x[0] - y[0]);
+    const first = new Array(artists.length).fill(-1);
+    rows.forEach(([ts, ai]) => { if (first[ai] < 0) first[ai] = ts; });
+    LOG = { ts: rows.map((x) => x[0]), a: rows.map((x) => x[1]), t: rows.map((x) => x[2]), titles, artists, first, start: rows.length ? rows[0][0] : start };
+    return LOG;
+  }
+  const lowerBound = (arr, v) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; } return lo; };
+  const dayIdx = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60e3) / DAY);
+  const dayMs = (d) => { const x = new Date(d * DAY); return +new Date(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
+
+  /** A period without its neighbours (see Stats.range). */
+  function baseRange(id) {
+    const now = new Date();
+    const mk = (kind, rid, a, b) => ({ id: rid, kind, label: rid, from: a / 1000, to: Math.min(b, Date.now() + 1000) / 1000 });
+    if (id === 'all') return { id, kind: 'all', label: 'All time', from: 0, to: Date.now() / 1000 + 1 };
+    if (/^y\d+$/.test(id)) { const y = +id.slice(1); return mk('year', id, +new Date(y, 0, 1), +new Date(y + 1, 0, 1)); }
+    if (/^m\d+-\d+$/.test(id)) { const [y, m] = id.slice(1).split('-').map(Number); return mk('month', id, +new Date(y, m - 1, 1), +new Date(y, m, 1)); }
+    if (/^w\d+-\d+-\d+$/.test(id)) {
+      const [y, m, d] = id.slice(1).split('-').map(Number);
+      const mon = new Date(y, m - 1, d - ((new Date(y, m - 1, d).getDay() + 6) % 7));
+      return mk('week', 'w' + isoDate(mon), +mon, +mon + 7 * DAY);
+    }
+    return baseRange(`m${now.getFullYear()}-${pad(now.getMonth() + 1)}`);
+  }
+  function mockRange(id) {
+    const L = history();
+    const r = baseRange(id);
+    const step = (k) => {
+      const d = new Date(r.from * 1000);
+      if (r.kind === 'week') return 'w' + isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * k));
+      if (r.kind === 'month') { const x = new Date(d.getFullYear(), d.getMonth() + k, 1); return `m${x.getFullYear()}-${pad(x.getMonth() + 1)}`; }
+      if (r.kind === 'year') return 'y' + (d.getFullYear() + k);
+      return null;
+    };
+    const ok = (nid) => { if (!nid) return null; const n = baseRange(nid); return n.from * 1000 > Date.now() || n.to * 1000 <= L.start ? null : nid; };
+    r.prev = ok(step(-1));
+    r.next = ok(step(1));
+    r.historyStart = L.start / 1000;
+    return r;
+  }
+
+  /** Bins (day, week, month, quarter, year) for a period, like Stats.binsFor. */
+  function binsFor(r, maxBins) {
+    const L = history();
+    const from = new Date(Math.max(r.from * 1000, L.start));
+    const to = new Date(Math.max(Math.min(r.to * 1000 - 1, Date.now()), from));
+    const span = { week: 7, month: 31, year: 366 }[r.kind] || Math.round((to - from) / DAY) + 1;
+    const unit = span <= maxBins ? 'day' : span / 7 + 1 <= maxBins ? 'week' : span / 30.44 + 1 <= maxBins ? 'month' : span / 91.3 + 1 <= maxBins ? 'quarter' : 'year';
+    const base = unit === 'day' ? new Date(from.getFullYear(), from.getMonth(), from.getDate())
+      : unit === 'week' ? new Date(from.getFullYear(), from.getMonth(), from.getDate() - ((from.getDay() + 6) % 7))
+        : unit === 'month' ? new Date(from.getFullYear(), from.getMonth(), 1)
+          : unit === 'quarter' ? new Date(from.getFullYear(), Math.floor(from.getMonth() / 3) * 3, 1) : new Date(from.getFullYear(), 0, 1);
+    const months = (d) => (d.getFullYear() - base.getFullYear()) * 12 + d.getMonth() - base.getMonth();
+    const index = (ms) => {
+      const d = new Date(ms);
+      if (unit === 'day') return Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - base) / DAY);
+      if (unit === 'week') return Math.floor(Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - base) / DAY) / 7);
+      if (unit === 'month') return months(d);
+      if (unit === 'quarter') return Math.floor(months(d) / 3);
+      return d.getFullYear() - base.getFullYear();
+    };
+    const start = (i) => +(unit === 'day' ? new Date(base.getFullYear(), base.getMonth(), base.getDate() + i)
+      : unit === 'week' ? new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7 * i)
+        : unit === 'month' ? new Date(base.getFullYear(), base.getMonth() + i, 1)
+          : unit === 'quarter' ? new Date(base.getFullYear(), base.getMonth() + 3 * i, 1) : new Date(base.getFullYear() + i, 0, 1));
+    const count = Math.max(1, index(+to) + 1);
+    return { unit, index, start, count, starts: Array.from({ length: count }, (_, i) => start(i)) };
+  }
+
+  function counts(i0, i1, key) { const L = history(); const m = {}; for (let i = i0; i < i1; i++) { const k = key(L, i); m[k] = (m[k] || 0) + 1; } return m; }
+  const ranked = (m) => Object.keys(m).map(Number).sort((x, y) => m[y] - m[x] || x - y);
+
+  function summaryOf(r) {
+    const L = history();
+    const i0 = lowerBound(L.ts, r.from * 1000), i1 = lowerBound(L.ts, r.to * 1000);
+    const n = i1 - i0;
+    const ar = new Set(), tr = new Set(), days = new Set();
+    for (let i = i0; i < i1; i++) { ar.add(L.a[i]); tr.add(L.t[i]); days.add(dayIdx(L.ts[i])); }
+    const first = Math.max(r.from * 1000, L.start);
+    const spanDays = Math.max(1, dayIdx(Math.min(r.to * 1000 - 1, Date.now())) - dayIdx(first) + 1);
+    let fresh = 0;
+    ar.forEach((x) => { if (L.first[x] >= r.from * 1000 && L.first[x] < r.to * 1000) fresh++; });
+    return { scrobbles: n, artists: ar.size, tracks: tr.size, albums: Math.round(ar.size * 1.6), days: days.size, spanDays, perDay: Math.round((n * 10) / spanDays) / 10,
+      hours: Math.round((n * 3.5) / 60), newArtists: fresh, historyStartsHere: L.start >= r.from * 1000 && L.start < r.to * 1000, i0, i1 };
+  }
+  function previousOf(r) {
+    if (!r.prev) return null;
+    const p = mockRange(r.prev);
+    if (r.to * 1000 > Date.now()) p.to = Math.min(p.to, p.from + (r.to - r.from));
+    return p;
+  }
+
+  /** Days in a row with music and per artist within the period, like Stats.streaks; the current one runs back from today. */
+  function streaksOf(r, i0, i1) {
+    const L = history();
+    let last = -1e9, run = 0, runStart = 0, best = 0, bestStart = 0, bestEnd = 0;
+    const aLast = {}, aRun = {}, aBest = {}, aEnd = {};
+    for (let i = i0; i < i1; i++) {
+      const d = dayIdx(L.ts[i]), a = L.a[i];
+      if (d !== last) { if (d === last + 1) run++; else { run = 1; runStart = d; } last = d; if (run > best) { best = run; bestStart = runStart; bestEnd = d; } }
+      if (aLast[a] !== d) { aRun[a] = aLast[a] === d - 1 ? aRun[a] + 1 : 1; aLast[a] = d; if (!(aBest[a] >= aRun[a])) { aBest[a] = aRun[a]; aEnd[a] = d; } }
+    }
+    let current = 0, currentFrom = 0;
+    if (r.to * 1000 > Date.now() && L.ts.length) {
+      let expect = dayIdx(L.ts[L.ts.length - 1]);
+      if (expect >= dayIdx(Date.now()) - 1) {
+        for (let i = L.ts.length - 1; i >= 0; i--) { const d = dayIdx(L.ts[i]); if (d === expect) { current++; expect--; } else if (d < expect) break; }
+        currentFrom = dayMs(expect + 1);
+      }
+    }
+    const artists = Object.keys(aBest).filter((a) => aBest[a] >= 3).sort((x, y) => aBest[y] - aBest[x]).slice(0, 3)
+      .map((a) => ({ artist: L.artists[a], days: aBest[a], from: dayMs(aEnd[a] - aBest[a] + 1), to: dayMs(aEnd[a]) }));
+    return { current, currentFrom, longest: best, longestFrom: best ? dayMs(bestStart) : 0, longestTo: best ? dayMs(bestEnd) : 0, artists };
+  }
+
+  function fakeStats(id) {
+    const L = history();
+    const r = mockRange(id);
+    const sm = summaryOf(r);
+    const { i0, i1 } = sm;
+    const prev = previousOf(r);
+    if (prev) sm.prev = summaryOf(prev);
+    const ac = counts(i0, i1, (L2, i) => L2.a[i]);
+    const order = ranked(ac);
     const local = {};
-    order.forEach((ai, k) => { local[ai] = k; });
-    return { start: +ri.from, days, d, m, a: a.map((x) => local[x]), t, tracks, artists: order.map((i) => artists[i]), plays: order.map((i) => counts[i]) };
+    order.forEach((a, k) => { local[a] = k; });
+    // record
+    const d0 = dayIdx(Math.max(r.from * 1000, L.start));
+    const tl = {};
+    const rec = { start: dayMs(d0), days: Math.max(1, dayIdx(Math.min(r.to * 1000 - 1, Date.now())) - d0 + 1), d: [], m: [], a: [], t: [], tracks: [], artists: order.map((a) => L.artists[a]), plays: order.map((a) => ac[a]) };
+    for (let i = i0; i < i1; i++) {
+      const dt = new Date(L.ts[i]);
+      rec.d.push(dayIdx(L.ts[i]) - d0); rec.m.push(dt.getHours() * 60 + dt.getMinutes()); rec.a.push(local[L.a[i]]);
+      if (tl[L.t[i]] == null) { tl[L.t[i]] = rec.tracks.length; rec.tracks.push(L.titles[L.t[i]]); }
+      rec.t.push(tl[L.t[i]]);
+    }
+    // timeline, river, pulse, new artists, genres
+    const b60 = binsFor(r, 60), b40 = binsFor(r, 40), b16 = binsFor(r, 16);
+    const tlc = new Array(b60.count).fill(0);
+    const rs = order.slice(0, 8).map(() => new Array(b40.count).fill(0));
+    const other = new Array(b40.count).fill(0);
+    const pc = order.slice(0, 14).map(() => new Array(b60.count).fill(0));
+    const gc = Array.from({ length: b16.count }, () => new Array(GENRES.length).fill(0));
+    const clock = new Array(168).fill(0);
+    for (let i = i0; i < i1; i++) {
+      const ts = L.ts[i], k = local[L.a[i]];
+      tlc[Math.min(b60.count - 1, b60.index(ts))]++;
+      if (k < 8) rs[k][Math.min(b40.count - 1, b40.index(ts))]++; else other[Math.min(b40.count - 1, b40.index(ts))]++;
+      if (k < 14) pc[k][Math.min(b60.count - 1, b60.index(ts))]++;
+      const g = genreOf(L.a[i]);
+      if (g >= 0) gc[Math.min(b16.count - 1, b16.index(ts))][Math.min(g, 6)]++;
+      const dt = new Date(ts);
+      clock[((dt.getDay() + 6) % 7) * 24 + dt.getHours()]++;
+    }
+    const pulseRows = pc.map((c, k) => { let p = 0; c.forEach((v, i) => { if (v > c[p]) p = i; }); return { artist: L.artists[order[k]], plays: ac[order[k]], peak: p, counts: c }; }).sort((x, y) => x.peak - y.peak);
+    const naCounts = new Array(b40.count).fill(0);
+    const naTop = Array.from({ length: b40.count }, () => []);
+    order.forEach((a) => { const f = L.first[a]; if (f >= r.from * 1000 && f < r.to * 1000) { const k = Math.min(b40.count - 1, b40.index(f)); naCounts[k]++; if (naTop[k].length < 3) naTop[k].push(L.artists[a]); } });
+    const startIdx = b40.index(L.start);
+    const tc = counts(i0, i1, (L2, i) => L2.t[i]);
+    const topT = ranked(tc).slice(0, 10);
+    const trackArtist = {};
+    for (let i = i0; i < i1; i++) trackArtist[L.t[i]] = L.a[i];
+    const topAlbums = order.slice(0, 10).map((a, i) => ({ title: RECORDS[a % RECORDS.length][1], artist: L.artists[a], plays: Math.round(ac[a] * 0.7), cover: '', owned: i % 3 !== 2 }));
+    const out = {
+      range: r, summary: sm, record: rec,
+      timeline: { unit: b60.unit, starts: b60.starts, counts: tlc, avg: Math.round((tlc.reduce((x, y) => x + y, 0) / tlc.length) * 10) / 10 },
+      river: { unit: b40.unit, starts: b40.starts, artists: order.slice(0, 8).map((a) => L.artists[a]), series: rs, other },
+      pulse: { unit: b60.unit, starts: b60.starts, bins: b60.count, rows: pulseRows },
+      newArtists: { unit: b40.unit, buckets: naCounts.map((c, k) => ({ start: b40.starts[k], count: c, historyStart: k === startIdx && sm.historyStartsHere, top: naTop[k] })) },
+      genres: { names: GENRES, unit: b16.unit, coverage: { discogs: 0.34, lastfm: 0.59, none: 0.07 },
+        periods: gc.map((c, k) => { const tot = c.reduce((x, y) => x + y, 0); return { start: b16.starts[k], total: tot, shares: c.map((v) => (tot ? Math.round((v / tot) * 1000) / 1000 : 0)) }; }) },
+      clock,
+      streaks: streaksOf(r, i0, i1),
+      obsessions: topT.slice(0, 3).filter((t) => tc[t] >= 7).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], week: r.from * 1000 + 3 * DAY, count: Math.min(tc[t], 7 + (t % 9)) })),
+      loops: topT.slice(0, 1).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], run: 5, at: r.from * 1000 + 6 * DAY })),
+      rarely: { items: coll.slice().sort((x, y) => x.plays - y.plays).slice(0, 8).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', plays: 0, last: c.plays ? Date.now() - (60 + c.plays) * DAY : 0 })), owned: coll.length, unplayed: 5, neverPlayed: 2 },
+      wishlist: [['Tame Impala', 'Lonerism', 212, 12], ['Khruangbin', 'Mordechai', 164, 10], ['Shame', 'Food for Worms', 131, 10], ['Little Simz', 'Sometimes I Might Be Introvert', 96, 14]]
+        .map(([artist, album, plays, tracks]) => ({ artist, album, plays, tracks, last: Date.now() - 9 * DAY, key: '', image: '', search: 'https://www.discogs.com/search/?type=master&q=' + encodeURIComponent(artist + ' ' + album) })),
+      top: { artists: order.slice(0, 10).map((a) => ({ name: L.artists[a], plays: ac[a] })), albums: topAlbums,
+        tracks: topT.map((t) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t] })) },
+    };
+    // insights and personality, from the numbers above
+    const n = sm.scrobbles;
+    const ins = [];
+    if (sm.prev && sm.prev.scrobbles) ins.push({ kind: 'volume', count: n, prev: sm.prev.scrobbles, pct: Math.round(((n - sm.prev.scrobbles) * 100) / sm.prev.scrobbles) });
+    if (order.length) ins.push({ kind: 'topArtist', artist: L.artists[order[0]], plays: ac[order[0]], share: ac[order[0]] / n });
+    if (topT.length) ins.push({ kind: 'song', track: L.titles[topT[0]], artist: L.artists[trackArtist[topT[0]]], plays: tc[topT[0]] });
+    const byHour = Array.from({ length: 24 }, (_, hr) => [0, 1, 2, 3, 4, 5, 6].reduce((x, d) => x + clock[d * 24 + hr], 0));
+    const byDow = Array.from({ length: 7 }, (_, d) => clock.slice(d * 24, d * 24 + 24).reduce((x, y) => x + y, 0));
+    const bestDow = byDow.indexOf(Math.max(...byDow));
+    const golden = byHour.indexOf(Math.max(...byHour));
+    const bestHour = byHour[(golden + 23) % 24] > byHour[(golden + 1) % 24] ? (golden + 23) % 24 : golden;
+    if (n >= 20) ins.push({ kind: 'peak', dow: bestDow, hour: bestHour, dowShare: byDow[bestDow] / n });
+    const night = [22, 23, 0, 1, 2, 3].reduce((x, hr) => x + byHour[hr], 0) / Math.max(1, n);
+    if (n >= 20 && night >= 0.2) ins.push({ kind: 'night', share: night });
+    if (!sm.historyStartsHere && sm.newArtists) { const best = order.find((a) => L.first[a] >= r.from * 1000); if (best != null) ins.push({ kind: 'discovery', count: sm.newArtists, best: L.artists[best], plays: ac[best] }); }
+    if (r.kind === 'month' && order[5] != null) ins.push({ kind: 'comeback', artist: L.artists[order[5]], plays: ac[order[5]], lastBefore: r.from * 1000 - 160 * DAY });
+    if (r.kind !== 'week' && out.streaks.longest >= 4) ins.push({ kind: 'streak', days: out.streaks.longest, to: out.streaks.longestTo });
+    ins.push({ kind: 'vinyl', count: Math.round(n * 0.03), share: 0.03 });
+    out.insights = ins;
+    const topShare = order.length ? ac[order[0]] / n : 0;
+    const scores = { nightOwl: night / 0.3, loyalist: topShare / 0.15, explorer: (sm.newArtists / Math.max(1, sm.artists)) / 0.4, weekender: ((byDow[5] + byDow[6]) / Math.max(1, n)) / 0.42 };
+    const bestP = Object.keys(scores).sort((x, y) => scores[y] - scores[x]);
+    out.personality = n < 30 ? { id: 'few' } : { id: scores[bestP[0]] >= 1 ? bestP[0] : 'allRounder', runnerUp: scores[bestP[1]] >= 1 ? bestP[1] : null,
+      metrics: { night, morning: 0.08, weekend: (byDow[5] + byDow[6]) / Math.max(1, n), topShare, topArtist: order.length ? L.artists[order[0]] : '', newShare: 0.12, loop: 5, obsession: 12, vinyl: 0.03, genres: 7 } };
+    out.storyExtra = { byHour, topT, tc, trackArtist, order, ac };
+    return out;
   }
-  function fakePulse(rec) {
-    const bins = Math.max(2, Math.ceil(rec.days / 7));
-    const rows = rec.artists.slice(0, 12).map((artist, k) => {
-      const counts = new Array(bins).fill(0);
-      rec.a.forEach((x, i) => { if (x === k) counts[Math.min(bins - 1, Math.floor(rec.d[i] / 7))]++; });
-      let peak = 0;
-      counts.forEach((c, i) => { if (c > counts[peak]) peak = i; });
-      return { artist, plays: rec.plays[k], peak, counts };
-    }).sort((x, y) => x.peak - y.peak);
-    return { start: rec.start, binDays: 7, bins, rows };
-  }
-  function fakeArtist(name) {
-    const r = rng(hashStr(name) + 3);
-    const months = Array.from({ length: 34 }, (_, i) => Math.max(0, Math.round(30 * Math.sin(i / 5 + r() * 2) + 20 * r() - 5)));
-    const hours = Array.from({ length: 24 }, (_, h) => Math.round((h > 6 ? 10 : 2) * (1 + Math.sin((h - 14) / 3)) + r() * 6));
-    const owned = coll.filter((c) => c.artist === name).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', year: c.year }));
+
+  function fakeStory(id) {
+    const s = fakeStats(id);
+    const L = history();
+    const n = s.summary.scrobbles;
+    const x = s.storyExtra;
+    const gTot = s.genres.periods.reduce((acc, p) => { p.shares.forEach((v, k) => { acc[k] = (acc[k] || 0) + v * p.total; }); return acc; }, []);
+    const gAll = gTot.slice(0, 6).reduce((a, b) => a + b, 0) || 1;
+    const genres = gTot.slice(0, 6).map((v, k) => ({ name: GENRES[k], share: v / gAll })).sort((p, q) => q.share - p.share).slice(0, 5);
     return {
-      name, plays: months.reduce((x, y) => x + y, 0), days: 211,
-      first: { ts: Date.now() - 1040 * DAY, track: 'Maria También' }, last: { ts: Date.now() - 2 * DAY, track: 'Pelota' },
-      busiestMonth: { start: +new Date(2025, 2, 1), count: Math.max(...months) },
-      monthsFrom: +new Date(2023, 11, 1), months, hours, streak: 9, streakEnd: Date.now() - 52 * DAY,
-      range: { id: '12m', label: 'Last 12 months', plays: 412, rank: 2 },
-      tracks: ['Maria También', 'Pelota', 'Como Me Quieres', 'Evan Finds the Third Room', 'Time (You and I)'].map((title, i) => ({ title, plays: 90 - i * 14 })),
-      albums: [{ title: 'Con Todo El Mundo', plays: 240, cover: '', owned: owned.length > 0 }, { title: 'Mordechai', plays: 160, cover: '', owned: false }],
-      owned, genres: ['Psychedelic Rock', 'Funk', 'Soul'],
+      range: s.range, summary: s.summary, personality: s.personality,
+      artists: x.order.slice(0, 5).map((a) => ({ name: L.artists[a], plays: x.ac[a], share: x.ac[a] / n, days: Math.min(s.summary.days, Math.round(x.ac[a] / 3)), cover: '' })),
+      tracks: x.topT.slice(0, 5).map((t) => ({ title: L.titles[t], artist: L.artists[x.trackArtist[t]], plays: x.tc[t] })),
+      songBestDay: x.topT.length ? { day: s.range.from * 1000 + 4 * DAY, count: Math.min(x.tc[x.topT[0]], 7) } : null,
+      albums: s.top.albums.slice(0, 5), hours: x.byHour, goldenHour: x.byHour.indexOf(Math.max(...x.byHour)),
+      busiestDay: { day: s.range.from * 1000 + 9 * DAY, count: 61 },
+      newArtists: { count: s.summary.historyStartsHere ? 0 : s.summary.newArtists, best: x.order.length ? { name: L.artists[x.order[Math.min(6, x.order.length - 1)]], plays: 44, first: s.range.from * 1000 + 2 * DAY } : null },
+      loop: s.loops[0] || null, obsession: s.obsessions[0] || null, genres,
+      vinyl: { count: Math.round(n * 0.03), share: 0.03, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }] },
+      streak: s.streaks, insights: s.insights,
+      first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
     };
   }
 
-  function fakeReview(id) {
-    const s = fakeStats(id);
-    const months = monthsBetween(new Date(s.range.from * 1000), new Date(s.range.to * 1000 - 1));
-    const r = rng(hashStr(id) + 9);
-    const m = Array.from({ length: Math.min(13, months) }, () => Math.round((s.summary.scrobbles / months) * (0.7 + 0.6 * r())));
+  function fakeArtist(name) {
+    const L = history();
+    const ai = L.artists.indexOf(name);
+    const r = rng(hashStr(name) + 3);
+    const months = [];
+    const hours = new Array(24).fill(0);
+    const first = new Date(L.start);
+    for (let i = 0; i < L.ts.length; i++) {
+      if (L.a[i] !== ai) continue;
+      const d = new Date(L.ts[i]);
+      const mk = (d.getFullYear() - first.getFullYear()) * 12 + d.getMonth() - first.getMonth();
+      months[mk] = (months[mk] || 0) + 1;
+      hours[d.getHours()]++;
+    }
+    const nowD = new Date();
+    const len = (nowD.getFullYear() - first.getFullYear()) * 12 + nowD.getMonth() - first.getMonth() + 1;
+    const mArr = Array.from({ length: len }, (_, i) => months[i] || 0);
+    const plays = mArr.reduce((x, y) => x + y, 0);
+    const owned = coll.filter((c) => c.artist === name).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', year: c.year }));
+    const bm = mArr.indexOf(Math.max(...mArr));
     return {
-      range: s.range, ranges: mockRanges().filter((x) => x.id !== 'all'), summary: s.summary,
-      top: { artists: s.top.artists.slice(0, 5), albums: s.top.albums.slice(0, 5), tracks: s.top.tracks.slice(0, 5) },
-      newArtists: 164, historyStartsHere: id === 'y2019',
-      topNew: ['Khruangbin', 'Mac DeMarco', 'Bonobo', 'Air', 'Portishead'].map((name, i) => ({ name, plays: 140 - i * 22, first: Date.now() - (300 - i * 40) * DAY })),
-      months: m, monthsFrom: +new Date(new Date(s.range.from * 1000).getFullYear(), new Date(s.range.from * 1000).getMonth(), 1),
-      busiestDay: { day: Date.now() - 94 * DAY, count: 187 },
-      streak: s.streaks, obsession: s.obsessions[0], clock: s.clock,
-      vinyl: { count: 214, share: 0.018, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }, { title: 'Kind of Blue', artist: 'Miles Davis', plays: 20, cover: '' }] },
-      first: { track: 'Second Hand News', artist: 'Fleetwood Mac', ts: s.range.from * 1000 + 9 * 3600e3 },
+      name, plays, days: Math.round(plays / 3),
+      first: { ts: L.first[ai] > 0 ? L.first[ai] : Date.now(), track: L.titles[ai] || 'Track' }, last: { ts: Date.now() - 2 * DAY, track: 'Pelota' },
+      busiestMonth: { start: +new Date(first.getFullYear(), first.getMonth() + bm, 1), count: mArr[bm] || 0 },
+      monthsFrom: +new Date(first.getFullYear(), first.getMonth(), 1), months: mArr, hours, streak: 6 + Math.floor(r() * 6), streakEnd: Date.now() - 52 * DAY,
+      range: Object.assign({}, mockRange(statsRange), { plays: Math.round(plays / 8), rank: 2 }),
+      tracks: [0, 1, 2, 3, 4].map((i) => ({ title: L.titles[(ai * 7 + i) % L.titles.length], plays: 60 - i * 9 })),
+      albums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays * 0.6), cover: '', owned: owned.length > 0 }],
+      owned, genres: [GENRES[Math.max(0, genreOf(ai))] || 'Indie Rock'],
     };
   }
 
@@ -491,9 +627,9 @@ const Mock = (() => {
         case 'openAppInfo': case 'openBattery': toast('(preview) Android settings would open now'); break;
         case 'stats':
           if (!S.history.count) { onStats({ empty: true }); break; }
-          later(250, () => onStats(fakeStats(m.range || '12m')));
+          later(250, () => onStats(fakeStats(m.range || '')));
           break;
-        case 'review': later(300, () => onReview(fakeReview(m.range || '12m'))); break;
+        case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
         case 'artist': later(250, () => onArtist(fakeArtist(m.name))); break;
         case 'tilt': break;
         case 'historyImport': {
@@ -506,7 +642,7 @@ const Mock = (() => {
             if (H.fetched >= H.total) {
               Object.assign(H, { importing: false, done: true, resumable: false, count: H.total, lastSync: Date.now(), tagsTotal: 140, tagsDone: 0 });
               pushState();
-              onStats(fakeStats('12m'));
+              onStats(fakeStats(statsRange));
               const tags = setInterval(() => { H.tagsDone += 20; if (H.tagsDone >= H.tagsTotal) { H.tagsTotal = 0; clearInterval(tags); } pushState(); }, 400);
               return;
             }

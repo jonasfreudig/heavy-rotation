@@ -116,7 +116,7 @@ object Core {
 
     /** Built from [history] with the current collection, tags and covers; null when any of those changed. */
     @Volatile private var stats: Stats? = null
-    @Volatile private var statsRange = "12m"
+    @Volatile private var statsRange = ""
     @Volatile private var histCount = -1
     @Volatile private var importing = false
     @Volatile private var cancelImport = false
@@ -238,11 +238,11 @@ object Core {
                     push("onArtist") { j }
                 }
             }
-            "review" -> {
+            "story" -> {
                 val id = msg.optString("range")
                 statsExec.execute {
                     val s = currentStats() ?: return@execute
-                    push("onReview") { s.review(s.range(id)) }
+                    push("onStory") { s.story(s.range(id)) }
                 }
             }
             "saveLastfm" -> {
@@ -901,7 +901,7 @@ object Core {
         }
         val id = statsRange
         push("onStats") { s.compute(s.range(id)) }
-        val missing = s.wishlistNeedingImages(id)
+        val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
     }
 

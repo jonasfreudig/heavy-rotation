@@ -7,11 +7,12 @@ side spins.
 It also scrobbles what plays on the phone (TIDAL and any other app you switch on), so Pano
 Scrobbler isn't needed. A shadow mode lets you check that against Pano first.
 
-And it imports your whole Last.fm history for stats: when you listen, streaks, new artists,
-genre drift, obsessions, records you own but rarely play, albums worth buying on vinyl, and a
-year in review for any year.
+And it imports your whole Last.fm history for stats, for any week, month or year or all time:
+highlights compared with the period before, your plays as dots on a record with your top artists
+in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
+rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.3 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.5 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -87,17 +88,37 @@ per 20,000 scrobbles. You can use other apps meanwhile; a notification shows the
 import is interrupted it continues where it stopped the next time you open the app. Afterwards
 only new scrobbles are fetched, at most every 30 minutes when you open the app.
 
-What the tab shows, for the last 12 months, all time or any single year:
+Pick **Week**, **Month**, **Year** or **All** at the top, and step back and forth with **‹ ›**.
+The charts adapt: a week or a month is shown per day, a year per week or month, all time per
+month, quarter or year. What the tab shows for the chosen period:
 
-- **Totals**: scrobbles, artists, albums, days with music.
+- **Your story** (the card at the top): a Wrapped-style story you tap through, like Instagram
+  stories (right side forward, left side back, hold to pause). Total plays, your listening
+  personality (night owl, early bird, loyalist, explorer, on repeat, weekender, crate digger,
+  genre hopper or all-rounder), top artist and top 5, song and album of the period (the album as a
+  moving cover), your golden hour, new artists, a song on repeat, your sound (genres), vinyl,
+  your longest streak, and a summary card to finish.
+- **Totals**: plays, hours (about 3.5 minutes a track), artists and new artists, each with the
+  change against the period before. For a period still running (this week, this month) it
+  compares with the same stretch of the previous one: Monday to Wednesday against last Monday to
+  Wednesday.
+- **Highlights**: the period in sentences: more or less than last time, whether your top artist
+  held on, an artist you came back to after months, discoveries, your busiest day and hours,
+  night listening, song of the period, streaks, your biggest day, how much was vinyl.
 - **Your record**: every play as a dot on a vinyl disc. Each groove is a day, from the label (the
-  first day of the range) to the rim (today); noon is at the top, midnight at the bottom. Tap a
-  dot to read that play and light up all plays of its artist; tap the label to clear.
-- **Phases**: weekly plays of your most played artists as ridges, ordered by the week they peaked.
+  first day of the period) to the rim (the last); noon is at the top, midnight at the bottom. Your
+  eight most played artists have their own colors, with a legend below. Tap a name in the legend,
+  type in **Find an artist on the record**, or tap near a dot to light up one artist; tap the
+  label to show everyone again.
+- **Listening over time**: plays per day, week or month, with the average marked. Tap a column.
+- **The river**: the same over time, split into your top eight artists (same colors as the
+  record) stacked on everyone else. Tap it for a day's numbers.
 - **When you listen**: plays per weekday and hour. Tap a cell for its numbers.
-- **Streaks**: current and longest run of days with music, and artists you played many days in a row.
-- **New artists**: artists heard for the first time, per month (per year for long ranges). The
-  month your Last.fm history starts is grayed out, since everything is new there.
+- **Streaks**: your current run of days with music (counted back from today, also before the
+  period started), the longest in the period, and artists you played many days in a row.
+- **Phases**: plays of your most played artists as ridges, ordered by when they peaked.
+- **New artists**: artists heard for the first time, per day, week or month. The stretch where
+  your Last.fm history starts is grayed out, since everything is new there.
 - **Genre drift**: how your genres shift over time. Records you own (and their artists) get their
   Discogs styles; everything else gets the artist's Last.fm tags, with non-genres like "seen live"
   removed. The six biggest genres keep their colors whatever range you pick.
@@ -107,9 +128,6 @@ What the tab shows, for the last 12 months, all time or any single year:
 - **Wishlist ideas**: albums you play a lot (several different tracks, not just one hit) that
   aren't on your shelf; tap one to search Discogs.
 - **Top 10** artists, albums and tracks.
-- **Year in review** (the card below the totals): top artists, albums and tracks, new
-  discoveries, your busiest day, longest streak, obsession, how much of it was vinyl, and when you
-  listened.
 
 Tap any artist (in the lists, the phases, the record, or on a record page) for their own page:
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays

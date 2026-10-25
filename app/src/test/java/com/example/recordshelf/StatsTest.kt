@@ -9,6 +9,7 @@ import com.example.recordshelf.scrobble.Listen
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
@@ -82,6 +83,14 @@ class StatsTest {
         assertEquals(4, artists.getJSONObject(1).getInt("days"))
         // Three days later the run is over.
         assertEquals(0, Stats(h, utc, at(2025, 3, 12)).streaks(all, 0, h.size).getInt("current"))
+        // In a week that started mid-run, the current streak still counts the days before it.
+        val run = history((1..12).map { Play(at(2025, 3, it, 9), "Daily", "t$it") })
+        val s2 = Stats(run, utc, at(2025, 3, 12, 20))
+        val week = s2.range("w2025-03-10")
+        val ws = s2.streaks(week, run.lowerBound(week.from), run.lowerBound(week.to))
+        assertEquals(12, ws.getInt("current"))
+        assertEquals(at(2025, 3, 1, 0) * 1000, ws.getLong("currentFrom"))
+        assertEquals(3, ws.getInt("longest"))
     }
 
     @Test
@@ -93,7 +102,8 @@ class StatsTest {
             ),
         )
         val s = Stats(h, utc, at(2025, 6, 30))
-        val n = s.newArtists(Range("y2025", "2025", at(2025, 1, 1, 0), at(2026, 1, 1, 0)))
+        val r = s.range("y2025")
+        val n = s.newArtists(r, h.lowerBound(r.from), h.lowerBound(r.to))
         assertEquals("month", n.getString("unit"))
         val b = n.getJSONArray("buckets")
         assertEquals("January to June", 6, b.length())
@@ -126,7 +136,8 @@ class StatsTest {
             Play(at(2025, 2, 5), "Khruangbin", "Maria", "Con Todo El Mundo"),
         )
         val h = history(plays)
-        val g = Stats(h, utc, at(2025, 3, 1), collection, genres).genreDrift(0, h.size)
+        val s = Stats(h, utc, at(2025, 3, 1), collection, genres)
+        val g = s.genreDrift(s.range("y2025"), 0, h.size)
         assertEquals("month", g.getString("unit"))
         assertEquals(listOf("Pop Rock", "Psychedelic Rock", "Other"), (0 until g.getJSONArray("names").length()).map { g.getJSONArray("names").getString(it) })
         val jan = g.getJSONArray("periods").getJSONObject(0)
@@ -219,11 +230,12 @@ class StatsTest {
         assertEquals(21 * 60 + 4, rec.getJSONArray("m").getInt(0))
         assertEquals(17, rec.getJSONArray("d").getInt(6))
         assertEquals("Grace", rec.getJSONArray("tracks").getString(rec.getJSONArray("t").getInt(0)))
-        val p = s.pulse(0, h.size)
+        val p = s.pulse(r, 0, h.size)
         val rows = p.getJSONArray("rows")
-        assertEquals("ordered by peak week", "IDLES", rows.getJSONObject(0).getString("artist"))
+        assertEquals("ordered by peak", "IDLES", rows.getJSONObject(0).getString("artist"))
+        assertEquals("a month in days", "day", p.getString("unit"))
         assertEquals(5, rows.getJSONObject(0).getJSONArray("counts").getInt(0))
-        assertEquals(at(2025, 3, 3, 0) * 1000, p.getLong("start"))
+        assertEquals(at(2025, 3, 3, 0) * 1000, p.getJSONArray("starts").getLong(0))
         val loops = s.loops(0, h.size)
         assertEquals(1, loops.length())
         assertEquals(5, loops.getJSONObject(0).getInt("run"))
@@ -236,7 +248,98 @@ class StatsTest {
     }
 
     @Test
-    fun rangesAndYearInReview() {
+    fun periodsStepAndCompare() {
+        val plays = listOf(Play(at(2024, 12, 30), "Air", "Talisman")) +
+            (1..4).map { Play(at(2025, 9, it), "A", "s$it") } + (1..10).map { Play(at(2025, 10, it), "A", "t$it") }
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 10, 25))
+        val m = s.range("m2025-10")
+        assertEquals("month", m.kind)
+        assertEquals(at(2025, 10, 1, 0), m.from)
+        assertEquals("the running month ends now", at(2025, 10, 25) + 1, m.to)
+        assertEquals("m2025-09", s.neighbor(m, -1)!!.id)
+        assertNull("nothing after now", s.neighbor(m, 1))
+        assertEquals("w2025-10-20", s.range("w2025-10-22").id)
+        assertEquals(at(2025, 10, 20, 0), s.range("w2025-10-22").from)
+        assertEquals("y2024", s.neighbor(s.range("y2025"), -1)!!.id)
+        assertNull("nothing before the history", s.neighbor(s.range("y2024"), -1))
+        assertEquals("unknown ids mean this month", "m2025-10", s.range("nonsense").id)
+        val p = s.previous(m)!!
+        assertEquals("compared with the same stretch of September", at(2025, 9, 1, 0) + (m.to - m.from), p.to)
+        val c = s.compute(m)
+        assertEquals(10, c.getJSONObject("summary").getInt("scrobbles"))
+        assertEquals(4, c.getJSONObject("summary").getJSONObject("prev").getInt("scrobbles"))
+        assertEquals("10 plays of about 3.5 minutes", 1L, c.getJSONObject("summary").getLong("hours"))
+        val tl = c.getJSONObject("timeline")
+        assertEquals("day", tl.getString("unit"))
+        assertEquals("October 1 to today", 25, tl.getJSONArray("counts").length())
+        assertEquals(1, tl.getJSONArray("counts").getInt(0))
+        assertEquals("m2025-09", c.getJSONObject("range").getString("prev"))
+        assertTrue(c.getJSONObject("range").isNull("next"))
+        assertEquals("a year in weeks", "week", s.compute(s.range("y2025")).getJSONObject("timeline").getString("unit"))
+    }
+
+    @Test
+    fun riverUsesTheRecordsOrder() {
+        val plays = (1..6).map { Play(at(2025, 10, it), "Top", "a") } + (1..3).map { Play(at(2025, 10, 10 + it), "Second", "b") } +
+            listOf(Play(at(2025, 10, 20), "Third", "c"))
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 10, 31))
+        val m = s.range("m2025-10")
+        val river = s.river(m, 0, h.size)
+        val names = river.getJSONArray("artists")
+        assertEquals(listOf("Top", "Second", "Third"), (0 until names.length()).map { names.getString(it) })
+        assertEquals("day", river.getString("unit"))
+        assertEquals(1, river.getJSONArray("series").getJSONArray(0).getInt(0))
+        assertEquals(1, river.getJSONArray("series").getJSONArray(1).getInt(10))
+        val rec = s.record(m, 0, h.size).getJSONArray("artists")
+        assertEquals("Top", rec.getString(0))
+    }
+
+    @Test
+    fun peakHoursHoldTheGoldenHour() {
+        // 09:00 is the busiest single hour; 21:00 and 22:00 together beat 09:00 and 10:00, but the peak follows the golden hour.
+        val plays = (1..8).map { Play(at(2025, 10, it, 9), "A", "a$it") } + listOf(Play(at(2025, 10, 9, 10), "A", "b")) +
+            (1..6).map { Play(at(2025, 10, it, 21), "B", "c$it") } + (1..6).map { Play(at(2025, 10, it, 22), "B", "d$it") }
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 10, 31, 23))
+        val m = s.range("m2025-10")
+        val ins = s.insights(m, 0, h.size, null)
+        val peak = (0 until ins.length()).map { ins.getJSONObject(it) }.first { it.getString("kind") == "peak" }
+        assertEquals(9, peak.getInt("hour"))
+        assertEquals(9, s.story(m).getInt("goldenHour"))
+    }
+
+    @Test
+    fun insightsAndPersonality() {
+        // September: 10 afternoon plays of A. October: 40 night plays, B and D new, C back after months.
+        val plays = listOf(Play(at(2025, 1, 5), "C", "old")) +
+            (1..10).map { Play(at(2025, 9, it, 15), "A", "a$it") } +
+            (1..14).map { Play(at(2025, 10, it, 23, 10), "A", "night") } +
+            (1..12).map { Play(at(2025, 10, it, 1, 20), "B", "new") } +
+            (1..8).map { Play(at(2025, 10, it, 22, 30), "C", "back") } +
+            (1..6).map { Play(at(2025, 10, it, 2, 40), "D", "late") }
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 10, 31, 23))
+        val m = s.range("m2025-10")
+        val i0 = h.lowerBound(m.from)
+        val i1 = h.lowerBound(m.to)
+        val ins = s.insights(m, i0, i1, s.previous(m))
+        val kinds = (0 until ins.length()).associate { ins.getJSONObject(it).getString("kind") to ins.getJSONObject(it) }
+        assertEquals(300L, kinds["volume"]!!.getLong("pct"))
+        assertEquals("A", kinds["topArtist"]!!.getString("artist"))
+        assertTrue("A was on top in September too", kinds.containsKey("stillTop"))
+        assertEquals(2, kinds["discovery"]!!.getInt("count"))
+        assertEquals("B", kinds["discovery"]!!.getString("best"))
+        assertEquals("C", kinds["comeback"]!!.getString("artist"))
+        assertEquals(1.0, kinds["night"]!!.getDouble("share"), 0.001)
+        val p = s.personality(m, i0, i1)
+        assertEquals("nightOwl", p.getString("id"))
+        assertEquals(1.0, p.getJSONObject("metrics").getDouble("night"), 0.001)
+    }
+
+    @Test
+    fun storyOfAPeriod() {
         val collection = listOf(item(1, "Fleetwood Mac", "Rumours", listOf("Pop Rock")))
         val plays = listOf(Play(at(2024, 12, 30), "Air", "Talisman", "Moon Safari")) +
             (1..6).map { Play(at(2025, 2, 14, 10 + it), "Fleetwood Mac", "Dreams", "Rumours") } +
@@ -244,20 +347,20 @@ class StatsTest {
         val h = history(plays)
         val vinyl = listOf(Listen("Fleetwood Mac", "Dreams", at(2025, 2, 14, 11), "Rumours"), Listen("Fleetwood Mac", "Dreams", at(2025, 2, 14, 12), "Rumours"))
         val s = Stats(h, utc, at(2025, 10, 25), collection, vinyl = vinyl)
-        assertEquals(listOf("12m", "all", "y2025", "y2024"), s.ranges().map { it.id })
-        val r: JSONObject = s.review(s.range("y2025"))
-        assertEquals(9, r.getJSONObject("summary").getInt("scrobbles"))
-        assertEquals("Fleetwood Mac", r.getJSONObject("top").getJSONArray("artists").getJSONObject(0).getString("name"))
-        assertEquals(at(2025, 2, 14, 0) * 1000, r.getJSONObject("busiestDay").getLong("day"))
-        assertEquals(6, r.getJSONObject("busiestDay").getInt("count"))
-        assertEquals(2, r.getInt("newArtists"))
-        assertFalse(r.getBoolean("historyStartsHere"))
-        assertEquals(10, r.getJSONArray("months").length())
-        assertEquals(6, r.getJSONArray("months").getInt(1))
-        val v = r.getJSONObject("vinyl")
-        assertEquals(2, v.getInt("count"))
-        assertEquals("cover1", v.getJSONArray("top").getJSONObject(0).getString("cover"))
-        assertEquals("Dreams", r.getJSONObject("first").getString("track"))
-        assertTrue(s.review(s.range("y2024")).getBoolean("historyStartsHere"))
+        val st: JSONObject = s.story(s.range("y2025"))
+        assertEquals(9, st.getJSONObject("summary").getInt("scrobbles"))
+        val top = st.getJSONArray("artists").getJSONObject(0)
+        assertEquals("Fleetwood Mac", top.getString("name"))
+        assertEquals("the cover of their album on your shelf", "cover1", top.getString("cover"))
+        assertEquals(1, top.getInt("days"))
+        assertEquals("Dreams", st.getJSONArray("tracks").getJSONObject(0).getString("title"))
+        assertEquals(6, st.getJSONObject("songBestDay").getInt("count"))
+        assertEquals(at(2025, 2, 14, 0) * 1000, st.getJSONObject("busiestDay").getLong("day"))
+        assertEquals(2, st.getJSONObject("newArtists").getInt("count"))
+        assertEquals(2, st.getJSONObject("vinyl").getInt("count"))
+        assertEquals("cover1", st.getJSONObject("vinyl").getJSONArray("top").getJSONObject(0).getString("cover"))
+        assertEquals("Dreams", st.getJSONObject("first").getString("track"))
+        assertEquals("noon has the most plays", 12, st.getInt("goldenHour"))
+        assertTrue(s.story(s.range("y2024")).getJSONObject("summary").getBoolean("historyStartsHere"))
     }
 }

@@ -20,8 +20,7 @@ let COLL = [];
 let ACT = [];
 let CMP = null; // last comparison of shadow mode with Last.fm
 let STATS = null; // stats for the chosen range (see Stats.kt)
-let REVIEW = null; // year in review
-let statsRange = '12m';
+let statsRange = ''; // the stats period, set in build()
 let topKind = 'artists';
 const REL = {};
 let tab = 'shelf';
@@ -124,7 +123,7 @@ const Tilt = {
   },
   refresh() {
     const top = pageStack[pageStack.length - 1];
-    this.els = top ? $$(`#${top} [data-holo]`) : [];
+    this.els = !$('#story').hidden ? $$('#story [data-holo]') : top ? $$(`#${top} [data-holo]`) : [];
     const want = this.els.length > 0 && this.allowed();
     if (want !== this.on) {
       this.on = want;
@@ -217,7 +216,6 @@ window.onRelease = (r) => {
 window.onToast = (m) => toast(m);
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
 window.onStats = (s) => { STATS = s; $('#statsBody').classList.remove('stale'); renderStats(); };
-window.onReview = (r) => { REVIEW = r; $('#reviewBody').classList.remove('stale'); renderReview(); };
 window.onOpenSpin = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
 window.onTheme = (th) => {
   const root = document.documentElement;
@@ -233,6 +231,7 @@ window.onInsets = (i) => {
   root.setProperty('--ime', `${i.ime || 0}px`);
 };
 window.onBack = () => {
+  if (!$('#story').hidden) { closeStory(); return true; }
   if (!$('#sheet').hidden) { closeSheet(); return true; }
   if (pageStack.length) { closePage(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
@@ -871,8 +870,13 @@ function renderPhoneSettings() {
 // ---------- stats ----------
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DOW_LONG = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const GENRE_COLORS = ['var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g4)', 'var(--g5)', 'var(--g6)'];
+/** Artist inks (page) and the same hues for the black record (its dark steps). */
+const INKS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)', 'var(--a6)', 'var(--a7)', 'var(--a8)'];
+const INKS_ON_VINYL = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const num = (n) => Number(n || 0).toLocaleString();
+const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 function compact(n) {
   n = Number(n || 0);
   if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -881,14 +885,51 @@ function compact(n) {
   return String(n);
 }
 const dateLabel = (ms) => new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+const dayName = (ms) => new Date(ms).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+
+/** A day, week, month, quarter or year as a label; [short] for axis ticks. */
 function periodLabel(ms, unit, short) {
   const d = new Date(ms);
-  if (unit === 'year') return String(d.getFullYear());
-  if (unit === 'quarter') return `Q${Math.floor(d.getMonth() / 3) + 1}${short ? '' : ' ' + d.getFullYear()}`;
-  return d.toLocaleDateString([], short ? { month: 'short' } : { month: 'short', year: 'numeric' });
+  switch (unit) {
+    case 'day': return d.toLocaleDateString([], short ? { day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric', month: 'short' });
+    case 'week': return short ? d.toLocaleDateString([], { day: 'numeric', month: 'short' }) : `Week of ${d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    case 'month': return d.toLocaleDateString([], short ? { month: 'short' } : { month: 'long', year: 'numeric' });
+    case 'quarter': return `Q${Math.floor(d.getMonth() / 3) + 1}${short ? '' : ' ' + d.getFullYear()}`;
+    default: return String(d.getFullYear());
+  }
 }
 
-function requestStats() {
+/** The name of a stats period ({kind, from in seconds}). */
+function periodName(r) {
+  const d = new Date(r.from * 1000);
+  switch (r.kind) {
+    case 'week': {
+      const e = new Date(d);
+      e.setDate(e.getDate() + 6);
+      return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+    case 'month': return d.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    case 'year': return String(d.getFullYear());
+    case '12m': return 'Last 12 months';
+    default: return 'All time';
+  }
+}
+const periodWord = (kind) => ({ week: 'week', month: 'month', year: 'year', '12m': 'year' }[kind] || 'time');
+const ofThe = (kind, what) => (kind === 'all' ? `${what} of all time` : `${what} of the ${periodWord(kind)}`);
+const lastWord = (kind) => ({ week: 'last week', month: 'last month', year: 'last year', '12m': 'the year before' }[kind] || 'before');
+
+const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** The id of the [kind] period that contains [ms] (see Stats.range in Kotlin). */
+function periodId(kind, ms) {
+  const d = new Date(ms);
+  if (kind === 'week') return 'w' + isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)));
+  if (kind === 'month') return `m${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  if (kind === 'year') return 'y' + d.getFullYear();
+  return 'all';
+}
+
+function requestStats(id) {
+  if (id) statsRange = id;
   if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange }); return; }
   $('#statsBody').classList.add('stale');
   send({ t: 'stats', range: statsRange });
@@ -903,10 +944,10 @@ function renderStatsHead() {
       <p>Connect Last.fm, then import your history to see when, what and how you listen.</p>
       <div class="btn-row"><button class="btn tonal" data-go="lfSection">Set up Last.fm</button></div></div>`;
   } else if (hs.importing) {
-    const pct = hs.total ? Math.round((hs.fetched / hs.total) * 100) : 0;
-    h = `<div class="card"><div class="card-title">${icon('download')}Importing your history · ${pct}%</div>
+    const p = hs.total ? Math.round((hs.fetched / hs.total) * 100) : 0;
+    h = `<div class="card"><div class="card-title">${icon('download')}Importing your history · ${p}%</div>
       <p>${num(hs.fetched)} of ${hs.total ? num(hs.total) : '…'} scrobbles. Keep using your phone; it carries on in the background.</p>
-      <div class="lin inline ${hs.total ? '' : 'indet'}" style="--p:${pct}%"><i></i></div>
+      <div class="lin inline ${hs.total ? '' : 'indet'}" style="--p:${p}%"><i></i></div>
       <div class="btn-row"><button class="btn text" id="histStop">Pause</button></div></div>`;
   } else if (!hs.done) {
     h = `<div class="card tonal"><div class="card-title">${icon('chart')}${hs.resumable ? 'Import paused' : 'See your whole listening history'}</div>
@@ -926,7 +967,63 @@ function renderStatsHead() {
   }
 }
 
-const tile = (label, value, sub) => `<div class="tile"><span>${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`;
+/** Week / Month / Year / All, and ‹ period › to step through them. */
+function renderPeriod(s) {
+  const pick = $('#periodPick');
+  pick.hidden = !s || s.empty;
+  if (pick.hidden) return;
+  const kind = s.range.kind === '12m' ? 'year' : s.range.kind;
+  $$('#periodKind button').forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
+  $('#pLabel').textContent = periodName(s.range);
+  $('#pPrev').disabled = !s.range.prev;
+  $('#pNext').disabled = !s.range.next;
+}
+
+function deltaHtml(cur, prev, kind) {
+  if (prev == null || !(prev > 0)) return '';
+  const p = Math.round(((cur - prev) * 100) / prev);
+  return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(lastWord(kind))}</span>`;
+}
+const tile = (label, value, sub, delta) => `<div class="tile"><span>${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}</div>`;
+
+function storyCardHtml(s) {
+  if (!s.summary.scrobbles) return '';
+  const name = periodName(s.range);
+  const al = (s.top.albums || []).find((x) => x.cover) || {};
+  return `<button class="story-card" data-story="${esc(s.range.id)}">
+    <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${esc(al.cover)}')` : ''}"></i></div>
+    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}</div>
+    <h2>${esc(name)}, on record</h2>
+    <p>Your top artist, ${ofThe(s.range.kind, 'song')}, listening personality and more.</p>
+    <span class="go">${icon('play')}Play the story</span></button>`;
+}
+
+/** One observation in words, with its icon. */
+function insightText(x, kind) {
+  switch (x.kind) {
+    case 'volume': return [x.pct >= 0 ? 'trend-up' : 'down-trend', `You listened <b>${Math.abs(x.pct)}% ${x.pct >= 0 ? 'more' : 'less'}</b> than ${lastWord(kind)}: ${num(x.count)} plays against ${num(x.prev)}.`];
+    case 'stillTop': return ['star', `<b>${esc(x.artist)}</b> stays on top: your number one ${lastWord(kind)} as well.`];
+    case 'topArtist': return ['heart', `<b>${esc(x.artist)}</b> made up ${pct(x.share)} of everything you played.`];
+    case 'song': return ['repeat', `${ofThe(kind, 'Song')}: <b>${esc(x.track)}</b> by ${esc(x.artist)}, ${plural(x.plays, 'play')}.`];
+    case 'peak': return ['schedule', `Your busiest day is <b>${DOW_LONG[x.dow].replace(/s$/, '')}</b>, your busiest hours <b>${pad(x.hour)}:00–${pad((x.hour + 2) % 24)}:00</b>.`];
+    case 'night': return ['moon', `<b>${pct(x.share)}</b> of your plays came between 22:00 and 04:00.`];
+    case 'weekend': return ['weekend', x.share >= 0.4 ? `Weekend listener: <b>${pct(x.share)}</b> of your plays fell on Saturdays and Sundays.` : `Mostly a weekday thing: only <b>${pct(x.share)}</b> on weekends.`];
+    case 'discovery': return ['explore', `You found <b>${plural(x.count, 'new artist')}</b>. The one that stuck: <b>${esc(x.best)}</b>, ${plural(x.plays, 'play')}.`];
+    case 'comeback': return ['history', `Welcome back, <b>${esc(x.artist)}</b>: your first plays since ${esc(dateLabel(x.lastBefore))}.`];
+    case 'bigDay': return ['calendar', `Biggest day: <b>${esc(dayName(x.day))}</b>, ${plural(x.count, 'play')}.`];
+    case 'streak': return ['fire', `Music on <b>${x.days} days in a row</b>, until ${esc(dateLabel(x.to))}.`];
+    case 'vinyl': return ['album', `<b>${plural(x.count, 'track')}</b> came from your records, ${pct(x.share)} of your listening.`];
+    default: return null;
+  }
+}
+const INSIGHT_ORDER = ['comeback', 'discovery', 'volume', 'stillTop', 'peak', 'night', 'song', 'streak', 'vinyl', 'weekend', 'bigDay', 'topArtist'];
+
+function highlightsViz(s) {
+  const list = (s.insights || []).slice().sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
+    .map((x) => insightText(x, s.range.kind)).filter(Boolean);
+  if (!list.length) return '';
+  return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl">${icon(ic)}<span>${text}</span></div>`).join('')}</div>`;
+}
 
 /** Weekday × hour heatmap: one hue (the wallpaper's primary), darker = more plays. */
 function clockViz(clock, id, title) {
@@ -943,34 +1040,90 @@ function clockViz(clock, id, title) {
   cells += '<span></span>' + [0, 6, 12, 18].map((hr) => `<span class="cl" style="grid-column:${hr + 2} / span 6">${pad(hr)}:00</span>`).join('');
   let peak = 0;
   clock.forEach((v, i) => { if (v > clock[peak]) peak = i; });
-  const def = clock[peak] ? `Busiest: <b>${DOW[Math.floor(peak / 24)]}s, ${pad(peak % 24)}:00–${pad((peak % 24) + 1)}:00</b> (${num(clock[peak])} plays)` : 'No plays in this range';
+  const def = clock[peak] ? `Busiest: <b>${DOW[Math.floor(peak / 24)]}s, ${pad(peak % 24)}:00–${pad((peak % 24) + 1)}:00</b> (${num(clock[peak])} plays)` : 'No plays in this period';
   return `<div class="viz"><h2>${esc(title || 'When you listen')}</h2><span class="sub">Plays per weekday and hour</span>
-    <div class="heat">${cells}</div><div class="readout" id="ro-${id}" data-def="${esc(def)}">${def}</div></div>`;
+    <div class="heat">${cells}</div><div class="readout" id="ro-${id}">${def}</div></div>`;
 }
 
-function streakViz(st) {
-  const range = (a, b) => (a === b ? dateLabel(a) : `${dateLabel(a)} – ${dateLabel(b)}`);
-  let h = `<div class="tiles">${tile('Current streak', plural(st.current, 'day'), st.current ? `since ${dateLabel(st.currentFrom)}` : 'no music today or yesterday')}
-    ${tile('Longest streak', plural(st.longest, 'day'), st.longest ? range(st.longestFrom, st.longestTo) : '')}</div>`;
+function streakViz(st, s) {
+  const range = (a, b) => (a === b ? dateLabel(a) : new Date(a).getFullYear() === new Date(b).getFullYear()
+    ? `${new Date(a).toLocaleDateString([], { day: 'numeric', month: 'short' })} – ${dateLabel(b)}` : `${dateLabel(a)} – ${dateLabel(b)}`);
+  const cur = s.range.to * 1000 > Date.now() - 2000;
+  let h = `<div class="tiles">${cur ? tile('Current streak', plural(st.current, 'day'), st.current ? `since ${dateLabel(st.currentFrom)}` : 'no music today or yesterday') : ''}
+    ${tile(s.range.kind === 'all' ? 'Longest streak' : `Longest this ${periodWord(s.range.kind)}`, plural(st.longest, 'day'), st.longest ? range(st.longestFrom, st.longestTo) : '')}</div>`;
   if (st.artists && st.artists.length) {
     h += `<div class="viz"><h2>Artist streaks</h2><span class="sub">Most days in a row with the same artist</span><div class="rank">${st.artists.map((a, i) =>
-      `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(a.artist)}</b><small>${esc(range(a.from, a.to))}</small></span><span class="v">${plural(a.days, 'day')}</span></div>`).join('')}</div></div>`;
+      `<button class="r" data-artist="${esc(a.artist)}"><span class="n">${i + 1}</span><span class="t"><b>${esc(a.artist)}</b><small>${esc(range(a.from, a.to))}</small></span><span class="v">${plural(a.days, 'day')}</span></button>`).join('')}</div></div>`;
   }
   return h;
 }
 
-/** New artists per month (or year): columns in one hue; the first one of your history is grayed. */
+/** Plays per day, week or month across the period, with the average marked. */
+function timelineViz(t) {
+  const counts = (t && t.counts) || [];
+  if (counts.length < 2) return '';
+  const max = Math.max(1, ...counts);
+  const step = Math.max(1, Math.ceil(counts.length / 5));
+  const labels = t.starts.filter((x, i) => i % step === 0).map((x) => periodLabel(x, t.unit, true));
+  let best = 0;
+  counts.forEach((v, i) => { if (v > counts[best]) best = i; });
+  return `<div class="viz"><h2>Listening over time</h2><span class="sub">Plays per ${t.unit}</span>
+    <div class="cols"><span class="ymax">${num(max)}</span>${counts.map((v, i) => `<div class="c" data-col="tl" data-i="${i}"><i style="height:${(v / max) * 100}%"></i></div>`).join('')}
+      <div class="avg" style="bottom:${(t.avg / max) * 100}%"><span>avg ${t.avg}</span></div></div>
+    <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+    <div class="readout" id="ro-tl">Most: <b>${esc(periodLabel(t.starts[best], t.unit))}</b>, ${plural(counts[best], 'play')}</div></div>`;
+}
+
+/** The river: plays per bin, the eight top artists in their inks stacked on everyone else. */
+function riverViz(rv) {
+  const B = (rv && rv.starts) ? rv.starts.length : 0;
+  if (B < 2 || !rv.artists.length) return '';
+  const W = 340, H = 150;
+  const totals = Array.from({ length: B }, (_, b) => rv.series.reduce((a, s) => a + s[b], 0) + rv.other[b]);
+  const max = Math.max(1, ...totals);
+  const x = (b) => (b / (B - 1)) * W;
+  const y = (v) => H - (v / max) * (H - 4);
+  const layers = rv.series.map((s, k) => ({ s, color: INKS[k] })).concat([{ s: rv.other, color: 'var(--md-outline-variant)' }]);
+  let base = new Array(B).fill(0);
+  let paths = '';
+  for (const L of layers) {
+    const top = base.map((v, b) => v + L.s[b]);
+    const up = top.map((v, b) => `${x(b).toFixed(1)},${y(v).toFixed(1)}`).join('L');
+    const down = base.map((v, b) => `${x(b).toFixed(1)},${y(v).toFixed(1)}`).reverse().join('L');
+    paths += `<path d="M${up}L${down}Z" fill="${L.color}"/>`;
+    base = top;
+  }
+  const cw = W / (B - 1);
+  const hits = rv.starts.map((s, b) => `<rect class="hit" data-rv="${b}" x="${Math.max(0, x(b) - cw / 2)}" y="0" width="${cw}" height="${H}"/>`).join('');
+  const legend = rv.artists.map((n, k) => `<button class="ink" data-artist="${esc(n)}"><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span></button>`).join('')
+    + '<span class="ink"><i class="sw" style="background:var(--md-outline-variant)"></i><span>Everyone else</span></span>';
+  return `<div class="viz"><h2>The river</h2><span class="sub">Plays per ${rv.unit}: your top artists on top of everyone else</span>
+    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}<line class="cursor" id="rvCursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
+      <text x="0" y="${H + 12}">${esc(periodLabel(rv.starts[0], rv.unit, true))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(periodLabel(rv.starts[B - 1], rv.unit, true))}</text></svg></div>
+    <div class="readout" id="ro-rv">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
+}
+function riverText(rv, b) {
+  const parts = rv.artists.map((n, k) => [n, rv.series[k][b]]).filter((p) => p[1] > 0).sort((p, q) => q[1] - p[1]).slice(0, 3)
+    .map(([n, v]) => `${esc(n)} ${v}`);
+  const total = rv.series.reduce((a, s) => a + s[b], 0) + rv.other[b];
+  return `${esc(periodLabel(rv.starts[b], rv.unit))}: <b>${plural(total, 'play')}</b>${parts.length ? ` — ${parts.join(', ')}` : ''}${rv.other[b] ? `, everyone else ${rv.other[b]}` : ''}`;
+}
+
+/** New artists per day, week or month: columns in one hue; the start of your history is grayed. */
 function newArtistsViz(na) {
   const b = na.buckets || [];
-  if (!b.length) return '';
-  const max = Math.max(1, ...b.filter((x) => !x.historyStart).map((x) => x.count), b.length === 1 ? b[0].count : 0);
+  if (b.length < 2) return '';
+  if (!b.some((x) => x.count)) {
+    return `<div class="viz"><h2>New artists</h2><span class="sub">No first listens in this stretch: you stuck with artists you already knew.</span></div>`;
+  }
+  const max = Math.max(1, ...b.filter((x) => !x.historyStart).map((x) => x.count));
   const cols = b.map((x, i) => `<div class="c ${x.historyStart ? 'start' : ''}" data-col="na" data-i="${i}"><i style="height:${Math.min(100, (x.count / max) * 100)}%"></i></div>`).join('');
   const step = Math.max(1, Math.ceil(b.length / 4));
-  const labels = b.map((x, i) => (i % step === 0 ? periodLabel(x.start, na.unit, true) : '')).filter((x, i) => i % step === 0);
+  const labels = b.filter((x, i) => i % step === 0).map((x) => periodLabel(x.start, na.unit, true));
   const last = b[b.length - 1];
   return `<div class="viz"><h2>New artists</h2><span class="sub">Artists you heard for the first time, per ${na.unit}</span>
     <div class="cols"><span class="ymax">${num(max)}</span>${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-    <div class="readout" id="ro-na" data-def="${esc(newArtistsText(last, na.unit))}">${newArtistsText(last, na.unit)}</div></div>`;
+    <div class="readout" id="ro-na">${newArtistsText(last, na.unit)}</div></div>`;
 }
 function newArtistsText(x, unit) {
   if (!x) return '';
@@ -978,7 +1131,7 @@ function newArtistsText(x, unit) {
   return `${esc(periodLabel(x.start, unit))}: <b>${plural(x.count, 'new artist')}</b>${who}${x.historyStart ? ' (your history starts here, so everything is new)' : ''}`;
 }
 
-/** Genre shares over time: 100% stacked columns, fixed colors per genre, legend with the range's shares. */
+/** Genre shares over time: 100% stacked columns, fixed colors per genre, legend with the period's shares. */
 function genreViz(g) {
   const periods = g.periods || [];
   if (!periods.length || !g.names || g.names.length < 2) return '';
@@ -986,23 +1139,22 @@ function genreViz(g) {
   const totals = new Array(n).fill(0);
   let all = 0;
   periods.forEach((p) => { p.shares.forEach((s, k) => { totals[k] += s * p.total; }); all += p.total; });
+  if (!all) return '';
   const color = (k) => (k < n - 1 ? GENRE_COLORS[k] : 'var(--md-outline-variant)');
   const cols = periods.map((p, i) => {
     if (!p.total) return `<div class="c empty" data-col="g" data-i="${i}"></div>`;
-    const segs = p.shares.map((s, k) => (s > 0 ? `<i style="flex:${s} 1 0;background:${color(k)}"></i>` : '')).join('');
-    return `<div class="c" data-col="g" data-i="${i}">${segs}</div>`;
+    return `<div class="c" data-col="g" data-i="${i}">${p.shares.map((s, k) => (s > 0 ? `<i style="flex:${s} 1 0;background:${color(k)}"></i>` : '')).join('')}</div>`;
   }).join('');
   const step = Math.max(1, Math.ceil(periods.length / 4));
   const labels = periods.filter((x, i) => i % step === 0).map((p) => periodLabel(p.start, g.unit, true));
-  const legend = g.names.map((name, k) => `<div><span class="sw" style="background:${color(k)}"></span><span class="nm">${esc(name)}</span><span class="pc">${all ? Math.round((totals[k] / all) * 100) : 0}%</span></div>`).join('');
+  const legend = g.names.map((name, k) => `<div><span class="sw" style="background:${color(k)}"></span><span class="nm">${esc(name)}</span><span class="pc">${Math.round((totals[k] / all) * 100)}%</span></div>`).join('');
   const cov = g.coverage || {};
-  const pc = (x) => `${Math.round((x || 0) * 100)}%`;
   const last = periods.length - 1;
   return `<div class="viz"><h2>Genre drift</h2><span class="sub">Share of plays per ${g.unit}</span>
     <div class="stack">${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-    <div class="readout" id="ro-g" data-def="${esc(genreText(g, last))}">${genreText(g, last)}</div>
+    <div class="readout" id="ro-g">${genreText(g, last)}</div>
     <div class="legend">${legend}</div>
-    <p class="hint">Genres from Discogs styles for ${pc(cov.discogs)} of plays (records you own and their artists), Last.fm tags for ${pc(cov.lastfm)}, unknown for ${pc(cov.none)}.</p></div>`;
+    <p class="hint">Genres from Discogs styles for ${pct(cov.discogs)} of plays (records you own and their artists), Last.fm tags for ${pct(cov.lastfm)}, unknown for ${pct(cov.none)}.</p></div>`;
 }
 function genreText(g, i) {
   const p = g.periods[i];
@@ -1033,24 +1185,37 @@ function obsessionsViz(list, loops) {
 /** Record charts on screen: id -> {rec, spot (artist index or -1), label}. */
 const RECS = {};
 
-function recordViz(rec, id, title, sub) {
+function recordViz(rec, id, title, sub, opts = {}) {
   if (!rec || !rec.days) return '';
-  return `<div class="viz"><h2>${esc(title)}</h2><span class="sub">${esc(sub || 'Every play is a dot. Each groove is a day, from the label to today at the rim; noon is at the top, midnight at the bottom.')}</span>
+  const st = RECS[id];
+  let h = `<div class="viz"><h2>${esc(title)}</h2><span class="sub">${esc(sub || 'Every play is a dot. Each groove is a day, from the label to the rim; noon is at the top, midnight at the bottom. Your top artists have their own colors.')}</span>
     <div class="rec-wrap"><canvas data-record="${id}"></canvas></div>
-    <div class="readout" id="ro-rec-${id}">${RECS[id] && RECS[id].spot >= 0 ? spotText(id) : 'Tap the record to read a play.'}</div></div>`;
+    <div class="readout" id="ro-rec-${id}">${st && st.spot >= 0 ? spotText(id) : 'Tap a name below, search, or tap a dot to light an artist up.'}</div>`;
+  if (opts.legend !== false) {
+    h += `<div class="inks" id="inks-${id}">${rec.artists.slice(0, 8).map((n, k) => `<button class="ink ${st && st.spot === k ? 'on' : ''}" data-ink="${id}" data-k="${k}"><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span><small>${compact(rec.plays[k])}</small></button>`).join('')}</div>
+      <div class="asearch">${icon('search')}<input type="search" placeholder="Find an artist on the record" data-asearch="${id}" autocomplete="off" spellcheck="false"><div class="sugg" hidden></div></div>`;
+  }
+  return h + '</div>';
 }
 
 function spotText(id) {
   const st = RECS[id];
   const name = st.rec.artists[st.spot];
-  return `Showing <button class="artist-link" data-artist="${esc(name)}">${esc(name)}</button> (${plural(st.rec.plays[st.spot], 'play')}). Tap the label to show everyone.`;
+  return `Showing <button class="artist-link" data-artist="${esc(name)}">${esc(name)}</button>: ${plural(st.rec.plays[st.spot], 'play')}. Tap the label to show everyone.`;
+}
+
+function setSpot(id, k) {
+  const st = RECS[id];
+  if (!st) return;
+  st.spot = st.spot === k ? -1 : k;
+  const c = $(`canvas[data-record="${id}"]`);
+  if (c) drawRecord(c);
+  const ro = $('#ro-rec-' + id);
+  if (ro) ro.innerHTML = st.spot >= 0 ? spotText(id) : 'Tap a name below, search, or tap a dot to light an artist up.';
+  $$(`[data-ink="${id}"]`).forEach((b) => b.classList.toggle('on', +b.dataset.k === st.spot));
 }
 
 function themeColor(name) { return getComputedStyle(document.documentElement).getPropertyValue('--md-' + name).trim(); }
-function isDark() {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-}
 
 function drawRecords() { $$('canvas[data-record]').forEach(drawRecord); }
 
@@ -1070,38 +1235,35 @@ function drawRecord(c) {
   if (!st) return;
   const rec = st.rec;
   const dpr = Math.min(3, window.devicePixelRatio || 1);
-  const size = c.clientWidth || 300;
-  c.width = Math.round(size * dpr);
+  c.width = Math.round((c.clientWidth || 300) * dpr);
   c.height = c.width;
   const ctx = c.getContext('2d');
   const g = recordGeometry(c, rec);
-  // the vinyl, with faint grooves and a sheen
+  // the vinyl, with faint grooves
   ctx.fillStyle = '#121214';
   ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, 2 * Math.PI); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.035)';
   ctx.lineWidth = dpr;
   for (let r = g.r0; r < g.R; r += 3 * dpr) { ctx.beginPath(); ctx.arc(g.cx, g.cy, r, 0, 2 * Math.PI); ctx.stroke(); }
-  // the plays
-  const dark = isDark();
-  const dot = themeColor(dark ? 'primary' : 'primary-container') || '#d0bcff';
-  const hi = themeColor(dark ? 'tertiary' : 'tertiary-container') || '#efb8c8';
-  const ds = Math.max(1.3 * dpr, Math.min(2.8 * dpr, g.step * 1.3));
-  ctx.fillStyle = dot;
-  ctx.globalAlpha = st.spot >= 0 ? 0.2 : 0.7;
-  for (let i = 0; i < rec.d.length; i++) {
-    if (rec.a[i] === st.spot) continue;
-    const [x, y] = recordPos(g, rec, i);
-    ctx.fillRect(x - ds / 2, y - ds / 2, ds, ds);
-  }
-  if (st.spot >= 0) {
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = hi;
-    const s2 = ds * 1.4;
-    for (let i = 0; i < rec.d.length; i++) {
-      if (rec.a[i] !== st.spot) continue;
+  // the plays: everyone else first, the eight inks on top, a spotlit artist above all
+  const ds = Math.max(1.4 * dpr, Math.min(3 * dpr, g.step * 1.3));
+  const n = rec.d.length;
+  const spot = st.spot;
+  const pass = (test, color, alpha, size) => {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < n; i++) {
+      if (!test(rec.a[i])) continue;
       const [x, y] = recordPos(g, rec, i);
-      ctx.fillRect(x - s2 / 2, y - s2 / 2, s2, s2);
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
     }
+  };
+  if (spot < 0) {
+    pass((a) => a >= 8, '#9a99a3', 0.4, ds);
+    for (let k = 7; k >= 0; k--) pass((a) => a === k, INKS_ON_VINYL[k], 0.92, ds);
+  } else {
+    pass((a) => a !== spot, '#9a99a3', 0.16, ds);
+    pass((a) => a === spot, spot < 8 ? INKS_ON_VINYL[spot] : '#ffffff', 1, ds * 1.5);
   }
   ctx.globalAlpha = 1;
   // the label
@@ -1112,49 +1274,58 @@ function drawRecord(c) {
   ctx.fillStyle = themeColor('on-primary-container') || '#eaddff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const lab = st.spot >= 0 ? rec.artists[st.spot] : st.label;
+  const lab = spot >= 0 ? rec.artists[spot] : st.label;
   ctx.font = `500 ${Math.round(11 * dpr)}px Roboto, system-ui, sans-serif`;
   ctx.fillText(lab.length > 16 ? lab.slice(0, 15) + '…' : lab, g.cx, g.cy - 10 * dpr);
   ctx.font = `${Math.round(9 * dpr)}px Roboto, system-ui, sans-serif`;
-  ctx.fillText(`${compact(st.spot >= 0 ? rec.plays[st.spot] : rec.d.length)} plays`, g.cx, g.cy + 9 * dpr);
+  ctx.fillText(`${compact(spot >= 0 ? rec.plays[spot] : n)} plays`, g.cx, g.cy + 9 * dpr);
   // the clock around the rim
   ctx.fillStyle = 'rgba(255,255,255,.5)';
-  ctx.font = `${Math.round(9 * dpr)}px Roboto, system-ui, sans-serif`;
   const rt = g.R - (g.R - g.r1) / 2;
   [['12', 0, -1], ['18', 1, 0], ['0', 0, 1], ['6', -1, 0]].forEach(([t, x, y]) => ctx.fillText(t, g.cx + x * rt, g.cy + y * rt));
 }
 
 /** Tap on a record: the nearest play, its artist lit up across the disc. */
 function onRecordTap(c, e) {
-  const st = RECS[c.dataset.record];
+  const id = c.dataset.record;
+  const st = RECS[id];
   if (!st) return;
   const rec = st.rec;
   const box = c.getBoundingClientRect();
   const k = c.width / box.width;
   const px = (e.clientX - box.left) * k, py = (e.clientY - box.top) * k;
   const g = recordGeometry(c, rec);
-  const ro = $('#ro-rec-' + c.dataset.record);
-  if (Math.hypot(px - g.cx, py - g.cy) < g.r0) {
-    st.spot = -1;
-    drawRecord(c);
-    if (ro) ro.textContent = 'Tap the record to read a play.';
-    return;
-  }
-  let best = -1, bestD = 18 * k;
+  if (Math.hypot(px - g.cx, py - g.cy) < g.r0) { if (st.spot >= 0) setSpot(id, st.spot); return; }
+  let best = -1, bestD = 22 * k;
   for (let i = 0; i < rec.d.length; i++) {
     const [x, y] = recordPos(g, rec, i);
     const d = Math.hypot(x - px, y - py);
     if (d < bestD) { bestD = d; best = i; }
   }
   if (best < 0) return;
-  st.spot = rec.a[best];
-  drawRecord(c);
+  st.spot = -1;
+  setSpot(id, rec.a[best]);
   const when = new Date(rec.start + rec.d[best] * 864e5);
   const name = rec.artists[rec.a[best]];
+  const ro = $('#ro-rec-' + id);
   if (ro) {
-    ro.innerHTML = `${esc(when.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}, ${pad(Math.floor(rec.m[best] / 60))}:${pad(rec.m[best] % 60)} · <b>${esc(rec.tracks[rec.t[best]])}</b> by
+    ro.innerHTML = `${esc(when.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))}, ${pad(Math.floor(rec.m[best] / 60))}:${pad(rec.m[best] % 60)} · <b>${esc(rec.tracks[rec.t[best]])}</b> by
       <button class="artist-link" data-artist="${esc(name)}">${esc(name)}</button> (${plural(rec.plays[rec.a[best]], 'play')}, lit up). Tap the label to show everyone.`;
   }
+}
+
+/** Finding an artist on the record: suggestions as you type. */
+function onArtistSearch(input) {
+  const id = input.dataset.asearch;
+  const st = RECS[id];
+  const box = input.parentElement.querySelector('.sugg');
+  const q = norm(input.value.trim());
+  if (!st || !q) { box.hidden = true; return; }
+  const hits = [];
+  st.rec.artists.forEach((n, k) => { if (hits.length < 6 && norm(n).includes(q)) hits.push(k); });
+  box.innerHTML = hits.length ? hits.map((k) => `<button data-pick="${k}"><span>${esc(st.rec.artists[k])}</span><small>${plural(st.rec.plays[k], 'play')}</small></button>`).join('')
+    : `<button disabled><span>Nobody by that name in this period</span></button>`;
+  box.hidden = false;
 }
 
 // ---- phases: one ridge per artist, ordered by when they peaked ----
@@ -1177,16 +1348,14 @@ function pulseViz(p) {
       <rect class="hit" x="${labelW}" y="${base - rowH}" width="${W - labelW}" height="${rowH}"/>
       <text class="nm" x="0" y="${base - 4}" data-artist="${esc(r.artist)}">${esc(trunc(r.artist))}</text></g>`;
   });
-  const lab = (i) => new Date(p.start + i * p.binDays * 864e5).toLocaleDateString([], { month: 'short', year: '2-digit' });
-  svg += `<text x="${labelW}" y="${H - 4}">${esc(lab(0))}</text><text x="${W}" y="${H - 4}" text-anchor="end">${esc(lab(p.bins - 1))}</text>`;
-  return `<div class="viz"><h2>Phases</h2><span class="sub">Plays per ${p.binDays === 7 ? 'week' : `${p.binDays / 7} weeks`} of your ${rows.length} most played artists, ordered by when they peaked. Tap a name for the artist.</span>
+  svg += `<text x="${labelW}" y="${H - 4}">${esc(periodLabel(p.starts[0], p.unit, true))}</text><text x="${W}" y="${H - 4}" text-anchor="end">${esc(periodLabel(p.starts[p.bins - 1], p.unit, true))}</text>`;
+  return `<div class="viz"><h2>Phases</h2><span class="sub">Plays per ${p.unit} of your ${rows.length} most played artists, ordered by when they peaked. Tap a name for the artist.</span>
     <div class="ridges"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div><div class="readout" id="ro-pulse">Tap a ridge for its peak.</div></div>`;
 }
 
 function pulseText(p, k) {
   const r = p.rows[k];
-  const when = new Date(p.start + r.peak * p.binDays * 864e5);
-  return `<b>${esc(r.artist)}</b>: peaked in the ${p.binDays === 7 ? 'week' : 'weeks'} of ${esc(dateLabel(+when))} with ${plural(r.counts[r.peak], 'play')}; ${plural(r.plays, 'play')} in this range`;
+  return `<b>${esc(r.artist)}</b>: peaked ${p.unit === 'day' ? 'on' : 'in'} ${esc(periodLabel(p.starts[r.peak], p.unit))} with ${plural(r.counts[r.peak], 'play')}; ${plural(r.plays, 'play')} in this period`;
 }
 
 // ---- one artist ----
@@ -1214,7 +1383,7 @@ function renderArtist() {
     <div class="meta">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</div></div>
     <div class="tiles">
       ${tile('Plays', num(a.plays), `on ${plural(a.days, 'day')}`)}
-      ${tile(a.range.label, a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays')}
+      ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays')}
       ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'))}
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '')}
     </div>`;
@@ -1235,8 +1404,8 @@ function renderArtist() {
   if (STATS && STATS.record && STATS.record.days) {
     const idx = STATS.record.artists.findIndex((n) => norm(n) === norm(a.name));
     if (idx >= 0) {
-      RECS.artist = { rec: STATS.record, spot: idx, label: STATS.range.label };
-      h += recordViz(STATS.record, 'artist', `On your record`, `Their plays lit up among everything you played (${STATS.range.label.toLowerCase()}).`);
+      RECS.artist = { rec: STATS.record, spot: idx, label: periodName(STATS.range) };
+      h += recordViz(STATS.record, 'artist', 'On your record', `Their plays lit up among everything you played (${periodName(STATS.range)}).`, { legend: false });
     }
   }
   if (a.tracks.length) {
@@ -1254,7 +1423,7 @@ function renderArtist() {
 
 function rarelyViz(r) {
   if (!r || !r.items || !r.items.length) return '';
-  const sub = r.unplayed ? `${r.unplayed} of ${plural(r.owned, 'record')} you own had no plays in this range` : 'Your records, least played first';
+  const sub = r.unplayed ? `${r.unplayed} of ${plural(r.owned, 'record')} you own had no plays in this period` : 'Your records, least played first';
   return `<div class="viz"><h2>On your shelf, rarely played</h2><span class="sub">${esc(sub)}</span><div class="covers">${r.items.map((x) =>
     `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${esc(x.artist)}</small><small class="meta">${x.plays ? plural(x.plays, 'play') : x.last ? `last ${esc(dateLabel(x.last))}` : 'never played'}</small></button>`).join('')}</div></div>`;
 }
@@ -1272,38 +1441,43 @@ function topViz(top) {
   const rows = list.map((x, i) => {
     const name = topKind === 'artists' ? x.name : x.title;
     const sub = topKind === 'artists' ? '' : x.artist;
-    return `<button class="r" data-artist="${esc(topKind === 'artists' ? x.name : x.artist)}"><span class="n">${i + 1}</span><span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
+    return `<button class="r ${topKind === 'albums' ? 'with-cover' : ''}" data-artist="${esc(topKind === 'artists' ? x.name : x.artist)}">${topKind === 'albums' ? coverHtml(x.cover, x.title, x.artist, 'tiny') : `<span class="n">${i + 1}</span>`}<span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
   }).join('');
   return `<div class="viz"><h2>Top 10</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
     `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${icon('check', 'i check')}${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
-    <div class="rank">${rows || '<p class="hint">Nothing in this range.</p>'}</div></div>`;
+    <div class="rank">${rows || '<p class="hint">Nothing in this period.</p>'}</div></div>`;
 }
 
 function renderStats() {
   const s = STATS;
   const body = $('#statsBody');
-  if (!s || s.empty) { body.innerHTML = ''; $('#rangeChips').innerHTML = ''; return; }
+  renderPeriod(s);
+  if (!s || s.empty) { body.innerHTML = ''; return; }
   statsRange = s.range.id;
-  $('#rangeChips').innerHTML = s.ranges.map((r) => `<button class="chip ${r.id === s.range.id ? 'on' : ''}" data-range="${r.id}">${r.id === s.range.id ? icon('check') : ''}${esc(r.label)}</button>`).join('');
   const sm = s.summary;
-  let h = `<div class="tiles">
-      ${tile('Scrobbles', compact(sm.scrobbles), `${sm.perDay} a day`)}
-      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`)}
-      ${tile('Days with music', num(sm.days), `of ${num(sm.spanDays)}`)}
-      ${tile('Albums', compact(sm.albums), '')}
-    </div>`;
-  if (s.range.id !== 'all') {
-    h += `<button class="card tonal" data-review="${s.range.id}" style="display:block;width:100%;text-align:left"><div class="card-title">${icon('star')}${esc(s.range.id === '12m' ? 'Your last 12 months in music' : `Your ${s.range.label} in music`)}</div><p>Top artists, discoveries, your busiest day, records you played and more.</p></button>`;
+  const pv = sm.prev || {};
+  const k = s.range.kind;
+  if (!sm.scrobbles) {
+    body.innerHTML = `<div class="empty">${icon('album', 'i big')}<p>No plays in ${esc(periodName(s.range))}.</p></div>`;
+    return;
   }
-  if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: s.range.label };
-  h += recordViz(s.record, 'stats', 'Your record') + clockViz(s.clock, 'stats') + streakViz(s.streaks) + pulseViz(s.pulse)
-    + newArtistsViz(s.newArtists) + genreViz(s.genres) + obsessionsViz(s.obsessions, s.loops) + rarelyViz(s.rarely)
-    + wishlistViz(s.wishlist) + topViz(s.top);
+  let h = storyCardHtml(s);
+  h += `<div class="tiles">
+      ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k))}
+      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k))}
+      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k))}
+      ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k))}
+    </div>`;
+  h += highlightsViz(s);
+  if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: periodName(s.range) };
+  h += recordViz(s.record, 'stats', 'Your record') + timelineViz(s.timeline) + riverViz(s.river) + clockViz(s.clock, 'stats')
+    + streakViz(s.streaks, s) + pulseViz(s.pulse) + newArtistsViz(s.newArtists) + genreViz(s.genres) + obsessionsViz(s.obsessions, s.loops)
+    + rarelyViz(s.rarely) + wishlistViz(s.wishlist) + topViz(s.top);
   body.innerHTML = h;
   drawRecords();
 }
 
-/** Tap (or drag across) a heat cell or a column: its numbers show in the line under the chart. */
+/** Tap (or drag across) a heat cell, a column, a ridge or the river: its numbers show in the line under the chart. */
 function onVizPointer(e, data) {
   const cell = e.target.closest('[data-heat]');
   if (cell) {
@@ -1312,6 +1486,15 @@ function onVizPointer(e, data) {
     cell.classList.add('sel');
     const d = +cell.dataset.d, hr = +cell.dataset.h;
     if (ro) ro.innerHTML = `<b>${plural(+cell.dataset.v, 'play')}</b> · ${DOW[d]}, ${pad(hr)}:00–${pad(hr + 1)}:00`;
+    return;
+  }
+  const rvHit = e.target.closest('[data-rv]');
+  if (rvHit && data && data.river) {
+    const b = +rvHit.dataset.rv;
+    const B = data.river.starts.length;
+    const cur = $('#rvCursor');
+    if (cur) { cur.setAttribute('x1', (b / (B - 1)) * 340); cur.setAttribute('x2', (b / (B - 1)) * 340); cur.setAttribute('visibility', 'visible'); }
+    $('#ro-rv').innerHTML = riverText(data.river, b);
     return;
   }
   const ridge = e.target.closest('[data-ridge]');
@@ -1328,7 +1511,7 @@ function onVizPointer(e, data) {
   const i = +col.dataset.i;
   if (col.dataset.col === 'na') $('#ro-na').innerHTML = newArtistsText(data.newArtists.buckets[i], data.newArtists.unit);
   else if (col.dataset.col === 'g') $('#ro-g').innerHTML = genreText(data.genres, i);
-  else if (col.dataset.col === 'mo') $('#ro-mo').innerHTML = monthText(data, i);
+  else if (col.dataset.col === 'tl') $('#ro-tl').innerHTML = `${esc(periodLabel(data.timeline.starts[i], data.timeline.unit))}: <b>${plural(data.timeline.counts[i], 'play')}</b>`;
   else if (col.dataset.col === 'am') {
     const d = new Date(data.monthsFrom);
     d.setMonth(d.getMonth() + i);
@@ -1336,71 +1519,177 @@ function onVizPointer(e, data) {
   } else if (col.dataset.col === 'ah') $('#ro-ah').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
 }
 
-// ---------- year in review ----------
+// ---------- the story: full-screen cards about a period ----------
 
-function openReview(id) {
-  openPage('reviewPage');
-  $('#reviewBody').classList.add('stale');
-  if (!REVIEW) $('#reviewBody').innerHTML = '<div class="empty"><p>Putting it together…</p></div>';
-  send({ t: 'review', range: id });
+const PERSONAS = {
+  nightOwl: { title: 'Night Owl', icon: 'moon', why: (m) => `${pct(m.night)} of your plays happened between 22:00 and 04:00. The good stuff comes out after dark.` },
+  earlyBird: { title: 'Early Bird', icon: 'sun', why: (m) => `${pct(m.morning)} of your plays came between 5 and 9 in the morning. Music before coffee.` },
+  loyalist: { title: 'Loyalist', icon: 'heart', why: (m) => `${esc(m.topArtist)} alone made up ${pct(m.topShare)} of your listening. When you love something, you stay.` },
+  explorer: { title: 'Explorer', icon: 'explore', why: (m) => `${pct(m.newShare)} of your plays were artists you had never heard before.` },
+  onRepeat: { title: 'Repeat Offender', icon: 'repeat', why: (m) => (m.loop >= 5 ? `You played one song ${m.loop} times in a row. No regrets.` : `One song got ${m.obsession} plays in a single week.`) },
+  weekender: { title: 'Weekend Warrior', icon: 'weekend', why: (m) => `${pct(m.weekend)} of your plays fell on Saturdays and Sundays.` },
+  crateDigger: { title: 'Crate Digger', icon: 'album', why: (m) => `${pct(m.vinyl)} of everything you played came off your record shelf.` },
+  genreHopper: { title: 'Genre Hopper', icon: 'shuffle', why: (m) => `${m.genres} different genres, each with a real share of your plays.` },
+  allRounder: { title: 'All-Rounder', icon: 'star', why: () => 'No single habit stands out: a bit of everything, at any time of day.' },
+};
+
+let STORY = null;
+let storySlides = [];
+let storyIdx = 0;
+
+function openStory(id) {
+  STORY = null;
+  storySlides = [{ cls: 'c5', wait: true, html: '<div class="t m in">Putting it together…</div>' }];
+  $('#story').hidden = false;
+  showSlide(0);
+  send({ t: 'story', range: id });
+}
+window.onStory = (s) => {
+  if ($('#story').hidden) return;
+  STORY = s;
+  storySlides = buildSlides(s);
+  showSlide(0);
+};
+function closeStory() {
+  $('#story').hidden = true;
+  $('#storySlide').innerHTML = '';
+  Tilt.refresh();
 }
 
-function monthText(r, i) {
-  const d = new Date(r.monthsFrom);
-  d.setMonth(d.getMonth() + i);
-  return `${esc(d.toLocaleDateString([], { month: 'long', year: 'numeric' }))}: <b>${plural(r.months[i], 'scrobble')}</b>`;
+function showSlide(i) {
+  storyIdx = Math.max(0, Math.min(storySlides.length - 1, i));
+  const sl = storySlides[storyIdx];
+  $('#storyBars').innerHTML = storySlides.map((x, k) => `<i class="${k < storyIdx ? 'done' : k === storyIdx && !x.wait ? 'now' : ''}" style="--dur:${x.dur || 7}s"><b></b></i>`).join('');
+  $('#storySlide').innerHTML = `<div class="slide ${sl.cls}">${sl.html}</div>`;
+  $('#story').classList.remove('paused');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    $$('#storySlide [data-w]').forEach((el) => { el.style.width = el.dataset.w; });
+    countUp();
+  }));
+  const bar = $('#storyBars i.now b');
+  if (bar) bar.addEventListener('animationend', () => { if (storyIdx < storySlides.length - 1) showSlide(storyIdx + 1); }, { once: true });
+  Tilt.refresh();
 }
 
-function renderReview() {
-  const r = REVIEW;
-  if (!r) return;
-  $('#reviewChips').innerHTML = r.ranges.map((x) => `<button class="chip ${x.id === r.range.id ? 'on' : ''}" data-rv="${x.id}">${x.id === r.range.id ? icon('check') : ''}${esc(x.id === '12m' ? 'Last 12 months' : x.label)}</button>`).join('');
-  const sm = r.summary;
-  const label = r.range.id === '12m' ? 'Your last 12 months' : `Your ${r.range.label}`;
-  if (!sm.scrobbles) {
-    $('#reviewBody').innerHTML = `<div class="empty"><p>No scrobbles in ${esc(r.range.label)}.</p></div>`;
-    return;
+function countUp() {
+  $$('#storySlide [data-count]').forEach((el) => {
+    const to = +el.dataset.count;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / 1200);
+      el.textContent = num(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1 && el.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+const dly = (s) => `style="--d:${s}s"`;
+function buildSlides(s) {
+  const out = [];
+  const name = periodName(s.range);
+  const per = periodWord(s.range.kind);
+  const sm = s.summary;
+  if (!sm.scrobbles) return [{ cls: 'c4', dur: 5, html: `<div class="t m in">No plays in ${esc(name)}.</div>` }];
+  const album = (s.albums || [])[0];
+  const disc = (cover, hueKey) => `<div class="spinner-disc" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${esc(cover)}')` : ''}"></i></div>`;
+  // Intro
+  out.push({ cls: 'c5', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">${s.range.kind === 'all' ? 'Your whole history' : `Your ${per}`}</div>
+    <div class="t in" ${dly(0.15)}>${esc(name)}</div><p class="p in" ${dly(0.35)}>on record. Tap the right side to go on, the left to go back, hold to pause.</p>` });
+  // Volume
+  let vs = '';
+  if (sm.prev && sm.prev.scrobbles > 0) {
+    const p = Math.round(((sm.scrobbles - sm.prev.scrobbles) * 100) / sm.prev.scrobbles);
+    vs = `<span class="badge in" ${dly(0.6)}>${icon(p >= 0 ? 'trend-up' : 'down-trend')}${Math.abs(p)}% ${p >= 0 ? 'more' : 'less'} than ${esc(lastWord(s.range.kind))}</span>`;
   }
-  const rank = (list, f) => `<div class="rank">${list.map((x, i) => f(x, i)).join('')}</div>`;
-  const ta = r.top.artists;
-  let h = `<div class="rv-hero"><div class="yr">${esc(label)}</div><div class="big">${num(sm.scrobbles)}</div>
-      <p>scrobbles · about ${sm.perDay} a day · music on ${num(sm.days)} of ${num(sm.spanDays)} days</p></div>`;
-  if (ta.length) {
-    h += `<div class="rv-card accent"><div class="kicker">Top artist</div><div class="head">${esc(ta[0].name)}</div><p>${plural(ta[0].plays, 'play')}</p></div>`;
-    h += `<div class="rv-card"><div class="kicker">Top artists</div>${rank(ta, (x, i) => `<button class="r" data-artist="${esc(x.name)}"><span class="n">${i + 1}</span><span class="t"><b>${esc(x.name)}</b></span><span class="v">${num(x.plays)}</span></button>`)}</div>`;
+  out.push({ cls: 'c2', html: `<div class="k in">You played</div><div class="t in" ${dly(0.1)}><span data-count="${sm.scrobbles}">0</span></div>
+    <p class="p in" ${dly(0.3)}>tracks. That's about <b>${num(sm.hours)} hours</b> of music, on ${sm.days} of ${sm.spanDays} days.</p>${vs}` });
+  // Personality
+  const ps = s.personality;
+  if (ps && PERSONAS[ps.id]) {
+    const P = PERSONAS[ps.id];
+    const R = ps.runnerUp && PERSONAS[ps.runnerUp];
+    out.push({ cls: 'c3', html: `<svg class="i bigicon in"><use href="#i-${P.icon}"/></svg><div class="k in" ${dly(0.1)}>Your listening personality</div>
+      <div class="t m in" ${dly(0.2)}>${P.title}</div><p class="p in" ${dly(0.4)}>${P.why(ps.metrics)}</p>
+      ${R ? `<span class="badge in" ${dly(0.7)}>${icon(R.icon)}with a touch of ${R.title}</span>` : ''}` });
   }
-  if (r.top.albums.length) {
-    h += `<div class="rv-card"><div class="kicker">Top albums</div>${rank(r.top.albums, (x) => `<div class="r with-cover">${coverHtml(x.cover, x.title, x.artist, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}${x.owned ? ' · on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></div>`)}</div>`;
+  // Top artist and the top five
+  const a0 = (s.artists || [])[0];
+  if (a0) {
+    out.push({ cls: 'c1', html: `${a0.cover ? `<div class="bgcover" style="background-image:url('${esc(a0.cover)}')"></div>` : ''}<div class="k in">Your top artist</div>
+      <div class="t in" ${dly(0.15)}>${esc(a0.name)}</div><p class="p in" ${dly(0.35)}><b>${plural(a0.plays, 'play')}</b>, ${pct(a0.share)} of everything you played, on ${plural(a0.days, 'day')}.</p>` });
   }
-  if (r.top.tracks.length) {
-    h += `<div class="rv-card"><div class="kicker">Top tracks</div>${rank(r.top.tracks, (x, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${num(x.plays)}</span></div>`)}</div>`;
+  if ((s.artists || []).length >= 3) {
+    out.push({ cls: 'c2', html: `<div class="k in">Your top artists</div><div class="list5">${s.artists.map((x, i) => `<div class="row in" ${dly(0.1 + i * 0.12)}><span class="n">${i + 1}</span>
+      <span class="nm">${esc(x.name)}</span><span class="v">${num(x.plays)}</span><i class="bar5" data-w="${(x.plays / s.artists[0].plays) * 100}%"></i></div>`).join('')}</div>` });
   }
-  h += `<div class="rv-card"><div class="kicker">New discoveries</div><div class="head">${plural(r.newArtists, 'new artist')}</div>
-    <p>${r.historyStartsHere ? 'Your Last.fm history starts in this period, so every artist counts as new.' : 'Artists you had never scrobbled before.'}</p>
-    ${r.topNew.length ? rank(r.topNew, (x, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(x.name)}</b><small>first heard ${esc(dateLabel(x.first))}</small></span><span class="v">${num(x.plays)}</span></div>`) : ''}</div>`;
-  if (r.busiestDay) {
-    const max = Math.max(1, ...r.months);
-    const cols = r.months.map((v, i) => `<div class="c" data-col="mo" data-i="${i}"><i style="height:${(v / max) * 100}%"></i></div>`).join('');
-    const first = new Date(r.monthsFrom);
-    const labels = r.months.map((v, i) => { const d = new Date(first); d.setMonth(d.getMonth() + i); return d.toLocaleDateString([], { month: 'narrow' }); });
-    h += `<div class="rv-card"><div class="kicker">Busiest day</div><div class="head">${esc(new Date(r.busiestDay.day).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }))}</div>
-      <p>${plural(r.busiestDay.count, 'scrobble')} that day</p>
-      <div class="cols" style="margin-top:16px"><span class="ymax">${num(max)}</span>${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-      <div class="readout" id="ro-mo">Scrobbles per month. Tap a month.</div></div>`;
+  // Song
+  const t0 = (s.tracks || [])[0];
+  if (t0) {
+    const best = s.songBestDay && s.songBestDay.count > 1 ? `, ${s.songBestDay.count} of them on ${esc(dayName(s.songBestDay.day))} alone` : '';
+    out.push({ cls: 'c3', html: `<div class="eqbig in"><i></i><i></i><i></i><i></i><i></i></div><div class="k in" ${dly(0.1)}>${ofThe(s.range.kind, 'Song')}</div>
+      <div class="t m in" ${dly(0.2)}>${esc(t0.title)}</div><p class="p in" ${dly(0.4)}>by ${esc(t0.artist)}. <b>${plural(t0.plays, 'play')}</b>${best}.</p>
+      ${s.tracks.length > 1 ? `<p class="p in" ${dly(0.7)} style="font-size:15px">Then: ${s.tracks.slice(1, 4).map((x) => esc(x.title)).join(' · ')}</p>` : ''}` });
   }
-  if (r.streak && r.streak.longest > 1) {
-    h += `<div class="rv-card"><div class="kicker">Longest streak</div><div class="head">${plural(r.streak.longest, 'day')} in a row</div><p>${esc(dateLabel(r.streak.longestFrom))} – ${esc(dateLabel(r.streak.longestTo))}</p></div>`;
+  // Album, as a card that moves with the phone
+  if (album) {
+    out.push({ cls: 'c1', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { key: 'story-album' })}</div>
+      <div class="t m in" ${dly(0.25)}>${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
   }
-  if (r.obsession) {
-    h += `<div class="rv-card"><div class="kicker">Obsession</div><div class="head">${esc(r.obsession.track)}</div><p>${esc(r.obsession.artist)} · ${r.obsession.count} plays in the week of ${esc(dateLabel(r.obsession.week))}</p></div>`;
+  // Golden hour
+  const gh = s.goldenHour;
+  const hmax = Math.max(1, ...s.hours);
+  const mood = gh >= 5 && gh < 10 ? 'Mornings are yours.' : gh >= 10 && gh < 17 ? 'Music through the day.' : gh >= 17 && gh < 22 ? 'Evenings are for records.' : 'The night shift.';
+  out.push({ cls: 'c2', html: `<div class="k in">Your golden hour</div><div class="t in" ${dly(0.1)}>${pad(gh)}:00</div><p class="p in" ${dly(0.3)}>${mood} More plays start in this hour than in any other.</p>
+    <div class="h24">${s.hours.map((v, i) => `<i class="${i === gh ? 'on' : ''}" style="height:${Math.max(2, (v / hmax) * 100)}%;--d:${0.3 + i * 0.025}s"></i>`).join('')}</div>
+    <div class="h24x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>` });
+  // Discovery
+  const na = s.newArtists || {};
+  if (na.count > 0) {
+    out.push({ cls: 'c3', html: `<svg class="i bigicon in"><use href="#i-explore"/></svg><div class="k in" ${dly(0.1)}>New to you</div>
+      <div class="t in" ${dly(0.15)}><span data-count="${na.count}">0</span></div><p class="p in" ${dly(0.35)}>artists you had never played before.${na.best ? ` The one that stuck: <b>${esc(na.best.name)}</b>, ${plural(na.best.plays, 'play')} since ${esc(dateLabel(na.best.first))}.` : ''}</p>` });
   }
-  const v = r.vinyl || {};
-  h += `<div class="rv-card"><div class="kicker">On vinyl</div><div class="head">${plural(v.count || 0, 'scrobble')} from records</div>
-    <p>${v.count ? `${Math.max(1, Math.round(v.share * 100))}% of your listening, scrobbled here from your shelf.` : 'Scrobble records here and they show up in your review.'}</p>
-    ${v.top && v.top.length ? rank(v.top, (x) => `<div class="r with-cover">${coverHtml(x.cover, x.title, x.artist, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${num(x.plays)}</span></div>`) : ''}</div>`;
-  h += clockViz(r.clock, 'review', 'When you listened');
-  if (r.first) h += `<div class="rv-card"><div class="kicker">First scrobble</div><div class="head">${esc(r.first.track)}</div><p>${esc(r.first.artist)} · ${esc(dateLabel(r.first.ts))}</p></div>`;
-  $('#reviewBody').innerHTML = h;
+  // On repeat
+  if (s.loop || s.obsession) {
+    const lp = s.loop;
+    const ob = s.obsession;
+    const x = lp || ob;
+    const what = lp ? `<b>${lp.run} times in a row</b> on ${esc(dayName(lp.at))}` : `<b>${ob.count} plays</b> in the week of ${esc(dateLabel(ob.week))}`;
+    out.push({ cls: 'c4', html: `<svg class="i bigicon in"><use href="#i-repeat"/></svg><div class="k in" ${dly(0.1)}>On repeat</div>
+      <div class="t m in" ${dly(0.2)}>${esc(x.track)}</div><p class="p in" ${dly(0.4)}>by ${esc(x.artist)}: ${what}.</p>` });
+  }
+  // Genres
+  const gs = s.genres || [];
+  if (gs.length) {
+    out.push({ cls: 'c1', html: `<div class="k in">Your sound</div><div class="t m in" ${dly(0.1)}>${esc(gs[0].name)}</div><p class="p in" ${dly(0.3)}>${pct(gs[0].share)} of everything with a known genre.</p>
+      <div class="gbars">${gs.map((g, i) => `<div class="in" ${dly(0.4 + i * 0.1)}><span>${esc(g.name)}</span><span>${pct(g.share)}</span><i style="background:currentColor;opacity:${1 - i * 0.15}" data-w="${(g.share / gs[0].share) * 100}%"></i></div>`).join('')}</div>` });
+  }
+  // Vinyl
+  const v = s.vinyl || {};
+  if (v.count > 0) {
+    const r0 = (v.top || [])[0];
+    out.push({ cls: 'c4', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { disc: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
+      <div class="t m in" ${dly(0.2)}><span data-count="${v.count}">0</span> tracks on vinyl</div><p class="p in" ${dly(0.4)}>${pct(v.share)} of your listening${r0 ? `. Most spun: <b>${esc(r0.title)}</b>` : ''}.</p>` });
+  }
+  // Streak and the biggest day
+  const st = s.streak || {};
+  if (st.longest >= 2) {
+    out.push({ cls: 'c2', html: `<svg class="i bigicon in"><use href="#i-fire"/></svg><div class="k in" ${dly(0.1)}>Longest streak</div>
+      <div class="t in" ${dly(0.15)}><span data-count="${st.longest}">0</span> days</div><p class="p in" ${dly(0.35)}>with music in a row, ${esc(dateLabel(st.longestFrom))} – ${esc(dateLabel(st.longestTo))}.</p>
+      ${s.busiestDay ? `<p class="p in" ${dly(0.6)}>Biggest day: <b>${esc(dayName(s.busiestDay.day))}</b>, ${plural(s.busiestDay.count, 'play')}.</p>` : ''}` });
+  }
+  // Summary
+  const P = ps && PERSONAS[ps.id];
+  out.push({ cls: 'c5', dur: 14, html: `<div class="sumhead in">${coverHtml(album && album.cover, (album && album.title) || name, '', 'small')}<div><div class="k">${esc(name)}</div><div class="t m" style="margin:2px 0 0">on record</div></div></div>
+    <div class="sum">
+      <div class="in" ${dly(0.15)}><h4>Top artists</h4><ol>${(s.artists || []).map((x) => `<li>${esc(x.name)}</li>`).join('')}</ol></div>
+      <div class="in" ${dly(0.25)}><h4>Top songs</h4><ol>${(s.tracks || []).map((x) => `<li>${esc(x.title)}</li>`).join('')}</ol></div>
+      <div class="in" ${dly(0.35)}><h4>Plays</h4><div class="big">${num(sm.scrobbles)}</div></div>
+      <div class="in" ${dly(0.45)}><h4>Hours</h4><div class="big">≈${num(sm.hours)}</div></div>
+      <div class="in" ${dly(0.55)}><h4>Top genre</h4><div class="big" style="font-size:20px;line-height:24px">${gs.length ? esc(gs[0].name) : '–'}</div></div>
+      <div class="in" ${dly(0.65)}><h4>Personality</h4><div class="big" style="font-size:20px;line-height:24px">${P ? P.title : '–'}</div></div>
+    </div>` });
+  return out;
 }
 
 // ---------- settings ----------
@@ -1513,18 +1802,33 @@ function build() {
     if (e.target.closest('#histImport')) send({ t: 'historyImport' });
     if (e.target.closest('#histStop')) send({ t: 'historyCancel' });
   };
-  $('#rangeChips').onclick = (e) => {
-    const b = e.target.closest('[data-range]');
-    if (!b || b.dataset.range === statsRange) return;
-    statsRange = b.dataset.range;
-    requestStats();
+  statsRange = periodId('month', Date.now());
+  $('#periodKind').onclick = (e) => {
+    const b = e.target.closest('[data-k]');
+    if (!b || !STATS || STATS.empty) return;
+    // Keep the moment in view: switching from October 2024 to Year shows 2024.
+    const anchor = Math.min(STATS.range.to * 1000 - 1, Date.now());
+    requestStats(periodId(b.dataset.k, Math.max(anchor, STATS.range.from * 1000)));
   };
+  $('#pPrev').onclick = () => { if (STATS && STATS.range.prev) requestStats(STATS.range.prev); };
+  $('#pNext').onclick = () => { if (STATS && STATS.range.next) requestStats(STATS.range.next); };
   const statsBody = $('#statsBody');
   statsBody.addEventListener('pointerdown', (e) => onVizPointer(e, STATS));
   statsBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });
   statsBody.onclick = (e) => {
-    const rv = e.target.closest('[data-review]');
-    if (rv) { openReview(rv.dataset.review); return; }
+    const sc = e.target.closest('[data-story]');
+    if (sc) { openStory(sc.dataset.story); return; }
+    const ink = e.target.closest('[data-ink]');
+    if (ink) { setSpot(ink.dataset.ink, +ink.dataset.k); return; }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) {
+      const input = pick.closest('.asearch').querySelector('input');
+      const st = RECS[input.dataset.asearch];
+      if (st) { st.spot = -1; setSpot(input.dataset.asearch, +pick.dataset.pick); }
+      input.value = '';
+      pick.closest('.sugg').hidden = true;
+      return;
+    }
     const rec = e.target.closest('[data-rec]');
     if (rec) { openRecord(+rec.dataset.rec); return; }
     const tk = e.target.closest('[data-top]');
@@ -1552,15 +1856,27 @@ function build() {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => document.addEventListener(t, () => { Tilt.px = null; }));
   let resizeTimer = 0;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawRecords, 150); });
-  const reviewBody = $('#reviewBody');
-  reviewBody.addEventListener('pointerdown', (e) => onVizPointer(e, REVIEW));
-  reviewBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, REVIEW); });
-  $('#reviewChips').onclick = (e) => {
-    const b = e.target.closest('[data-rv]');
-    if (!b) return;
-    $('#reviewBody').classList.add('stale');
-    send({ t: 'review', range: b.dataset.rv });
-  };
+  statsBody.addEventListener('input', (e) => { if (e.target.matches('[data-asearch]')) onArtistSearch(e.target); });
+  // The story: tap right to go on, left to go back, hold to pause.
+  const story = $('#story');
+  let downAt = 0, holdTimer = 0;
+  story.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#storyClose')) return;
+    downAt = performance.now();
+    holdTimer = setTimeout(() => story.classList.add('paused'), 220);
+  });
+  story.addEventListener('pointerup', (e) => {
+    clearTimeout(holdTimer);
+    if (e.target.closest('#storyClose')) return;
+    const held = performance.now() - downAt > 220;
+    story.classList.remove('paused');
+    if (held) return;
+    if (e.clientX < story.clientWidth * 0.3) showSlide(storyIdx - 1);
+    else if (storyIdx < storySlides.length - 1) showSlide(storyIdx + 1);
+    else closeStory();
+  });
+  story.addEventListener('pointercancel', () => { clearTimeout(holdTimer); story.classList.remove('paused'); });
+  $('#storyClose').onclick = closeStory;
   $('#phMode').onclick = (e) => { const b = e.target.closest('button'); if (b) setPhoneMode(b.dataset.v); };
   $('#phAccessBtn').onclick = () => send({ t: 'openNotifAccess' });
   $('#phAppInfo').onclick = () => send({ t: 'openAppInfo' });
