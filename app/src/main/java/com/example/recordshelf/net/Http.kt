@@ -26,6 +26,21 @@ object Http {
     fun post(url: String, params: Map<String, String>, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 20_000) =
         request("POST", url, form(params).toByteArray(), headers + ("Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"), timeoutMs)
 
+    /** The raw bytes of a GET (an image), or null for an error status. */
+    fun getBytes(url: String, timeoutMs: Int = 20_000): ByteArray? {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = timeoutMs
+            c.readTimeout = timeoutMs
+            c.instanceFollowRedirects = true
+            c.setRequestProperty("User-Agent", USER_AGENT)
+            if (c.responseCode !in 200..299) return null
+            return c.inputStream.use { it.readBytes() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     /** A POST with a ready body, e.g. JSON. */
     fun postBody(url: String, body: String, contentType: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 20_000) =
         request("POST", url, body.toByteArray(Charsets.UTF_8), headers + ("Content-Type" to contentType), timeoutMs)

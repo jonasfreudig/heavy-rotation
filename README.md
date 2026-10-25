@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.8 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.9 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -170,6 +170,15 @@ Song, album, artist and record pages have **Listen on** buttons that search TIDA
 for them. Pick the services under Settings → Listen on (YouTube Music, Apple Music and Deezer too).
 Spotify opens in its app; TIDAL opens its search page, which lists the match first.
 
+Song, album and artist pages take their colors from the cover or the artist's photo: a glow
+behind the header, and charts in that color. Each has a **listening barcode** (one line per week
+since you first played it, stronger for more plays), **plays per month** as a smooth curve with
+its peak marked, and **around the clock**: the 24 hours as a ring around the cover, longer wedges
+for the hours you play it most. Tap any of them for the numbers.
+
+Artist photos come from Deezer's public catalog (no account needed), looked up once per artist
+and kept on the phone; they show on artist pages, in Top 10 and Explore, and in the story.
+
 Phone scrobbles carry no cover, so the Activity tab takes one from your shelf (if you own the
 album) or from Last.fm's album art, looked up once and kept on the phone.
 
@@ -220,11 +229,13 @@ Days, weeks and hours are in the phone's local time.
 
 ### Moving covers
 
-On a record page (and on Now spinning) the cover is a sleeve with the record sliding out behind
-it. It tilts and catches the light as you move the phone, like a holo trading card, and the record
-spins while a side plays. The motion sensor only runs while such a page is open. Switch it off in
-Settings → Look → Moving covers. The "plays on Last.fm" chip on a record page opens your Last.fm
-library for that album (in the Last.fm app if it's installed).
+Big covers tilt and catch the light as you move the phone. Records on your shelf are the
+collector's edition, wherever they show up (record page, Now spinning, album and song pages, the
+story): holo foil, a foil star in the corner, and the record sliding out of its sleeve, which spins
+while a side plays. Albums you don't own just tilt. Artist photos sit in a frame that tilts too.
+The motion sensor only runs while such a page is open. Switch it off in Settings → Look →
+Moving covers. The "plays on Last.fm" chip on a record page opens your Last.fm library for that
+album (in the Last.fm app if it's installed).
 
 ## Scrobbling a record
 

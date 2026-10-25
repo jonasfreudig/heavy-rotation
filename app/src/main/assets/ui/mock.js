@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.8 (browser preview)',
+    version: '0.9 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -512,6 +512,27 @@ const Mock = (() => {
   }
 
   // ---- song, album, explore and playlists, from the made-up log ----
+  const weekStartOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return +d; };
+  /** Plays per week (Monday-based) of the matching scrobbles, from the first week until now. */
+  function weeksOf(match) {
+    const L = history();
+    let w0 = 0;
+    const counts = {};
+    for (let i = 0; i < L.ts.length; i++) {
+      if (!match(i)) continue;
+      const w = weekStartOf(L.ts[i]);
+      if (!w0) w0 = w;
+      const k = Math.round((w - w0) / (7 * DAY));
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    if (!w0) return {};
+    const n = Math.round((weekStartOf(Date.now()) - w0) / (7 * DAY)) + 1;
+    return { weeksFrom: w0, weeks: Array.from({ length: n }, (_, k) => counts[k] || 0) };
+  }
+  function hslHex(h, s, l) {
+    const f = (n) => { const k = (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    return '#' + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
   function lifeOf(match) {
     const L = history();
     let plays = 0, first = -1, last = -1, days = 0, lastDay = -1, dc = 0, bestDay = 0, bestCount = 0;
@@ -535,7 +556,7 @@ const Mock = (() => {
     const now = new Date();
     const arr = [];
     for (let m = m0; m <= now.getFullYear() * 12 + now.getMonth(); m++) arr.push(months[m] || 0);
-    return { plays, days, first: L.ts[first], last: L.ts[last], monthsFrom: +new Date(Math.floor(m0 / 12), m0 % 12, 1), months: arr, hours, bestDay: { day: bestDay, count: bestCount } };
+    return { ...weeksOf(match), plays, days, first: L.ts[first], last: L.ts[last], monthsFrom: +new Date(Math.floor(m0 / 12), m0 % 12, 1), months: arr, hours, bestDay: { day: bestDay, count: bestCount } };
   }
   const rankIn = (c, k) => (c[k] ? Object.values(c).filter((v) => v > c[k]).length + 1 : 0);
   const albumOf = (a) => RECORDS[a % RECORDS.length][1];
@@ -670,6 +691,7 @@ const Mock = (() => {
     const owned = coll.filter((c) => c.artist === name).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', year: c.year }));
     const bm = mArr.indexOf(Math.max(...mArr));
     return {
+      ...weeksOf((i) => L.a[i] === ai), photo: '', cover: '',
       name, plays, days: Math.round(plays / 3),
       first: { ts: L.first[ai] > 0 ? L.first[ai] : Date.now(), track: L.titles[ai] || 'Track' }, last: { ts: Date.now() - 2 * DAY, track: 'Pelota' },
       busiestMonth: { start: +new Date(first.getFullYear(), first.getMonth() + bm, 1), count: mArr[bm] || 0 },
@@ -816,11 +838,17 @@ const Mock = (() => {
           later(250, () => onStats(fakeStats(m.range || '')));
           break;
         case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
-        case 'artist': later(250, () => onArtist(fakeArtist(m.name))); break;
+        case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), req: m.req })); break;
         case 'tilt': break;
+        case 'palette': {
+          // Made-up colors from the address, as if read from the picture.
+          const h = hashStr(m.url) % 360;
+          later(150, () => onPalette({ url: m.url, dominant: hslHex(h, 0.35, 0.3), vibrant: hslHex((h + 25) % 360, 0.7, 0.55) }));
+          break;
+        }
         case 'tidy': later(200, () => onTidy(S.history.count ? tidyOf() : { empty: true })); break;
-        case 'track': later(250, () => onTrack(fakeTrack(m.artist, m.title))); break;
-        case 'album': later(250, () => onAlbum(fakeAlbum(m.artist, m.title))); break;
+        case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
+        case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
         case 'playlist': later(300, () => onPlaylist(fakePlaylist(m.kind))); break;
         case 'hide': case 'unhide': case 'keep':

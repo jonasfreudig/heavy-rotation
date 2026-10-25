@@ -2,6 +2,7 @@ package com.example.recordshelf
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import com.example.recordshelf.discogs.CollectionItem
@@ -18,6 +19,8 @@ import com.example.recordshelf.lastfm.LastfmClient
 import com.example.recordshelf.lastfm.LastfmException
 import com.example.recordshelf.lastfm.Scrobble
 import com.example.recordshelf.mb.MusicBrainzClient
+import com.example.recordshelf.net.DeezerClient
+import com.example.recordshelf.net.Http
 import com.example.recordshelf.scrobble.ActivityLog
 import com.example.recordshelf.scrobble.Compare
 import com.example.recordshelf.scrobble.Durations
@@ -34,6 +37,7 @@ import com.example.recordshelf.tidal.Tidal
 import com.example.recordshelf.tidal.TidalClient
 import com.example.recordshelf.tidal.TidalException
 import com.example.recordshelf.util.JsonFile
+import com.example.recordshelf.util.Palette
 import com.example.recordshelf.util.Text
 import org.json.JSONArray
 import org.json.JSONObject
@@ -138,6 +142,21 @@ object Core {
 
     /** What the user keeps out of the stats; loaded on first use. */
     @Volatile private var hiddenCache: Hidden? = null
+
+    // ---- pictures: artist photos (Deezer) and the colors of covers and photos ----
+    private val deezer = DeezerClient()
+    private val paletteExec = Executors.newSingleThreadExecutor()
+
+    /** Colors per picture URL, kept across starts (covers don't change). */
+    private val palettes: MutableMap<String, JSONObject> by lazy {
+        val m = LinkedHashMap<String, JSONObject>()
+        try {
+            val o = JSONObject(file("palettes.json").read() ?: "{}")
+            for (k in o.keys()) m[k] = o.getJSONObject(k)
+        } catch (_: Exception) {
+        }
+        m
+    }
 
     // ---- TIDAL: exact links and playlists with the user's own TIDAL app ----
     private val tidalExec = Executors.newSingleThreadExecutor()
@@ -257,7 +276,10 @@ object Core {
                 statsExec.execute {
                     val s = currentStats()
                     val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
-                    push("onArtist") { j }
+                    push("onArtist") { j.put("req", msg.optInt("req")) }
+                    // No photo yet: Deezer may have one; the page comes again if so.
+                    val n = j.optString("name")
+                    if (j.optString("photo").isEmpty() && Stats.photoKey(n) !in db.images().keys) historyExec.execute { fetchPhotosInner(listOf(n)) { handle(msg) } }
                 }
             }
             "track", "album" -> {
@@ -270,6 +292,7 @@ object Core {
                     val r = s?.range(id)
                     val j = (if (r == null) null else if (isTrack) s.track(artist, title, r) else s.album(artist, title, r))
                         ?: JSONObject().put("missing", true).put("artist", artist).put("title", title)
+                    j.put("req", msg.optInt("req"))
                     push(if (isTrack) "onTrack" else "onAlbum") { j }
                     // No cover yet: Last.fm may have one; the page comes again if so.
                     val info = j.optJSONObject(if (isTrack) "album" else "info")
@@ -283,10 +306,16 @@ object Core {
                 push("onExplore") { s?.explore() ?: JSONObject().put("empty", true) }
                 val missing = s?.exploreNeedingImages().orEmpty()
                 if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) { handle(msg) } }
+                val photos = s?.exploreNeedingPhotos().orEmpty()
+                if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
             }
             "playlist" -> statsExec.execute {
                 val s = currentStats()
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
+            }
+            "palette" -> {
+                val url = msg.optString("url")
+                if (url.startsWith("https://")) paletteExec.execute { paletteInner(url) }
             }
             "tidy" -> statsExec.execute { push("onTidy") { tidy() ?: JSONObject().put("empty", true) } }
             "hide", "unhide" -> {
@@ -1051,6 +1080,8 @@ object Core {
         push("onStats") { s.compute(s.range(id)).put("tidy", tidySummary()) }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
+        val photos = s.artistsNeedingPhotos(id)
+        if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) }
     }
 
     /** Finds the songs on TIDAL and makes the playlist there, telling the page how far it got. On [tidalExec]. */
@@ -1163,6 +1194,58 @@ object Core {
                 after?.invoke()
             }
         }
+    }
+
+    /** Artist photos from Deezer for [names] not looked up yet ("" is kept when there is none). On [historyExec]. */
+    private fun fetchPhotosInner(names: List<String>, after: (() -> Unit)? = null) {
+        val tried = db.images().keys
+        var any = false
+        for (n in names) {
+            val key = Stats.photoKey(n)
+            if (key in tried) continue
+            try {
+                db.saveImage(key, deezer.artistPhoto(n).orEmpty())
+                any = true
+                Thread.sleep(120) // Deezer allows 50 requests in 5 seconds
+            } catch (_: Exception) {
+                break // offline or over the quota: next time
+            }
+        }
+        if (any) {
+            stats = null
+            statsExec.execute {
+                statsInner()
+                after?.invoke()
+            }
+        }
+    }
+
+    /** The colors of a cover or photo (downloaded once, scaled down), for tinting its page. On [paletteExec]. */
+    private fun paletteInner(url: String) {
+        val known = synchronized(palettes) { palettes[url] }
+        val c = known ?: try {
+            val bytes = Http.getBytes(url) ?: return
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= 48 && bounds.outHeight / (sample * 2) >= 48) sample *= 2
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+            val px = IntArray(bmp.width * bmp.height)
+            bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+            bmp.recycle()
+            val p = Palette.of(px) ?: return
+            JSONObject().put("dominant", Palette.hex(p.dominant)).put("vibrant", Palette.hex(p.vibrant))
+        } catch (_: Exception) {
+            return
+        }
+        if (known == null) {
+            synchronized(palettes) {
+                palettes[url] = c
+                while (palettes.size > 400) palettes.remove(palettes.keys.first())
+                file("palettes.json").write(JSONObject(palettes as Map<*, *>).toString())
+            }
+        }
+        push("onPalette") { JSONObject(c.toString()).put("url", url) }
     }
 
     // ---- pushing to the page ----

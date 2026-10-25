@@ -102,12 +102,19 @@ function coverHtml(url, title, artist, cls = '', playing = false) {
   return `<div class="cover ${cls}" style="--h:${hue((title || '') + (artist || ''))}"><span>${ini}</span>${img}${eq}</div>`;
 }
 
-/** A big cover as a sleeve that tilts with the phone (see Tilt), optionally with its record sliding out. */
+/**
+ * A big cover that tilts with the phone (see Tilt). Records on your shelf ([opts.owned]) are the
+ * collector's edition: holo foil, a foil sticker and the record sliding out of the sleeve. Every
+ * other cover tilts and catches the light, nothing more.
+ */
 function holoCover(url, title, artist, opts = {}) {
+  const owned = !!opts.owned;
+  const withDisc = owned && opts.disc !== false;
   const lbl = url ? `background-image:url('${esc(url)}')` : '';
-  const disc = opts.disc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
-  return `<div class="holo ${opts.disc ? 'with-disc' : ''}" data-holo data-key="${esc(opts.key || url || title)}">
-    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<i class="sheen"></i><i class="glare"></i></div></div></div>`;
+  const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
+  const foil = owned ? '<i class="sheen"></i><i class="sticker" aria-label="On your shelf">★</i>' : '';
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo data-key="${esc(opts.key || url || title)}">
+    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div></div></div>`;
 }
 
 /**
@@ -253,19 +260,67 @@ function showTab(name) {
   if (name === 'explore') requestExplore();
 }
 const isOpen = (id) => !$('#' + id).hidden;
+
+/**
+ * Pages that can be in the back stack more than once (a song, its album, another song of it):
+ * what one shows, so Back brings it back. The others are single and move to the top.
+ */
+const PAGE_STATE = {
+  recordPage: { get: () => recordId, set: (s) => { recordId = s; renderRecord(); } },
+  artistPage: { get: () => ARTIST, set: (s) => { ARTIST = s; renderArtist(); } },
+  trackPage: { get: () => TRACK, set: (s) => { TRACK = s; renderTrack(); } },
+  albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
+  playlistPage: { get: () => [PLAYLIST, TIDALJOB], set: (s) => { [PLAYLIST, TIDALJOB] = s; renderPlaylist(); } },
+};
+/** Per back-stack entry: what a page further down showed (state and scroll), while another of its kind is on top. */
+const pageSaved = [];
+
+/** Opens a page on top. Callers set the page's state after this, so the one below can be remembered first. */
 function openPage(id) {
   const p = $('#' + id);
-  if (p.hidden) { p.hidden = false; pageStack.push(id); }
-  else { pageStack.splice(pageStack.indexOf(id), 1); pageStack.push(id); }
+  if (p.hidden) {
+    p.hidden = false;
+    pageStack.push(id);
+  } else if (PAGE_STATE[id]) {
+    pageSaved[pageStack.lastIndexOf(id)] = { state: PAGE_STATE[id].get(), scroll: p.scrollTop };
+    pageStack.push(id);
+  } else {
+    const i = pageStack.indexOf(id);
+    pageStack.splice(i, 1);
+    pageSaved.splice(i, 1);
+    pageStack.push(id);
+  }
+  pageSaved.length = pageStack.length;
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
   Tilt.refresh();
 }
 function closePage() {
   const id = pageStack.pop();
-  if (id) $('#' + id).hidden = true;
+  pageSaved.length = pageStack.length;
+  if (!id) return;
+  const p = $('#' + id);
+  const i = pageStack.lastIndexOf(id);
+  const saved = i >= 0 ? pageSaved[i] : null;
+  if (saved) {
+    // The same kind of page further down: show what it showed, where it was.
+    pageSaved[i] = undefined;
+    PAGE_STATE[id].set(saved.state);
+    p.style.zIndex = 10 + i + 1;
+    p.scrollTop = saved.scroll;
+  } else if (i < 0) p.hidden = true;
   if (id === 'settingsPage') showKeyForm = false;
   Tilt.refresh();
+}
+/** An answer for a page that may have been covered meanwhile: [apply] it to whichever state asked ([req]). */
+let REQ = 0;
+function deliver(pageId, req, current, apply) {
+  if (current && current.req === req) return apply(current, true);
+  pageStack.forEach((pid, i) => {
+    const s = pageSaved[i];
+    if (pid === pageId && s && s.state && s.state.req === req) s.state = apply(s.state, false);
+  });
+  return current;
 }
 function openSettings(section) {
   openPage('settingsPage');
@@ -424,8 +479,8 @@ function renderShelfEmpty() {
 // ---------- record page ----------
 
 function openRecord(id) {
-  recordId = id;
   openPage('recordPage');
+  recordId = id;
   const r = REL[id];
   if (!r || r.error || !r.tracks) send({ t: 'openRelease', id });
   renderRecord();
@@ -459,7 +514,7 @@ function renderRecord() {
   const keep = $('#recordBody [data-holo]');
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero">
-      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { disc: true, key: holoKey })}</div>
+      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, key: holoKey })}</div>
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
@@ -638,7 +693,7 @@ function renderSpin(force) {
   const keep = $('#spinBody [data-holo]');
   const reuse = keep && keep.dataset.key === sp.id;
   body.innerHTML = `<div class="spin-hero">
-      <div id="spinHolo">${reuse ? '' : holoCover(sp.cover, sp.album, sp.artist, { disc: true, key: sp.id })}</div>
+      <div id="spinHolo">${reuse ? '' : holoCover(sp.cover, sp.album, sp.artist, { owned: true, key: sp.id })}</div>
       <div class="side" id="spSide"></div>
       <h1 id="spTitle"></h1>
       <div class="artist">${esc(sp.artist)} — ${esc(sp.album)}</div>
@@ -988,7 +1043,7 @@ function deltaHtml(cur, prev, kind) {
   const p = Math.round(((cur - prev) * 100) / prev);
   return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(lastWord(kind))}</span>`;
 }
-const tile = (label, value, sub, delta) => `<div class="tile"><span>${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}</div>`;
+const tile = (label, value, sub, delta, ic) => `<div class="tile"><span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}</div>`;
 
 function storyCardHtml(s) {
   if (!s.summary.scrobbles) return '';
@@ -1026,7 +1081,7 @@ function highlightsViz(s) {
   const list = (s.insights || []).slice().sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
     .map((x) => insightText(x, s.range.kind)).filter(Boolean);
   if (!list.length) return '';
-  return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl">${icon(ic)}<span>${text}</span></div>`).join('')}</div>`;
+  return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl"><span class="hl-ic">${icon(ic)}</span><span>${text}</span></div>`).join('')}</div>`;
 }
 
 /** Weekday × hour heatmap: one hue (the wallpaper's primary), darker = more plays. */
@@ -1071,6 +1126,12 @@ function timelineViz(t) {
   const labels = t.starts.filter((x, i) => i % step === 0).map((x) => periodLabel(x, t.unit, true));
   let best = 0;
   counts.forEach((v, i) => { if (v > counts[best]) best = i; });
+  if (counts.length > 16) {
+    return `<div class="viz"><h2>Listening over time</h2><span class="sub">Plays per ${t.unit}</span>
+      ${areaViz(counts, { col: 'tl', avg: t.avg, peakLabel: (i) => `${esc(periodLabel(t.starts[i], t.unit, true))} · ${num(counts[i])}` })}
+      <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+      <div class="readout" id="ro-tl">Most: <b>${esc(periodLabel(t.starts[best], t.unit))}</b>, ${plural(counts[best], 'play')}</div></div>`;
+  }
   return `<div class="viz"><h2>Listening over time</h2><span class="sub">Plays per ${t.unit}</span>
     <div class="cols"><span class="ymax">${num(max)}</span>${counts.map((v, i) => `<div class="c" data-col="tl" data-i="${i}"><i style="height:${(v / max) * 100}%"></i></div>`).join('')}
       <div class="avg" style="bottom:${(t.avg / max) * 100}%"><span>avg ${t.avg}</span></div></div>
@@ -1403,42 +1464,189 @@ function openListen(el) {
 const trackAttrs = (artist, title, extra = {}) => `data-track="${esc(title)}" data-a="${esc(artist)}"${extra.album ? ` data-al="${esc(extra.album)}"` : ''}${extra.cover ? ` data-cover="${esc(extra.cover)}"` : ''}`;
 const albumAttrs = (artist, title) => `data-album="${esc(title)}" data-a="${esc(artist)}"`;
 
-/** Plays per month and per hour of the day, tappable (the artist, song and album pages share these). */
-function lifeCharts(x, what) {
-  const mmax = Math.max(1, ...x.months);
-  const step = Math.max(1, Math.ceil(x.months.length / 4));
-  const mlabels = x.months.map((v, i) => { const d = new Date(x.monthsFrom); d.setMonth(d.getMonth() + i); return d; }).filter((d, i) => i % step === 0)
-    .map((d) => d.toLocaleDateString([], { month: 'short', year: '2-digit' }));
-  const hmax = Math.max(1, ...x.hours);
-  let peak = 0;
-  x.hours.forEach((v, i) => { if (v > x.hours[peak]) peak = i; });
-  return `<div class="viz"><h2>Plays per month</h2><span class="sub">Since you first played ${what}</span>
-      <div class="cols"><span class="ymax">${num(mmax)}</span>${x.months.map((v, i) => `<div class="c" data-col="am" data-i="${i}"><i style="height:${(v / mmax) * 100}%"></i></div>`).join('')}</div>
-      <div class="xl">${mlabels.map((l) => `<span>${esc(l)}</span>`).join('')}</div><div class="readout">Tap a month.</div></div>
-    <div class="viz"><h2>Time of day</h2><span class="sub">When you play ${what}</span>
-      <div class="cols">${x.hours.map((v, i) => `<div class="c" data-col="ah" data-i="${i}"><i style="height:${(v / hmax) * 100}%"></i></div>`).join('')}</div>
-      <div class="xl"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-      <div class="readout">Mostly around <b>${pad(peak)}:00</b></div></div>`;
-}
-
 const missingNote = () => ((ST.history || {}).count > 0
   ? 'Not in your Last.fm history on this phone yet. New scrobbles arrive here when you open the Stats tab.'
   : 'Import your Last.fm history on the Stats tab to see its story here.');
+
+// ---- page colors: song, album and artist pages take theirs from the cover or the photo ----
+
+/** Colors per picture URL from the app (onPalette); a page without them keeps the wallpaper's colors. */
+const TINTS = {};
+function hexHsl(hex) {
+  const n = parseInt(String(hex).slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const hi = Math.max(r, g, b), lo = Math.min(r, g, b), l = (hi + lo) / 2;
+  if (hi === lo) return [0, 0, l];
+  const d = hi - lo;
+  const h = hi === r ? ((g - b) / d + 6) % 6 : hi === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, d / (1 - Math.abs(2 * l - 1)), l];
+}
+/**
+ * CSS variables for a tinted page, a light and a dark step of each (see .tinted in app.css):
+ * --tint for marks (charts, accents) from the most vivid color, --glow for the header from the
+ * most common one. Black-and-white covers give gray.
+ */
+function tintStyle(colors, seedHue) {
+  let h, s, gh, gs;
+  if (colors) {
+    [h, s] = hexHsl(colors.vibrant);
+    [gh, gs] = hexHsl(colors.dominant);
+  } else if (seedHue != null) {
+    h = gh = seedHue;
+    s = gs = 0.45;
+  } else return '';
+  const sat = s < 0.12 ? 0 : Math.round(Math.min(0.78, Math.max(0.4, s)) * 100);
+  const gsat = gs < 0.12 ? 0 : Math.round(Math.min(0.55, Math.max(0.25, gs)) * 100);
+  return `--tint-d:hsl(${h.toFixed(0)} ${sat}% ${sat ? 70 : 78}%);--tint-l:hsl(${h.toFixed(0)} ${sat}% ${sat ? 38 : 32}%);`
+    + `--glow-d:hsl(${gh.toFixed(0)} ${gsat}% 24%);--glow-l:hsl(${gh.toFixed(0)} ${gsat}% 86%)`;
+}
+/** Tints [el] by the picture at [url] (asking the app for its colors once), or by a hue from [seed] without a picture. */
+function tint(el, url, seed) {
+  if (!el) return;
+  el.classList.add('tinted');
+  el.dataset.tintUrl = url || '';
+  const c = url ? TINTS[url] : null;
+  el.setAttribute('style', tintStyle(c, url ? null : hue(seed || '')));
+  if (url && !c) send({ t: 'palette', url });
+}
+window.onPalette = (p) => {
+  TINTS[p.url] = p;
+  $$('.tinted').forEach((el) => { if (el.dataset.tintUrl === p.url) el.setAttribute('style', tintStyle(p)); });
+};
+
+// ---- charts for songs, albums and artists ----
+
+let svgSeq = 0;
+/** A smooth line through [[x, y], …] that never swings past its points (monotone cubic), as an SVG path. */
+function smoothPath(pts) {
+  const n = pts.length;
+  if (n < 2) return n ? `M${pts[0][0]},${pts[0][1]}` : '';
+  const dx = [], m = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1][0] - pts[i][0];
+    m[i] = (pts[i + 1][1] - pts[i][1]) / dx[i];
+  }
+  const t = [m[0]];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  t[n - 1] = m[n - 2];
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i + 1] / m[i], q = a * a + b * b;
+    if (q > 9) { const k = 3 / Math.sqrt(q); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + t[i] * h).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - t[i + 1] * h).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+  }
+  return d;
+}
+
+/**
+ * Plays over time as a smooth area in the page's tint, fading out, with its peak marked. The
+ * strip of [col] cells over it takes taps (see onVizPointer).
+ */
+function areaViz(vals, opts) {
+  const W = 320, H = 120, n = vals.length;
+  const max = Math.max(1, ...vals);
+  const x = (i) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+  const y = (v) => H - 2 - (v / max) * (H - 10);
+  const line = smoothPath(vals.map((v, i) => [x(i), y(v)]));
+  const id = `ag${++svgSeq}`;
+  let peak = 0;
+  vals.forEach((v, i) => { if (v > vals[peak]) peak = i; });
+  const px = (x(peak) / W) * 100, py = (y(vals[peak]) / H) * 100;
+  const avg = opts.avg != null ? `<div class="avg" style="bottom:${(opts.avg / max) * ((H - 10) / H) * 100 + (2 / H) * 100}%"><span>avg ${opts.avg}</span></div>` : '';
+  return `<div class="area">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tint);stop-opacity:.55"/><stop offset="1" style="stop-color:var(--tint);stop-opacity:0"/></linearGradient></defs>
+      <path d="${line} L${W},${H} L0,${H} Z" fill="url(#${id})"/>
+      <path d="${line}" fill="none" style="stroke:var(--tint)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    </svg>${avg}
+    <i class="peak" style="left:${px}%;top:${py}%"></i>
+    <span class="peak-label${px > 62 ? ' end' : px < 20 ? ' start' : ''}" style="left:${px}%;top:${py}%">${opts.peakLabel(peak)}</span>
+    <div class="hits">${vals.map((v, i) => `<div data-col="${opts.col}" data-i="${i}"></div>`).join('')}</div>
+  </div>`;
+}
+
+/** The 24 hours as a ring around the cover or photo: longer, stronger wedges for more plays, midnight on top. */
+function clockRing(hours, img, seed) {
+  const max = Math.max(1, ...hours), C = 120, r0 = 60, band = 40;
+  const pt = (r, a) => `${(C + r * Math.sin(a)).toFixed(1)},${(C - r * Math.cos(a)).toFixed(1)}`;
+  const wedges = hours.map((v, i) => {
+    const a0 = ((i * 15 + 1) * Math.PI) / 180, a1 = (((i + 1) * 15 - 1) * Math.PI) / 180;
+    const r1 = r0 + 4 + (v / max) * band;
+    return `<path data-col="ah" data-i="${i}" d="M${pt(r0 + 2, a0)} L${pt(r1, a0)} A${r1.toFixed(1)},${r1.toFixed(1)} 0 0 1 ${pt(r1, a1)} L${pt(r0 + 2, a1)} A${r0 + 2},${r0 + 2} 0 0 0 ${pt(r0 + 2, a0)} Z" style="fill:var(--tint);fill-opacity:${(0.22 + 0.78 * (v / max)).toFixed(2)}"/>`;
+  }).join('');
+  const id = `cr${++svgSeq}`;
+  const center = img
+    ? `<clipPath id="${id}"><circle cx="${C}" cy="${C}" r="${r0 - 4}"/></clipPath><circle cx="${C}" cy="${C}" r="${r0 - 4}" style="fill:hsl(${hue(seed || '')} 35% 40%)"/><image href="${esc(img)}" x="${C - r0 + 4}" y="${C - r0 + 4}" width="${(r0 - 4) * 2}" height="${(r0 - 4) * 2}" clip-path="url(#${id})" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${C}" cy="${C}" r="${r0 - 4}" style="fill:hsl(${hue(seed || '')} 35% 40%)"/><text class="ini" x="${C}" y="${C + 17}" text-anchor="middle">${esc(String(seed || '?').trim().charAt(0).toUpperCase())}</text>`;
+  const ticks = [0, 6, 12, 18].map((hh) => {
+    const a = (hh * 15 * Math.PI) / 180;
+    return `<text x="${(C + 112 * Math.sin(a)).toFixed(1)}" y="${(C - 112 * Math.cos(a) + 4).toFixed(1)}" text-anchor="middle">${hh}</text>`;
+  }).join('');
+  return `<svg class="ring" viewBox="0 0 240 240">${center}<g class="wedges">${wedges}</g>${ticks}</svg>`;
+}
+
+/** Every week since the first play as one thin line, stronger for more plays: a barcode of the habit. */
+function barcodeViz(x, what) {
+  const w = x.weeks || [];
+  if (w.length < 3) return '';
+  const g = Math.max(1, Math.ceil(w.length / 120));
+  const bins = [];
+  for (let i = 0; i < w.length; i += g) bins.push(w.slice(i, i + g).reduce((a, b) => a + b, 0));
+  const max = Math.max(1, ...bins);
+  return `<div class="viz"><h2>Your listening barcode</h2><span class="sub">One line per ${g === 1 ? 'week' : `${g} weeks`} since you first played ${what}: the stronger, the more plays</span>
+    <div class="barcode">${bins.map((v, i) => `<i data-col="aw" data-i="${i}" data-g="${g}" style="opacity:${v ? (0.28 + 0.72 * Math.sqrt(v / max)).toFixed(2) : 0.07}"></i>`).join('')}</div>
+    <div class="xl"><span>${esc(monthYear(x.weeksFrom))}</span><span>now</span></div><div class="readout">Tap a line for its week.</div></div>`;
+}
+
+/** The charts of a song, an album or an artist page: barcode, plays per month, and the clock ring around [img]. */
+function lifeCharts(x, what, img, seed) {
+  const mDate = (i) => { const d = new Date(x.monthsFrom); d.setMonth(d.getMonth() + i); return d; };
+  const step = Math.max(1, Math.ceil(x.months.length / 4));
+  const labels = x.months.map((v, i) => mDate(i)).filter((d, i) => i % step === 0).map((d) => d.toLocaleDateString([], { month: 'short', year: '2-digit' }));
+  let peak = 0;
+  x.hours.forEach((v, i) => { if (v > x.hours[peak]) peak = i; });
+  const mood = peak >= 5 && peak < 10 ? 'a morning thing' : peak >= 10 && peak < 17 ? 'for the daytime' : peak >= 17 && peak < 22 ? 'an evening thing' : 'for the night';
+  const area = x.months.length > 1 ? `<div class="viz"><h2>Plays per month</h2><span class="sub">Since you first played ${what}</span>
+      ${areaViz(x.months, { col: 'am', peakLabel: (i) => `${esc(mDate(i).toLocaleDateString([], { month: 'short', year: 'numeric' }))} · ${num(x.months[i])}` })}
+      <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div><div class="readout">Tap a month.</div></div>` : '';
+  return barcodeViz(x, what) + area + `<div class="viz"><h2>Around the clock</h2><span class="sub">When you play ${what}, hour by hour, midnight on top</span>
+      ${clockRing(x.hours, img, seed)}<div class="readout">Mostly around <b>${pad(peak)}:00</b>: ${mood}.</div></div>`;
+}
+
+/** Shrinks a heading until it fits in [lines] lines and its longest word fits the width (long artist names). */
+function fitText(el, lines = 3, max = 40, min = 18) {
+  if (!el) return;
+  let size = max;
+  el.style.overflowWrap = 'normal';
+  el.style.fontSize = `${size}px`;
+  while (size > min && (el.scrollHeight > size * 1.08 * lines + 2 || el.scrollWidth > el.clientWidth + 1)) {
+    size -= 2;
+    el.style.fontSize = `${size}px`;
+  }
+  // Still too wide at the smallest size: one very long word may break.
+  if (el.scrollWidth > el.clientWidth + 1) el.style.overflowWrap = 'anywhere';
+}
 
 // ---- one song ----
 
 let TRACK = null;
 function openTrack(artist, title, extra = {}) {
   if (!artist || !title) return;
-  TRACK = { loading: true, artist, title, albumTitle: extra.album || '', cover: extra.cover || '' };
   openPage('trackPage');
+  TRACK = { loading: true, artist, title, albumTitle: extra.album || '', cover: extra.cover || '', req: ++REQ };
   renderTrack();
-  send({ t: 'track', artist, title, range: statsRange });
+  send({ t: 'track', artist, title, range: statsRange, req: TRACK.req });
 }
 window.onTrack = (t) => {
-  if (!TRACK) return;
-  TRACK = { ...TRACK, ...t, loading: false };
-  renderTrack();
+  TRACK = deliver('trackPage', t.req, TRACK, (s, shown) => {
+    const next = { ...s, ...t, req: s.req, loading: false };
+    if (shown) { TRACK = next; renderTrack(); }
+    return next;
+  });
 };
 
 function renderTrack() {
@@ -1447,7 +1655,7 @@ function renderTrack() {
   const al = t.album && typeof t.album === 'object' ? t.album : null;
   const albumTitle = al ? al.title : t.albumTitle;
   const cover = (al && al.cover) || t.cover;
-  let h = `<div class="hero">${holoCover(cover, albumTitle || t.title, t.artist, { key: `track|${t.artist}|${t.title}|${cover || ''}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!(al && al.owned), key: `track|${t.artist}|${t.title}|${cover || ''}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${listenRow('tracks', t.artist, t.title)}</div>`;
@@ -1456,19 +1664,20 @@ function renderTrack() {
   else {
     const r = t.range || {};
     h += `<div class="tiles">
-      ${tile('Plays', num(t.plays), `#${t.rank} of ${compact(t.tracks)} songs`)}
-      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays')}
-      ${tile('First heard', esc(monthYear(t.first)), `last played ${esc(dateLabel(t.last))}`)}
-      ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)))}
+      ${tile('Plays', num(t.plays), `#${t.rank} of ${compact(t.tracks)} songs`, '', 'music')}
+      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('First heard', esc(monthYear(t.first)), `last played ${esc(dateLabel(t.last))}`, '', 'history')}
+      ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)), '', 'fire')}
     </div>
     <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
-    h += lifeCharts(t, 'it');
+    h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
     if (t.next && t.next.length) {
       h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
         `<button class="r" ${trackAttrs(x.artist, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${x.count}×</span></button>`).join('')}</div></div>`;
     }
   }
   $('#trackBody').innerHTML = h;
+  tint($('#trackBody'), cover, (albumTitle || t.title) + t.artist);
 }
 
 // ---- one album ----
@@ -1476,15 +1685,17 @@ function renderTrack() {
 let ALBUM = null;
 function openAlbum(artist, title, extra = {}) {
   if (!artist || !title) return;
-  ALBUM = { loading: true, artist, title, cover: extra.cover || '' };
   openPage('albumPage');
+  ALBUM = { loading: true, artist, title, cover: extra.cover || '', req: ++REQ };
   renderAlbum();
-  send({ t: 'album', artist, title, range: statsRange });
+  send({ t: 'album', artist, title, range: statsRange, req: ALBUM.req });
 }
 window.onAlbum = (a) => {
-  if (!ALBUM) return;
-  ALBUM = { ...ALBUM, ...a, loading: false };
-  renderAlbum();
+  ALBUM = deliver('albumPage', a.req, ALBUM, (s, shown) => {
+    const next = { ...s, ...a, req: s.req, loading: false };
+    if (shown) { ALBUM = next; renderAlbum(); }
+    return next;
+  });
 };
 
 function renderAlbum() {
@@ -1492,7 +1703,7 @@ function renderAlbum() {
   if (!a || !isOpen('albumPage')) return;
   const info = a.info || {};
   const cover = info.cover || a.cover;
-  let h = `<div class="hero">${holoCover(cover, a.title, a.artist, { key: `album|${a.artist}|${a.title}|${cover || ''}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!info.owned, key: `album|${a.artist}|${a.title}|${cover || ''}` })}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
     ${listenRow('albums', a.artist, a.title)}
@@ -1502,10 +1713,10 @@ function renderAlbum() {
   else {
     const r = a.range || {};
     h += `<div class="tiles">
-      ${tile('Plays', num(a.plays), `#${a.rank} of ${compact(a.albums)} albums`)}
-      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays')}
-      ${tile('First heard', esc(monthYear(a.first)), `last played ${esc(dateLabel(a.last))}`)}
-      ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)))}
+      ${tile('Plays', num(a.plays), `#${a.rank} of ${compact(a.albums)} albums`, '', 'music')}
+      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('First heard', esc(monthYear(a.first)), `last played ${esc(dateLabel(a.last))}`, '', 'history')}
+      ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
     const tl = a.trackList || [];
     if (tl.length) {
@@ -1513,9 +1724,10 @@ function renderAlbum() {
       h += `<div class="viz"><h2>The songs you play</h2><span class="sub">${plural(tl.length, 'different song')} from this album</span><div class="rank">${tl.map((x, i) =>
         `<button class="r" ${trackAttrs(a.artist, x.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
     }
-    h += lifeCharts(a, 'it');
+    h += lifeCharts(a, 'it', cover, a.title + a.artist);
   }
   $('#albumBody').innerHTML = h;
+  tint($('#albumBody'), cover, a.title + a.artist);
 }
 
 // ---- explore: the long tail ----
@@ -1550,7 +1762,7 @@ function renderExplore() {
   const la = x.lostArtists || [];
   if (la.length) {
     h += xSection('Lost favorites', 'Artists you played a lot that have gone quiet for half a year or more', 'lost',
-      `<div class="xcards">${la.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.cover, a.name, a.name)}<b>${esc(a.name)}</b>
+      `<div class="xcards">${la.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name)}<b>${esc(a.name)}</b>
         <small>${plural(a.plays, 'play')} · last ${esc(monthYear(a.last))}</small><small class="meta">Big in ${esc(monthYear(a.peak.start))}</small></button>`).join('')}</div>`);
   }
   const lb = x.lostAlbums || [];
@@ -1562,12 +1774,12 @@ function renderExplore() {
   const rg = x.regulars || [];
   if (rg.length) {
     h += xSection('Quiet regulars', 'Never on top, always around: artists you come back to month after month', 'regulars',
-      `<div class="rank">${rg.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.cover, a.name, a.name, 'tiny')}<span class="t"><b>${esc(a.name)}</b><small>${a.track ? `${esc(a.track)} · ` : ''}since ${esc(monthYear(a.first))}</small></span><span class="v">${a.months} months</span></button>`).join('')}</div>`);
+      `<div class="rank">${rg.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${a.track ? `${esc(a.track)} · ` : ''}since ${esc(monthYear(a.first))}</small></span><span class="v">${a.months} months</span></button>`).join('')}</div>`);
   }
   const od = x.oneDay || [];
   if (od.length) {
     h += xSection('One-day wonders', 'Played all day once, never again. Worth another try?', 'oneDay',
-      `<div class="rank">${od.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.cover, a.name, a.name, 'tiny')}<span class="t"><b>${esc(a.name)}</b><small>${esc(dateLabel(a.first))}${a.track ? ` · ${esc(a.track)}` : ''}</small></span><span class="v">${plural(a.plays, 'play')}</span></button>`).join('')}</div>`);
+      `<div class="rank">${od.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${esc(dateLabel(a.first))}${a.track ? ` · ${esc(a.track)}` : ''}</small></span><span class="v">${plural(a.plays, 'play')}</span></button>`).join('')}</div>`);
   }
   const dc = x.deepCuts || [];
   if (dc.length) {
@@ -1588,9 +1800,9 @@ function renderExplore() {
 let PLAYLIST = null;
 let TIDALJOB = null;
 function openPlaylist(kind, range) {
+  openPage('playlistPage');
   PLAYLIST = { loading: true, kind };
   TIDALJOB = null;
-  openPage('playlistPage');
   renderPlaylist();
   send({ t: 'playlist', kind, range: range || statsRange });
 }
@@ -1678,12 +1890,18 @@ function renderPlaylist() {
 let ARTIST = null;
 function openArtist(name) {
   if (!name) return;
-  ARTIST = { name, loading: true };
   openPage('artistPage');
+  ARTIST = { name, loading: true, req: ++REQ };
   $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
-  send({ t: 'artist', name, range: statsRange });
+  send({ t: 'artist', name, range: statsRange, req: ARTIST.req });
 }
-window.onArtist = (a) => { ARTIST = a; renderArtist(); };
+window.onArtist = (a) => {
+  ARTIST = deliver('artistPage', a.req, ARTIST, (s, shown) => {
+    const next = { ...a, req: s.req };
+    if (shown) { ARTIST = next; renderArtist(); }
+    return next;
+  });
+};
 
 function renderArtist() {
   const a = ARTIST;
@@ -1693,30 +1911,21 @@ function renderArtist() {
     return;
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
-  let h = `<div class="hero"><h1>${esc(a.name)}</h1>
+  const pic = a.photo || a.cover || '';
+  let h = `<div class="artist-hero page-hero"><i class="glow"></i>
+      ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}|${pic}` })}
+      <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
+        <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}</div></div></div>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<span class="chip static">${esc(g)}</span>`).join('')}</div>` : ''}
-    <div class="meta">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</div>
-    ${listenRow('artists', a.name)}</div>
+    ${listenRow('artists', a.name)}
+    <p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
     <div class="tiles">
-      ${tile('Plays', num(a.plays), `on ${plural(a.days, 'day')}`)}
-      ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays')}
-      ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'))}
-      ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '')}
+      ${tile('Plays', num(a.plays), `on ${plural(a.days, 'day')}`, '', 'music')}
+      ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'), '', 'chart')}
+      ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
-  const mmax = Math.max(1, ...a.months);
-  const step = Math.max(1, Math.ceil(a.months.length / 4));
-  const mlabels = a.months.map((v, i) => { const d = new Date(a.monthsFrom); d.setMonth(d.getMonth() + i); return d; }).filter((d, i) => i % step === 0)
-    .map((d) => d.toLocaleDateString([], { month: 'short', year: '2-digit' }));
-  h += `<div class="viz"><h2>Plays per month</h2><span class="sub">Since you first played them</span>
-    <div class="cols"><span class="ymax">${num(mmax)}</span>${a.months.map((v, i) => `<div class="c" data-col="am" data-i="${i}"><i style="height:${(v / mmax) * 100}%"></i></div>`).join('')}</div>
-    <div class="xl">${mlabels.map((l) => `<span>${esc(l)}</span>`).join('')}</div><div class="readout" id="ro-am">Tap a month.</div></div>`;
-  const hmax = Math.max(1, ...a.hours);
-  let peak = 0;
-  a.hours.forEach((v, i) => { if (v > a.hours[peak]) peak = i; });
-  h += `<div class="viz"><h2>Time of day</h2><span class="sub">When you play them</span>
-    <div class="cols">${a.hours.map((v, i) => `<div class="c" data-col="ah" data-i="${i}"><i style="height:${(v / hmax) * 100}%"></i></div>`).join('')}</div>
-    <div class="xl"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-    <div class="readout" id="ro-ah">Mostly around <b>${pad(peak)}:00</b></div></div>`;
+  h += lifeCharts(a, 'them', pic, a.name + a.name);
   if (STATS && STATS.record && STATS.record.days) {
     const idx = STATS.record.artists.findIndex((n) => norm(n) === norm(a.name));
     if (idx >= 0) {
@@ -1735,6 +1944,8 @@ function renderArtist() {
     h += `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>`;
   }
   $('#artistBody').innerHTML = h;
+  tint($('#artistBody'), pic, a.name + a.name);
+  fitText($('#artistBody .fit'));
   drawRecords();
 }
 
@@ -1851,7 +2062,8 @@ function topViz(top) {
     const name = topKind === 'artists' ? x.name : x.title;
     const sub = topKind === 'artists' ? '' : x.artist;
     const open = topKind === 'tracks' ? trackAttrs(x.artist, x.title) : topKind === 'albums' ? `${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}"` : `data-artist="${esc(x.name)}"`;
-    return `<button class="r ${topKind === 'albums' ? 'with-cover' : ''}" ${open}>${topKind === 'albums' ? coverHtml(x.cover, x.title, x.artist, 'tiny') : `<span class="n">${i + 1}</span>`}<span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
+    const pic = topKind === 'albums' ? coverHtml(x.cover, x.title, x.artist, 'tiny') : topKind === 'artists' ? coverHtml(x.photo, x.name, x.name, 'tiny round') : `<span class="n">${i + 1}</span>`;
+    return `<button class="r ${topKind === 'tracks' ? '' : 'with-cover'}" ${open}>${pic}<span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
   }).join('');
   return `<div class="viz"><h2>Top 10</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
     `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${icon('check', 'i check')}${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
@@ -1874,10 +2086,10 @@ function renderStats() {
   }
   let h = storyCardHtml(s);
   h += `<div class="tiles">
-      ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k))}
-      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k))}
-      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k))}
-      ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k))}
+      ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k), 'music')}
+      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k), 'schedule')}
+      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k), 'heart')}
+      ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k), 'explore')}
     </div>`;
   h += tidyBanner(s.tidy);
   h += highlightsViz(s);
@@ -1929,6 +2141,13 @@ function onVizPointer(e, data) {
     d.setMonth(d.getMonth() + i);
     col.closest('.viz').querySelector('.readout').innerHTML = `${esc(d.toLocaleDateString([], { month: 'long', year: 'numeric' }))}: <b>${plural(data.months[i], 'play')}</b>`;
   } else if (col.dataset.col === 'ah') col.closest('.viz').querySelector('.readout').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
+  else if (col.dataset.col === 'aw') {
+    const g = +col.dataset.g || 1;
+    const from = data.weeksFrom + i * g * 7 * 864e5;
+    const n = (data.weeks || []).slice(i * g, i * g + g).reduce((a, b) => a + b, 0);
+    const day = (ms) => new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    col.closest('.viz').querySelector('.readout').innerHTML = `${g === 1 ? `Week of ${esc(day(from))}` : `${esc(day(from))} – ${esc(day(from + (g * 7 - 1) * 864e5))}`}: <b>${plural(n, 'play')}</b>`;
+  }
 }
 
 // ---------- the story: full-screen cards about a period ----------
@@ -2045,7 +2264,7 @@ function buildSlides(s) {
   }
   // Album, as a card that moves with the phone
   if (album) {
-    out.push({ cls: 'c1', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { key: 'story-album' })}</div>
+    out.push({ cls: 'c1', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { owned: album.owned, disc: false, key: 'story-album' })}</div>
       <div class="t m in" ${dly(0.25)}>${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
   }
   // Golden hour
@@ -2080,7 +2299,7 @@ function buildSlides(s) {
   const v = s.vinyl || {};
   if (v.count > 0) {
     const r0 = (v.top || [])[0];
-    out.push({ cls: 'c4', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { disc: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
+    out.push({ cls: 'c4', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { owned: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
       <div class="t m in" ${dly(0.2)}><span data-count="${v.count}">0</span> tracks on vinyl</div><p class="p in" ${dly(0.4)}>${pct(v.share)} of your listening${r0 ? `. Most spun: <b>${esc(r0.title)}</b>` : ''}.</p>` });
   }
   // Streak and the biggest day

@@ -51,6 +51,10 @@ class Stats(
         const val TAIL_PLAYS = 5
         const val PLAYLIST_SIZE = 40
 
+        /** Artist photos live in the image cache next to album covers, under this prefix and the artist's name. */
+        const val ARTIST_PHOTO = "@artist:"
+        fun photoKey(name: String) = ARTIST_PHOTO + Text.norm(name)
+
         /** Scrobbles carry no length; "hours" assume an average track. */
         const val MINUTES_PER_PLAY = 3.5
         private const val DAY_SEC = 86_400L
@@ -659,6 +663,32 @@ class Stats(
 
     private fun cover(al: Int) = ownedKeys[h.albumKeys[al]]?.let { it.cover.ifEmpty { it.thumb } } ?: albumImages[h.albumKeys[al]] ?: ""
 
+    /** The artist's photo (Deezer), "" until it was looked up or if there is none. */
+    fun artistPhoto(name: String) = albumImages[photoKey(name)].orEmpty()
+
+    /** Of [names], those whose photo hasn't been looked up yet. */
+    private fun withoutPhoto(names: List<String>) = names.filter { photoKey(it) !in albumImages }.distinct()
+
+    /** Top artists of a period without a photo yet, to look up. */
+    fun artistsNeedingPhotos(id: String, max: Int = 10): List<String> {
+        val r = range(id)
+        val ap = IntArray(h.artistNames.size)
+        for (i in h.lowerBound(r.from) until h.lowerBound(r.to)) ap[h.artist[i]]++
+        return withoutPhoto(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { h.artistNames[it] })
+    }
+
+    /** Monday-based week number of a time. */
+    private fun weekKey(t: Long) = Math.floorDiv(day(t) + 3, 7)
+    private fun weekStart(k: Long) = dayStart(k * 7 - 3) * 1000
+
+    /** Plays per week from the first week in [weeks] until this week. */
+    private fun weeksJson(o: JSONObject, weeks: Map<Long, Int>): JSONObject {
+        if (weeks.isEmpty()) return o
+        val w0 = weeks.keys.min()
+        val w1 = maxOf(w0, weekKey(nowSec))
+        return o.put("weeksFrom", weekStart(w0)).put("weeks", JSONArray((w0..w1).map { weeks[it] ?: 0 }))
+    }
+
     fun top(i0: Int, i1: Int, max: Int): JSONObject {
         val ap = IntArray(h.artistNames.size)
         val tp = IntArray(h.trackTitles.size)
@@ -669,7 +699,7 @@ class Stats(
             if (h.album[i] >= 0) lp[h.album[i]]++
         }
         return JSONObject()
-            .put("artists", JSONArray(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]) }))
+            .put("artists", JSONArray(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("photo", artistPhoto(h.artistNames[it])) }))
             .put("tracks", JSONArray(tp.indices.filter { tp[it] > 0 }.sortedByDescending { tp[it] }.take(max).map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]) }))
             .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
     }
@@ -796,7 +826,8 @@ class Stats(
 
     /** Everything about one artist, over the whole history; [r] adds their rank and plays in that period. */
     fun artist(name: String, r: Range): JSONObject? {
-        val a = artistIndex[Text.norm(name)] ?: return null
+        // "A & B" from a record counts for A, like the history does.
+        val a = artistIndex[Text.norm(name)] ?: artistIndex[Text.norm(Artists.main(name, artistIndex.keys))] ?: return null
         val i0 = h.lowerBound(r.from)
         val i1 = h.lowerBound(r.to)
         var plays = 0
@@ -807,6 +838,7 @@ class Stats(
         val tracks = HashMap<Int, Int>()
         val albums = HashMap<Int, Int>()
         val hours = IntArray(24)
+        val weeks = HashMap<Long, Int>()
         var days = 0
         var lastDay = Long.MIN_VALUE
         var run = 0
@@ -816,6 +848,7 @@ class Stats(
             if (i in i0 until i1) inRange[h.artist[i]]++
             if (h.artist[i] != a) continue
             plays++
+            weeks.merge(weekKey(h.ts[i]), 1, Int::plus)
             if (first < 0) first = i
             last = i
             val dt = date(h.ts[i])
@@ -843,8 +876,9 @@ class Stats(
         val key = Text.norm(name)
         val owned = collection.filter { Text.norm(it.artist) == key || Text.norm(it.artist).startsWith("$key ") }.distinctBy { it.releaseId }
         val rank = if (inRange[a] > 0) inRange.count { it > inRange[a] } + 1 else 0
-        return JSONObject()
-            .put("name", h.artistNames[a]).put("plays", plays).put("days", days)
+        return weeksJson(JSONObject(), weeks)
+            .put("name", h.artistNames[a]).put("plays", plays).put("days", days).put("photo", artistPhoto(h.artistNames[a]))
+            .put("cover", albums.entries.sortedByDescending { it.value }.map { cover(it.key) }.firstOrNull { it.isNotEmpty() } ?: "")
             .put("first", JSONObject().put("ts", h.ts[first] * 1000).put("track", h.trackTitles[h.track[first]]))
             .put("last", JSONObject().put("ts", h.ts[last] * 1000).put("track", h.trackTitles[h.track[last]]))
             .put("busiestMonth", JSONObject().put("start", monthStart(busiest.key)).put("count", busiest.value))
@@ -897,9 +931,11 @@ class Stats(
         var bestDayCount = 0
         val months = HashMap<Int, Int>()
         val hours = IntArray(24)
+        val weeks = HashMap<Long, Int>()
         for (i in 0 until h.size) {
             if (!match(i)) continue
             plays++
+            weeks.merge(weekKey(h.ts[i]), 1, Int::plus)
             if (first < 0) first = i
             last = i
             months.merge(monthKey(h.ts[i]), 1, Int::plus)
@@ -919,7 +955,7 @@ class Stats(
         val m0 = months.keys.minOrNull()!!
         val m1 = monthKey(nowSec)
         val busiest = months.maxByOrNull { it.value }!!
-        return JSONObject().put("plays", plays).put("days", days)
+        return weeksJson(JSONObject(), weeks).put("plays", plays).put("days", days)
             .put("first", h.ts[first] * 1000).put("last", h.ts[last] * 1000)
             .put("monthsFrom", monthStart(m0)).put("months", JSONArray((m0..maxOf(m0, m1)).map { months[it] ?: 0 }))
             .put("busiestMonth", JSONObject().put("start", monthStart(busiest.key)).put("count", busiest.value))
@@ -1100,7 +1136,7 @@ class Stats(
         val tops = topTracksOf(lostArtists + regulars + oneDayers, 1)
         fun topTrack(a: Int) = tops[a]?.firstOrNull()?.let { h.trackTitles[it] } ?: ""
         fun artistJson(a: Int) = JSONObject().put("name", h.artistNames[a]).put("plays", l.plays[a]).put("first", l.first[a] * 1000).put("last", l.last[a] * 1000)
-            .put("months", l.months[a]).put("days", l.days[a]).put("cover", artistPicture(a)).put("track", topTrack(a))
+            .put("months", l.months[a]).put("days", l.days[a]).put("cover", artistPicture(a)).put("photo", artistPhoto(h.artistNames[a])).put("track", topTrack(a))
             .put("peak", JSONObject().put("start", monthStart(l.peakMonth[a])).put("count", l.peakCount[a]))
         val albumLast = LongArray(h.albumTitles.size).also { la -> for (i in 0 until h.size) if (h.album[i] >= 0) la[h.album[i]] = h.ts[i] }
         // This day in earlier years.
@@ -1129,6 +1165,9 @@ class Stats(
             .put("deepCuts", JSONArray(deepCuts.map { trackJson(it) }))
             .put("onThisDay", onThisDay)
     }
+
+    /** Artists on the Explore page without a photo yet. */
+    fun exploreNeedingPhotos(): List<String> = withoutPhoto((lostArtists + regulars + oneDayers).map { h.artistNames[it] })
 
     /** Covers missing on the Explore page, to look up on Last.fm. */
     fun exploreNeedingImages(): List<Triple<String, String, String>> =
@@ -1239,7 +1278,7 @@ class Stats(
             .map { (k, v) -> JSONObject().put("title", v[0].album).put("artist", v[0].artist).put("plays", v.size).put("cover", ownedKeys[k]?.let { it.cover.ifEmpty { it.thumb } } ?: "") }
         return out
             .put("personality", personality(r, i0, i1))
-            .put("artists", JSONArray(topA.map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("share", ap[it].toDouble() / n).put("days", aDays[it]).put("cover", artistCover(it)) }))
+            .put("artists", JSONArray(topA.map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("share", ap[it].toDouble() / n).put("days", aDays[it]).put("cover", artistPhoto(h.artistNames[it]).ifEmpty { artistCover(it) }) }))
             .put("tracks", JSONArray(topT.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]) }))
             .put("songBestDay", if (songBest != null) JSONObject().put("day", dayStart(songBest.key) * 1000).put("count", songBest.value) else JSONObject.NULL)
             .put("albums", JSONArray(topL.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
