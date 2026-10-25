@@ -1,0 +1,5 @@
+{"topalbums":{"album":[
+  {"artist":{"url":"https://www.last.fm/music/Fleetwood+Mac","name":"Fleetwood Mac","mbid":""},"image":[],"mbid":"","url":"","playcount":"180","@attr":{"rank":"1"},"name":"Rumours"},
+  {"artist":{"url":"","name":"Fleetwood Mac","mbid":""},"image":[],"mbid":"","url":"","playcount":"34","@attr":{"rank":"2"},"name":"Rumours (Super Deluxe)"},
+  {"artist":{"url":"","name":"Simon & Garfunkel","mbid":""},"image":[],"mbid":"","url":"","playcount":"12","@attr":{"rank":"3"},"name":"Bridge over Troubled Water"}
+],"@attr":{"user":"vinylfan","totalPages":"3","page":"1","perPage":"1000","total":"2504"}}}

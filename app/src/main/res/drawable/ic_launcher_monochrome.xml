@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Record with a ring cut out around the label, for themed icons -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M24,54a30,30 0,1 0,60 0a30,30 0,1 0,-60 0z M41,54a13,13 0,1 0,26 0a13,13 0,1 0,-26 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M44,54a10,10 0,1 0,20 0a10,10 0,1 0,-20 0z M52.2,54a1.8,1.8 0,1 0,3.6 0a1.8,1.8 0,1 0,-3.6 0z" />
+</vector>

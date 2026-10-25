@@ -1,0 +1,5 @@
+{"scrobbles":{"scrobble":[
+  {"artist":{"corrected":"0","#text":"Fleetwood Mac"},"album":{"corrected":"0","#text":"Rumours"},"track":{"corrected":"0","#text":"Second Hand News"},"ignoredMessage":{"code":"0","#text":""},"albumArtist":{"corrected":"0","#text":""},"timestamp":"1700000000"},
+  {"artist":{"corrected":"0","#text":"Fleetwood Mac"},"album":{"corrected":"0","#text":"Rumours"},"track":{"corrected":"0","#text":"Dreams"},"ignoredMessage":{"code":"3","#text":"Timestamp failed filter"},"albumArtist":{"corrected":"0","#text":""},"timestamp":"1690000000"},
+  {"artist":{"corrected":"0","#text":"Motörhead"},"album":{"corrected":"0","#text":""},"track":{"corrected":"0","#text":"Ace of Spades"},"ignoredMessage":{"code":"0","#text":""},"albumArtist":{"corrected":"0","#text":""},"timestamp":"1700000300"}
+],"@attr":{"ignored":1,"accepted":2}}}

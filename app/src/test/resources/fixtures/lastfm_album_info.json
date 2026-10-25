@@ -1,0 +1,4 @@
+{"album":{"artist":"Rick Astley","mbid":"","tags":{"tag":[]},"name":"Never Gonna Give You Up",
+ "image":[{"size":"small","#text":"https://lastfm.freetls.fastly.net/i/u/34s/x.png"},{"size":"extralarge","#text":"https://lastfm.freetls.fastly.net/i/u/300x300/x.png"},{"size":"mega","#text":""}],
+ "tracks":{"track":{"streamable":{"fulltrack":"0","#text":"0"},"duration":213,"url":"https://www.last.fm/music/Rick+Astley/_/Never+Gonna+Give+You+Up","name":"Never Gonna Give You Up","@attr":{"rank":1},"artist":{"url":"https://www.last.fm/music/Rick+Astley","name":"Rick Astley","mbid":""}}},
+ "url":"https://www.last.fm/music/Rick+Astley/Never+Gonna+Give+You+Up","listeners":"12345","playcount":"67890","userplaycount":"42"}}

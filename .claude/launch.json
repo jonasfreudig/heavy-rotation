@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "record-shelf-ui",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8791", "--bind", "127.0.0.1", "--directory", "C:/Users/Freud/Desktop/coding/record-shelf/app/src/main/assets/ui"],
+      "port": 8791
+    }
+  ]
+}

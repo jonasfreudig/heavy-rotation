@@ -1,0 +1,27 @@
+{
+  "pagination": {"page": 1, "pages": 2, "per_page": 2, "items": 3, "urls": {"next": "https://api.discogs.com/users/vinylfan/collection/folders/0/releases?page=2&per_page=2"}},
+  "releases": [
+    {
+      "id": 526351, "instance_id": 900001, "date_added": "2024-06-22T08:43:47-07:00", "rating": 5, "folder_id": 1,
+      "basic_information": {
+        "id": 526351, "master_id": 46447, "title": "Rumours", "year": 1977,
+        "thumb": "https://i.discogs.com/thumb-rumours.jpeg", "cover_image": "https://i.discogs.com/cover-rumours.jpeg",
+        "formats": [{"name": "Vinyl", "qty": "1", "text": "Los Angeles Pressing", "descriptions": ["LP", "Album"]}],
+        "labels": [{"name": "Warner Bros. Records", "catno": "BSK 3010", "id": 1000}],
+        "artists": [{"name": "Fleetwood Mac", "anv": "", "join": "", "role": "", "id": 47333}],
+        "genres": ["Rock"], "styles": ["Pop Rock", "Soft Rock", "AOR"]
+      }
+    },
+    {
+      "id": 1234567, "instance_id": 900002, "date_added": "2023-01-02T10:00:00+01:00", "rating": 0, "folder_id": 1,
+      "basic_information": {
+        "id": 1234567, "master_id": 0, "title": "Bridge Over Troubled Water", "year": 1970,
+        "thumb": "", "cover_image": "",
+        "formats": [{"name": "Vinyl", "qty": "2", "descriptions": ["LP", "Album", "Reissue"]}],
+        "labels": [{"name": "Columbia (2)", "catno": "KCS 9914", "id": 1866}],
+        "artists": [{"name": "Simon (3)", "anv": "", "join": "&", "id": 1}, {"name": "Garfunkel", "anv": "", "join": "", "id": 2}],
+        "genres": ["Rock", "Folk, World, & Country"], "styles": ["Folk Rock"]
+      }
+    }
+  ]
+}

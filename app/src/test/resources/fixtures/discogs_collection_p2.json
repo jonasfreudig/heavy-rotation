@@ -1,0 +1,16 @@
+{
+  "pagination": {"page": 2, "pages": 2, "per_page": 2, "items": 3, "urls": {"prev": "https://api.discogs.com/users/vinylfan/collection/folders/0/releases?page=1&per_page=2"}},
+  "releases": [
+    {
+      "id": 526351, "instance_id": 900003, "date_added": "2024-07-01T12:00:00-07:00", "rating": 0, "folder_id": 1,
+      "basic_information": {
+        "id": 526351, "master_id": 46447, "title": "Rumours", "year": 1977,
+        "thumb": "https://i.discogs.com/thumb-rumours.jpeg", "cover_image": "https://i.discogs.com/cover-rumours.jpeg",
+        "formats": [{"name": "Vinyl", "qty": "1", "descriptions": ["LP", "Album"]}],
+        "labels": [{"name": "Warner Bros. Records", "catno": "BSK 3010"}],
+        "artists": [{"name": "Fleetwood Mac", "anv": "", "join": ""}],
+        "genres": ["Rock"], "styles": ["Pop Rock"]
+      }
+    }
+  ]
+}

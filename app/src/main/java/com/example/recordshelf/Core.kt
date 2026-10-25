@@ -1,0 +1,1039 @@
+package com.example.recordshelf
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import com.example.recordshelf.discogs.CollectionItem
+import com.example.recordshelf.discogs.DiscogsClient
+import com.example.recordshelf.discogs.DiscogsException
+import com.example.recordshelf.discogs.Release
+import com.example.recordshelf.history.Genres
+import com.example.recordshelf.history.History
+import com.example.recordshelf.history.HistorySync
+import com.example.recordshelf.history.Stats
+import com.example.recordshelf.lastfm.LastfmClient
+import com.example.recordshelf.lastfm.LastfmException
+import com.example.recordshelf.lastfm.Scrobble
+import com.example.recordshelf.mb.MusicBrainzClient
+import com.example.recordshelf.scrobble.ActivityLog
+import com.example.recordshelf.scrobble.Compare
+import com.example.recordshelf.scrobble.Durations
+import com.example.recordshelf.scrobble.FlushResult
+import com.example.recordshelf.scrobble.Listen
+import com.example.recordshelf.scrobble.PlanTrack
+import com.example.recordshelf.scrobble.Planner
+import com.example.recordshelf.scrobble.QueuedScrobble
+import com.example.recordshelf.scrobble.ScrobbleQueue
+import com.example.recordshelf.scrobble.Spin
+import com.example.recordshelf.scrobble.SpinItem
+import com.example.recordshelf.scrobble.When
+import com.example.recordshelf.util.JsonFile
+import com.example.recordshelf.util.Text
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.io.IOException
+import java.util.UUID
+import java.util.concurrent.Executors
+
+/**
+ * The app's state and work, independent of the screen: Discogs collection, release lookups,
+ * the record that is spinning, the scrobble queue and the Last.fm connection. The UI talks
+ * to it through [handle] and gets updates through [Ui.push]; alarms, notification buttons
+ * and the background flush job call in directly.
+ *
+ * Threads: collection syncs on one executor, release lookups on another, and everything
+ * that touches the spin session or the queue on a third, so those steps never interleave.
+ */
+@SuppressLint("StaticFieldLeak")
+object Core {
+    interface Ui {
+        fun push(fn: String, json: String)
+        fun openUrl(url: String)
+    }
+
+    private const val HOUR = 3_600_000L
+
+    private lateinit var ctx: Context
+    lateinit var prefs: Prefs
+        private set
+    private lateinit var files: File
+    private lateinit var queue: ScrobbleQueue
+    private lateinit var activity: ActivityLog
+    private val main = Handler(Looper.getMainLooper())
+    private val syncExec = Executors.newSingleThreadExecutor()
+    private val lookupExec = Executors.newSingleThreadExecutor()
+    private val scrobExec = Executors.newSingleThreadExecutor()
+
+    @Volatile
+    private var ready = false
+
+    @Volatile
+    private var ui: Ui? = null
+
+    @Volatile
+    private var collection: List<CollectionItem> = emptyList()
+
+    /** Last.fm all-time plays per album key ([Text.albumKey]), for the collection. */
+    @Volatile
+    private var plays: Map<String, Int> = emptyMap()
+
+    /** Times each release was scrobbled from this app. */
+    @Volatile
+    private var spinCounts: Map<String, Int> = emptyMap()
+
+    /** Only touched on [scrobExec]; [spinUi] is the copy other threads read. */
+    private var spin: Spin? = null
+
+    @Volatile
+    private var spinUi: String? = null
+
+    @Volatile private var syncing = false
+    @Volatile private var syncDone = 0
+    @Volatile private var syncPage = 0
+    @Volatile private var syncPages = 0
+    @Volatile private var syncError = ""
+    @Volatile private var lfBusy = false
+    @Volatile private var lfError = ""
+    @Volatile private var flushError = ""
+    @Volatile private var needsAuth = false
+    @Volatile private var comparing = false
+    @Volatile private var compareError = ""
+
+    /** The last shadow-mode comparison (see [compareInner]), as JSON. */
+    @Volatile private var compareJson: String? = null
+
+    // ---- history and stats ----
+    /** Network work for the history: import, sync, tags, covers. */
+    private val historyExec = Executors.newSingleThreadExecutor()
+
+    /** Computing stats, so a long import doesn't hold them up. */
+    private val statsExec = Executors.newSingleThreadExecutor()
+    private val db by lazy { HistoryDb(ctx) }
+
+    @Volatile private var history: History? = null
+
+    /** Built from [history] with the current collection, tags and covers; null when any of those changed. */
+    @Volatile private var stats: Stats? = null
+    @Volatile private var statsRange = "12m"
+    @Volatile private var histCount = -1
+    @Volatile private var importing = false
+    @Volatile private var cancelImport = false
+    @Volatile private var histSyncing = false
+    @Volatile private var histDone = 0
+    @Volatile private var histTotal = 0
+    @Volatile private var histError = ""
+    @Volatile private var tagsDone = 0
+    @Volatile private var tagsTotal = 0
+
+    private fun file(name: String) = JsonFile(File(files, name))
+    private val spinFile get() = file("spin.json")
+
+    fun ensure(context: Context) {
+        if (ready) return
+        synchronized(this) {
+            if (ready) return
+            ctx = context.applicationContext
+            prefs = Prefs(ctx)
+            files = ctx.filesDir
+            queue = ScrobbleQueue(file("queue.json"))
+            activity = ActivityLog(file("activity.json"))
+            collection = CollectionItem.listFromJson(file("collection.json").read())
+            plays = readCounts("plays.json")
+            spinCounts = readCounts("spins.json")
+            spin = spinFile.read()?.let {
+                try {
+                    Spin.fromJson(JSONObject(it))
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            spinUi = spin?.toUiJson()?.toString()
+            compareJson = file("compare.json").read()
+            Phone.refresh(ctx)
+            ready = true
+            historyExec.execute {
+                histCount = db.count()
+                pushState()
+            }
+        }
+    }
+
+    fun attachUi(u: Ui) {
+        ui = u
+    }
+
+    fun detachUi(u: Ui) {
+        if (ui === u) ui = null
+    }
+
+    /** The app came to the front: finish a pending Last.fm approval, catch up the spin, send what waits. */
+    fun onResume() {
+        Phone.refresh(ctx)
+        if (Phone.access && !Phone.connected && Phone.mode() != Phone.OFF) {
+            // Access is granted but the system hasn't (re)bound the listener: ask it to.
+            try {
+                android.service.notification.NotificationListenerService.requestRebind(PhoneListener.component(ctx))
+            } catch (_: Exception) {
+            }
+        }
+        pushState()
+        if (prefs.lastfmPendingToken.isNotEmpty()) checkLastfm(manual = false)
+        scrobExec.execute {
+            tickInner()
+            if (queue.size() > 0) flushInner()
+        }
+        if (prefs.lastfmSession.isNotEmpty() && collection.isNotEmpty() && System.currentTimeMillis() - prefs.playsUpdated > 12 * HOUR) {
+            syncExec.execute { refreshPlaysInner() }
+        }
+        // An import that was interrupted continues; a finished one picks up new scrobbles now and then.
+        if (prefs.historyCursor > 0 && !importing) historyExec.execute { importInner() }
+        else if (prefs.historyDone && System.currentTimeMillis() - prefs.historyLastSync > HOUR / 2) historyExec.execute { refreshHistoryInner() }
+    }
+
+    /** Messages from the page (see app.js). Main thread. */
+    fun handle(msg: JSONObject) {
+        when (msg.optString("t")) {
+            "hello" -> {
+                Phone.refresh(ctx)
+                pushAll()
+            }
+            "setPhoneMode" -> {
+                val mode = msg.optString("mode").takeIf { it in listOf(Phone.OFF, Phone.SHADOW, Phone.ON) } ?: return
+                if (mode == Phone.SHADOW && prefs.phoneMode != Phone.SHADOW) prefs.shadowSince = System.currentTimeMillis()
+                prefs.phoneMode = mode
+                PhoneListener.instance?.reset()
+                pushState()
+            }
+            "setPhoneApp" -> {
+                Phone.setEnabled(ctx, msg.optString("pkg"), msg.optBoolean("on"))
+                pushState()
+            }
+            "comparePano" -> syncExec.execute { compareInner() }
+            "historyImport" -> historyExec.execute { importInner() }
+            "historyCancel" -> cancelImport = true
+            "historyReset" -> historyExec.execute {
+                db.clear()
+                prefs.historyCursor = 0
+                prefs.historyDone = false
+                prefs.historyLastSync = 0
+                history = null
+                stats = null
+                histCount = 0
+                pushState()
+                push("onStats") { JSONObject().put("empty", true) }
+                importInner()
+            }
+            "stats" -> {
+                statsRange = msg.optString("range").ifEmpty { statsRange }
+                statsExec.execute { statsInner() }
+            }
+            "artist" -> {
+                val name = msg.optString("name")
+                val id = msg.optString("range").ifEmpty { statsRange }
+                statsExec.execute {
+                    val s = currentStats()
+                    val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
+                    push("onArtist") { j }
+                }
+            }
+            "review" -> {
+                val id = msg.optString("range")
+                statsExec.execute {
+                    val s = currentStats() ?: return@execute
+                    push("onReview") { s.review(s.range(id)) }
+                }
+            }
+            "saveLastfm" -> {
+                prefs.lastfmKey = msg.optString("key").trim()
+                prefs.lastfmSecret = msg.optString("secret").trim()
+                prefs.lastfmSession = ""
+                prefs.lastfmPendingToken = ""
+                lfError = ""
+                connectLastfm()
+            }
+            "lastfmConnect" -> connectLastfm()
+            "lastfmCheck" -> checkLastfm(manual = true)
+            "lastfmDisconnect" -> {
+                prefs.lastfmSession = ""
+                prefs.lastfmPendingToken = ""
+                prefs.lastfmUser = ""
+                needsAuth = false
+                lfError = ""
+                pushState()
+            }
+            "lastfmForget" -> {
+                prefs.lastfmKey = ""
+                prefs.lastfmSecret = ""
+                handle(JSONObject().put("t", "lastfmDisconnect"))
+            }
+            "saveDiscogs" -> connectDiscogs(msg.optString("token").trim())
+            "discogsDisconnect" -> syncExec.execute {
+                prefs.discogsToken = ""
+                prefs.discogsUser = ""
+                prefs.lastSync = 0
+                collection = emptyList()
+                file("collection.json").delete()
+                syncError = ""
+                pushState()
+                pushCollection()
+            }
+            "sync" -> sync()
+            "openRelease" -> openRelease(msg.optLong("id"), msg.optBoolean("refresh"))
+            "startSpin" -> {
+                val a = msg.optJSONArray("tracks") ?: JSONArray()
+                val idx = (0 until a.length()).map { a.optInt(it) }
+                val mode = when (msg.optString("when")) {
+                    "finished" -> When.FINISHED
+                    "at" -> When.AT
+                    else -> When.NOW
+                }
+                val id = msg.optLong("releaseId")
+                val at = msg.optLong("at")
+                scrobExec.execute { startSpinInner(id, idx, mode, at) }
+            }
+            "spinStop" -> scrobExec.execute { stopInner() }
+            "spinFlip" -> scrobExec.execute { flipInner() }
+            "spinResync" -> {
+                val i = msg.optInt("i", -1)
+                scrobExec.execute {
+                    spin?.resync(i, System.currentTimeMillis())
+                    tickInner()
+                }
+            }
+            "flush" -> scrobExec.execute {
+                val r = flushInner()
+                if (r != null && r.error == null && r.waiting == 0) toast("All scrobbles sent")
+            }
+            "setDefaultTrack" -> {
+                prefs.defaultTrackSec = msg.optInt("sec", 210).coerceIn(60, 900)
+                pushState()
+            }
+        }
+    }
+
+    // ---- entry points for alarms, notification buttons and the flush job ----
+
+    fun onSpinAction(context: Context, action: String, release: Long, side: String, done: () -> Unit) {
+        ensure(context)
+        scrobExec.execute {
+            try {
+                when (action) {
+                    SpinReceiver.STOP -> stopInner()
+                    SpinReceiver.FLIP -> flipInner()
+                    SpinReceiver.PLAY_SIDE -> playSideInner(release, side)
+                    else -> {
+                        tickInner()
+                        if (queue.size() > 0) flushInner()
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                done()
+            }
+        }
+    }
+
+    fun flushFromJob(context: Context, done: (retry: Boolean) -> Unit) {
+        ensure(context)
+        scrobExec.execute {
+            var retry = false
+            try {
+                retry = flushInner(fromJob = true)?.retry == true
+            } catch (_: Exception) {
+                retry = true
+            } finally {
+                done(retry)
+            }
+        }
+    }
+
+    // ---- Last.fm connection ----
+
+    private fun lastfm(): LastfmClient? =
+        if (prefs.lastfmKey.isNotEmpty() && prefs.lastfmSecret.isNotEmpty()) LastfmClient(prefs.lastfmKey, prefs.lastfmSecret) else null
+
+    private fun connectLastfm() = scrobExec.execute {
+        val c = lastfm()
+        if (c == null) {
+            lfError = "Enter your API key and shared secret first"
+            pushState()
+            return@execute
+        }
+        lfBusy = true
+        lfError = ""
+        pushState()
+        try {
+            val token = c.getToken()
+            prefs.lastfmPendingToken = token
+            val url = c.authUrl(token)
+            main.post { ui?.openUrl(url) }
+        } catch (e: LastfmException) {
+            lfError = if (e.badKey) "Last.fm doesn't accept this API key or secret. Check both." else (e.message ?: "Last.fm error ${e.code}")
+        } catch (_: IOException) {
+            lfError = "Can't reach Last.fm. Check your connection."
+        } finally {
+            lfBusy = false
+            pushState()
+        }
+    }
+
+    private fun checkLastfm(manual: Boolean) = scrobExec.execute {
+        val token = prefs.lastfmPendingToken
+        val c = lastfm()
+        if (token.isEmpty() || c == null) return@execute
+        try {
+            val (name, key) = c.getSession(token)
+            prefs.lastfmSession = key
+            prefs.lastfmUser = name
+            prefs.lastfmPendingToken = ""
+            lfError = ""
+            needsAuth = false
+            toast("Connected to Last.fm as $name")
+            pushState()
+            flushInner()
+            syncExec.execute { refreshPlaysInner() }
+        } catch (e: LastfmException) {
+            if (e.code == 14) {
+                if (manual) lfError = "Not allowed yet. On the Last.fm page, tap \"Yes, allow access\"."
+            } else {
+                prefs.lastfmPendingToken = ""
+                lfError = if (e.badKey) "Last.fm doesn't accept this API key or secret." else "That approval expired. Tap Connect to try again."
+            }
+        } catch (_: IOException) {
+            if (manual) lfError = "Can't reach Last.fm. Check your connection."
+        }
+        pushState()
+    }
+
+    // ---- Discogs collection ----
+
+    private fun discogs() = DiscogsClient(prefs.discogsToken.ifEmpty { null })
+
+    private fun connectDiscogs(token: String) {
+        if (token.isEmpty()) {
+            syncError = "Paste your Discogs token first"
+            pushState()
+            return
+        }
+        syncExec.execute {
+            syncing = true
+            syncError = ""
+            syncDone = 0
+            syncPage = 0
+            syncPages = 0
+            pushState()
+            try {
+                val user = DiscogsClient(token).identity()
+                prefs.discogsToken = token
+                prefs.discogsUser = user
+                toast("Connected to Discogs as $user")
+                syncInner()
+            } catch (e: DiscogsException) {
+                syncError = if (e.status == 401 || e.status == 403) "Discogs didn't accept this token. Copy it again from your Discogs developer settings." else (e.message ?: "Discogs error")
+            } catch (_: IOException) {
+                syncError = "Can't reach Discogs. Check your connection."
+            } finally {
+                syncing = false
+                pushState()
+            }
+        }
+    }
+
+    private fun sync() = syncExec.execute {
+        if (prefs.discogsToken.isEmpty() || prefs.discogsUser.isEmpty()) return@execute
+        syncing = true
+        syncError = ""
+        syncDone = 0
+        syncPage = 0
+        syncPages = 0
+        pushState()
+        try {
+            syncInner()
+        } catch (e: DiscogsException) {
+            syncError = e.message ?: "Discogs error"
+        } catch (_: IOException) {
+            syncError = "Can't reach Discogs. Check your connection."
+        } finally {
+            syncing = false
+            pushState()
+        }
+    }
+
+    private fun syncInner() {
+        val list = discogs().collection(prefs.discogsUser) { n, page, pages ->
+            syncDone = n
+            syncPage = page
+            syncPages = pages
+            pushState()
+        }
+        collection = list
+        stats = null
+        file("collection.json").write(CollectionItem.listToJson(list).toString())
+        prefs.lastSync = System.currentTimeMillis()
+        pushCollection()
+        refreshPlaysInner()
+    }
+
+    /** Play counts for the collection from the user's Last.fm top albums (all sources, all time). */
+    private fun refreshPlaysInner() {
+        val c = lastfm() ?: return
+        val user = prefs.lastfmUser.ifEmpty { return }
+        val want = collection.map { Text.albumKey(it.artist, it.title) }.toHashSet()
+        if (want.isEmpty()) return
+        val map = HashMap<String, Int>()
+        var complete = false
+        try {
+            var page = 1
+            var pages: Int
+            do {
+                val (list, n) = c.topAlbums(user, page)
+                pages = n
+                for (a in list) {
+                    val k = Text.albumKey(a.artist, a.album)
+                    if (k in want) map[k] = (map[k] ?: 0) + a.playcount
+                }
+                page++
+            } while (page <= pages && page <= 40)
+            complete = true
+        } catch (_: Exception) {
+            if (map.isEmpty()) return
+        }
+        plays = if (complete) map else plays + map
+        writeCounts("plays.json", plays)
+        prefs.playsUpdated = System.currentTimeMillis()
+        pushCollection()
+    }
+
+    // ---- releases and track lengths ----
+
+    private fun releaseFile(id: Long) = file("releases/$id.json")
+
+    private fun loadRelease(id: Long): Release? = releaseFile(id).read()?.let {
+        try {
+            Release.fromJson(JSONObject(it))
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun openRelease(id: Long, refresh: Boolean) = lookupExec.execute {
+        val cached = loadRelease(id)
+        if (cached != null && !refresh) {
+            push("onRelease") { releaseUi(cached) }
+            return@execute
+        }
+        if (cached == null) push("onRelease") { JSONObject().put("id", id).put("loading", true) }
+        try {
+            val r = resolveRelease(id)
+            releaseFile(id).write(r.toJson().toString())
+            push("onRelease") { releaseUi(r) }
+            if (refresh) toast("Tracklist updated")
+        } catch (e: IOException) {
+            val text = if (e is DiscogsException) (e.message ?: "Discogs error") else "Can't reach Discogs. Check your connection."
+            if (cached != null) {
+                push("onRelease") { releaseUi(cached) }
+                toast(text)
+            } else {
+                push("onRelease") { JSONObject().put("id", id).put("error", text) }
+            }
+        }
+    }
+
+    /** The release from Discogs, with missing track lengths looked up on MusicBrainz and Last.fm. */
+    private fun resolveRelease(id: Long): Release {
+        val r = discogs().release(id)
+        var tracks = r.tracks
+        if (Durations.missing(tracks) > 0) {
+            val mb = MusicBrainzClient()
+            try {
+                mb.releaseForDiscogs(id)?.let { tracks = Durations.fill(tracks, mb.tracks(it), "musicbrainz") }
+            } catch (_: IOException) {
+            }
+            if (Durations.missing(tracks) > 0) lastfm()?.let { c ->
+                try {
+                    c.albumInfo(r.artist, r.title)?.let { tracks = Durations.fill(tracks, it.tracks, "lastfm") }
+                } catch (_: Exception) {
+                }
+            }
+            if (Durations.missing(tracks) > 0) {
+                try {
+                    for (mbid in mb.search(r.artist, r.title).take(2)) {
+                        if (Durations.missing(tracks) == 0) break
+                        tracks = Durations.fill(tracks, mb.tracks(mbid), "musicbrainz")
+                    }
+                } catch (_: IOException) {
+                }
+            }
+        }
+        return r.copy(tracks = tracks)
+    }
+
+    private fun releaseUi(r: Release): JSONObject =
+        r.toJson().put("plays", plays[Text.albumKey(r.artist, r.title)] ?: 0).put("spins", spinCounts[r.id.toString()] ?: 0)
+
+    // ---- the record on the turntable (all on scrobExec) ----
+
+    private fun planTracks(rel: Release, idx: List<Int>): List<PlanTrack> = idx.filter { it in rel.tracks.indices }.map { i ->
+        val t = rel.tracks[i]
+        val est = t.durSec <= 0
+        PlanTrack(t.artist, t.title, rel.title, rel.artist, if (est) prefs.defaultTrackSec else t.durSec, i + 1, t.pos, t.side, est)
+    }
+
+    private fun startSpinInner(releaseId: Long, idx: List<Int>, mode: When, at: Long) {
+        val rel = loadRelease(releaseId)
+        if (rel == null) {
+            toast("Open the record again; its tracklist isn't loaded")
+            return
+        }
+        val tracks = planTracks(rel, idx)
+        if (tracks.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val starts = Planner.starts(tracks, mode, at, now)
+        val s = Spin(
+            "$releaseId-$now", releaseId, rel.title, rel.artist, rel.thumb.ifEmpty { rel.cover }, rel.sides,
+            tracks.zip(starts).map { (t, st) -> SpinItem(t, st) }.toMutableList(),
+        )
+        spinCounts = spinCounts + (releaseId.toString() to (spinCounts[releaseId.toString()] ?: 0) + 1)
+        writeCounts("spins.json", spinCounts)
+        if (s.items.all { now >= it.endMs }) {
+            // Played in the past: scrobble it all now and leave the record that is spinning alone.
+            enqueue(s, s.takeDue(now))
+            flushInner()
+            pushState()
+            pushActivity()
+        } else {
+            spin?.let { old -> enqueue(old, old.stop(now)) }
+            spin = s
+            tickInner()
+        }
+        pushCollection()
+    }
+
+    private fun playSideInner(releaseId: Long, side: String) {
+        val rel = loadRelease(releaseId) ?: return
+        startSpinInner(releaseId, rel.tracks.indices.filter { rel.tracks[it].side == side }, When.NOW, 0)
+    }
+
+    private fun flipInner() {
+        val s = spin ?: return
+        val side = s.nextSide() ?: return
+        val rel = loadRelease(s.releaseId) ?: return
+        val now = System.currentTimeMillis()
+        enqueue(s, s.flip(planTracks(rel, rel.tracks.indices.filter { rel.tracks[it].side == side }), now))
+        tickInner()
+    }
+
+    private fun stopInner() {
+        val s = spin ?: return
+        enqueue(s, s.stop(System.currentTimeMillis()))
+        endSpin()
+        SpinNotifier.cancel(ctx)
+        flushInner()
+        pushState()
+        pushActivity()
+    }
+
+    private fun endSpin() {
+        spin = null
+        spinUi = null
+        spinFile.delete()
+        SpinReceiver.schedule(ctx, null)
+    }
+
+    /** Brings the spin up to date with the clock: queues what counts, updates now playing, plans the next wake-up. */
+    private fun tickInner() {
+        val s = spin
+        if (s == null) {
+            SpinReceiver.schedule(ctx, null)
+            pushState()
+            return
+        }
+        val now = System.currentTimeMillis()
+        val due = s.takeDue(now)
+        enqueue(s, due)
+        val cur = s.currentIndex(now)
+        if (cur >= 0 && cur != s.nowPlaying) {
+            s.nowPlaying = cur
+            sendNowPlaying(s.items[cur], now)
+        }
+        if (s.isOver(now)) {
+            endSpin()
+            SpinNotifier.finished(ctx, s)
+        } else {
+            spinFile.write(s.toJson().toString())
+            spinUi = s.toUiJson().toString()
+            SpinReceiver.schedule(ctx, s.nextEventMs(now))
+            SpinNotifier.show(ctx, s, now)
+        }
+        if (due.isNotEmpty()) flushInner()
+        pushState()
+        if (due.isNotEmpty()) pushActivity()
+    }
+
+    private fun sendNowPlaying(item: SpinItem, now: Long) {
+        val c = lastfm() ?: return
+        val sk = prefs.lastfmSession.ifEmpty { return }
+        if (item.endMs - now < 15_000) return
+        try {
+            c.updateNowPlaying(sk, item.track.toScrobble(item.startMs))
+        } catch (_: Exception) {
+            // Now playing is best effort; the scrobble itself goes through the queue.
+        }
+    }
+
+    private fun enqueue(s: Spin, due: List<SpinItem>) {
+        if (due.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val added = queue.add(due.map { QueuedScrobble(UUID.randomUUID().toString(), it.track.toScrobble(it.startMs), "vinyl", now) })
+        added.forEach { activity.add(it, s.cover, "waiting") }
+        activity.save()
+    }
+
+    /** Sends the queue. Without a Last.fm session the scrobbles simply wait. */
+    private fun flushInner(fromJob: Boolean = false): FlushResult? {
+        if (queue.size() == 0) {
+            flushError = ""
+            return null
+        }
+        val c = lastfm()
+        val sk = prefs.lastfmSession
+        if (c == null || sk.isEmpty()) {
+            flushError = "Connect Last.fm to send these"
+            pushState()
+            return null
+        }
+        val r = queue.flush({ batch -> c.scrobble(sk, batch) }) { q, status, m -> activity.update(q.id, status, m) }
+        activity.save()
+        flushError = r.error.orEmpty()
+        if (r.needsAuth) {
+            needsAuth = true
+            prefs.lastfmSession = ""
+        }
+        if (r.retry && !fromJob) FlushJob.schedule(ctx)
+        pushState()
+        pushActivity()
+        return r
+    }
+
+    // ---- phone scrobbling (called on the main thread by PhoneListener) ----
+
+    /** A listen on the phone counts. In shadow mode it is only logged, to compare with Pano Scrobbler. */
+    fun phoneScrobble(pkg: String, s: Scrobble) {
+        val mode = Phone.mode()
+        if (mode == Phone.OFF || !Phone.enabled(pkg)) return
+        val app = Phone.label(ctx, pkg)
+        scrobExec.execute {
+            val q = QueuedScrobble(UUID.randomUUID().toString(), s, "phone", System.currentTimeMillis())
+            if (mode == Phone.SHADOW) {
+                activity.add(q, "", "shadow", "", app)
+                activity.save()
+                pushActivity()
+            } else {
+                queue.add(listOf(q)).forEach { activity.add(it, "", "waiting", "", app) }
+                activity.save()
+                flushInner()
+            }
+        }
+    }
+
+    fun phoneNowPlaying(pkg: String, s: Scrobble) {
+        if (Phone.mode() != Phone.ON || !Phone.enabled(pkg)) return
+        scrobExec.execute {
+            val c = lastfm() ?: return@execute
+            val sk = prefs.lastfmSession.ifEmpty { return@execute }
+            try {
+                c.updateNowPlaying(sk, s)
+            } catch (_: Exception) {
+                // Best effort, like for records.
+            }
+        }
+    }
+
+    /**
+     * Shadow mode against reality: what this app logged since shadow mode began (at most a
+     * week back) next to what reached Last.fm in that time, minus the records scrobbled here.
+     */
+    private fun compareInner() {
+        val c = lastfm()
+        val user = prefs.lastfmUser
+        if (c == null || user.isEmpty()) {
+            compareError = "Connect Last.fm first: the comparison reads your scrobbles from there."
+            pushState()
+            return
+        }
+        comparing = true
+        compareError = ""
+        pushState()
+        try {
+            val now = System.currentTimeMillis()
+            val from = maxOf(prefs.shadowSince, now - 7 * 24 * HOUR) / 1000
+            val to = (now - 10 * 60_000) / 1000
+            val ours = activity.listens { it.optString("src") == "phone" && it.optString("status") == "shadow" && it.optLong("ts") in from..to }
+            val vinyl = activity.listens { it.optString("src") == "vinyl" }
+            val theirs = ArrayList<Listen>()
+            if (to > from) {
+                var page = 1
+                var pages: Int
+                do {
+                    val r = c.recentTracks(user, from, to, page)
+                    pages = r.pages
+                    theirs += r.tracks.map { Listen(it.artist, it.title, it.ts, it.album) }
+                    page++
+                } while (page <= pages && page <= 15)
+            }
+            val notVinyl = theirs.filter { t -> vinyl.none { it.key == t.key && kotlin.math.abs(it.ts - t.ts) <= 120 } }
+            val r = Compare.run(ours, notVinyl)
+            val out = r.toJson().put("from", from).put("to", to).put("at", now)
+            compareJson = out.toString()
+            file("compare.json").write(out.toString())
+            push("onCompare") { out }
+        } catch (e: LastfmException) {
+            compareError = e.message ?: "Last.fm error ${e.code}"
+        } catch (_: IOException) {
+            compareError = "Can't reach Last.fm. Check your connection."
+        } finally {
+            comparing = false
+            pushState()
+        }
+    }
+
+    // ---- Last.fm history and stats ----
+
+    private fun historySync(c: LastfmClient, user: String) = HistorySync({ from, to -> c.recentTracks(user, from, to, 1) }, db)
+
+    /** Imports the whole history (or continues an interrupted import), then catches up and builds the stats. On [historyExec]. */
+    private fun importInner() {
+        val c = lastfm()
+        val user = prefs.lastfmUser
+        if (c == null || user.isEmpty()) {
+            histError = "Connect Last.fm first"
+            pushState()
+            return
+        }
+        if (importing) return
+        importing = true
+        cancelImport = false
+        histError = ""
+        val base = db.count()
+        histDone = base
+        histTotal = 0
+        pushState()
+        var guarded = false
+        try {
+            val cursor = prefs.historyCursor.takeIf { it > 0 } ?: (System.currentTimeMillis() / 1000 + 60)
+            historySync(c, user).walk(0, cursor, { cancelImport }) { p ->
+                prefs.historyCursor = p.next
+                if (p.next == 0L) prefs.historyDone = true
+                histDone = base + p.fetched
+                histTotal = base + maxOf(p.total, p.fetched)
+                // Only a long import needs the foreground service (and its notification).
+                if (!guarded && p.next != 0L && p.total > 2000) {
+                    guarded = true
+                    ImportService.start(ctx)
+                }
+                if (guarded) ImportService.progress(ctx, histDone, histTotal)
+                pushState()
+            }
+            if (prefs.historyDone) {
+                importing = false
+                refreshHistoryInner(force = true)
+            }
+        } catch (e: LastfmException) {
+            histError = if (e.retryable) "Last.fm is busy. The import continues where it stopped next time you open the app." else (e.message ?: "Last.fm error ${e.code}")
+        } catch (_: IOException) {
+            histError = "Lost the connection to Last.fm. The import continues where it stopped next time you open the app."
+        } finally {
+            importing = false
+            if (guarded) ImportService.stop(ctx)
+            histCount = db.count()
+            pushState()
+        }
+    }
+
+    fun isImporting() = importing
+
+    /** Fetches scrobbles newer than the newest one stored, then rebuilds the stats. On [historyExec]. */
+    private fun refreshHistoryInner(force: Boolean = false) {
+        val c = lastfm()
+        val user = prefs.lastfmUser
+        if (c == null || user.isEmpty() || !prefs.historyDone) return
+        histSyncing = true
+        pushState()
+        var added = 0
+        try {
+            val newest = db.newest()
+            if (newest > 0) added = historySync(c, user).walk(newest, System.currentTimeMillis() / 1000 + 60)
+            prefs.historyLastSync = System.currentTimeMillis()
+            histError = ""
+        } catch (_: Exception) {
+            // Stats work from what is stored; the next visit tries again.
+        } finally {
+            histSyncing = false
+            histCount = db.count()
+            pushState()
+        }
+        if (added > 0 || force || history == null) {
+            history = History.from(db)
+            stats = null
+            statsExec.execute { statsInner() }
+            fetchTagsInner(c)
+        }
+    }
+
+    /** The stats for the current history, built on first use. */
+    private fun currentStats(): Stats? {
+        stats?.let { return it }
+        val h = history ?: if (db.count() > 0) History.from(db).also { history = it } else return null
+        val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images())
+            .also { stats = it }
+    }
+
+    /** Computes and pushes the stats for [statsRange]. On [statsExec]. */
+    private fun statsInner() {
+        if (ui == null) return
+        val s = currentStats()
+        if (s == null) {
+            push("onStats") { JSONObject().put("empty", true) }
+            return
+        }
+        val id = statsRange
+        push("onStats") { s.compute(s.range(id)) }
+        val missing = s.wishlistNeedingImages(id)
+        if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
+    }
+
+    /** Last.fm tags for the most played artists Discogs can't give genres for. On [historyExec]. */
+    private fun fetchTagsInner(c: LastfmClient) {
+        val s = currentStats() ?: return
+        val need = s.artistsNeedingTags(db.tags().keys)
+        if (need.isEmpty()) return
+        tagsTotal = need.size
+        tagsDone = 0
+        pushState()
+        try {
+            for (a in need) {
+                db.saveTags(Genres.artistKey(a), Genres.fromTags(c.artistTopTags(a), a))
+                tagsDone++
+                if (tagsDone % 10 == 0) pushState()
+                Thread.sleep(220)
+            }
+        } catch (_: Exception) {
+            // Network trouble: the rest is fetched next time.
+        } finally {
+            tagsTotal = 0
+            stats = null
+            pushState()
+            statsExec.execute { statsInner() }
+        }
+    }
+
+    /** Cover images for wishlist albums (from Last.fm's album info). On [historyExec]. */
+    private fun fetchImagesInner(missing: List<Triple<String, String, String>>) {
+        val c = lastfm() ?: return
+        val tried = db.images().keys
+        var any = false
+        for ((artist, album, key) in missing) {
+            if (key in tried) continue
+            try {
+                db.saveImage(key, c.albumInfo(artist, album)?.image.orEmpty())
+                any = true
+                Thread.sleep(220)
+            } catch (_: Exception) {
+                break
+            }
+        }
+        if (any) {
+            stats = null
+            statsExec.execute { statsInner() }
+        }
+    }
+
+    // ---- pushing to the page ----
+
+    private inline fun push(fn: String, build: () -> Any) {
+        if (ui == null) return
+        val s = build().toString()
+        main.post { ui?.push(fn, s) }
+    }
+
+    fun pushAll() {
+        pushState()
+        pushCollection()
+        pushActivity()
+        compareJson?.let { c -> push("onCompare") { c } }
+    }
+
+    fun pushState() = push("onState") { stateJson() }
+
+    private fun pushCollection() = push("onCollection") {
+        val sp = spinCounts
+        val pl = plays
+        JSONArray().also { a ->
+            collection.forEach { c ->
+                a.put(c.toJson().put("plays", pl[Text.albumKey(c.artist, c.title)] ?: 0).put("spins", sp[c.releaseId.toString()] ?: 0))
+            }
+        }
+    }
+
+    private fun pushActivity() = push("onActivity") { activity.toJson() }
+
+    fun toast(msg: String) = push("onToast") { JSONObject.quote(msg) }
+
+    private fun hint(key: String) = if (key.length > 4) "…" + key.takeLast(4) else ""
+
+    private fun stateJson(): JSONObject = JSONObject()
+        .put(
+            "lastfm",
+            JSONObject()
+                .put("hasKey", prefs.lastfmKey.isNotEmpty() && prefs.lastfmSecret.isNotEmpty())
+                .put("keyHint", hint(prefs.lastfmKey))
+                .put("connected", prefs.lastfmSession.isNotEmpty())
+                .put("user", prefs.lastfmUser)
+                .put("waiting", prefs.lastfmPendingToken.isNotEmpty())
+                .put("busy", lfBusy)
+                .put("error", lfError)
+                .put("needsAuth", needsAuth),
+        )
+        .put(
+            "discogs",
+            JSONObject()
+                .put("connected", prefs.discogsToken.isNotEmpty() && prefs.discogsUser.isNotEmpty())
+                .put("user", prefs.discogsUser)
+                .put("syncing", syncing)
+                .put("done", syncDone)
+                .put("page", syncPage)
+                .put("pages", syncPages)
+                .put("lastSync", prefs.lastSync)
+                .put("count", collection.size)
+                .put("error", syncError),
+        )
+        .put("prefs", JSONObject().put("theme", prefs.theme).put("defaultTrackSec", prefs.defaultTrackSec))
+        .put("queue", JSONObject().put("waiting", queue.size()).put("oldest", queue.oldestTimestamp()).put("error", flushError))
+        .put("spin", spinUi?.let { JSONObject(it) } ?: JSONObject.NULL)
+        .put("phone", Phone.stateJson().put("comparing", comparing).put("compareError", compareError))
+        .put(
+            "history",
+            JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
+                .put("importing", importing).put("syncing", histSyncing).put("fetched", histDone).put("total", histTotal)
+                .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal),
+        )
+        .put("version", BuildConfig.VERSION_NAME)
+
+    // ---- small persisted maps ----
+
+    private fun readCounts(name: String): Map<String, Int> = try {
+        val o = JSONObject(file(name).read() ?: "{}")
+        o.keys().asSequence().associateWith { o.optInt(it) }
+    } catch (_: Exception) {
+        emptyMap()
+    }
+
+    private fun writeCounts(name: String, m: Map<String, Int>) {
+        val o = JSONObject()
+        m.forEach { (k, v) -> o.put(k, v) }
+        file(name).write(o.toString())
+    }
+}
