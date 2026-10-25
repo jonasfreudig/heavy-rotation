@@ -2,12 +2,13 @@ package com.example.recordshelf
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.recordshelf.tidal.TidalStore
 
 /**
  * Settings, plus the user's keys and tokens in a separate file ("secrets") that is kept out
  * of Android backups (see res/xml/backup_rules.xml).
  */
-class Prefs(ctx: Context) {
+class Prefs(ctx: Context) : TidalStore {
     private val app: SharedPreferences = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
     private val sec: SharedPreferences = ctx.getSharedPreferences("secrets", Context.MODE_PRIVATE)
 
@@ -88,4 +89,34 @@ class Prefs(ctx: Context) {
     var discogsToken: String
         get() = s(sec, "discogsToken")
         set(v) = put(sec, "discogsToken", v)
+
+    // TIDAL: the user's own app (client id and secret) and their login.
+    override var tidalClientId: String
+        get() = s(sec, "tidalClientId")
+        set(v) = put(sec, "tidalClientId", v)
+
+    override var tidalSecret: String
+        get() = s(sec, "tidalSecret")
+        set(v) = put(sec, "tidalSecret", v)
+
+    override var tidalAccess: String
+        get() = s(sec, "tidalAccess")
+        set(v) = put(sec, "tidalAccess", v)
+
+    override var tidalAccessExp: Long
+        get() = sec.getLong("tidalAccessExp", 0)
+        set(v) = sec.edit().putLong("tidalAccessExp", v).apply()
+
+    override var tidalRefresh: String
+        get() = s(sec, "tidalRefresh")
+        set(v) = put(sec, "tidalRefresh", v)
+
+    /** PKCE verifier and state while the user is signing in to TIDAL in the browser. */
+    override var tidalVerifier: String
+        get() = s(sec, "tidalVerifier")
+        set(v) = put(sec, "tidalVerifier", v)
+
+    override var tidalState: String
+        get() = s(sec, "tidalState")
+        set(v) = put(sec, "tidalState", v)
 }

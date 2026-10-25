@@ -254,6 +254,34 @@
       <p class="hint">Each button searches the service for that song, album or artist. Spotify opens in its app; the others open their web page, which their app may take over.</p>
     </div>
 
+    <div class="section-head" id="tdSection"><h2>TIDAL</h2><span class="sub">exact links and playlists</span></div>
+    <div class="card">
+      <div class="status-line" id="tdStatus"></div>
+      <div id="tdSetup">
+        <ol class="steps">
+          <li>Open the TIDAL developer dashboard and log in with your TIDAL account. Accept the guidelines the first time.
+            <button class="btn text small link" data-url="https://developer.tidal.com/dashboard"><svg class="i"><use href="#i-open"/></svg>Open the TIDAL dashboard</button></li>
+          <li>Create an app; any name will do, for example "Record Shelf".</li>
+          <li>In the app's settings, add this <b>redirect URI</b> and switch on the scope <b>playlists.write</b>:
+            <span class="code-row"><code id="tdRedirect">recordshelf://tidal</code><button class="btn text small" id="tdCopy"><svg class="i"><use href="#i-copy"/></svg>Copy</button></span></li>
+          <li>Copy the app's <b>Client ID</b> and <b>Client Secret</b> into these fields.</li>
+        </ol>
+        <label class="field"><span>Client ID</span><input type="text" id="tdId" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span>Client Secret</span><input type="password" id="tdSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <button class="btn filled wide" id="tdSave">Save</button>
+      </div>
+      <div id="tdConnected" hidden>
+        <p class="body">The TIDAL buttons now open the exact song, album or artist. To create playlists in your TIDAL, sign in once.</p>
+        <div class="btn-row">
+          <button class="btn filled" id="tdLogin">Sign in to TIDAL</button>
+          <button class="btn outlined" id="tdSignOut">Sign out</button>
+          <button class="btn text" id="tdChange">Use another app</button>
+          <button class="btn text" id="tdForget">Disconnect</button>
+        </div>
+      </div>
+      <p class="error" id="tdError" hidden></p>
+    </div>
+
     <div class="section-head"><h2>Look</h2></div>
     <div class="card">
       <div class="row-label"><span>Theme</span></div>

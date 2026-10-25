@@ -30,6 +30,9 @@ import com.example.recordshelf.scrobble.ScrobbleQueue
 import com.example.recordshelf.scrobble.Spin
 import com.example.recordshelf.scrobble.SpinItem
 import com.example.recordshelf.scrobble.When
+import com.example.recordshelf.tidal.Tidal
+import com.example.recordshelf.tidal.TidalClient
+import com.example.recordshelf.tidal.TidalException
 import com.example.recordshelf.util.JsonFile
 import com.example.recordshelf.util.Text
 import org.json.JSONArray
@@ -135,6 +138,12 @@ object Core {
 
     /** What the user keeps out of the stats; loaded on first use. */
     @Volatile private var hiddenCache: Hidden? = null
+
+    // ---- TIDAL: exact links and playlists with the user's own TIDAL app ----
+    private val tidalExec = Executors.newSingleThreadExecutor()
+    private val tidal by lazy { Tidal(prefs, file("tidal_links.json"), { java.util.Locale.getDefault().country.ifEmpty { "US" } }) }
+    @Volatile private var tidalBusy = false
+    @Volatile private var tidalError = ""
 
     /** The tidy-up lists for [tidyFor] (see [tidy]). */
     @Volatile private var tidyJson: JSONObject? = null
@@ -325,6 +334,75 @@ object Core {
             }
             "lastfmConnect" -> connectLastfm()
             "lastfmCheck" -> checkLastfm(manual = true)
+            "saveTidal" -> {
+                prefs.tidalClientId = msg.optString("clientId").trim()
+                prefs.tidalSecret = msg.optString("secret").trim()
+                tidal.signOut()
+                tidalError = ""
+                tidalBusy = true
+                pushState()
+                tidalExec.execute {
+                    try {
+                        tidal.checkApp()
+                        toast("TIDAL app connected")
+                    } catch (e: TidalException) {
+                        tidalError = if (e.badClient || e.code == 401) "TIDAL doesn't accept this client ID and secret. Check both." else e.message ?: "TIDAL error ${e.code}"
+                    } catch (_: IOException) {
+                        tidalError = "Can't reach TIDAL. Check your connection."
+                    } finally {
+                        tidalBusy = false
+                        pushState()
+                    }
+                }
+            }
+            "tidalLogin" -> if (tidal.hasApp) {
+                tidalError = ""
+                val url = tidal.startLogin()
+                main.post { ui?.openUrl(url) }
+            }
+            "tidalRedirect" -> tidalExec.execute {
+                tidalBusy = true
+                pushState()
+                try {
+                    tidal.finishLogin(msg.optString("uri"))
+                    tidalError = ""
+                    toast("Signed in to TIDAL")
+                } catch (e: TidalException) {
+                    tidalError = "TIDAL sign-in didn't work: ${e.message}"
+                } catch (_: IOException) {
+                    tidalError = "Can't reach TIDAL. Check your connection and sign in again."
+                } finally {
+                    tidalBusy = false
+                    pushState()
+                }
+            }
+            "tidalSignOut" -> {
+                tidal.signOut()
+                pushState()
+            }
+            "tidalForget" -> {
+                tidal.forget()
+                tidalError = ""
+                pushState()
+            }
+            "tidalOpen" -> tidalExec.execute {
+                // The exact song, album or artist; TIDAL's search when there's no clear match.
+                val hit = try {
+                    tidal.find(msg.optString("kind"), msg.optString("artist"), msg.optString("title"))
+                } catch (_: Exception) {
+                    null
+                }
+                if (hit == null) toast("No exact match on TIDAL, so here's a search")
+                val url = hit?.link ?: msg.optString("fallback")
+                main.post { ui?.openUrl(url) }
+            }
+            "tidalPlaylist" -> {
+                val arr = msg.optJSONArray("tracks") ?: return
+                val tracks = (0 until arr.length()).map { arr.getJSONObject(it) }.map { it.optString("artist") to it.optString("title") }
+                val name = msg.optString("name")
+                val note = msg.optString("note")
+                tidalExec.execute { tidalPlaylistInner(name, note, tracks) }
+            }
             "lastfmDisconnect" -> {
                 prefs.lastfmSession = ""
                 prefs.lastfmPendingToken = ""
@@ -975,6 +1053,25 @@ object Core {
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
     }
 
+    /** Finds the songs on TIDAL and makes the playlist there, telling the page how far it got. On [tidalExec]. */
+    private fun tidalPlaylistInner(name: String, note: String, tracks: List<Pair<String, String>>) {
+        fun job(state: String) = JSONObject().put("state", state).put("total", tracks.size).put("name", name)
+        push("onTidalJob") { job("finding").put("done", 0).put("found", 0) }
+        try {
+            val r = tidal.createPlaylist(name, note, tracks) { done, found -> push("onTidalJob") { job("finding").put("done", done).put("found", found) } }
+            push("onTidalJob") {
+                job("done").put("link", r.link).put("added", r.added)
+                    .put("missing", JSONArray(r.missing.map { JSONObject().put("artist", it.first).put("title", it.second) }))
+            }
+        } catch (e: TidalException) {
+            if (e.authFailed) tidal.signOut()
+            push("onTidalJob") { job("error").put("needsLogin", e.authFailed).put("msg", if (e.authFailed) "TIDAL asks you to sign in again." else e.message ?: "TIDAL error ${e.code}") }
+            pushState()
+        } catch (_: IOException) {
+            push("onTidalJob") { job("error").put("msg", "Lost the connection to TIDAL. Try again.") }
+        }
+    }
+
     // ---- hiding scrobbles from the stats ----
 
     private fun hidden(): Hidden = hiddenCache ?: Hidden.fromJson(file(HIDDEN_FILE).read()).also { hiddenCache = it }
@@ -1159,6 +1256,11 @@ object Core {
             JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
                 .put("importing", importing).put("syncing", histSyncing).put("fetched", histDone).put("total", histTotal)
                 .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal),
+        )
+        .put(
+            "tidal",
+            JSONObject().put("hasApp", tidal.hasApp).put("loggedIn", tidal.loggedIn).put("busy", tidalBusy).put("error", tidalError)
+                .put("clientHint", hint(prefs.tidalClientId)).put("redirect", TidalClient.REDIRECT),
         )
         .put("version", BuildConfig.VERSION_NAME)
 

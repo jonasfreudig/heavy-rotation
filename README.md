@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.7 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.8 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -80,7 +80,36 @@ track started. Playing a track again from the start, including on repeat, is a n
 whose length the app doesn't report need 4 minutes. In On mode "now playing" goes to Last.fm too,
 and scrobbles use the same offline queue as records.
 
-### 6. Stats
+### 6. TIDAL (optional: exact links and playlists)
+
+Without this, the TIDAL buttons open TIDAL's search. With your own (free) TIDAL developer app,
+they open the exact song, album or artist, and playlists from the Explore tab go straight into
+your TIDAL.
+
+1. Open the TIDAL developer dashboard, <https://developer.tidal.com/dashboard>, and log in with
+   your TIDAL account. The first time, accept TIDAL's developer guidelines.
+2. Create an app. Any name will do, for example "Record Shelf".
+3. In the app's settings:
+   - add the **redirect URI** `recordshelf://tidal` (exactly like that; Settings → TIDAL has a
+     Copy button), and
+   - switch on the scope **playlists.write** (nothing else is needed).
+4. Copy the app's **Client ID** and **Client Secret** into Record Shelf: gear → **TIDAL** →
+   **Save**. The status turns to "Exact links are on".
+5. Tap **Sign in to TIDAL**. TIDAL's login page opens in the browser; approve, and the browser
+   hands you back to Record Shelf ("Signed in to TIDAL").
+
+Then a playlist page has **Create in TIDAL**: Record Shelf finds each song in TIDAL's catalog,
+creates an unlisted playlist in your library and adds them; songs TIDAL doesn't have are listed.
+Found songs are remembered on the phone, so the next time is quicker.
+
+The client secret and the TIDAL login stay in the app's private storage, left out of backups
+like the Last.fm keys. **Disconnect** forgets them; playlists already made stay in TIDAL.
+
+If the dashboard doesn't accept `recordshelf://tidal` as a redirect URI, the sign-in can't come
+back to the app; exact links still work without signing in, and playlists still go through
+**Copy list** and TuneMyMusic.
+
+### 7. Stats
 
 Open the **Stats** tab and tap **Import history**. The app copies all your scrobbles from Last.fm to
 the phone (200 per request). A long history takes a few minutes the first time, roughly one minute
@@ -264,6 +293,7 @@ already playing).
 | `history/HistorySync.kt` | Resumable import of user.getRecentTracks with a time cursor |
 | `history/History.kt`, `history/Stats.kt` | The history in memory; every figure on the Stats and Explore tabs, song and album pages, playlists |
 | `history/Genres.kt` | Genres from Discogs styles and cleaned Last.fm tags |
+| `tidal/` | TIDAL API: app and user tokens (PKCE), catalog search and matching, playlists; the cache of found songs |
 | `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |
 | `HistoryDb.kt` | SQLite store for the history, genre tags and cover URLs |
 | `Core.kt` | App state and work: sync, lookups, the spinning record, sending |

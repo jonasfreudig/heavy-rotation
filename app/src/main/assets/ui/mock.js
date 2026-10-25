@@ -98,7 +98,8 @@ const Mock = (() => {
       ],
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
-    version: '0.7 (browser preview)',
+    tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
+    version: '0.8 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -867,6 +868,27 @@ const Mock = (() => {
         case 'discogsDisconnect':
           Object.assign(S.discogs, { connected: false, user: '', lastSync: 0, count: 0 }); coll = []; pushState(); pushColl();
           break;
+        case 'saveTidal':
+          Object.assign(S.tidal, { busy: true, error: '' }); pushState();
+          later(500, () => { Object.assign(S.tidal, { busy: false, hasApp: true, clientHint: '…' + m.clientId.slice(-4) }); pushState(); toast('TIDAL app connected'); });
+          break;
+        case 'tidalLogin': later(700, () => { S.tidal.loggedIn = true; pushState(); toast('Signed in to TIDAL'); }); break;
+        case 'tidalSignOut': S.tidal.loggedIn = false; pushState(); break;
+        case 'tidalForget': Object.assign(S.tidal, { hasApp: false, loggedIn: false, clientHint: '' }); pushState(); break;
+        case 'tidalOpen': toast(`Would open the exact ${m.kind.replace(/s$/, '')} in TIDAL: ${m.artist}${m.title ? ' – ' + m.title : ''}`); break;
+        case 'tidalPlaylist': {
+          const n = m.tracks.length;
+          let done = 0;
+          const tick = () => {
+            done = Math.min(n, done + 3);
+            const found = done - (done > 10 ? 1 : 0) - (done > 25 ? 1 : 0);
+            if (done < n) { onTidalJob({ state: 'finding', done, total: n, found, name: m.name }); later(120, tick); return; }
+            const missing = m.tracks.filter((t, i) => i === 10 || i === 25).map((t) => ({ artist: t.artist, title: t.title }));
+            onTidalJob({ state: 'done', total: n, added: n - missing.length, missing, name: m.name, link: 'https://tidal.com/browse/playlist/demo' });
+          };
+          later(200, tick);
+          break;
+        }
         case 'saveLastfm':
           Object.assign(S.lastfm, { hasKey: true, keyHint: '…' + m.key.slice(-4), connected: false, busy: true, error: '' }); pushState();
           later(700, () => { Object.assign(S.lastfm, { busy: false, waiting: true }); pushState(); toast('(preview) The Last.fm approval page would open now'); });

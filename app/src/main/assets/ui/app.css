@@ -721,3 +721,13 @@ input[type=datetime-local] { color-scheme: inherit; }
 .pl-head p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; line-height: 18px; }
 #playlistBody > .btn-row { margin: 0 0 12px; }
 .card.how .steps { margin-top: 8px; }
+
+/* TIDAL: setup and playlists */
+.code-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.code-row code { font: 500 13px/20px ui-monospace, monospace; padding: 4px 10px; border-radius: 8px; background: var(--md-surface-container-highest); color: var(--md-on-surface); }
+#playlistBody .tidal-go { margin: 0 0 12px; }
+.card.tidal-job .lin { margin-top: 12px; }
+.card.tidal-job .lin i { transition: width .3s; }
+.card.tidal-job.ok { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.card.tidal-job.ok .hint { color: inherit; opacity: .8; }
+.card.tidal-job .missing { margin-top: 4px; }

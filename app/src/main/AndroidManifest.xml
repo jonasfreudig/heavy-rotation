@@ -49,6 +49,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- TIDAL's login comes back here (the redirect URI registered on the TIDAL dashboard). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="recordshelf" android:host="tidal" />
+            </intent-filter>
         </activity>
 
         <receiver

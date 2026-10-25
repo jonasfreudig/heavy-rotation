@@ -105,6 +105,12 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     }
 
     private fun handleIntent(i: Intent?) {
+        // Back from TIDAL's login page (recordshelf://tidal?code=…).
+        val data = i?.data
+        if (data != null && data.scheme == "recordshelf" && data.host == "tidal") {
+            i.data = null
+            Core.handle(JSONObject().put("t", "tidalRedirect").put("uri", data.toString()))
+        }
         if (i?.getBooleanExtra(EXTRA_OPEN_SPIN, false) == true) {
             i.removeExtra(EXTRA_OPEN_SPIN)
             if (pageReady) push("onOpenSpin", "true") else openSpinWhenReady = true

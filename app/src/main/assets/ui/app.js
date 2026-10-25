@@ -15,6 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const Native = window.ShelfNative;
 const send = (msg) => (Native ? Native.send(JSON.stringify(msg)) : Mock.handle(msg));
 
+let showTidalForm = false;
 let ST = { lastfm: {}, discogs: {}, prefs: { theme: 'system', defaultTrackSec: 210 }, queue: {}, spin: null, version: '' };
 let COLL = [];
 let ACT = [];
@@ -308,6 +309,7 @@ function renderState() {
   renderPhoneCard();
   renderStatsHead();
   if (isOpen('settingsPage')) renderSettings();
+  if (isOpen('playlistPage') && $('#plTidalBlock') && !(TIDALJOB && TIDALJOB.state === 'finding')) $('#plTidalBlock').innerHTML = tidalBlock();
   if (isOpen('comparePage')) renderCompare();
   if (isOpen('spinPage')) renderSpin();
   if (isOpen('recordPage')) renderRecordSpinNote();
@@ -462,7 +464,7 @@ function renderRecord() {
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
       <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')} on Last.fm${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
-      ${listenRow(`${artist} ${title}`)}
+      ${listenRow('albums', artist, title)}
     </div>
     <div class="record-actions"><button class="btn filled big" id="scrobbleBtn" ${rel && rel.tracks.length ? '' : 'disabled'}>${icon('play')}Scrobble</button></div>
     <div id="recordSpinNote"></div>`;
@@ -1380,16 +1382,20 @@ function services() {
 function setServices(list) {
   try { localStorage.setItem('services', JSON.stringify(list)); } catch (_) { /* preview without storage */ }
 }
-/** "Listen on" chips; [q] is what each service searches for. */
-function listenRow(q) {
+/** "Listen on" chips for a song ("tracks"), an album ("albums") or an artist ("artists"). */
+function listenRow(kind, artist, title = '') {
   const sv = services();
   if (!sv.length) return '';
-  return `<div class="listen">${sv.map((k) => `<button class="chip link" data-listen="${k}" data-q="${esc(q)}">${icon('play')}${esc(SERVICES[k].name)}</button>`).join('')}</div>`;
+  const q = title ? `${artist} ${title}` : artist;
+  return `<div class="listen">${sv.map((k) => `<button class="chip link" data-listen="${k}" data-q="${esc(q)}" data-kind="${kind}" data-a="${esc(artist)}" data-ti="${esc(title)}">${icon('play')}${esc(SERVICES[k].name)}</button>`).join('')}</div>`;
 }
-function openListen(k, q) {
+function openListen(el) {
+  const k = el.dataset.listen, q = el.dataset.q;
   const s = SERVICES[k];
   if (!s) return;
-  if (Native && s.app) send({ t: 'openApp', uri: s.app(q), url: s.web(q) });
+  // With the user's TIDAL app set up, the exact song, album or artist; otherwise a search.
+  if (k === 'tidal' && (ST.tidal || {}).hasApp) send({ t: 'tidalOpen', kind: el.dataset.kind, artist: el.dataset.a, title: el.dataset.ti, fallback: s.web(q) });
+  else if (Native && s.app) send({ t: 'openApp', uri: s.app(q), url: s.web(q) });
   else openUrl(s.web(q));
 }
 
@@ -1444,7 +1450,7 @@ function renderTrack() {
   let h = `<div class="hero">${holoCover(cover, albumTitle || t.title, t.artist, { key: `track|${t.artist}|${t.title}|${cover || ''}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
-    ${listenRow(`${t.artist} ${t.title}`)}</div>`;
+    ${listenRow('tracks', t.artist, t.title)}</div>`;
   if (t.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (t.missing) h += `<div class="empty"><p>${esc(missingNote())}</p></div>`;
   else {
@@ -1489,7 +1495,7 @@ function renderAlbum() {
   let h = `<div class="hero">${holoCover(cover, a.title, a.artist, { key: `album|${a.artist}|${a.title}|${cover || ''}` })}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
-    ${listenRow(`${a.artist} ${a.title}`)}
+    ${listenRow('albums', a.artist, a.title)}
     ${info.owned ? `<div class="stats"><button class="chip link" data-rec="${info.owned}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
   if (a.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (a.missing) h += `<div class="empty"><p>${esc(missingNote())}</p></div>`;
@@ -1580,8 +1586,10 @@ function renderExplore() {
 // ---- playlists ----
 
 let PLAYLIST = null;
+let TIDALJOB = null;
 function openPlaylist(kind, range) {
   PLAYLIST = { loading: true, kind };
+  TIDALJOB = null;
   openPage('playlistPage');
   renderPlaylist();
   send({ t: 'playlist', kind, range: range || statsRange });
@@ -1592,6 +1600,34 @@ window.onPlaylist = (p) => {
   renderPlaylist();
 };
 const playlistText = (p) => p.tracks.map((t) => `${t.artist} - ${t.title}`).join('\n');
+
+/** Creating the playlist in TIDAL: the button, its progress, or what came of it. */
+function tidalBlock() {
+  const td = ST.tidal || {};
+  const j = TIDALJOB;
+  if (j && j.state === 'finding') {
+    return `<div class="card tidal-job"><div class="card-title">${icon('playlist')}Finding the songs on TIDAL…</div>
+      <div class="lin inline"><i style="width:${(j.done / Math.max(1, j.total)) * 100}%"></i></div>
+      <p class="hint">${j.done} of ${j.total} looked up, ${j.found} found</p></div>`;
+  }
+  if (j && j.state === 'done') {
+    const miss = j.missing || [];
+    return `<div class="card tidal-job ok"><div class="card-title">${icon('done-all')}In your TIDAL now</div>
+      <p class="body">"${esc(j.name)}": ${j.added} of ${plural(j.total, 'song')}.${miss.length ? ` TIDAL doesn't have ${miss.length === 1 ? 'one of them' : `${miss.length} of them`}:` : ''}</p>
+      ${miss.length ? `<p class="hint missing">${miss.map((m) => `${esc(m.artist)} - ${esc(m.title)}`).join('<br>')}</p>` : ''}
+      <div class="btn-row"><button class="btn filled" data-url="${esc(j.link)}">${icon('open')}Open in TIDAL</button></div></div>`;
+  }
+  let h = '';
+  if (j && j.state === 'error') h = `<p class="error">${esc(j.msg)}</p>`;
+  if (td.loggedIn) return `${h}<button class="btn filled wide tidal-go" id="plTidal">${icon('playlist')}Create in TIDAL</button>`;
+  if (td.hasApp) return `${h}<button class="btn tonal wide tidal-go" id="plTidalLogin">${icon('open')}Sign in to TIDAL to create it there</button>`;
+  return `<button class="btn tonal wide tidal-go" data-go="tdSection">${icon('playlist')}Connect TIDAL to create it there</button>`;
+}
+window.onTidalJob = (j) => {
+  TIDALJOB = j;
+  const el = $('#plTidalBlock');
+  if (el && isOpen('playlistPage')) el.innerHTML = tidalBlock();
+};
 
 function renderPlaylist() {
   const p = PLAYLIST;
@@ -1605,8 +1641,9 @@ function renderPlaylist() {
       <button class="btn tonal" id="plShare">${icon('share')}Share</button>
       ${p.kind === 'dig' ? `<button class="btn text" data-pl="dig">${icon('shuffle')}Dig again</button>` : ''}
     </div>
+    <div id="plTidalBlock">${tidalBlock()}</div>
     <div class="card how">
-      <div class="card-title">${icon('open')}Into TIDAL (or Spotify)</div>
+      <div class="card-title">${icon('open')}${(ST.tidal || {}).loggedIn ? 'Or with TuneMyMusic or Soundiiz (also for Spotify)' : 'Into TIDAL (or Spotify)'}</div>
       <ol class="steps">
         <li>Tap <b>Copy list</b>: one song per line, "Artist - Title".</li>
         <li>Open TuneMyMusic or Soundiiz, pick importing from text, and paste.</li>
@@ -1615,6 +1652,14 @@ function renderPlaylist() {
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
     <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? ` · ${esc(t.album)}` : ''}</small></span><span class="v">${t.plays}×</span></button>`).join('')}</div>`;
+  $('#plTidalBlock').onclick = (e) => {
+    if (e.target.closest('#plTidalLogin')) send({ t: 'tidalLogin' });
+    if (e.target.closest('#plTidal')) {
+      TIDALJOB = { state: 'finding', done: 0, total: p.tracks.length, found: 0, name: p.name };
+      $('#plTidalBlock').innerHTML = tidalBlock();
+      send({ t: 'tidalPlaylist', name: p.name, note: `${p.note}. Made with Record Shelf.`, tracks: p.tracks.map((t) => ({ artist: t.artist, title: t.title })) });
+    }
+  };
   $('#plCopy').onclick = () => {
     const text = playlistText(p);
     if (Native) send({ t: 'copyText', text, label: p.name });
@@ -1644,14 +1689,14 @@ function renderArtist() {
   const a = ARTIST;
   if (!a || a.loading || !isOpen('artistPage')) return;
   if (a.missing) {
-    $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow(a.name)}</div><div class="empty"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>`;
+    $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow('artists', a.name)}</div><div class="empty"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>`;
     return;
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
   let h = `<div class="hero"><h1>${esc(a.name)}</h1>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<span class="chip static">${esc(g)}</span>`).join('')}</div>` : ''}
     <div class="meta">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</div>
-    ${listenRow(a.name)}</div>
+    ${listenRow('artists', a.name)}</div>
     <div class="tiles">
       ${tile('Plays', num(a.plays), `on ${plural(a.days, 'day')}`)}
       ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays')}
@@ -2070,9 +2115,28 @@ function renderServices() {
   $('#svcChips').innerHTML = Object.entries(SERVICES).map(([k, s]) => `<button class="chip ${on.includes(k) ? 'on' : ''}" data-svc="${k}">${on.includes(k) ? icon('check', 'i small') : ''}${esc(s.name)}</button>`).join('');
 }
 
+function renderTidalSettings() {
+  const t = ST.tidal || {};
+  let st;
+  if (t.busy) st = statusLine('busy', 'Talking to TIDAL…', '');
+  else if (t.loggedIn) st = statusLine('ok', 'Connected and signed in', 'Exact links, and playlists straight into TIDAL');
+  else if (t.hasApp) st = statusLine('ok', 'Exact links are on', `Client ID ${esc(t.clientHint || '')} · sign in to make playlists`);
+  else st = statusLine('', 'Not set up', 'The TIDAL buttons open a search instead');
+  $('#tdStatus').innerHTML = st;
+  $('#tdSetup').hidden = !!t.hasApp && !showTidalForm;
+  $('#tdConnected').hidden = !t.hasApp || showTidalForm;
+  $('#tdLogin').hidden = !!t.loggedIn;
+  $('#tdSignOut').hidden = !t.loggedIn;
+  $('#tdSave').disabled = !!t.busy;
+  $('#tdRedirect').textContent = t.redirect || 'recordshelf://tidal';
+  $('#tdError').hidden = !t.error;
+  $('#tdError').textContent = t.error || '';
+}
+
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
   renderServices();
+  renderTidalSettings();
   const td = (STATS && STATS.tidy) || {};
   const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
   $('#tidyStatus').textContent = td.hiddenPlays ? `${plural(td.hiddenPlays, 'play')} hidden from your stats. ${more}`
@@ -2135,7 +2199,7 @@ function build() {
     const hide = e.target.closest('[data-hide],[data-unhide],[data-keep]');
     if (hide) { tidyAction(hide); return; }
     const ls = e.target.closest('[data-listen]');
-    if (ls) { openListen(ls.dataset.listen, ls.dataset.q); return; }
+    if (ls) { openListen(ls); return; }
     const pl = e.target.closest('[data-pl]');
     if (pl) { openPlaylist(pl.dataset.pl); return; }
     const tr = e.target.closest('[data-track]');
@@ -2323,6 +2387,22 @@ function build() {
     confirmSheet(`Playing “${it.title}” now?`, 'The tracks after it move to follow on from now. Earlier tracks that haven\'t counted yet are scrobbled as played.', 'Yes, it\'s playing', () => send({ t: 'spinResync', i: +tr.dataset.i }));
   };
 
+  $('#tdSave').onclick = () => {
+    const clientId = $('#tdId').value.trim(), secret = $('#tdSecret').value.trim();
+    if (!clientId || !secret) { toast('Copy both the Client ID and the Client Secret from your app on the TIDAL dashboard.'); return; }
+    showTidalForm = false;
+    send({ t: 'saveTidal', clientId, secret });
+    $('#tdSecret').value = '';
+  };
+  $('#tdLogin').onclick = () => send({ t: 'tidalLogin' });
+  $('#tdSignOut').onclick = () => send({ t: 'tidalSignOut' });
+  $('#tdChange').onclick = () => { showTidalForm = true; renderTidalSettings(); };
+  $('#tdForget').onclick = () => confirmSheet('Disconnect TIDAL?', 'Record Shelf forgets your TIDAL app and login. Playlists already in TIDAL stay there.', 'Disconnect', () => send({ t: 'tidalForget' }));
+  $('#tdCopy').onclick = () => {
+    const text = (ST.tidal || {}).redirect || 'recordshelf://tidal';
+    if (Native) send({ t: 'copyText', text, label: 'Redirect URI' });
+    else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Copied'), () => toast(text));
+  };
   $('#lfSave').onclick = () => {
     const key = $('#lfKey').value.trim(), secret = $('#lfSecret').value.trim();
     if (!/^[0-9a-f]{32}$/i.test(key) || !/^[0-9a-f]{32}$/i.test(secret)) {
