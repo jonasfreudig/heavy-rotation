@@ -991,9 +991,9 @@ function periodId(kind, ms) {
 
 function requestStats(id) {
   if (id) statsRange = id;
-  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre }); return; }
+  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade }); return; }
   $('#statsBody').classList.add('stale');
-  send({ t: 'stats', range: statsRange, genre: statsGenre });
+  send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade });
 }
 
 /** Above the stats: importing, or how fresh the history is. */
@@ -1054,7 +1054,7 @@ function storyCardHtml(s) {
   const al = (s.top.albums || []).find((x) => x.cover) || {};
   return `<button class="story-card" data-story="${esc(s.range.id)}">
     <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${esc(al.cover)}')` : ''}"></i></div>
-    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre ? ` in ${esc(genreLabel(s.genre))}` : ''}</div>
+    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</div>
     <h2>${esc(name)}, on record</h2>
     <p>Your top artist, ${ofThe(s.range.kind, 'song')}, listening personality and more.</p>
     <span class="go">${icon('play')}Play the story</span></button>`;
@@ -1803,13 +1803,52 @@ function shelfSummaryHtml(list) {
 // ---- the Stats tab for one genre ----
 
 let statsGenre = '';
+let statsDecade = 0;
+/** "in Post Punk", "from the 1970s", "in Post Punk from the 1970s", or "" without filters. */
+const filterWords = (genre, decade) => [genre ? `in ${genreLabel(genre)}` : '', decade ? `from the ${decade}s` : ''].filter(Boolean).join(' ');
 const genreLabel = (key) => ((STATS && STATS.genreOptions) || []).find((o) => o.key === key)?.label || key.replace(/\b\w/g, (c) => c.toUpperCase());
 function renderGenreRow() {
   const row = $('#genreRow');
   if (!row) return;
-  row.innerHTML = statsGenre
-    ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button><span class="hint inline">Only this genre's plays</span>`
+  const g = statsGenre
+    ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>`
     : `<button class="chip" data-gpick>${icon('album', 'i small')}All genres${icon('down', 'i small')}</button>`;
+  const d = statsDecade
+    ? `<button class="chip on" data-dclear>${icon('calendar', 'i small')}${statsDecade}s${icon('close', 'i small')}</button>`
+    : `<button class="chip" data-dpick>${icon('calendar', 'i small')}All decades${icon('down', 'i small')}</button>`;
+  row.innerHTML = g + d;
+}
+
+/** The sheet to pick a decade of release, with how many plays each has and how much of the history has a known year. */
+function openDecadeSheet() {
+  const o = (STATS && STATS.decadeOptions) || { decades: [], known: 0, total: 0 };
+  const h = ST.history || {};
+  const share = o.total ? Math.round((o.known / o.total) * 100) : 0;
+  const busy = h.yearsBusy ? ` Looking up more: ${h.yearsDone} of ${plural(h.yearsTotal, 'artist')}.` : '';
+  openSheet(`<div class="sheet-title">Stats for one decade</div>
+    <p class="body">Everything on the Stats tab and in the story, for the music that came out in that decade. Release years are known for ${share}% of your plays (songs without an album have none).${busy}</p>
+    <div class="chips">${o.decades.map((d) => `<button class="chip" data-dset="${d.decade}">${d.decade}s<small class="n">${compact(d.plays)}</small></button>`).join('') || '<p class="hint">Release years are still being looked up.</p>'}</div>`);
+  $('#sheetContent').onclick = (e) => {
+    const b = e.target.closest('[data-dset]');
+    if (!b) return;
+    closeSheet();
+    setStatsDecade(+b.dataset.dset);
+  };
+}
+function setStatsDecade(d) {
+  statsDecade = d;
+  renderGenreRow();
+  requestStats();
+}
+
+/** Plays of the period by the decade the music came out, as bars; tap a decade to see only its plays. */
+function decadesViz(x) {
+  const ds = (x && x.decades) || [];
+  if (ds.length < 2 && !statsDecade) return '';
+  const max = Math.max(1, ...ds.map((d) => d.plays));
+  const share = x.total ? Math.round((x.known / x.total) * 100) : 0;
+  return `<div class="viz"><h2>Decades</h2><span class="sub">When the music you played came out (${share}% of plays have a known year). Tap one for its stats.</span>
+    <div class="decades">${ds.map((d) => `<button class="dec${statsDecade === d.decade ? ' on' : ''}" data-setdecade="${d.decade}"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></button>`).join('')}</div></div>`;
 }
 function openGenreSheet() {
   const opts = (STATS && STATS.genreOptions) || [];
@@ -2301,7 +2340,7 @@ function renderStats() {
   h += highlightsViz(s);
   if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: periodName(s.range) };
   h += recordViz(s.record, 'stats', 'Your record') + timelineViz(s.timeline) + riverViz(s.river) + clockViz(s.clock, 'stats')
-    + streakViz(s.streaks, s) + pulseViz(s.pulse) + newArtistsViz(s.newArtists) + genreViz(s.genres) + obsessionsViz(s.obsessions, s.loops)
+    + streakViz(s.streaks, s) + pulseViz(s.pulse) + newArtistsViz(s.newArtists) + genreViz(s.genres) + decadesViz(s.decades) + obsessionsViz(s.obsessions, s.loops)
     + rarelyViz(s.rarely) + wishlistViz(s.wishlist) + topViz(s.top);
   body.innerHTML = h;
   drawRecords();
@@ -2641,6 +2680,10 @@ function build() {
     if (sg) { statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
     if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
     if (e.target.closest('[data-gclear]')) { setStatsGenre(''); return; }
+    if (e.target.closest('[data-dpick]')) { openDecadeSheet(); return; }
+    if (e.target.closest('[data-dclear]')) { setStatsDecade(0); return; }
+    const sd = e.target.closest('[data-setdecade]');
+    if (sd) { setStatsDecade(+sd.dataset.setdecade === statsDecade ? 0 : +sd.dataset.setdecade); return; }
     const canvas = e.target.closest('canvas[data-record]');
     if (canvas) { onRecordTap(canvas, e); return; }
     const ar = e.target.closest('[data-artist]');

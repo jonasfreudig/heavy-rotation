@@ -32,6 +32,8 @@ class Stats(
     private val genres: Genres = Genres(emptyList(), emptyMap()),
     private val vinyl: List<Listen> = emptyList(),
     private val albumImages: Map<String, String> = emptyMap(),
+    /** Release years looked up per album key (0: not found); see [Years]. */
+    private val albumYears: Map<String, Int> = emptyMap(),
 ) {
     companion object {
         const val TOP_GENRES = 6
@@ -208,6 +210,7 @@ class Stats(
             .put("pulse", pulse(r, i0, i1))
             .put("newArtists", newArtists(r, i0, i1))
             .put("genres", genreDrift(r, i0, i1))
+            .put("decades", decades(i0, i1))
             .put("obsessions", obsessions(i0, i1))
             .put("loops", loops(i0, i1))
             .put("rarely", rarelyPlayed(i0, i1))
@@ -412,6 +415,54 @@ class Stats(
             totals.indices.filter { totals[it] > 0 }.sortedByDescending { totals[it] }.take(max)
                 .map { JSONObject().put("key", genreKeys[it]).put("label", Genres.label(genreKeys[it])).put("plays", totals[it]) },
         )
+    }
+
+    // ---- decades: when the music you played came out ----
+
+    /** Release year per album (0: unknown): Deezer's earliest edition or the record on your shelf, whichever is earlier. */
+    private val albumYear: IntArray by lazy {
+        IntArray(h.albumTitles.size) { al -> Years.earliest(albumYears[h.albumKeys[al]] ?: 0, ownedKeys[h.albumKeys[al]]?.year ?: 0) }
+    }
+
+    private fun yearOf(i: Int) = h.album[i].let { if (it < 0) 0 else albumYear[it] }
+
+    /** Plays per decade of release between [i0] and [i1], and how many of them have a known year. */
+    fun decades(i0: Int, i1: Int): JSONObject {
+        val counts = java.util.TreeMap<Int, Int>()
+        var known = 0
+        for (i in i0 until i1) {
+            val y = yearOf(i)
+            if (y > 0) {
+                counts.merge(y / 10 * 10, 1, Int::plus)
+                known++
+            }
+        }
+        return JSONObject().put("known", known).put("total", i1 - i0)
+            .put("decades", JSONArray(counts.map { (d, n) -> JSONObject().put("decade", d).put("plays", n) }))
+    }
+
+    /** The decades of the whole history, to filter the stats by. */
+    fun decadeOptions(): JSONObject = decades(0, h.size)
+
+    /** Whether a scrobble's album came out in the ten years from [decade]. */
+    fun inDecade(decade: Int): (Int) -> Boolean = { i -> yearOf(i).let { it >= decade && it < decade + 10 } }
+
+    /**
+     * Artists whose albums have no year looked up yet, with those albums (title, key), most played
+     * first, until the albums with a year cover [coverage] of all album plays.
+     */
+    fun albumsNeedingYears(maxArtists: Int = 400, coverage: Double = 0.95): List<Pair<String, List<Pair<String, String>>>> {
+        val total = albumPlays.sum().toDouble()
+        var covered = albumPlays.indices.filter { h.albumKeys[it] in albumYears }.sumOf { albumPlays[it] }.toDouble()
+        val byArtist = HashMap<Int, MutableList<Int>>()
+        for (al in albumPlays.indices) if (albumPlays[al] > 0 && h.albumKeys[al] !in albumYears) byArtist.getOrPut(h.albumArtist[al]) { ArrayList() } += al
+        val out = ArrayList<Pair<String, List<Pair<String, String>>>>()
+        for ((a, als) in byArtist.entries.sortedByDescending { e -> e.value.sumOf { albumPlays[it] } }) {
+            if (covered >= coverage * total || out.size >= maxArtists) break
+            covered += als.sumOf { albumPlays[it] }
+            out += h.artistNames[a] to als.map { h.albumTitles[it] to h.albumKeys[it] }
+        }
+        return out
     }
 
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */

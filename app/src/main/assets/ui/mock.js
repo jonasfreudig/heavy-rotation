@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.10 (browser preview)',
+    version: '0.11 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -443,6 +443,17 @@ const Mock = (() => {
     out.genreOptions = Object.entries(gTotals).filter(([g]) => +g >= 0 && GENRES[g]).sort((a, b) => b[1] - a[1])
       .map(([g, n]) => ({ key: GENRES[g].toLowerCase().replace(/-/g, ' '), label: GENRES[g].replace(/-/g, ' '), plays: n }));
     out.genre = statsGenre;
+    // Decades from the made-up records' years; a few plays without a known year.
+    const decOf = (a) => Math.floor(RECORDS[a % RECORDS.length][2] / 10) * 10;
+    const decs = (j0, j1) => {
+      const c = {};
+      let known = 0;
+      for (let i = j0; i < j1; i++) { if (i % 11 === 0) continue; const d = decOf(L.a[i]); c[d] = (c[d] || 0) + 1; known++; }
+      return { known, total: j1 - j0, decades: Object.keys(c).map(Number).sort((a, b) => a - b).map((d) => ({ decade: d, plays: c[d] })) };
+    };
+    out.decades = decs(i0, i1);
+    out.decadeOptions = decs(0, L.ts.length);
+    out.decade = statsDecade;
     return out;
   }
 

@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.10 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.11 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -272,6 +272,14 @@ decade or style. For a genre, **Your … listening** opens the Stats tab for tha
 
 On the Stats tab, **All genres** picks one genre: everything there and in the story then counts
 only the plays whose main genre is that one (the same genre the genre charts count them under).
+**All decades** does the same for when the music came out, and the two combine ("Post Punk from
+the 1970s"). The **Decades** chart shows the period by decade of release; tap a decade to filter.
+
+Release years come from Deezer, an artist's discography at a time: the year a title first came
+out (remasters and deluxe editions come later), or the year of your own record if that is
+earlier. The app looks them up in the background for the albums behind most of your plays, and
+again for new ones every few hours; the decade sheet says how much of your history has a year.
+Songs scrobbled without an album have none.
 
 ### Track lengths
 

@@ -16,6 +16,7 @@ import com.example.recordshelf.history.History
 import com.example.recordshelf.history.HistorySync
 import com.example.recordshelf.history.Junk
 import com.example.recordshelf.history.Stats
+import com.example.recordshelf.history.Years
 import com.example.recordshelf.lastfm.LastfmClient
 import com.example.recordshelf.lastfm.LastfmException
 import com.example.recordshelf.lastfm.Scrobble
@@ -68,6 +69,7 @@ object Core {
     private const val HOUR = 3_600_000L
     private const val HIDDEN_FILE = "hidden.json"
     private const val DISCO_FILE = "discographies.json"
+    private const val YEARS_FILE = "album_years.json"
 
     /** Discographies are looked up again after a week, so new releases show up. */
     private const val DISCO_TTL = 7L * 24 * HOUR
@@ -157,11 +159,31 @@ object Core {
     /** Deezer lookups for pages (discographies, tracklists), apart from the history work. */
     private val webExec = Executors.newSingleThreadExecutor()
 
-    /** The Stats tab shows one genre's music when set (a genre key; "" for everything). */
+    /** The Stats tab shows one genre's music when set (a genre key; "" for everything), and/or one decade's (e.g. 1970; 0 for all). */
     @Volatile private var statsGenre = ""
-    @Volatile private var genreStats: Stats? = null
-    @Volatile private var genreStatsKey = ""
-    @Volatile private var genreBase: Stats? = null
+    @Volatile private var statsDecade = 0
+    @Volatile private var filteredStats: Stats? = null
+    @Volatile private var filteredKey = ""
+    @Volatile private var filteredBase: Stats? = null
+
+    // ---- release years per album, for the decade filter ----
+    private val albumYears: MutableMap<String, Int> by lazy {
+        val m = HashMap<String, Int>()
+        try {
+            val o = JSONObject(file(YEARS_FILE).read() ?: "{}")
+            for (k in o.keys()) m[k] = o.optInt(k)
+        } catch (_: Exception) {
+        }
+        m
+    }
+    @Volatile private var yearsBusy = false
+    @Volatile private var yearsDone = 0
+    @Volatile private var yearsTotal = 0
+    @Volatile private var yearsTried = 0L
+
+    private fun yearsSnapshot(): Map<String, Int> = synchronized(albumYears) { HashMap(albumYears) }
+
+    private fun saveYears() = synchronized(albumYears) { file(YEARS_FILE).write(JSONObject(albumYears as Map<*, *>).toString()) }
     private val paletteExec = Executors.newSingleThreadExecutor()
 
     /** Colors per picture URL, kept across starts (covers don't change). */
@@ -286,6 +308,7 @@ object Core {
             "stats" -> {
                 statsRange = msg.optString("range").ifEmpty { statsRange }
                 if (msg.has("genre")) statsGenre = msg.optString("genre")
+                if (msg.has("decade")) statsDecade = msg.optInt("decade")
                 statsExec.execute { statsInner() }
             }
             "artist" -> {
@@ -392,7 +415,7 @@ object Core {
                 val id = msg.optString("range")
                 statsExec.execute {
                     val s = shownStats() ?: return@execute
-                    push("onStory") { s.story(s.range(id)).put("genre", statsGenre) }
+                    push("onStory") { s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade) }
                 }
             }
             "saveLastfm" -> {
@@ -1106,24 +1129,67 @@ object Core {
         stats?.let { return it }
         val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null
         val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images())
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot())
             .also { stats = it }
     }
 
-    /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre]. */
+    /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre] and/or [statsDecade]. */
     private fun shownStats(): Stats? {
         val base = currentStats() ?: return null
         val g = statsGenre
-        if (g.isEmpty()) return base
-        genreStats?.takeIf { genreStatsKey == g && genreBase === base }?.let { return it }
+        val d = statsDecade
+        if (g.isEmpty() && d == 0) return base
+        val key = "$g|$d"
+        filteredStats?.takeIf { filteredKey == key && filteredBase === base }?.let { return it }
         val h = history ?: return base
+        val inGenre = if (g.isEmpty()) null else base.inGenre(g)
+        val inDecade = if (d == 0) null else base.inDecade(d)
         val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
-        return Stats(h.filter(base.inGenre(g)), java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images())
+        val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
+        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot())
             .also {
-                genreStats = it
-                genreStatsKey = g
-                genreBase = base
+                filteredStats = it
+                filteredKey = key
+                filteredBase = base
             }
+    }
+
+    /**
+     * Release years for the albums behind most of the history, a discography at a time from
+     * Deezer (titles not found are kept as 0, not asked again). On [historyExec].
+     */
+    private fun yearsInner() {
+        if (yearsBusy) return
+        val s = currentStats() ?: return
+        yearsTried = System.currentTimeMillis()
+        val need = s.albumsNeedingYears()
+        if (need.isEmpty()) return
+        yearsBusy = true
+        yearsDone = 0
+        yearsTotal = need.size
+        pushState()
+        try {
+            for ((artist, albums) in need) {
+                val releases = try {
+                    deezer.findArtist(artist)?.let { deezer.releases(it.id) }.orEmpty()
+                } catch (_: Exception) {
+                    break // offline or over the quota: the rest next time
+                }
+                synchronized(albumYears) { for ((title, key) in albums) albumYears[key] = Years.match(releases, title) }
+                yearsDone++
+                if (yearsDone % 25 == 0) {
+                    saveYears()
+                    pushState()
+                }
+                Thread.sleep(150) // Deezer allows 50 requests in 5 seconds
+            }
+        } finally {
+            saveYears()
+            yearsBusy = false
+            stats = null
+            pushState()
+            statsExec.execute { statsInner() }
+        }
     }
 
     /**
@@ -1171,7 +1237,12 @@ object Core {
         }
         val id = statsRange
         val shown = shownStats() ?: s
-        push("onStats") { shown.compute(shown.range(id)).put("tidy", tidySummary()).put("genre", statsGenre).put("genreOptions", s.genreOptions()) }
+        push("onStats") {
+            shown.compute(shown.range(id)).put("tidy", tidySummary()).put("genre", statsGenre).put("genreOptions", s.genreOptions())
+                .put("decade", statsDecade).put("decadeOptions", s.decadeOptions())
+        }
+        // Release years for the decade filter, looked up now and then as the history grows.
+        if (!yearsBusy && System.currentTimeMillis() - yearsTried > 6 * HOUR) historyExec.execute { yearsInner() }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
         val photos = s.artistsNeedingPhotos(id)
@@ -1432,7 +1503,8 @@ object Core {
             "history",
             JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
                 .put("importing", importing).put("syncing", histSyncing).put("fetched", histDone).put("total", histTotal)
-                .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal),
+                .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal)
+                .put("yearsBusy", yearsBusy).put("yearsDone", yearsDone).put("yearsTotal", yearsTotal),
         )
         .put(
             "tidal",

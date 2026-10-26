@@ -842,3 +842,13 @@ input[type=datetime-local] { color-scheme: inherit; }
 /* Stats for one genre */
 #genreRow { margin: 10px -16px 0; justify-content: center; align-items: center; }
 .hint.inline { margin: 0; align-self: center; white-space: nowrap; }
+
+/* Decades on the Stats tab */
+.decades { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.decades .dec { display: grid; grid-template-columns: 52px 1fr 44px; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; text-align: left; width: 100%; }
+.decades .dec span { font: 500 13px/18px var(--font); }
+.decades .dec i { display: block; height: 14px; border-radius: 4px; background: var(--md-surface-container-highest); overflow: hidden; }
+.decades .dec i b { display: block; height: 100%; border-radius: 4px; background: var(--md-primary); }
+.decades .dec small { text-align: right; color: var(--md-on-surface-variant); font-size: 12px; }
+.decades .dec.on { background: var(--md-secondary-container); }
+#genreRow { gap: 8px; }
