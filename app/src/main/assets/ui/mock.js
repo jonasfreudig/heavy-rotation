@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.18 (browser preview)',
+    version: '0.19 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -126,6 +126,7 @@ const Mock = (() => {
   function release(id) {
     if (!releases[id]) {
       const i = id - 1000, rec = RECORDS[i], c = coll.find((x) => x.id === id) || {};
+      if (!rec) return { id, tracks: [] }; // made-up pages can point at releases the mock doesn't have
       releases[id] = Object.assign({}, c, { tracks: tracklist(rec, id), uri: `https://www.discogs.com/release/${id}`, country: 'US' });
     }
     return releases[id];
@@ -1025,6 +1026,10 @@ const Mock = (() => {
         for (const tr of rel.tracks.filter((x) => x.side === 'A')) { act.push(actEntry({ ...tr, album: rel.title }, t, 'sent')); t += tr.dur * 1000; }
         const kob = release(1001);
         act.push(actEntry({ ...kob.tracks[0], album: kob.title }, Date.now() - 19 * DAY, 'ignored', 'Too old: Last.fm only takes scrobbles from the last 2 weeks'));
+      }
+      if (mode === 'phone') {
+        // Something playing in TIDAL on the phone, no record spinning.
+        S.phone.now = { pkg: 'com.aspiro.tidal', app: 'TIDAL', artist: 'Fontaines D.C.', title: 'Starburster', album: 'Romance', dur: 212000, listened: 64000, at: Date.now(), playing: true, threshold: 106000, scrobbled: false, eligible: true, on: true, cover: '' };
       }
       if (mode === 'spin') {
         const rel = release(1000);

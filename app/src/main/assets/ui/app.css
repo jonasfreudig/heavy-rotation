@@ -978,3 +978,6 @@ button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padd
 .lineage .arr { color: var(--md-on-surface-variant); }
 .viz.origin .btn.text { margin-top: 6px; }
 .uni-wrap.carded .uni-hint { display: none; }
+
+/* The shelf's now-playing card for a phone app */
+.spin-card.phone { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }

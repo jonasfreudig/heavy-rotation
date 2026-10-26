@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.18 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.19 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -79,6 +79,10 @@ playing counts (pauses, buffering and seeking forward don't). Each scrobble carr
 track started. Playing a track again from the start, including on repeat, is a new scrobble. Tracks
 whose length the app doesn't report need 4 minutes. In On mode "now playing" goes to Last.fm too,
 and scrobbles use the same offline queue as records.
+
+With no record spinning, the card at the top of the Shelf shows what a music app on the phone is
+playing (TIDAL and the like): the song, the app, its cover (from your shelf or Last.fm's album
+art) and how far it is; tap it for the song's page.
 
 ### 6. TIDAL (optional: exact links and playlists)
 

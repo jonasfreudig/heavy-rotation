@@ -126,7 +126,7 @@ function holoCover(url, title, artist, opts = {}) {
  * tilts them too; without any sensor they sway gently on their own.
  */
 const Tilt = {
-  els: [], x: 0, y: 0, tx: 0, ty: 0, wx: 9, wy: 9, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
+  els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
@@ -154,16 +154,29 @@ const Tilt = {
     }
     this.x += (tx - this.x) * 0.14;
     this.y += (ty - this.y) * 0.14;
-    // Only when the light visibly moves: every write repaints the foil, the glare and the shadow.
-    if (Math.abs(this.x - this.wx) < 0.004 && Math.abs(this.y - this.wy) < 0.004) { this.raf = requestAnimationFrame((t) => this.step(t)); return; }
-    this.wx = this.x;
-    this.wy = this.y;
-    const m = Math.min(1, Math.hypot(this.x, this.y)).toFixed(3);
     for (const el of this.els) {
-      if (el.classList.contains('turning')) continue;
-      el.style.setProperty('--tx', this.x.toFixed(3));
-      el.style.setProperty('--ty', this.y.toFixed(3));
-      el.style.setProperty('--m', m);
+      // While a sleeve turns over it holds still; afterwards it eases from there back to the phone's tilt.
+      if (el.classList.contains('turning')) {
+        if (!el._held) el._held = [el._tx ?? this.x, el._ty ?? this.y];
+        el._back = 0;
+        continue;
+      }
+      let x = this.x, y = this.y;
+      if (el._held) {
+        if (!el._back) el._back = now;
+        const k = Math.min(1, (now - el._back) / 450);
+        const e = k * k * (3 - 2 * k);
+        x = el._held[0] + (x - el._held[0]) * e;
+        y = el._held[1] + (y - el._held[1]) * e;
+        if (k >= 1) el._held = null;
+      }
+      // Only when the light visibly moves: every write repaints the foil, the glare and the shadow.
+      if (Math.abs(x - (el._tx ?? 9)) < 0.004 && Math.abs(y - (el._ty ?? 9)) < 0.004) continue;
+      el._tx = x;
+      el._ty = y;
+      el.style.setProperty('--tx', x.toFixed(3));
+      el.style.setProperty('--ty', y.toFixed(3));
+      el.style.setProperty('--m', Math.min(1, Math.hypot(x, y)).toFixed(3));
     }
     this.raf = requestAnimationFrame((t) => this.step(t));
   },
@@ -431,7 +444,7 @@ let spinCardSig = '';
 function renderSpinCard() {
   const sp = ST.spin;
   const slot = $('#spinSlot');
-  if (!sp) { spinCardSig = ''; slot.innerHTML = ''; return; }
+  if (!sp) { renderPhoneNow(slot); return; }
   const sig = sp.id + '|' + sp.cover;
   if (sig !== spinCardSig) {
     spinCardSig = sig;
@@ -440,6 +453,22 @@ function renderSpinCard() {
       <span class="eq plain"><i></i><i></i><i></i></span><div class="bar"><i id="scBar"></i></div></button>`;
   }
   tickUi();
+}
+
+/**
+ * With no record spinning, the same card shows what a music app on the phone plays (TIDAL and
+ * the like), with its cover; a tap opens the song's page.
+ */
+function renderPhoneNow(slot) {
+  const n = (ST.phone || {}).now;
+  if (!n || !n.title) { spinCardSig = ''; slot.innerHTML = ''; return; }
+  const sig = ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|');
+  if (sig === spinCardSig) return;
+  spinCardSig = sig;
+  slot.innerHTML = `<button class="spin-card phone" ${trackAttrs(n.artist, n.title, { album: n.album, cover: n.cover })}>${coverHtml(n.cover, n.album || n.title, n.artist, 'small')}
+    <div class="txt"><small>${n.playing ? 'Now playing' : 'Paused'} · ${esc(n.app)}</small><b>${esc(n.title)}</b><span>${esc(n.artist)}${n.album ? ` — ${esc(n.album)}` : ''}</span></div>
+    ${n.playing ? '<span class="eq plain"><i></i><i></i><i></i></span>' : '<span></span>'}<div class="bar"><i id="phNowBar"></i></div></button>`;
+  tickPhone();
 }
 
 let lastCur = -2;
@@ -883,9 +912,13 @@ function renderPhoneCard() {
 
 function tickPhone() {
   const n = (ST.phone || {}).now;
-  const bar = $('#pnBar'), text = $('#pnText');
-  if (!n || !bar) return;
+  if (!n) return;
   const listened = n.listened + (n.playing ? Date.now() - n.at : 0);
+  // The shelf's now-playing card: how far into the song (listened time stands in for the position).
+  const nb = $('#phNowBar');
+  if (nb && n.dur > 0) nb.style.width = `${Math.min(100, (listened / n.dur) * 100)}%`;
+  const bar = $('#pnBar'), text = $('#pnText');
+  if (!bar) return;
   const left = Math.max(0, n.threshold - listened);
   bar.style.width = `${n.scrobbled ? 100 : Math.min(100, (listened / n.threshold) * 100)}%`;
   const shadow = (ST.phone || {}).mode === 'shadow';

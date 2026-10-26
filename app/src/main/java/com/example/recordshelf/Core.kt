@@ -1615,6 +1615,41 @@ object Core {
 
     fun toast(msg: String) = push("onToast") { JSONObject.quote(msg) }
 
+    /** The album key and cover of what a phone app is playing, once found ("" while looking or when there is none). */
+    @Volatile private var nowCover = "" to ""
+
+    /** The phone's state, with the cover of what plays right now: from your shelf, or Last.fm's album art (looked up once). */
+    private fun phoneJson(): JSONObject {
+        val p = Phone.stateJson().put("comparing", comparing).put("compareError", compareError)
+        val n = p.optJSONObject("now") ?: return p
+        val artist = n.optString("artist")
+        val album = n.optString("album")
+        if (album.isBlank()) return p
+        val key = Text.albumKey(artist, album)
+        val known = nowCover
+        if (known.first == key) {
+            if (known.second.isNotEmpty()) n.put("cover", known.second)
+        } else {
+            nowCover = key to ""
+            webExec.execute {
+                val owned = collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { it.cover.ifEmpty { it.thumb } }
+                val url = owned ?: db.images()[key] ?: try {
+                    lastfm()?.albumInfo(artist, album)?.image.orEmpty().also {
+                        db.saveImage(key, it)
+                        refreshPictures()
+                    }
+                } catch (_: Exception) {
+                    ""
+                }
+                if (nowCover.first == key && url.isNotEmpty()) {
+                    nowCover = key to url
+                    pushState()
+                }
+            }
+        }
+        return p
+    }
+
     private fun hint(key: String) = if (key.length > 4) "…" + key.takeLast(4) else ""
 
     private fun stateJson(): JSONObject = JSONObject()
@@ -1646,7 +1681,7 @@ object Core {
         .put("prefs", JSONObject().put("theme", prefs.theme).put("defaultTrackSec", prefs.defaultTrackSec))
         .put("queue", JSONObject().put("waiting", queue.size()).put("oldest", queue.oldestTimestamp()).put("error", flushError))
         .put("spin", spinUi?.let { JSONObject(it) } ?: JSONObject.NULL)
-        .put("phone", Phone.stateJson().put("comparing", comparing).put("compareError", compareError))
+        .put("phone", phoneJson())
         .put(
             "history",
             JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
