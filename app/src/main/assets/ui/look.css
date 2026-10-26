@@ -59,7 +59,7 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 :root[data-theme="light"] body::before { opacity: .38; }
 :root[data-ambient="off"] body::before { opacity: 0; }
 @keyframes ambDrift { 0% { transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1); } 100% { transform: translate3d(4%, 3%, 0) rotate(7deg) scale(1.12); } }
-#appbar { background: color-mix(in srgb, var(--md-surface) 78%, transparent); }
+
 @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
 
 /* ---- the back of the sleeve: records on the shelf turn over to their tracklist ---- */
@@ -292,15 +292,17 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .slide .dots2 .avg em { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); white-space: nowrap; }
 
 /* ---- pages over their cover: the picture blurred behind everything, cards see-through ---- */
-.page > .backdrop { display: none; position: absolute; left: 0; right: 0; top: 0; height: 120vh; z-index: 0; overflow: hidden; pointer-events: none; }
+.page > .backdrop { display: none; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .page.has-backdrop > .backdrop { display: block; }
 .page > .backdrop canvas { position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; opacity: 0; transition: opacity .45s; }
 .page > .backdrop.ready canvas { opacity: 1; }
-/* A veil of the page color between the picture and the text: enough for white (or, in light mode, dark) text to read on any cover. */
+/* A veil of the page color over the whole picture, a little denser towards the bottom: text reads on any cover. */
 .page > .backdrop::after { content: ''; position: absolute; inset: 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 50%, transparent) 0%, color-mix(in srgb, var(--md-surface) 58%, transparent) 36%, color-mix(in srgb, var(--md-surface) 82%, transparent) 68%, var(--md-surface) 100%); }
+  background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 50%, transparent) 0%, color-mix(in srgb, var(--md-surface) 56%, transparent) 50%, color-mix(in srgb, var(--md-surface) 68%, transparent) 100%); }
+.page.has-backdrop { background: var(--md-surface); }
 .page.has-backdrop > .page-body, .page.has-backdrop > div:not(.backdrop) { position: relative; z-index: 1; }
-.page.has-backdrop > .appbar { background: color-mix(in srgb, var(--md-surface) 70%, transparent); }
+.page.has-backdrop > .appbar.scrolled { background: color-mix(in srgb, var(--md-surface) 72%, transparent); }
+.page.has-backdrop > .appbar.scrolled::after { background: linear-gradient(color-mix(in srgb, var(--md-surface) 72%, transparent), transparent); }
 .page.has-backdrop .page-hero .glow { display: none; }
 .page.has-backdrop .viz, .page.has-backdrop .tile, .page.has-backdrop .card, .page.has-backdrop .list, .page.has-backdrop .dig-card {
   background: color-mix(in srgb, var(--md-surface-container) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
@@ -310,3 +312,32 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .flip-hint, .page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta, .page.has-backdrop .hint { text-shadow: 0 0 10px var(--md-surface), 0 0 3px var(--md-surface); }
 .page.has-backdrop .hero .meta, .page.has-backdrop .flip-hint, .page.has-backdrop .page-hero .meta { color: var(--md-on-surface); }
 .page.has-backdrop .viz, .page.has-backdrop .tile, .page.has-backdrop .card, .page.has-backdrop .list, .page.has-backdrop .dig-card { background: color-mix(in srgb, var(--md-surface-container) 72%, transparent); }
+
+/* ---- bars: a top bar that fades into the page and steps aside, a floating bottom bar ---- */
+.appbar { background: transparent; transition: transform .28s cubic-bezier(.2, .7, .2, 1), background-color .2s; }
+.appbar.scrolled { background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 90%, transparent), color-mix(in srgb, var(--md-surface) 72%, transparent)); }
+.appbar.scrolled::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 26px; pointer-events: none; background: linear-gradient(color-mix(in srgb, var(--md-surface) 72%, transparent), transparent); }
+.appbar.away { transform: translateY(-100%); }
+.appbar.away::after { opacity: 0; }
+body.bar-away .lin:not(.inline) { top: var(--inset-top); }
+:root { --nav-h: 76px; }
+.navbar { left: 14px; right: 14px; bottom: calc(var(--inset-bottom) + 10px); height: 64px; max-width: 480px; margin: 0 auto; padding: 6px 6px; gap: 2px; border-radius: 32px;
+  background: color-mix(in srgb, var(--md-surface-container-highest) 92%, transparent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .18), inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.navbar button { gap: 2px; font-size: 11px; line-height: 14px; letter-spacing: .2px; border-radius: 26px; justify-content: center; }
+.navbar .ind { width: 52px; height: 30px; }
+.navbar button.on .ind { background: var(--md-primary); color: var(--md-on-primary); }
+.navbar .badge { left: 32px; }
+.bottom-fade { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(var(--inset-bottom) + 120px); pointer-events: none;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--md-surface) 80%, transparent) 55%, var(--md-surface)); }
+
+/* ---- Explore: one line and two tiles before the lists ---- */
+.xp-intro { margin: 6px 2px 12px; font-size: 14px; line-height: 20px; color: var(--md-on-surface-variant); }
+.xp-intro b { color: var(--md-on-surface); }
+.xp-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.xp-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 12px 14px 14px; border-radius: 22px; text-align: left; color: inherit;
+  background: var(--md-surface-container); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 6%, transparent); }
+.xp-tile svg { width: 100%; height: 50px; margin: 2px 0 10px; }
+.xp-tile b { font: 650 16px/20px var(--display, var(--font)); letter-spacing: -.01em; }
+.xp-tile small { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
+.xp-dig { width: 100%; justify-content: center; margin: 10px 0 6px; }

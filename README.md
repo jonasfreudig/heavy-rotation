@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.16 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.17 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -204,7 +204,7 @@ on your shelf with that genre or style. **Full stats for …** opens the Stats t
 
 #### Your musical atlas
 
-The **Your musical atlas** card on the Explore tab opens three views of your whole history, worked
+The **Musical atlas** tile at the top of the Explore tab opens three views of your whole history, worked
 out from the order of your scrobbles:
 
 - **Universe**: your 150 most played artists as stars, sized by plays. Two stars are linked when
@@ -239,7 +239,7 @@ first time) for your 200 most played artists and 150 most played songs, plus eve
 played songs by your 25 top artists, keeps them on the phone and looks them up again once a month.
 Other artists, songs and albums are looked up when you open their page.
 
-The **You vs everyone** card at the top of the Explore tab opens the comparison:
+The **You vs everyone** tile next to it opens the comparison:
 
 - **From household names to the underground**: your plays by how many listeners the artist has
   (1M+, 250K–1M, 50K–250K, 10K–50K, under 10K), and the line "half of your plays go to artists
@@ -314,9 +314,11 @@ The shelf has three views (the buttons next to the record count): the grid of co
 two to a row with year and plays, and a list with year, label, format, two styles and plays.
 
 Record, album, song and artist pages and Now spinning take their cover or photo as the
-background: shrunk to a few pixels once and stretched over the page (that is the blur, so nothing
-is recomputed while scrolling), under a veil of the page color so the text stays readable, with
-the cards over it see-through. The app icon is a record with a tonearm shaped like a music note
+background, behind the whole screen: shrunk to a few pixels once and stretched over it (that is
+the blur, so nothing is recomputed while scrolling), under a veil of the page color so the text
+stays readable, with the cards over it see-through. Top bars blend into the page, step aside
+while you scroll down and come back when you scroll up; the tabs sit in a floating bar at the
+bottom, with the page fading out underneath. The app icon is a record with a tonearm shaped like a music note
 resting on it; on Android 13 and later it can follow your wallpaper colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over: the back has the tracklist by side, the label

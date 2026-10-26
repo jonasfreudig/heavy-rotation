@@ -307,7 +307,30 @@ function openPage(id) {
   pageSaved.length = pageStack.length;
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
+  const bar = p.querySelector(':scope > .appbar');
+  if (bar) bar.classList.remove('away', 'scrolled');
   Tilt.refresh();
+}
+
+/**
+ * Top bars step aside while you scroll down and come back as soon as you scroll up; over
+ * scrolled content they fade into the page instead of cutting it off.
+ */
+function watchBar(scroller, bar, onAway) {
+  const el = scroller === window ? document.scrollingElement : scroller;
+  let last = 0;
+  scroller.addEventListener('scroll', () => {
+    const y = el.scrollTop;
+    bar.classList.toggle('scrolled', y > 4);
+    const d = y - last;
+    if (Math.abs(d) < 8 && y > 4) return;
+    const away = d > 0 && y > 90;
+    if (away !== bar.classList.contains('away')) {
+      bar.classList.toggle('away', away);
+      if (onAway) onAway(away);
+    }
+    last = y;
+  }, { passive: true });
 }
 function closePage() {
   const id = pageStack.pop();
@@ -2785,12 +2808,15 @@ function vsStateTick() {
   if (isOpen('vsPage') && busy) renderVs();
 }
 
+/** Little pictures for the two tiles on top of Explore, in the theme's colors. */
+const ATLAS_ART = `<svg viewBox="0 0 120 52" aria-hidden="true"><g style="stroke:var(--md-outline);stroke-width:1;fill:none;opacity:.7"><path d="M14 36 L38 18 L62 30 L88 12 L108 26"/><path d="M38 18 L50 42 L62 30"/><path d="M88 12 L96 40"/></g>
+  <g><circle cx="14" cy="36" r="4" style="fill:var(--md-tertiary)"/><circle cx="38" cy="18" r="6" style="fill:var(--md-primary)"/><circle cx="50" cy="42" r="3" style="fill:var(--md-tertiary)"/><circle cx="62" cy="30" r="5" style="fill:var(--md-primary)"/><circle cx="88" cy="12" r="4" style="fill:var(--md-secondary)"/><circle cx="96" cy="40" r="3" style="fill:var(--md-secondary)"/><circle cx="108" cy="26" r="5" style="fill:var(--md-tertiary)"/></g></svg>`;
+const VS_ART = `<svg viewBox="0 0 120 52" aria-hidden="true"><g style="fill:var(--md-surface-container-highest)"><rect x="4" y="8" width="112" height="7" rx="3.5"/><rect x="4" y="23" width="112" height="7" rx="3.5"/><rect x="4" y="38" width="112" height="7" rx="3.5"/></g>
+  <g style="fill:var(--md-primary)"><rect x="4" y="8" width="104" height="7" rx="3.5"/><rect x="4" y="23" width="78" height="7" rx="3.5" style="fill:var(--md-tertiary)"/><rect x="4" y="38" width="56" height="7" rx="3.5" style="fill:var(--md-secondary)"/></g>
+  <g style="fill:var(--md-on-surface)"><rect x="22" y="5" width="2" height="13" rx="1"/><rect x="30" y="20" width="2" height="13" rx="1"/><rect x="40" y="35" width="2" height="13" rx="1"/></g></svg>`;
 function renderVsCard() {
-  const slot = $('#vsCard');
-  if (!slot) return;
-  const v = VS;
-  const line = v && v.median ? `Half of your plays go to artists with fewer than <b>${compact(v.median)}</b> listeners.` : 'How your listening compares with everyone on Last.fm: where you are a bigger fan than most, and who few people know.';
-  slot.innerHTML = `<button class="dig-card vs-card" id="openVs">${icon('people', 'i big')}<div><h2>You vs everyone</h2><p>${line}</p></div></button>`;
+  const line = $('#vsTileLine');
+  if (line && VS && VS.median) line.textContent = `Your middle artist: ${compact(VS.median)} listeners`;
 }
 
 function renderVs() {
@@ -2882,9 +2908,12 @@ function renderExplore() {
   if (!x) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (x.empty) { body.innerHTML = `<div class="empty"><p>Nothing to explore yet.</p></div>`; return; }
   const tail = x.tail || {};
-  let h = `<button class="dig-card vs-card atlas-card" data-atlas>${icon('atlas', 'i big')}<div><h2>Your musical atlas</h2><p>Your artists as a universe of constellations, how you found each of them, and the landscape of your obsessions.</p></div></button><div id="vsCard"></div><div class="dig-card">${icon('explore', 'i big')}<div><h2>The long tail</h2>
-    <p>You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}. Here's where to dig.</p>
-    <button class="btn filled" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button></div></div>`;
+  let h = `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}. Here's where to dig.</p>
+    <div class="xp-tiles">
+      <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
+      <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
+    </div>
+    <button class="btn tonal xp-dig" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button>`;
   const la = x.lostArtists || [];
   if (la.length) {
     h += xSection('Lost favorites', 'Artists you played a lot that have gone quiet for half a year or more', 'lost',
@@ -3762,6 +3791,8 @@ function build() {
     if (rec) openRecord(+rec.dataset.rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
   };
+  watchBar(window, $('#appbar'), (away) => document.body.classList.toggle('bar-away', away));
+  $$('.page').forEach((p) => { const bar = p.querySelector(':scope > .appbar'); if (bar) watchBar(p, bar); });
   $('#atlasSeg').onclick = (e) => { const b = e.target.closest('[data-av]'); if (b) { atlasView = b.dataset.av; renderAtlas(); } };
   $('#atlasBody').onclick = (e) => {
     const t = e.target;
