@@ -1,15 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed icon: the record (label cut out) kept clear of a thin gap around the note-shaped tonearm. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Record with a ring cut out around the label, for themed icons -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M24,54a30,30 0,1 0,60 0a30,30 0,1 0,-60 0z M41,54a13,13 0,1 0,26 0a13,13 0,1 0,-26 0z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M44,54a10,10 0,1 0,20 0a10,10 0,1 0,-20 0z M52.2,54a1.8,1.8 0,1 0,3.6 0a1.8,1.8 0,1 0,-3.6 0z" />
+    <group>
+        <!-- Everything but the stem and the head, a little wider than they are (wound the other way, so they're holes). -->
+        <clip-path android:pathData="M-10,-10H118V118H-10Z M70.6,64.85L74.5,28.35L67.9,27.65L64,64.15Z M70.09,61.97A8.6,6.5 -25,1 0,54.51 69.23A8.6,6.5 -25,1 0,70.09 61.97Z" />
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+            android:pathData="M24.6,61.2a22.2,22.2 0,1 0,44.4 0a22.2,22.2 0,1 0,-44.4 0z M42.3,61.2a4.5,4.5 0,1 0,9 0a4.5,4.5 0,1 0,-9 0z" />
+    </group>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.4" android:strokeLineCap="round" android:pathData="M67.3,64.5L71.2,28" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68.463,62.726A6.8,4.7 -25,1 1,56.137 68.474A6.8,4.7 -25,1 1,68.463 62.726Z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.4" android:strokeLineCap="round" android:pathData="M71.2,28C78.4,32.4 82.8,38.5 78.9,47.9" />
 </vector>

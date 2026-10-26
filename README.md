@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.15 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.16 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -316,7 +316,8 @@ two to a row with year and plays, and a list with year, label, format, two style
 Record, album, song and artist pages and Now spinning take their cover or photo as the
 background: shrunk to a few pixels once and stretched over the page (that is the blur, so nothing
 is recomputed while scrolling), under a veil of the page color so the text stays readable, with
-the cards over it see-through.
+the cards over it see-through. The app icon is a record with a tonearm shaped like a music note
+resting on it; on Android 13 and later it can follow your wallpaper colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over: the back has the tracklist by side, the label
 and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:
