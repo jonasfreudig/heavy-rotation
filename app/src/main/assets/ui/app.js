@@ -246,6 +246,20 @@ window.onRelease = (r) => {
   fillSleeveBacks();
 };
 window.onToast = (m) => toast(m);
+window.onBackup = (b) => {
+  const st = $('#bkStatus');
+  st.hidden = false;
+  st.textContent = b.error || `Saved, with ${num(b.scrobbles)} scrobbles. Restore it in the new app with Restore… above.`;
+  if (!b.error) toast('Backup saved');
+};
+window.onRestored = (r) => {
+  try {
+    localStorage.clear();
+    for (const [k, v] of Object.entries(r.ui || {})) localStorage.setItem(k, v);
+  } catch (_) { /* preview without storage */ }
+  toast(`Restored ${num(r.scrobbles)} scrobbles. Starting again…`);
+  setTimeout(() => send({ t: 'restartApp' }), 1200);
+};
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
 window.onStats = (s) => { STATS = s; $('#statsBody').classList.remove('stale'); renderStats(); if (isOpen('settingsPage')) renderSettings(); };
 window.onOpenSpin = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
@@ -3988,6 +4002,17 @@ function build() {
   $('#dgDisconnect').onclick = () => confirmSheet('Disconnect Discogs?', 'Your shelf will be empty until you connect again. Your scrobbles are not affected.', 'Disconnect', () => send({ t: 'discogsDisconnect' }));
   $('#defLen').onclick = (e) => { const b = e.target.closest('[data-sec]'); if (b) send({ t: 'setDefaultTrack', sec: +b.dataset.sec }); };
   $('#themeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) send({ t: 'setTheme', v: b.dataset.v }); };
+  $('#bkExport').onclick = () => {
+    const ui = {};
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ui[k] = localStorage.getItem(k); } } catch (_) { /* preview without storage */ }
+    send({ t: 'backupExport', ui });
+  };
+  $('#bkImport').onclick = () => {
+    openSheet(`<div class="sheet-title">Restore a backup?</div>
+      <p class="body">The backup replaces this app's history, hide list, activity, collection and settings. Record Shelf starts again afterwards; then connect Last.fm (and TIDAL) again.</p>
+      <div class="btn-row"><button class="btn filled" id="bkGo">Choose the backup file</button></div>`);
+    $('#sheetContent').onclick = (e) => { if (e.target.closest('#bkGo')) { closeSheet(); send({ t: 'backupImport' }); } };
+  };
   $('#ambSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;

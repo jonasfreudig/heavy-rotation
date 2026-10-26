@@ -68,6 +68,9 @@ object Core {
     interface Ui {
         fun push(fn: String, json: String)
         fun openUrl(url: String)
+
+        /** Lets the user pick where to save a backup ([save], suggesting [name]) or which one to restore. */
+        fun pickBackup(save: Boolean, name: String)
     }
 
     private const val HOUR = 3_600_000L
@@ -480,6 +483,11 @@ object Core {
                 val photos = s?.exploreNeedingPhotos().orEmpty()
                 if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
             }
+            "backupExport" -> {
+                backupUi = msg.optJSONObject("ui") ?: JSONObject()
+                ui?.pickBackup(true, "record-shelf-backup-${java.time.LocalDate.now()}.zip")
+            }
+            "backupImport" -> ui?.pickBackup(false, "")
             "atlas" -> statsExec.execute {
                 val s = currentStats()
                 push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
@@ -1614,6 +1622,37 @@ object Core {
     }
 
     fun toast(msg: String) = push("onToast") { JSONObject.quote(msg) }
+
+    /** The page's own settings, sent along with "backupExport" until the file is picked. */
+    @Volatile private var backupUi = JSONObject()
+
+    /** Writes a backup (see [Backup]) to the file the user picked. */
+    fun backupTo(uri: android.net.Uri) = historyExec.execute {
+        try {
+            val n = ctx.contentResolver.openOutputStream(uri, "w")?.use { out ->
+                Backup.write(out, files, db, prefs.plain(), backupUi, BuildConfig.VERSION_NAME, System.currentTimeMillis())
+            } ?: throw IOException("Couldn't open the file.")
+            push("onBackup") { JSONObject().put("scrobbles", n) }
+        } catch (e: Exception) {
+            push("onBackup") { JSONObject().put("error", "Couldn't save the backup: ${e.message ?: e.javaClass.simpleName}") }
+        }
+    }
+
+    /**
+     * Puts a backup in place: history, files and settings. The app then starts again, so
+     * nothing still in memory from before mixes with what was restored.
+     */
+    fun restoreFrom(uri: android.net.Uri) = historyExec.execute {
+        try {
+            JsonFile.frozen = true
+            val r = ctx.contentResolver.openInputStream(uri)?.use { Backup.read(it, files, db) } ?: throw IOException("Couldn't open the file.")
+            prefs.restorePlain(r.prefs)
+            push("onRestored") { JSONObject().put("scrobbles", r.scrobbles).put("files", r.files).put("ui", r.ui) }
+        } catch (e: Exception) {
+            JsonFile.frozen = false
+            push("onBackup") { JSONObject().put("error", "Couldn't restore: ${e.message ?: e.javaClass.simpleName}") }
+        }
+    }
 
     /** The album key and cover of what a phone app is playing, once found ("" while looking or when there is none). */
     @Volatile private var nowCover = "" to ""

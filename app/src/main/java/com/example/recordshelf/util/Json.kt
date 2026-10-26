@@ -20,6 +20,11 @@ fun List<String>.toJsonArray(): JSONArray = JSONArray().also { a -> forEach { a.
 
 /** A JSON document on disk, replaced atomically so a crash mid-write never leaves half a file. */
 class JsonFile(val file: File) {
+    companion object {
+        /** Set while a backup is put in place: nothing in memory may write over the restored files before the app restarts. */
+        @Volatile var frozen = false
+    }
+
     @Synchronized
     fun read(): String? = try {
         if (file.exists()) file.readText() else null
@@ -29,6 +34,7 @@ class JsonFile(val file: File) {
 
     @Synchronized
     fun write(text: String) {
+        if (frozen) return
         file.parentFile?.mkdirs()
         val tmp = File(file.path + ".tmp")
         tmp.writeText(text)

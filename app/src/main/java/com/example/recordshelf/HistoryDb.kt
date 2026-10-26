@@ -4,7 +4,6 @@ import android.content.Context
 import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.example.recordshelf.history.HistoryStore
 import com.example.recordshelf.lastfm.RecentTrack
 
 /**
@@ -12,7 +11,7 @@ import com.example.recordshelf.lastfm.RecentTrack
  * genre tags and album cover URLs. A scrobble is identified by time, artist and track, so
  * importing the same page twice changes nothing.
  */
-class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), HistoryStore {
+class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), BackupDb {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -63,7 +62,7 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Hi
     }
 
     /** Genre keys per artist key ([com.example.recordshelf.history.Genres.artistKey]); empty lists are kept so they aren't looked up again. */
-    fun tags(): Map<String, List<String>> {
+    override fun tags(): Map<String, List<String>> {
         val out = HashMap<String, List<String>>()
         readableDatabase.rawQuery("SELECT artist, tags FROM artist_tags", null).use { c ->
             while (c.moveToNext()) out[c.getString(0)] = c.getString(1).split('|').filter { it.isNotEmpty() }
@@ -71,7 +70,7 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Hi
         return out
     }
 
-    fun saveTags(artistKey: String, tags: List<String>) {
+    override fun saveTags(artistKey: String, tags: List<String>) {
         writableDatabase.execSQL(
             "INSERT OR REPLACE INTO artist_tags (artist, tags, fetched) VALUES (?, ?, ?)",
             arrayOf(artistKey, tags.joinToString("|"), System.currentTimeMillis()),
@@ -79,7 +78,7 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Hi
     }
 
     /** Cover URLs per album key; "" means Last.fm had none (don't ask again). */
-    fun images(): Map<String, String> {
+    override fun images(): Map<String, String> {
         val out = HashMap<String, String>()
         readableDatabase.rawQuery("SELECT album, url FROM album_images", null).use { c ->
             while (c.moveToNext()) out[c.getString(0)] = c.getString(1)
@@ -87,7 +86,7 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Hi
         return out
     }
 
-    fun saveImage(albumKey: String, url: String) {
+    override fun saveImage(albumKey: String, url: String) {
         writableDatabase.execSQL(
             "INSERT OR REPLACE INTO album_images (album, url, fetched) VALUES (?, ?, ?)",
             arrayOf(albumKey, url, System.currentTimeMillis()),

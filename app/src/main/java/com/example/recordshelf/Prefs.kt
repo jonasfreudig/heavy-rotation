@@ -15,6 +15,25 @@ class Prefs(ctx: Context) : TidalStore {
     private fun s(p: SharedPreferences, k: String, def: String = "") = p.getString(k, def) ?: def
     private fun put(p: SharedPreferences, k: String, v: String) = p.edit().putString(k, v).apply()
 
+    /** The plain settings (never the keys and tokens), for a backup. */
+    fun plain(): Map<String, *> = app.all
+
+    /** Puts back settings from a backup ([Backup.prefsJson]), written at once. */
+    fun restorePlain(o: org.json.JSONObject) {
+        val e = app.edit().clear()
+        for (k in o.keys()) {
+            val x = o.optJSONObject(k) ?: continue
+            when (x.optString("t")) {
+                "s" -> e.putString(k, x.optString("v"))
+                "l" -> e.putLong(k, x.optLong("v"))
+                "i" -> e.putInt(k, x.optInt("v"))
+                "b" -> e.putBoolean(k, x.optBoolean("v"))
+                "f" -> e.putFloat(k, x.optDouble("v").toFloat())
+            }
+        }
+        e.commit()
+    }
+
     var theme: String
         get() = s(app, "theme", "system")
         set(v) = put(app, "theme", v)

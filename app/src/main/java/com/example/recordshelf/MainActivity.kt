@@ -47,6 +47,16 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     private var openSpinWhenReady = false
 
     private val notifLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) Core.backupTo(uri) }
+    private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) Core.restoreFrom(uri) }
+
+    override fun pickBackup(save: Boolean, name: String) = runOnUiThread {
+        try {
+            if (save) saveBackup.launch(name) else openBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+        } catch (_: Exception) {
+            Core.toast("No app on this phone can pick files")
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -294,6 +304,14 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 applyNightMode(mode)
             }
             "openUrl" -> openUrl(msg.optString("url"))
+            "restartApp" -> {
+                // After a restore: start fresh, so only the restored data is in memory.
+                packageManager.getLaunchIntentForPackage(packageName)?.let {
+                    startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                }
+                finishAffinity()
+                Runtime.getRuntime().exit(0)
+            }
             "openApp" -> {
                 // A streaming app's own link (spotify:search:…), else the web page.
                 val uri = msg.optString("uri")
