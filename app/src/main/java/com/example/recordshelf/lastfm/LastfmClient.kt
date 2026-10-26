@@ -49,6 +49,9 @@ data class AlbumInfo(val tracks: List<SourceTrack>, val userPlaycount: Int, val 
 
 data class TopAlbum(val artist: String, val album: String, val playcount: Int)
 
+/** Everyone on Last.fm, all time: how many people played something, and how often. */
+data class GlobalCount(val listeners: Long, val playcount: Long)
+
 /** A scrobble from the user's history; [ts] is Unix seconds. */
 data class RecentTrack(val artist: String, val title: String, val album: String, val ts: Long)
 
@@ -189,6 +192,38 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
         }
         return json.optJSONObject("toptags")?.arrayOrOne("tag")?.objects().orEmpty()
             .map { it.str("name") to (it.str("count").toIntOrNull() ?: 0) }
+    }
+
+    /** Everyone's all-time listeners and plays of an artist; null if Last.fm doesn't know it. */
+    fun artistCounts(artist: String): GlobalCount? =
+        info("artist.getInfo", linkedMapOf("artist" to artist))?.optJSONObject("artist")?.optJSONObject("stats")?.let { counts(it) }
+
+    /** The same for one song. */
+    fun trackCounts(artist: String, track: String): GlobalCount? =
+        info("track.getInfo", linkedMapOf("artist" to artist, "track" to track))?.optJSONObject("track")?.let { counts(it) }
+
+    /** The same for one album. */
+    fun albumCounts(artist: String, album: String): GlobalCount? =
+        info("album.getInfo", linkedMapOf("artist" to artist, "album" to album))?.optJSONObject("album")?.let { counts(it) }
+
+    /** An artist's most played songs on Last.fm with everyone's plays, most played first; empty if unknown. */
+    fun artistTopTracks(artist: String, limit: Int = 50): List<Pair<String, Long>> =
+        info("artist.getTopTracks", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("toptracks")
+            ?.arrayOrOne("track")?.objects().orEmpty().map { it.str("name") to (it.str("playcount").toLongOrNull() ?: 0L) }
+
+    private fun counts(o: JSONObject): GlobalCount? {
+        val listeners = o.str("listeners").toLongOrNull() ?: return null
+        return GlobalCount(listeners, o.str("playcount").toLongOrNull() ?: 0L)
+    }
+
+    /** An unsigned lookup with Last.fm's spelling corrections; null when Last.fm doesn't know the thing. */
+    private fun info(method: String, p: LinkedHashMap<String, String>): JSONObject? {
+        p["autocorrect"] = "1"
+        return try {
+            call(method, p, signed = false, post = false)
+        } catch (e: LastfmException) {
+            if (e.code == 6) null else throw e
+        }
     }
 
     private fun call(method: String, params: Map<String, String>, signed: Boolean, post: Boolean): JSONObject {

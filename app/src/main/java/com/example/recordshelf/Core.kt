@@ -11,6 +11,10 @@ import com.example.recordshelf.discogs.DiscogsException
 import com.example.recordshelf.discogs.Release
 import com.example.recordshelf.history.Discography
 import com.example.recordshelf.history.Genres
+import com.example.recordshelf.history.Global
+import com.example.recordshelf.history.GlobalAsk
+import com.example.recordshelf.history.GlobalTop
+import com.example.recordshelf.history.Globals
 import com.example.recordshelf.history.Hidden
 import com.example.recordshelf.history.History
 import com.example.recordshelf.history.HistorySync
@@ -70,6 +74,7 @@ object Core {
     private const val HIDDEN_FILE = "hidden.json"
     private const val DISCO_FILE = "discographies.json"
     private const val YEARS_FILE = "album_years.json"
+    private const val GLOBALS_FILE = "global_counts.json"
 
     /** Discographies are looked up again after a week, so new releases show up. */
     private const val DISCO_TTL = 7L * 24 * HOUR
@@ -184,6 +189,112 @@ object Core {
     private fun yearsSnapshot(): Map<String, Int> = synchronized(albumYears) { HashMap(albumYears) }
 
     private fun saveYears() = synchronized(albumYears) { file(YEARS_FILE).write(JSONObject(albumYears as Map<*, *>).toString()) }
+    // ---- you against everyone: Last.fm's all-time counts, kept on the phone ----
+    private val globalsStore: Pair<MutableMap<String, Global>, MutableMap<String, GlobalTop>> by lazy {
+        val g = Globals.fromJson(file(GLOBALS_FILE).read())
+        HashMap(g.counts) to HashMap(g.tops)
+    }
+    @Volatile private var globalsBusy = false
+    @Volatile private var globalsDone = 0
+    @Volatile private var globalsTotal = 0
+    @Volatile private var globalsTried = 0L
+
+    private fun globalsSnapshot(): Globals = synchronized(globalsStore) { Globals(HashMap(globalsStore.first), HashMap(globalsStore.second)) }
+
+    private fun saveGlobals() = file(GLOBALS_FILE).write(globalsSnapshot().toJson().toString())
+
+    /** Looks one thing up on Last.fm and keeps it; things Last.fm doesn't know are kept too, so they aren't asked again. */
+    private fun lookupGlobal(c: LastfmClient, ask: GlobalAsk) {
+        val now = System.currentTimeMillis()
+        if (ask.kind == GlobalAsk.Kind.TOP) {
+            val top = c.artistTopTracks(ask.artist)
+            synchronized(globalsStore) { globalsStore.second[Globals.artistKey(ask.artist)] = GlobalTop(top, now) }
+            return
+        }
+        val (key, n) = when (ask.kind) {
+            GlobalAsk.Kind.ARTIST -> Globals.artistKey(ask.artist) to c.artistCounts(ask.artist)
+            GlobalAsk.Kind.TRACK -> Globals.trackKey(ask.artist, ask.title) to c.trackCounts(ask.artist, ask.title)
+            else -> Globals.albumKey(ask.artist, ask.title) to c.albumCounts(ask.artist, ask.title)
+        }
+        synchronized(globalsStore) { globalsStore.first[key] = Global(n?.listeners ?: 0, n?.playcount ?: 0, now) }
+    }
+
+    /** Last.fm's counts for your most played artists and songs, a few lookups a second. On [historyExec]. */
+    private fun globalsInner() {
+        if (globalsBusy) return
+        val c = lastfm() ?: return
+        val s = currentStats() ?: return
+        globalsTried = System.currentTimeMillis()
+        val need = s.globalsNeeded(globalsTried)
+        if (need.isEmpty()) return
+        globalsBusy = true
+        globalsDone = 0
+        globalsTotal = need.size
+        pushState()
+        try {
+            for (ask in need) {
+                lookupGlobal(c, ask)
+                globalsDone++
+                if (globalsDone % 25 == 0) {
+                    saveGlobals()
+                    pushState()
+                }
+                Thread.sleep(250) // Last.fm asks for at most 5 requests a second
+            }
+        } catch (_: Exception) {
+            // Offline or Last.fm busy: the rest next time.
+        } finally {
+            saveGlobals()
+            globalsBusy = false
+            stats = null
+            pushState()
+            statsExec.execute { statsInner() }
+        }
+    }
+
+    /** The lookups for one page (an artist, song or album beyond the most played), then that page again. On [webExec]. */
+    private fun globalsFor(asks: List<GlobalAsk>, msg: JSONObject) {
+        val c = lastfm() ?: return
+        if (asks.isEmpty()) return
+        webExec.execute {
+            try {
+                for (a in asks) lookupGlobal(c, a)
+            } catch (_: Exception) {
+                return@execute
+            }
+            saveGlobals()
+            stats = null
+            handle(msg)
+        }
+    }
+
+    /** Does the page for [j] (an artist, song or album page) still need Last.fm's counts? */
+    private fun pageAsks(kind: GlobalAsk.Kind, j: JSONObject): List<GlobalAsk> {
+        if (j.optBoolean("missing")) return emptyList()
+        val now = System.currentTimeMillis()
+        val g = globalsSnapshot()
+        val out = ArrayList<GlobalAsk>()
+        when (kind) {
+            GlobalAsk.Kind.ARTIST -> {
+                val n = j.optString("name")
+                if (!g.fresh(Globals.artistKey(n), now)) out += GlobalAsk(GlobalAsk.Kind.ARTIST, n)
+                if (!g.freshTop(n, now)) out += GlobalAsk(GlobalAsk.Kind.TOP, n)
+            }
+            GlobalAsk.Kind.TRACK -> {
+                val a = j.optString("artist")
+                val t = j.optString("title")
+                if (!g.fresh(Globals.trackKey(a, t), now)) out += GlobalAsk(GlobalAsk.Kind.TRACK, a, t)
+                if (!g.freshTop(a, now)) out += GlobalAsk(GlobalAsk.Kind.TOP, a)
+            }
+            else -> {
+                val a = j.optString("artist")
+                val t = j.optString("title")
+                if (!g.fresh(Globals.albumKey(a, t), now)) out += GlobalAsk(GlobalAsk.Kind.ALBUM, a, t)
+            }
+        }
+        return out
+    }
+
     private val paletteExec = Executors.newSingleThreadExecutor()
 
     /** Colors per picture URL, kept across starts (covers don't change). */
@@ -321,6 +432,8 @@ object Core {
                     // No photo yet: Deezer may have one; the page comes again if so.
                     val n = j.optString("name")
                     if (j.optString("photo").isEmpty() && Stats.photoKey(n) !in db.images().keys) historyExec.execute { fetchPhotosInner(listOf(n)) { handle(msg) } }
+                    // Everyone's counts on Last.fm, for "you vs everyone"; the page comes again.
+                    globalsFor(pageAsks(GlobalAsk.Kind.ARTIST, j), msg)
                 }
             }
             "track", "album" -> {
@@ -335,6 +448,7 @@ object Core {
                         ?: JSONObject().put("missing", true).put("artist", artist).put("title", title)
                     j.put("req", msg.optInt("req"))
                     push(if (isTrack) "onTrack" else "onAlbum") { j }
+                    globalsFor(pageAsks(if (isTrack) GlobalAsk.Kind.TRACK else GlobalAsk.Kind.ALBUM, j), msg)
                     // No cover yet: Last.fm may have one; the page comes again if so.
                     val info = j.optJSONObject(if (isTrack) "album" else "info")
                     if (info != null && info.optString("cover").isEmpty()) {
@@ -349,6 +463,16 @@ object Core {
                 if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) { handle(msg) } }
                 val photos = s?.exploreNeedingPhotos().orEmpty()
                 if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
+            }
+            "vs" -> statsExec.execute {
+                val s = currentStats()
+                val j = s?.vs() ?: JSONObject().put("empty", true)
+                push("onVs") { j.put("lastfm", lastfm() != null) }
+                if (s != null) {
+                    if (!globalsBusy) historyExec.execute { globalsInner() }
+                    val photos = s.vsNeedingPhotos(j)
+                    if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
+                }
             }
             "playlist" -> statsExec.execute {
                 val s = currentStats()
@@ -1143,7 +1267,7 @@ object Core {
         stats?.let { return it }
         val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null
         val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot())
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot())
             .also { stats = it }
     }
 
@@ -1160,7 +1284,7 @@ object Core {
         val inDecade = if (d == 0) null else base.inDecade(d)
         val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
         val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
-        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot())
+        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot())
             .also {
                 filteredStats = it
                 filteredKey = key
@@ -1257,6 +1381,8 @@ object Core {
         }
         // Release years for the decade filter, looked up now and then as the history grows.
         if (!yearsBusy && System.currentTimeMillis() - yearsTried > 6 * HOUR) historyExec.execute { yearsInner() }
+        // Everyone's counts on Last.fm, for the comparisons, likewise.
+        if (!globalsBusy && System.currentTimeMillis() - globalsTried > 6 * HOUR) historyExec.execute { globalsInner() }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
         val photos = s.artistsNeedingPhotos(id)
@@ -1518,7 +1644,8 @@ object Core {
             JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
                 .put("importing", importing).put("syncing", histSyncing).put("fetched", histDone).put("total", histTotal)
                 .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal)
-                .put("yearsBusy", yearsBusy).put("yearsDone", yearsDone).put("yearsTotal", yearsTotal),
+                .put("yearsBusy", yearsBusy).put("yearsDone", yearsDone).put("yearsTotal", yearsTotal)
+                .put("globalsBusy", globalsBusy).put("globalsDone", globalsDone).put("globalsTotal", globalsTotal),
         )
         .put(
             "tidal",

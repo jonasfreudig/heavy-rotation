@@ -116,7 +116,7 @@ function holoCover(url, title, artist, opts = {}) {
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const foil = owned ? '<i class="sheen"></i><i class="sticker" aria-label="On your shelf">★</i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
-  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} data-key="${esc(opts.key || url || title)}" style="--h:${hue((title || '') + (artist || ''))}">
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" style="--h:${hue((title || '') + (artist || ''))}">
     <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div>${back}</div></div>`;
 }
 
@@ -126,7 +126,7 @@ function holoCover(url, title, artist, opts = {}) {
  * tilts them too; without any sensor they sway gently on their own.
  */
 const Tilt = {
-  els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
+  els: [], x: 0, y: 0, tx: 0, ty: 0, wx: 9, wy: 9, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
@@ -154,8 +154,13 @@ const Tilt = {
     }
     this.x += (tx - this.x) * 0.14;
     this.y += (ty - this.y) * 0.14;
+    // Only when the light visibly moves: every write repaints the foil, the glare and the shadow.
+    if (Math.abs(this.x - this.wx) < 0.004 && Math.abs(this.y - this.wy) < 0.004) { this.raf = requestAnimationFrame((t) => this.step(t)); return; }
+    this.wx = this.x;
+    this.wy = this.y;
     const m = Math.min(1, Math.hypot(this.x, this.y)).toFixed(3);
     for (const el of this.els) {
+      if (el.classList.contains('turning')) continue;
       el.style.setProperty('--tx', this.x.toFixed(3));
       el.style.setProperty('--ty', this.y.toFixed(3));
       el.style.setProperty('--m', m);
@@ -208,6 +213,7 @@ window.onState = (s) => {
   ST = s;
   renderState();
   applyAmbient();
+  vsStateTick();
   if (!hadSpin && s.spin && pendingSpinOpen) { pendingSpinOpen = false; openPage('spinPage'); renderSpin(true); }
 };
 window.onCollection = (c) => {
@@ -224,6 +230,7 @@ window.onRelease = (r) => {
   if ((r.loading || r.error) && old && old.tracks) return;
   REL[r.id] = r;
   if (isOpen('recordPage') && recordId === r.id) renderRecord();
+  fillSleeveBacks();
 };
 window.onToast = (m) => toast(m);
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
@@ -275,6 +282,7 @@ const PAGE_STATE = {
   trackPage: { get: () => TRACK, set: (s) => { TRACK = s; renderTrack(); } },
   albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
   playlistPage: { get: () => [PLAYLIST, TIDALJOB], set: (s) => { [PLAYLIST, TIDALJOB] = s; renderPlaylist(); } },
+  vsPage: { get: () => VS, set: (s) => { VS = s; renderVs(); } },
   genrePage: { get: () => GENRE, set: (s) => { GENRE = s; renderGenre(); } },
 };
 /** Per back-stack entry: what a page further down showed (state and scroll), while another of its kind is on top. */
@@ -529,7 +537,7 @@ function renderRecord() {
   const keep = $('#recordBody [data-holo]');
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero">
-      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, key: holoKey })}</div>
+      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, rel: recordId, key: holoKey })}</div>
       <span class="flip-hint">Tap the sleeve to turn it over</span>
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
@@ -1529,6 +1537,49 @@ function applyAmbient() {
   root.style.setProperty('--amb3', `hsl(${((h1 + 320) % 360).toFixed(0)} ${55 * k}% 36%)`);
 }
 
+/** Your record of an album (any edition, "Deluxe" or not), found on the shelf by artist and title; 0 if you don't own it. */
+function shelfIdOf(artist, title) {
+  const a = looseKey(artist), t = looseKey(title);
+  if (!a || !t) return 0;
+  const r = COLL.find((x) => looseKey(x.title) === t && (looseKey(x.artist) === a || looseKey(x.artist).startsWith(a + ' ') || a.startsWith(looseKey(x.artist) + ' ')));
+  return r ? r.id : 0;
+}
+
+/** The backs of shelf records on album and song pages: their tracklist, once the release is loaded (asked for once). */
+const relAsked = new Set();
+function fillSleeveBacks() {
+  $$('.holo[data-rel] .sleeve-back').forEach((sb) => {
+    const id = +sb.closest('.holo').dataset.rel;
+    if (!id || sb.closest('#recHolo')) return; // the record page fills its own
+    const base = COLL.find((x) => x.id === id) || {};
+    const r = REL[id];
+    const rel = r && r.tracks ? r : null;
+    if (!rel && !relAsked.has(id)) { relAsked.add(id); send({ t: 'openRelease', id }); }
+    const html = sleeveBackInner(base, rel, (rel && rel.plays) || base.plays || 0);
+    if (sb.dataset.filled !== html) { sb.innerHTML = html; sb.dataset.filled = html; }
+  });
+}
+
+/** Re-rendering a page keeps its moving sleeve (turned over or not, record out) when it shows the same cover. */
+function keepHolo(body, html) {
+  const old = body.querySelector('[data-holo]');
+  body.innerHTML = html;
+  const fresh = body.querySelector('[data-holo]');
+  if (old && fresh && old.dataset.key === fresh.dataset.key) fresh.replaceWith(old);
+  fillSleeveBacks();
+  Tilt.refresh();
+}
+
+/** Turns a sleeve over; the tilt holds still while it turns, so the phone only has to move the two faces. */
+function turnSleeve(el) {
+  el.classList.add('turning');
+  el.classList.toggle('flipped');
+  clearTimeout(el._turn);
+  el._turn = setTimeout(() => el.classList.remove('turning'), 650);
+}
+// A record that has slid out of its sleeve stays out when the page draws again.
+document.addEventListener('animationend', (e) => { if (e.animationName === 'discOut') { const h = e.target.closest('.holo'); if (h) h.classList.add('settled'); } });
+
 /** What the back of a record's sleeve says: the tracklist by side, label and format, and your plays as a stamp. */
 function sleeveBackInner(base, rel, plays) {
   const tracks = (rel && rel.tracks) || [];
@@ -2071,7 +2122,8 @@ function renderTrack() {
   const al = t.album && typeof t.album === 'object' ? t.album : null;
   const albumTitle = al ? al.title : t.albumTitle;
   const cover = (al && al.cover) || t.cover;
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!(al && al.owned), key: `track|${t.artist}|${t.title}|${cover || ''}` })}
+  const shelfId = (al && al.owned) || (albumTitle ? shelfIdOf(al ? al.artist : t.artist, albumTitle) : 0);
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${cover || ''}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${listenRow('tracks', t.artist, t.title)}</div>`;
@@ -2086,13 +2138,14 @@ function renderTrack() {
       ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)), '', 'fire')}
     </div>
     <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
+    h += vsBlock(t.global, 'it', t.globalRank ? ` It's ${esc(t.artist)}'s #${t.globalRank} most played song there.` : '');
     h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
     if (t.next && t.next.length) {
       h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
         `<button class="r" ${trackAttrs(x.artist, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${x.count}×</span></button>`).join('')}</div></div>`;
     }
   }
-  $('#trackBody').innerHTML = h;
+  keepHolo($('#trackBody'), h);
   tint($('#trackBody'), cover, (albumTitle || t.title) + t.artist);
 }
 
@@ -2120,12 +2173,14 @@ function renderAlbum() {
   if (!a || !isOpen('albumPage')) return;
   const info = a.info || {};
   const cover = info.cover || a.cover;
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!info.owned, key: `album|${a.artist}|${a.title}|${cover || ''}` })}
+  const shelfId = info.owned || shelfIdOf(a.artist, a.title);
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `album|${a.artist}|${a.title}|${cover || ''}` })}
+    ${shelfId ? '<span class="flip-hint">Tap the sleeve to turn it over</span>' : ''}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
     ${listenRow('albums', a.artist, a.title)}
     ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
-    ${info.owned ? `<div class="stats"><button class="chip link" data-rec="${info.owned}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
+    ${shelfId ? `<div class="stats"><button class="chip link" data-rec="${shelfId}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
   if (a.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (a.missing) {
     h += `<div class="empty small"><p>${(ST.history || {}).count > 0 ? 'You haven\'t played this one yet.' : esc(missingNote())}</p></div>`;
@@ -2146,10 +2201,138 @@ function renderAlbum() {
       h += `<div class="viz"><h2>The songs you play</h2><span class="sub">${plural(tl.length, 'different song')} from this album</span><div class="rank">${tl.map((x, i) =>
         `<button class="r" ${trackAttrs(a.artist, x.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
     }
+    h += vsBlock(a.global, 'it');
     h += lifeCharts(a, 'it', cover, a.title + a.artist);
   }
-  $('#albumBody').innerHTML = h;
+  keepHolo($('#albumBody'), h);
   tint($('#albumBody'), cover, a.title + a.artist);
+}
+
+// ---- you against everyone on Last.fm (all time) ----
+
+let VS = null;
+let vsBusy = false;
+/** "23×", "1.4×", "0.6×": your plays over the average listener's. */
+const fmtX = (r) => `${r >= 10 ? Math.round(r) : r >= 1 ? r.toFixed(1).replace(/\.0$/, '') : r.toFixed(1)}×`;
+/** "1 in 230" for a share of everyone's plays. */
+const oneIn = (share) => `1 in ${num(Math.max(1, Math.round(1 / Math.max(share, 1e-9))))}`;
+const VS_TIERS = [['Household names', '1M+ listeners'], ['Well known', '250K–1M'], ['Known in their scene', '50K–250K'], ['Cult', '10K–50K'], ['Underground', 'under 10K']];
+const tierColor = (k) => `color-mix(in srgb, var(--md-primary) ${[100, 72, 48, 30, 16][k]}%, var(--md-surface-container-highest))`;
+
+/** You (the bar) against the average listener (the tick), on one scale. */
+function vsBar(mine, avg) {
+  const top = Math.max(mine, avg, 1);
+  return `<div class="vsbar" aria-hidden="true"><i style="width:${((mine / top) * 100).toFixed(1)}%"></i><b style="left:${((avg / top) * 100).toFixed(1)}%"></b></div>`;
+}
+
+/** The block on artist, song and album pages: everyone's counts and you against the average listener. */
+function vsBlock(g, what, extra = '') {
+  if (!g) return '';
+  return `<div class="viz vs"><h2>You vs everyone</h2><span class="sub">On Last.fm, all time</span>
+    <div class="tiles">
+      ${tile('Listeners', compact(g.listeners), `${compact(g.plays)} plays in all`, '', 'people')}
+      ${tile('You', fmtX(g.ratio), `average: ${num(Math.round(g.avg))}`, '', 'heart')}
+    </div>
+    ${vsBar(g.mine, g.avg)}
+    <p class="hint">You've played ${what} ${plural(g.mine, 'time')}; the average listener ${num(Math.round(g.avg))}. ${oneIn(g.share)} of all its plays on Last.fm are yours.${extra}</p></div>`;
+}
+
+/** Everyone's most played songs by an artist, and how often you played each. */
+function globalTopHtml(a) {
+  const top = a.globalTop || [];
+  if (!top.length) return '';
+  const heard = top.filter((x) => x.mine > 0).length;
+  return `<div class="viz"><h2>Their most played songs</h2><span class="sub">On Last.fm, everyone's top ${top.length}; you've played ${heard} of them</span>
+    <div class="rank">${top.map((x) => `<button class="r${x.mine ? '' : ' unheard'}" ${trackAttrs(a.name, x.title)}><span class="n">${x.rank}</span><span class="t"><b>${esc(x.title)}</b><small>${compact(x.plays)} plays worldwide</small></span><span class="v">${x.mine ? `${num(x.mine)}×` : 'not yet'}</span></button>`).join('')}</div></div>`;
+}
+
+function openVs() {
+  openPage('vsPage');
+  renderVs();
+  send({ t: 'vs' });
+}
+window.onVs = (v) => {
+  VS = v;
+  if (isOpen('vsPage')) renderVs();
+  renderVsCard();
+};
+/** While the counts are being looked up, the page shows how far; when that ends it asks again. */
+function vsStateTick() {
+  const busy = !!(ST.history || {}).globalsBusy;
+  if (vsBusy && !busy && (isOpen('vsPage') || VS)) send({ t: 'vs' });
+  vsBusy = busy;
+  if (isOpen('vsPage') && busy) renderVs();
+}
+
+function renderVsCard() {
+  const slot = $('#vsCard');
+  if (!slot) return;
+  const v = VS;
+  const line = v && v.median ? `Half of your plays go to artists with fewer than <b>${compact(v.median)}</b> listeners.` : 'How your listening compares with everyone on Last.fm: where you are a bigger fan than most, and who few people know.';
+  slot.innerHTML = `<button class="dig-card vs-card" id="openVs">${icon('people', 'i big')}<div><h2>You vs everyone</h2><p>${line}</p></div></button>`;
+}
+
+function renderVs() {
+  const body = $('#vsBody');
+  if (!isOpen('vsPage')) return;
+  const hs = ST.history || {};
+  const v = VS;
+  const p = hs.globalsTotal ? Math.round((hs.globalsDone / hs.globalsTotal) * 100) : 0;
+  const busy = hs.globalsBusy ? `<div class="card"><div class="card-title">${icon('download')}Asking Last.fm · ${num(hs.globalsDone)} of ${num(hs.globalsTotal)}</div>
+    <p>Everyone's play counts for your top artists and songs, a few a second. The first time takes a minute or two; after that only new ones, once a month.</p><div class="lin inline"><i style="--p:${p}%"></i></div></div>` : '';
+  if (!v) { body.innerHTML = busy + '<div class="lin inline indet"><i></i></div>'; return; }
+  if (v.empty) { body.innerHTML = `<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>`; return; }
+  if (!v.lastfm) { body.innerHTML = `<div class="empty"><p>Connect Last.fm in Settings first: the comparisons use your Last.fm API key.</p></div>`; return; }
+  if (!v.knownArtists) { body.innerHTML = busy || `<div class="empty"><p>Looking up your artists on Last.fm…</p></div>`; return; }
+  const cover = v.knownPlays / Math.max(1, v.plays);
+  let h = `<div class="vs-hero page-hero"><i class="glow"></i><span class="k">You vs everyone</span>
+    <h1>Half of your plays go to artists with fewer than <em>${compact(v.median)}</em> listeners</h1>
+    <div class="meta">Against everyone on Last.fm, all time · counts known for ${pct(cover)} of your plays</div></div>${busy}`;
+  // From household names to the underground
+  const tiers = v.tiers || [];
+  const tot = Math.max(1, tiers.reduce((s, t) => s + t.plays, 0));
+  h += `<div class="viz"><h2>From household names to the underground</h2><span class="sub">Your plays by how many people listen to the artist</span>
+    <div class="tierbar">${tiers.map((t, k) => (t.plays ? `<i style="flex:${t.plays};background:${tierColor(k)}" title="${esc(VS_TIERS[k][0])}"></i>` : '')).join('')}</div>
+    <div class="tierlist">${tiers.map((t, k) => `<div class="tr"><span class="sw" style="background:${tierColor(k)}"></span><span class="nm"><b>${VS_TIERS[k][0]}</b><small>${VS_TIERS[k][1]} · ${plural(t.artists, 'artist')}${t.top ? ` · most: <button class="link" data-artist="${esc(t.top)}">${esc(t.top)}</button>` : ''}</small></span><span class="pc">${pct(t.plays / tot)}</span></div>`).join('')}</div></div>`;
+  // Bigger fan than most
+  const fans = v.fans || [];
+  if (fans.length) {
+    h += `<div class="viz"><h2>A bigger fan than most</h2><span class="sub">Your plays against the average listener's (the tick)</span>
+      <div class="rank vs-rank">${fans.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>you ${num(a.mine)} · average ${num(Math.round(a.avg))}</small></span><span class="v x">${fmtX(a.ratio)}</span>${vsBar(a.mine, a.avg)}</button>`).join('')}</div></div>`;
+  }
+  // Your share of everyone's plays
+  const shares = v.shares || [];
+  if (shares.length) {
+    h += `<div class="viz"><h2>Your share</h2><span class="sub">Of all their plays on Last.fm, this many are yours</span>
+      <div class="xcards">${shares.map((a) => `<button class="xcard share" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b class="big">${oneIn(a.share)}</b><b>${esc(a.name)}</b><small class="meta">${compact(a.plays)} plays in all</small></button>`).join('')}</div></div>`;
+  }
+  // Favorites few people know
+  const gems = v.gems || [];
+  if (gems.length) {
+    h += `<div class="viz"><h2>Favorites few people know</h2><span class="sub">Artists you play a lot with the fewest listeners</span>
+      <div class="xcards">${gems.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small>${compact(a.listeners)} listeners</small><small class="meta">you: ${compact(a.mine)}</small></button>`).join('')}</div></div>`;
+  }
+  // Songs
+  const songs = v.songs || [];
+  if (songs.length) {
+    h += `<div class="viz"><h2>Songs you play more than anyone</h2><span class="sub">Against the average listener of each song</span>
+      <div class="rank vs-rank">${songs.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)} · you ${num(t.mine)} · average ${num(Math.round(t.avg))}</small></span><span class="v x">${fmtX(t.ratio)}</span>${vsBar(t.mine, t.avg)}</button>`).join('')}</div></div>`;
+  }
+  // Your favorite song by each top artist against everyone's
+  const taste = v.taste || [];
+  if (taste.length) {
+    h += `<div class="viz"><h2>Your favorite vs everyone's</h2><span class="sub">Your most played song by each of your top artists, and theirs on Last.fm</span>
+      <div class="taste">${taste.map((x) => {
+        const same = x.mine.rank === 1;
+        const where = same ? 'their most played too' : x.mine.rank ? `their #${x.mine.rank} on Last.fm` : 'not in their top 50 on Last.fm';
+        return `<div class="tc"><button class="th" data-artist="${esc(x.artist)}">${coverHtml(x.photo, x.artist, x.artist, 'tiny round')}<span class="tn"><b>${esc(x.artist)}</b><small>you've heard ${x.heard} of their top ${x.of}</small></span></button>
+          <button class="tl" ${trackAttrs(x.artist, x.mine.title)}><span class="lb">Yours</span><b>${esc(x.mine.title)}</b><small>${plural(x.mine.plays, 'play')} · ${where}</small></button>
+          ${same ? '' : `<button class="tl" ${trackAttrs(x.artist, x.theirs.title)}><span class="lb">Everyone's</span><b>${esc(x.theirs.title)}</b><small>${compact(x.theirs.plays)} plays · ${x.theirs.mine ? `you: ${plural(x.theirs.mine, 'play')}` : 'you haven\'t played it'}</small></button>`}</div>`;
+      }).join('')}</div></div>`;
+  }
+  h += `<p class="hint center">Counts from Last.fm, all time, for everyone (you included), looked up again once a month. The average listener is all plays divided by all listeners; a few heavy listeners pull that up, so most people played less.</p>`;
+  body.innerHTML = h;
+  tint(body, '', 'You vs everyone');
 }
 
 // ---- explore: the long tail ----
@@ -2178,7 +2361,7 @@ function renderExplore() {
   if (!x) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (x.empty) { body.innerHTML = `<div class="empty"><p>Nothing to explore yet.</p></div>`; return; }
   const tail = x.tail || {};
-  let h = `<div class="dig-card">${icon('explore', 'i big')}<div><h2>The long tail</h2>
+  let h = `<div id="vsCard"></div><div class="dig-card">${icon('explore', 'i big')}<div><h2>The long tail</h2>
     <p>You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}. Here's where to dig.</p>
     <button class="btn filled" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button></div></div>`;
   const la = x.lostArtists || [];
@@ -2215,6 +2398,8 @@ function renderExplore() {
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
   body.innerHTML = h;
+  renderVsCard();
+  if (!VS) send({ t: 'vs' });
 }
 
 // ---- playlists ----
@@ -2349,6 +2534,7 @@ function renderArtist() {
       ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'), '', 'chart')}
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
+  h += vsBlock(a.global, esc(a.name));
   h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
   h += lifeCharts(a, 'them', pic, a.name + a.name);
   if (STATS && STATS.record && STATS.record.days) {
@@ -2365,6 +2551,7 @@ function renderArtist() {
   if (a.albums.length) {
     h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>`;
   }
+  h += globalTopHtml(a);
   if (a.owned.length) {
     h += `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>`;
   }
@@ -2747,6 +2934,16 @@ function buildSlides(s) {
     out.push({ cls: 'deep', html: `<div class="k in">Your top artists</div><div class="list5">${s.artists.map((x, i) => `<div class="row in" ${dly(0.1 + i * 0.12)}><span class="n">${i + 1}</span>
       ${coverHtml(x.cover, x.name, x.name, 'round')}<span class="nm">${esc(x.name)}<small>${plural(x.plays, 'play')}</small></span><i class="bar5" data-w="${(x.plays / s.artists[0].plays) * 100}%"></i></div>`).join('')}</div>` });
   }
+  // You against everyone: the top artist, all time
+  const cmp = s.vs;
+  if (cmp && cmp.avg > 0) {
+    const big = Math.min(1, cmp.ratio >= 1 ? 1 : cmp.ratio), small = Math.min(1, cmp.ratio >= 1 ? 1 / cmp.ratio : 1);
+    const line = cmp.ratio >= 1.15 ? `as much ${esc(cmp.name)} as their average listener` : cmp.ratio >= 0.85 ? `about as much ${esc(cmp.name)} as their average listener` : `of what their average listener played`;
+    out.push({ cls: 'deep', html: `<div class="k in">You vs everyone</div>
+      <div class="dots2 in" ${dly(0.15)}><span class="you" style="--s:${Math.sqrt(big).toFixed(3)}"><em>you</em></span><span class="avg" style="--s:${Math.sqrt(small).toFixed(3)}"><em>average</em></span></div>
+      <div class="t huge in" ${dly(0.3)}>${cmp.ratio >= 0.85 ? fmtX(cmp.ratio) : pct(cmp.ratio)}</div>
+      <p class="p in" ${dly(0.45)}>${line}. All time on Last.fm: <b>${plural(cmp.mine, 'play')}</b> from you, ${num(Math.round(cmp.avg))} from the average of ${compact(cmp.listeners)} listeners.</p>` });
+  }
   // Song: a 7" single
   const t0 = (s.tracks || [])[0];
   if (t0) {
@@ -2918,7 +3115,7 @@ function build() {
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
     const flip = e.target.closest('[data-flip]');
-    if (flip) { flip.classList.toggle('flipped'); return; }
+    if (flip) { turnSleeve(flip); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }
     if (e.target.closest('[data-hide-all]')) { hideAllSuggestions(); return; }
     const hide = e.target.closest('[data-hide],[data-unhide],[data-keep]');
@@ -3041,7 +3238,10 @@ function build() {
     if (rec) openRecord(+rec.dataset.rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
   };
-  $('#exploreBody').onclick = (e) => { if (e.target.closest('#exploreGoStats')) showTab('stats'); };
+  $('#exploreBody').onclick = (e) => {
+    if (e.target.closest('#exploreGoStats')) showTab('stats');
+    if (e.target.closest('#openVs')) openVs();
+  };
   $('#svcChips').onclick = (e) => {
     const c = e.target.closest('[data-svc]');
     if (!c) return;

@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.12 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.13 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -202,6 +202,32 @@ you loved and haven't played for half a year or more; **Everyone in …**, every
 in it; when its music came out; its listening barcode, plays per month and hours; and the records
 on your shelf with that genre or style. **Full stats for …** opens the Stats tab for that genre.
 
+#### You vs everyone
+
+Last.fm knows how many people listened to every artist, album and song, and how often, all time.
+The app asks for those counts (with your API key, a few lookups a second, about two minutes the
+first time) for your 200 most played artists and 150 most played songs, plus everyone's most
+played songs by your 25 top artists, keeps them on the phone and looks them up again once a month.
+Other artists, songs and albums are looked up when you open their page.
+
+The **You vs everyone** card at the top of the Explore tab opens the comparison:
+
+- **From household names to the underground**: your plays by how many listeners the artist has
+  (1M+, 250K–1M, 50K–250K, 10K–50K, under 10K), and the line "half of your plays go to artists
+  with fewer than … listeners".
+- **A bigger fan than most**: artists you play many times more than their average listener
+  (all their plays divided by all their listeners; a few heavy listeners pull that up, so most
+  people played less). The bar is you, the tick the average listener.
+- **Your share**: "1 in 230" of all of an artist's plays on Last.fm are yours.
+- **Favorites few people know**: artists you play a lot with the fewest listeners.
+- **Songs you play more than anyone**, the same for songs.
+- **Your favorite vs everyone's**: your most played song by each top artist, where it ranks on
+  Last.fm, and everyone's favorite, with how often you played it.
+
+Artist, song and album pages get a **You vs everyone** block (listeners, plays, you against the
+average listener, your share), artist pages everyone's **most played songs** with your plays next
+to each (the ones you haven't heard yet are dimmed), and the story a slide with your top artist.
+
 #### Explore
 
 The **Explore** tab digs into what never makes the top lists:
@@ -258,7 +284,7 @@ of the last one you played; pick **Your records**, **Wallpaper** (your Material 
 The shelf has three views (the buttons next to the record count): the grid of covers, big covers
 two to a row with year and plays, and a list with year, label, format, two styles and plays.
 
-On a record page, tap the sleeve to turn it over: the back has the tracklist by side, the label
+On a record page, or the album or song page of a record you own, tap the sleeve to turn it over: the back has the tracklist by side, the label
 and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:
 the cover is the label, the platter turns while a track plays, and the tonearm moves from the
 outer groove toward the label as the side goes on.
@@ -348,7 +374,7 @@ already playing).
 | Path | What |
 | --- | --- |
 | `discogs/` | Discogs client (token auth, rate limit), collection and release parsing, tracklists and sides |
-| `lastfm/LastfmClient.kt` | Last.fm API: web auth, signing, `track.scrobble` (batches of 50), now playing, album info, top albums |
+| `lastfm/LastfmClient.kt` | Last.fm API: web auth, signing, `track.scrobble` (batches of 50), now playing, album info, top albums, everyone's counts (`*.getInfo`, `artist.getTopTracks`) |
 | `mb/MusicBrainzClient.kt` | MusicBrainz lookups for missing track lengths (1 request per second) |
 | `scrobble/Planner.kt`, `Spin.kt` | Timing a record: start times, Last.fm's half-or-4-minutes rule, flip, stop, resync |
 | `scrobble/ScrobbleQueue.kt` | Durable scrobble queue (survives offline and app kills) and the activity log |
@@ -358,6 +384,7 @@ already playing).
 | `history/HistorySync.kt` | Resumable import of user.getRecentTracks with a time cursor |
 | `history/History.kt`, `history/Stats.kt` | The history in memory; every figure on the Stats and Explore tabs, song and album pages, playlists |
 | `history/Genres.kt` | Genres from Discogs styles and cleaned Last.fm tags |
+| `history/Globals.kt` | Last.fm's all-time counts for everyone (listeners, plays, top songs), kept on the phone for "you vs everyone" |
 | `tidal/` | TIDAL API: app and user tokens (PKCE), catalog search and matching, playlists; the cache of found songs |
 | `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |
 | `HistoryDb.kt` | SQLite store for the history, genre tags and cover URLs |

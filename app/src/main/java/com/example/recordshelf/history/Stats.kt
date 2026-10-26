@@ -34,6 +34,8 @@ class Stats(
     private val albumImages: Map<String, String> = emptyMap(),
     /** Release years looked up per album key (0: not found); see [Years]. */
     private val albumYears: Map<String, Int> = emptyMap(),
+    /** Last.fm's all-time counts for everyone, for the comparisons. */
+    private val globals: Globals = Globals(),
 ) {
     companion object {
         const val TOP_GENRES = 6
@@ -53,6 +55,19 @@ class Stats(
         const val TAIL_PLAYS = 5
         const val PLAYLIST_SIZE = 40
         const val GENRE_ALL_MAX = 300
+
+        // You against everyone: what is looked up on Last.fm, and what the lists need.
+        const val VS_ARTISTS = 200
+        const val VS_ARTIST_MIN = 3
+        const val VS_TOPS = 25
+        const val VS_TRACKS = 150
+        const val VS_TRACK_MIN = 4
+        const val VS_LIST = 10
+        const val FAN_MIN = 10
+        const val GEM_MIN = 20
+
+        /** Listener tiers, from household names down to the underground. */
+        val VS_TIERS = longArrayOf(1_000_000, 250_000, 50_000, 10_000, 0)
 
         /** Artist photos live in the image cache next to album covers, under this prefix and the artist's name. */
         const val ARTIST_PHOTO = "@artist:"
@@ -473,7 +488,7 @@ class Stats(
     fun genrePage(key: String): JSONObject? {
         val sub = h.filter(inGenre(key))
         if (sub.size == 0) return null
-        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears)
+        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals)
         val o = s.life { true } ?: return null
         val ex = s.explore()
         val order = genreOptions(100)
@@ -486,6 +501,101 @@ class Stats(
             .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
             .put("decades", s.decades(0, sub.size))
     }
+
+    // ---- you against everyone on Last.fm (all time) ----
+
+    /** You against everyone: your all-time plays [mine] next to Last.fm's counts [g]. */
+    private fun vsJson(mine: Int, g: Global): JSONObject = JSONObject().put("mine", mine).put("listeners", g.listeners).put("plays", g.plays)
+        .put("avg", g.perListener).put("ratio", mine / maxOf(1.0, g.perListener)).put("share", mine.toDouble() / maxOf(1L, g.plays))
+
+    /**
+     * What to look up on Last.fm for the comparisons, most played first: your top artists and
+     * songs, and the most played songs worldwide of your very top artists. Fresh ones are skipped.
+     */
+    fun globalsNeeded(nowMs: Long): List<GlobalAsk> {
+        val l = artistLife
+        val artists = h.artistNames.indices.filter { l.plays[it] >= VS_ARTIST_MIN }.sortedByDescending { l.plays[it] }.take(VS_ARTISTS)
+        val tracks = trackPlays.indices.filter { trackPlays[it] >= VS_TRACK_MIN }.sortedByDescending { trackPlays[it] }.take(VS_TRACKS)
+        val out = ArrayList<GlobalAsk>()
+        for (a in artists) if (!globals.fresh(Globals.artistKey(h.artistNames[a]), nowMs)) out += GlobalAsk(GlobalAsk.Kind.ARTIST, h.artistNames[a])
+        for (a in artists.take(VS_TOPS)) if (!globals.freshTop(h.artistNames[a], nowMs)) out += GlobalAsk(GlobalAsk.Kind.TOP, h.artistNames[a])
+        for (t in tracks) {
+            val a = h.artistNames[h.trackArtist[t]]
+            if (!globals.fresh(Globals.trackKey(a, h.trackTitles[t]), nowMs)) out += GlobalAsk(GlobalAsk.Kind.TRACK, a, h.trackTitles[t])
+        }
+        return out
+    }
+
+    /** Your plays per song of artist [a], spellings ("(Remastered)") added up, keyed by [Text.normLoose]; with the most played spelling. */
+    private fun songsOf(a: Int): Map<String, Pair<Int, Int>> {
+        val m = HashMap<String, Pair<Int, Int>>()
+        for (t in trackPlays.indices) {
+            if (h.trackArtist[t] != a || trackPlays[t] == 0) continue
+            val k = Text.normLoose(h.trackTitles[t])
+            val prev = m[k]
+            m[k] = if (prev == null) t to trackPlays[t] else (if (trackPlays[t] > trackPlays[prev.first]) t else prev.first) to prev.second + trackPlays[t]
+        }
+        return m
+    }
+
+    /** Your most played song by artist [a] against everyone's most played, and where yours ranks worldwide (0: not in their top 50). */
+    private fun taste(a: Int): JSONObject? {
+        val name = h.artistNames[a]
+        val top = globals.top(name) ?: return null
+        val mine = songsOf(a)
+        val fav = mine.values.maxByOrNull { it.second } ?: return null
+        val favKey = Text.normLoose(h.trackTitles[fav.first])
+        val rank = top.indexOfFirst { Text.normLoose(it.first) == favKey } + 1
+        return JSONObject().put("artist", name).put("photo", artistPhoto(name))
+            .put("mine", JSONObject().put("title", h.trackTitles[fav.first]).put("plays", fav.second).put("rank", rank))
+            .put("theirs", JSONObject().put("title", top[0].first).put("plays", top[0].second).put("mine", mine[Text.normLoose(top[0].first)]?.second ?: 0))
+            .put("heard", top.take(10).count { (mine[Text.normLoose(it.first)]?.second ?: 0) > 0 }).put("of", minOf(10, top.size))
+    }
+
+    /**
+     * You against everyone on Last.fm, all time: how mainstream your listening is (plays by how
+     * many people listen to the artist), artists and songs you play far more than their average
+     * listener, your share of an artist's plays worldwide, favorites few people know, and your
+     * favorite song by each top artist against everyone's.
+     */
+    fun vs(): JSONObject {
+        val l = artistLife
+        val known = h.artistNames.indices.filter { l.plays[it] > 0 }.mapNotNull { a -> globals.artist(h.artistNames[a])?.let { a to it } }
+        val knownPlays = known.sumOf { l.plays[it.first] }
+        val o = JSONObject().put("plays", h.size).put("knownPlays", knownPlays).put("knownArtists", known.size).put("artists", l.plays.count { it > 0 })
+        if (known.isEmpty()) return o
+        val tierPlays = IntArray(VS_TIERS.size)
+        val tierArtists = IntArray(VS_TIERS.size)
+        val tierTop = IntArray(VS_TIERS.size) { -1 }
+        for ((a, g) in known) {
+            val k = VS_TIERS.indexOfFirst { g.listeners >= it }
+            tierPlays[k] += l.plays[a]
+            tierArtists[k]++
+            if (tierTop[k] < 0 || l.plays[a] > l.plays[tierTop[k]]) tierTop[k] = a
+        }
+        o.put("tiers", JSONArray(VS_TIERS.indices.map { k ->
+            JSONObject().put("min", VS_TIERS[k]).put("plays", tierPlays[k]).put("artists", tierArtists[k]).put("top", if (tierTop[k] >= 0) h.artistNames[tierTop[k]] else "")
+        }))
+        // Half of your plays go to artists with fewer listeners than this.
+        var acc = 0
+        o.put("median", known.sortedBy { it.second.listeners }.first { acc += l.plays[it.first]; acc * 2 >= knownPlays }.second.listeners)
+        fun artistVs(a: Int, g: Global) = vsJson(l.plays[a], g).put("name", h.artistNames[a]).put("photo", artistPhoto(h.artistNames[a]))
+        val fans = known.filter { l.plays[it.first] >= FAN_MIN }
+        o.put("fans", JSONArray(fans.sortedByDescending { l.plays[it.first] / it.second.perListener }.take(VS_LIST).map { artistVs(it.first, it.second) }))
+        o.put("shares", JSONArray(fans.sortedByDescending { l.plays[it.first].toDouble() / it.second.plays }.take(5).map { artistVs(it.first, it.second) }))
+        o.put("gems", JSONArray(known.filter { l.plays[it.first] >= GEM_MIN }.sortedBy { it.second.listeners }.take(8).map { artistVs(it.first, it.second) }))
+        val songs = trackPlays.indices.filter { trackPlays[it] >= VS_TRACK_MIN }
+            .mapNotNull { t -> globals.track(h.artistNames[h.trackArtist[t]], h.trackTitles[t])?.let { t to it } }
+        o.put("songs", JSONArray(songs.sortedByDescending { trackPlays[it.first] / it.second.perListener }.take(VS_LIST).map { (t, g) -> vsJson(trackPlays[t], g).put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]]) }))
+        o.put("taste", JSONArray(known.sortedByDescending { l.plays[it.first] }.take(VS_TOPS).mapNotNull { taste(it.first) }.take(8)))
+        return o
+    }
+
+    /** Artists in the comparisons without a photo yet. */
+    fun vsNeedingPhotos(vs: JSONObject): List<String> = listOf("fans", "shares", "gems", "taste").flatMap { k ->
+        val a = vs.optJSONArray(k) ?: JSONArray()
+        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("photo").isEmpty() }.map { it.optString("name").ifEmpty { it.optString("artist") } }
+    }.distinct().filter { it.isNotEmpty() && photoKey(it) !in albumImages }
 
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
     fun inGenre(key: String): (Int) -> Boolean {
@@ -967,7 +1077,7 @@ class Stats(
         val key = Text.norm(name)
         val owned = collection.filter { Text.norm(it.artist) == key || Text.norm(it.artist).startsWith("$key ") }.distinctBy { it.releaseId }
         val rank = if (inRange[a] > 0) inRange.count { it > inRange[a] } + 1 else 0
-        return weeksJson(JSONObject(), weeks)
+        val o = weeksJson(JSONObject(), weeks)
             .put("name", h.artistNames[a]).put("plays", plays).put("days", days).put("photo", artistPhoto(h.artistNames[a]))
             .put("cover", albums.entries.sortedByDescending { it.value }.map { cover(it.key) }.firstOrNull { it.isNotEmpty() } ?: "")
             .put("first", JSONObject().put("ts", h.ts[first] * 1000).put("track", h.trackTitles[h.track[first]]))
@@ -981,6 +1091,14 @@ class Stats(
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", h.albumKeys[it.key] in ownedKeys) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
+        globals.artist(h.artistNames[a])?.let { o.put("global", vsJson(plays, it)) }
+        globals.top(h.artistNames[a])?.let { top ->
+            val mine = songsOf(a)
+            o.put("globalTop", JSONArray(top.take(10).mapIndexed { i, (title, gp) ->
+                JSONObject().put("rank", i + 1).put("title", title).put("plays", gp).put("mine", mine[Text.normLoose(title)]?.second ?: 0)
+            }))
+        }
+        return o
     }
 
     // ---- one track, one album ----
@@ -1085,6 +1203,9 @@ class Stats(
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[t]).put("rank", rank(inRange, t)))
             .put("next", JSONArray(next.entries.sortedByDescending { it.value }.take(5).map { (n, c) -> JSONObject().put("title", h.trackTitles[n]).put("artist", h.artistNames[h.trackArtist[n]]).put("count", c) }))
         if (al >= 0) o.put("album", albumJson(al))
+        val artistName = h.artistNames[h.trackArtist[t]]
+        globals.track(artistName, h.trackTitles[t])?.let { o.put("global", vsJson(all[t], it)) }
+        globals.top(artistName)?.let { top -> o.put("globalRank", top.indexOfFirst { Text.normLoose(it.first) == Text.normLoose(h.trackTitles[t]) } + 1) }
         return o
     }
 
@@ -1108,6 +1229,7 @@ class Stats(
             if (i in i0 until i1) inRange[x]++
             if (x == al) tracks.merge(h.track[i], 1, Int::plus)
         }
+        globals.album(h.artistNames[h.albumArtist[al]], h.albumTitles[al])?.let { o.put("global", vsJson(all[al], it)) }
         return o.put("info", albumJson(al)).put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
             .put("rank", rank(all, al)).put("albums", all.count { it > 0 })
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[al]).put("rank", rank(inRange, al)))
@@ -1373,6 +1495,7 @@ class Stats(
         return out
             .put("personality", personality(r, i0, i1))
             .put("artists", JSONArray(topA.map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("share", ap[it].toDouble() / n).put("days", aDays[it]).put("cover", artistPhoto(h.artistNames[it]).ifEmpty { artistCover(it) }) }))
+            .put("vs", topA.firstOrNull()?.let { a -> globals.artist(h.artistNames[a])?.let { vsJson(artistLife.plays[a], it).put("name", h.artistNames[a]).put("photo", artistPhoto(h.artistNames[a])) } } ?: JSONObject.NULL)
             .put("tracks", JSONArray(topT.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]).put("cover", trackAlbum[it].let { al -> if (al >= 0) cover(al) else "" }) }))
             .put("songBestDay", if (songBest != null) JSONObject().put("day", dayStart(songBest.key) * 1000).put("count", songBest.value) else JSONObject.NULL)
             .put("albums", JSONArray(topL.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))

@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.12 (browser preview)',
+    version: '0.13 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -457,6 +457,39 @@ const Mock = (() => {
     return out;
   }
 
+  // Everyone on Last.fm, made up from the name: 2K to 6M listeners, 8 to 60 plays each.
+  function globalOf(name, mine) {
+    const h = hashStr(String(name));
+    const listeners = Math.round(2000 * Math.pow(3000, (h % 1000) / 1000));
+    const plays = listeners * (8 + (h % 53));
+    const avg = plays / listeners;
+    return { mine, listeners, plays, avg, ratio: mine / avg, share: mine / plays };
+  }
+  function fakeVs() {
+    const L = history();
+    const ac = counts(0, L.ts.length, (L2, i) => L2.a[i]);
+    const known = ranked(ac).map((a) => ({ a, name: L.artists[a], photo: '', ...globalOf(L.artists[a], ac[a]) }));
+    const mins = [1e6, 25e4, 5e4, 1e4, 0];
+    const tiers = mins.map((min) => ({ min, plays: 0, artists: 0, top: '' }));
+    known.forEach((x) => { const t = tiers[mins.findIndex((m) => x.listeners >= m)]; t.plays += x.mine; t.artists++; if (!t.top) t.top = x.name; });
+    const knownPlays = known.reduce((s, x) => s + x.mine, 0);
+    let acc = 0;
+    const median = known.slice().sort((p, q) => p.listeners - q.listeners).find((x) => (acc += x.mine) * 2 >= knownPlays).listeners;
+    const fans = known.filter((x) => x.mine >= 10);
+    const tc = counts(0, L.ts.length, (L2, i) => L2.t[i]);
+    const ta = {};
+    L.t.forEach((t, i) => { ta[t] = L.a[i]; });
+    const songs = ranked(tc).slice(0, 60).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], ...globalOf(L.titles[t] + L.artists[ta[t]], tc[t]) }));
+    const taste = known.slice(0, 6).map((x, k) => {
+      const mine = topTrackOf(x.a);
+      const theirs = mine[2] || mine[0];
+      return { artist: x.name, photo: '', mine: { title: mine[0].title, plays: mine[0].plays, rank: k === 1 ? 1 : 2 + k * 3 }, theirs: { title: theirs.title, plays: 9e6 / (k + 1), mine: theirs.plays }, heard: 7 - k, of: 10 };
+    });
+    return { plays: L.ts.length, knownPlays, knownArtists: known.length, artists: known.length, tiers, median, lastfm: true,
+      fans: fans.slice().sort((p, q) => q.ratio - p.ratio).slice(0, 10), shares: fans.slice().sort((p, q) => q.share - p.share).slice(0, 5),
+      gems: known.filter((x) => x.mine >= 20).sort((p, q) => p.listeners - q.listeners).slice(0, 8), songs: songs.sort((p, q) => q.ratio - p.ratio).slice(0, 10), taste };
+  }
+  let vsLooked = false;
   function fakeStory(id) {
     const s = fakeStats(id);
     const L = history();
@@ -477,6 +510,7 @@ const Mock = (() => {
       vinyl: { count: Math.round(n * 0.03), share: 0.03, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }] },
       streak: s.streaks, insights: s.insights,
       first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
+      vs: x.order.length ? { name: L.artists[x.order[0]], photo: '', ...globalOf(L.artists[x.order[0]], counts(0, L.ts.length, (L2, i) => L2.a[i])[x.order[0]]) } : null,
     };
   }
 
@@ -597,7 +631,8 @@ const Mock = (() => {
     return { ...life, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a],
       range: { ...r, plays: c[t] || 0, rank: rankIn(c, t) },
       next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
-      album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 } };
+      album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
+      global: globalOf(L.titles[t] + L.artists[a], life.plays), globalRank: 2 };
   }
   const looseTitle = (t) => String(t || '').toLowerCase().replace(/\s*[([][^)\]]*[)\]]/g, '').trim();
   function fakeAlbum(artist, title) {
@@ -613,7 +648,8 @@ const Mock = (() => {
     return { ...life, title, artist: L.artists[a], rank: rankIn(all, a), albums: Object.keys(all).length,
       info: { title, artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
       range: { ...r, plays: c[a] || 0, rank: rankIn(c, a) },
-      trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })) };
+      trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })),
+      global: globalOf(title + L.artists[a], life.plays) };
   }
   function artistLives() {
     const L = history();
@@ -746,6 +782,12 @@ const Mock = (() => {
       tracks: [0, 1, 2, 3, 4].map((i) => ({ title: L.titles[(ai * 7 + i) % L.titles.length], plays: 60 - i * 9 })),
       albums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays * 0.6), cover: '', owned: owned.length > 0 }],
       owned, genres: [GENRES[Math.max(0, genreOf(ai))] || 'Indie Rock'],
+      global: globalOf(name, plays),
+      globalTop: (() => {
+        const mine = topTrackOf(ai);
+        return [mine[2], mine[0], { title: 'The Radio Edit', plays: 0 }, mine[1], ...mine.slice(3, 9)].filter(Boolean)
+          .map((x, i) => ({ rank: i + 1, title: x.title, plays: Math.round(9e6 / (i + 1)), mine: x.plays || 0 }));
+      })(),
     };
   }
 
@@ -952,6 +994,22 @@ const Mock = (() => {
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
         case 'genre': later(300, () => onGenre({ ...fakeGenre(m.key), req: m.req })); break;
+        case 'vs':
+          if (!vsLooked) {
+            // The first time: Last.fm is asked, a few artists a second.
+            vsLooked = true;
+            onVs({ plays: 1, knownPlays: 0, knownArtists: 0, lastfm: true });
+            Object.assign(S.history, { globalsBusy: true, globalsDone: 0, globalsTotal: 240 });
+            pushState();
+            const step = () => {
+              S.history.globalsDone += 60;
+              if (S.history.globalsDone >= 240) { S.history.globalsBusy = false; pushState(); return; }
+              pushState();
+              later(600, step);
+            };
+            later(600, step);
+          } else later(250, () => onVs(fakeVs()));
+          break;
         case 'playlist': later(300, () => onPlaylist(fakePlaylist(m.kind))); break;
         case 'hide': case 'unhide': case 'keep':
           tidyApply(m.t, m.items || [m]);

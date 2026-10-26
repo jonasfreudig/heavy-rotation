@@ -881,3 +881,41 @@ input[type=datetime-local] { color-scheme: inherit; }
 .tags .chip.link { height: 28px; padding: 0 12px; font-size: 13px; }
 .chips.everyone { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chips.everyone .chip small.n { margin-left: 6px; opacity: .7; font-size: 11px; }
+
+/* You vs everyone */
+.vs-card { width: 100%; text-align: left; color: inherit; }
+.vs-hero { text-align: center; padding: 24px 8px 6px; }
+.vs-hero .k { display: block; font: 500 11px/16px var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.vs-hero h1 { margin: 8px 0 8px; font-size: 27px; line-height: 1.12; }
+.vs-hero h1 em { font-style: italic; color: var(--tint, var(--md-primary)); }
+.vs-hero .meta { color: var(--md-on-surface-variant); font-size: 12px; }
+.tierbar { display: flex; gap: 2px; height: 28px; margin: 14px 0 12px; border-radius: 8px; overflow: hidden; }
+.tierbar i { min-width: 3px; }
+.tierlist { display: flex; flex-direction: column; gap: 10px; }
+.tierlist .tr { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; }
+.tierlist .sw { width: 14px; height: 14px; border-radius: 4px; }
+.tierlist .nm { display: flex; flex-direction: column; min-width: 0; }
+.tierlist .nm b { font-size: 15px; font-weight: 600; }
+.tierlist .nm small { font-size: 12px; color: var(--md-on-surface-variant); }
+.tierlist .nm .link { color: var(--md-primary); font: inherit; padding: 0; }
+.tierlist .pc { font: 600 17px/1 var(--display, var(--font)); }
+.vsbar { position: relative; height: 6px; border-radius: 3px; background: var(--md-surface-container-highest); margin: 10px 0 4px; }
+.vsbar i { display: block; height: 100%; border-radius: 3px; background: var(--tint, var(--md-primary)); }
+.vsbar b { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: var(--md-on-surface); }
+.vs-rank .r .vsbar { grid-column: 2 / 4; margin: 2px 0 0; }
+.vs-rank .v.x, .rank .v.x { font: italic 700 20px/1 var(--display, var(--font)); color: var(--tint, var(--md-primary)); }
+.xcard.share b.big { font: italic 700 20px/24px var(--display, var(--font)); color: var(--tint, var(--md-primary)); margin-top: 6px; }
+.rank .r.unheard .t b, .rank .r.unheard .n { opacity: .6; }
+.rank .r.unheard .v { font-size: 12px; color: var(--md-on-surface-variant); }
+.taste { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.taste .tc { border-radius: 18px; background: var(--md-surface-container); padding: 10px 12px 6px; }
+.taste .th { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; color: inherit; padding: 0 0 6px; }
+.taste .th .tn { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.taste .th b { font: 650 17px/22px var(--display, var(--font)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.taste .th small { font-size: 11px; color: var(--md-on-surface-variant); }
+.taste .tl { display: grid; grid-template-columns: 74px 1fr; gap: 0 10px; width: 100%; text-align: left; color: inherit; padding: 6px 0; border-top: 1px solid var(--md-outline-variant); }
+.taste .tl .lb { grid-row: span 2; font: 500 10px/18px var(--mono, var(--font)); letter-spacing: .1em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.taste .tl b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.taste .tl small { font-size: 12px; color: var(--md-on-surface-variant); }
+.viz.vs .tiles { margin-top: 12px; }
+.viz.vs .hint { margin: 8px 0 0; }
