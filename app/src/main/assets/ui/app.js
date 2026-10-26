@@ -116,7 +116,7 @@ function holoCover(url, title, artist, opts = {}) {
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const foil = owned ? '<i class="sheen"></i><i class="sticker" aria-label="On your shelf">★</i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
-  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" style="--h:${hue((title || '') + (artist || ''))}">
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
     <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div>${back}</div></div>`;
 }
 
@@ -1563,12 +1563,24 @@ function fillSleeveBacks() {
   });
 }
 
-/** Re-rendering a page keeps its moving sleeve (turned over or not, record out) when it shows the same cover. */
+/**
+ * Re-rendering a page keeps its moving sleeve (turned over or not, record out) when it shows the
+ * same record; a better picture arriving is swapped into it instead of building a new one.
+ */
 function keepHolo(body, html) {
   const old = body.querySelector('[data-holo]');
   body.innerHTML = html;
   const fresh = body.querySelector('[data-holo]');
-  if (old && fresh && old.dataset.key === fresh.dataset.key) fresh.replaceWith(old);
+  if (old && fresh && old.dataset.key === fresh.dataset.key) {
+    if (old.dataset.cover !== fresh.dataset.cover) {
+      const oc = old.querySelector('.sleeve .cover'), nc = fresh.querySelector('.sleeve .cover');
+      if (oc && nc) oc.replaceWith(nc);
+      const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
+      if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
+      old.dataset.cover = fresh.dataset.cover;
+    }
+    fresh.replaceWith(old);
+  }
   fillSleeveBacks();
   Tilt.refresh();
 }
@@ -1662,27 +1674,46 @@ function tintStyle(colors, seedHue) {
     + `--glow-d:hsl(${gh.toFixed(0)} ${gsat}% 24%);--glow-l:hsl(${gh.toFixed(0)} ${gsat}% 86%)`;
 }
 /**
- * The page behind [el] takes the picture at [url] as its background: blurred, faded into the
- * page color further down, with the cards over it see-through. Drawn once per picture, so
- * nothing about it moves or redraws while you scroll or tilt.
+ * The page behind [el] takes the picture at [url] as its background: shrunk to a few dozen pixels
+ * on a canvas once (softened and made more colorful there), then simply stretched over the page,
+ * which blurs it for free. No filter runs while the page scrolls or the sleeve tilts.
  */
 function setBackdrop(el, url) {
   const page = el && el.closest('.page');
   if (!page) return;
-  let bd = page.querySelector(':scope > .backdrop');
   if (!url) { page.classList.remove('has-backdrop'); return; }
+  let bd = page.querySelector(':scope > .backdrop');
   if (!bd) {
     bd = document.createElement('div');
     bd.className = 'backdrop';
     bd.setAttribute('aria-hidden', 'true');
-    bd.innerHTML = '<i></i>';
+    bd.innerHTML = '<canvas width="48" height="72"></canvas>';
     page.prepend(bd);
   }
-  if (bd.dataset.url !== url) {
-    bd.dataset.url = url;
-    bd.firstChild.style.backgroundImage = `url('${url.replace(/'/g, '%27')}')`;
-  }
   page.classList.add('has-backdrop');
+  if (bd.dataset.url === url) return;
+  bd.dataset.url = url;
+  bd.classList.remove('ready');
+  const img = new Image();
+  img.onload = () => {
+    if (bd.dataset.url !== url) return;
+    const cv = bd.firstChild;
+    const small = document.createElement('canvas');
+    small.width = cv.width;
+    small.height = cv.height;
+    const sx = small.getContext('2d');
+    sx.imageSmoothingQuality = 'high';
+    sx.filter = 'saturate(1.6)';
+    // The upper middle of the cover, stretched to the page's shape.
+    const side = Math.min(img.width, img.height);
+    sx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, small.width, small.height);
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.filter = 'blur(3px)';
+    ctx.drawImage(small, 0, 0);
+    bd.classList.add('ready');
+  };
+  img.src = url;
 }
 /** Tints [el] by the picture at [url] (asking the app for its colors once), or by a hue from [seed] without a picture. */
 function tint(el, url, seed) {
@@ -2135,10 +2166,12 @@ function openTrack(artist, title, extra = {}) {
   renderTrack();
   send({ t: 'track', artist, title, range: statsRange, req: TRACK.req });
 }
+/** Whether a page's new data is the same as what it shows (the app often answers twice, e.g. once a picture arrived elsewhere). */
+const sameData = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 window.onTrack = (t) => {
   TRACK = deliver('trackPage', t.req, TRACK, (s, shown) => {
     const next = { ...s, ...t, req: s.req, loading: false };
-    if (shown) { TRACK = next; renderTrack(); }
+    if (shown) { const changed = !sameData(next, s); TRACK = next; if (changed) renderTrack(); }
     return next;
   });
 };
@@ -2150,7 +2183,7 @@ function renderTrack() {
   const albumTitle = al ? al.title : t.albumTitle;
   const cover = (al && al.cover) || t.cover;
   const shelfId = (al && al.owned) || (albumTitle ? shelfIdOf(al ? al.artist : t.artist, albumTitle) : 0);
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${cover || ''}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${listenRow('tracks', t.artist, t.title)}</div>`;
@@ -2190,7 +2223,7 @@ function openAlbum(artist, title, extra = {}) {
 window.onAlbum = (a) => {
   ALBUM = deliver('albumPage', a.req, ALBUM, (s, shown) => {
     const next = { ...s, ...a, req: s.req, loading: false };
-    if (shown) { ALBUM = next; renderAlbum(); }
+    if (shown) { const changed = !sameData(next, s); ALBUM = next; if (changed) renderAlbum(); }
     return next;
   });
 };
@@ -2201,7 +2234,7 @@ function renderAlbum() {
   const info = a.info || {};
   const cover = info.cover || a.cover;
   const shelfId = info.owned || shelfIdOf(a.artist, a.title);
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `album|${a.artist}|${a.title}|${cover || ''}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
     ${shelfId ? '<span class="flip-hint">Tap the sleeve to turn it over</span>' : ''}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
@@ -2994,7 +3027,7 @@ function openArtist(name) {
 window.onArtist = (a) => {
   ARTIST = deliver('artistPage', a.req, ARTIST, (s, shown) => {
     const next = { ...a, req: s.req };
-    if (shown) { ARTIST = next; renderArtist(); }
+    if (shown) { const changed = !sameData(next, s); ARTIST = next; if (changed) renderArtist(); }
     return next;
   });
 };
@@ -3010,7 +3043,7 @@ function renderArtist() {
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
   const pic = a.photo || a.cover || '';
   let h = `<div class="artist-hero page-hero"><i class="glow"></i>
-      ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}|${pic}` })}
+      ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}` })}
       <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
         <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}</div></div></div>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
@@ -3044,7 +3077,7 @@ function renderArtist() {
   if (a.owned.length) {
     h += `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>`;
   }
-  $('#artistBody').innerHTML = h;
+  keepHolo($('#artistBody'), h);
   tint($('#artistBody'), pic, a.name + a.name);
   fitText($('#artistBody .fit'));
   drawRecords();

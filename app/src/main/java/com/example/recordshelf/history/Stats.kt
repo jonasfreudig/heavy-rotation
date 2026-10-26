@@ -31,12 +31,18 @@ class Stats(
     private val collection: List<CollectionItem> = emptyList(),
     private val genres: Genres = Genres(emptyList(), emptyMap()),
     private val vinyl: List<Listen> = emptyList(),
-    private val albumImages: Map<String, String> = emptyMap(),
+    @Volatile private var albumImages: Map<String, String> = emptyMap(),
     /** Release years looked up per album key (0: not found); see [Years]. */
     private val albumYears: Map<String, Int> = emptyMap(),
     /** Last.fm's all-time counts for everyone, for the comparisons. */
-    private val globals: Globals = Globals(),
+    @Volatile private var globals: Globals = Globals(),
 ) {
+    /** New covers, photos or Last.fm counts arrived: the same stats, now with them (nothing else is worked out again). */
+    fun withPictures(images: Map<String, String>, g: Globals) {
+        albumImages = images
+        globals = g
+    }
+
     companion object {
         const val TOP_GENRES = 6
         const val TOP_INKS = 8

@@ -1,22 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Themed icon: the record and the sleeve as one color, a thin gap between them, the star cut out. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="-2" android:translateY="2">
-        <!-- The record, kept clear of a margin around the sleeve -->
-        <group android:rotation="-7" android:pivotX="44" android:pivotY="56">
-            <clip-path android:pathData="M-60,-60H200V200H-60Z M30,37.5A4.5,4.5 0,0 0,25.5 42V70A4.5,4.5 0,0 0,30 74.5H58A4.5,4.5 0,0 0,62.5 70V42A4.5,4.5 0,0 0,58 37.5Z" />
-            <group android:rotation="7" android:pivotX="44" android:pivotY="56">
-                <path android:fillColor="#FF000000" android:fillType="evenOdd"
-                    android:pathData="M43,49a21,21 0,1 0,42 0a21,21 0,1 0,-42 0z M61.4,49a2.6,2.6 0,1 0,5.2 0a2.6,2.6 0,1 0,-5.2 0z" />
-            </group>
-        </group>
-        <group android:rotation="-7" android:pivotX="44" android:pivotY="56">
-            <path android:fillColor="#FF000000" android:fillType="evenOdd"
-                android:pathData="M30.5,39H57.5A3.5,3.5 0,0 1,61 42.5V69.5A3.5,3.5 0,0 1,57.5 73H30.5A3.5,3.5 0,0 1,27 69.5V42.5A3.5,3.5 0,0 1,30.5 39Z M55.5,41.9L56.27,43.84L58.3,43.9L56.7,45.15L57.25,47.15L55.5,46L53.75,47.15L54.3,45.15L52.7,43.9L54.73,43.84Z" />
-        </group>
-    </group>
+    <!-- Record with a ring cut out around the label, for themed icons -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M24,54a30,30 0,1 0,60 0a30,30 0,1 0,-60 0z M41,54a13,13 0,1 0,26 0a13,13 0,1 0,-26 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M44,54a10,10 0,1 0,20 0a10,10 0,1 0,-20 0z M52.2,54a1.8,1.8 0,1 0,3.6 0a1.8,1.8 0,1 0,-3.6 0z" />
 </vector>

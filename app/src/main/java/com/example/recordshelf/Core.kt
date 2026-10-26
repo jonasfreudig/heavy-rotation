@@ -246,10 +246,26 @@ object Core {
         } finally {
             saveGlobals()
             globalsBusy = false
-            stats = null
+            refreshPictures()
             pushState()
-            statsExec.execute { statsInner() }
         }
+    }
+
+    /** Hands the stats the covers, photos and Last.fm counts looked up so far, without working anything else out again. */
+    private fun refreshPictures() {
+        val images = db.images()
+        val g = globalsSnapshot()
+        stats?.withPictures(images, g)
+        filteredStats?.withPictures(images, g)
+    }
+
+    /**
+     * After covers or photos arrived: a page that asked for them ([after]) is shown again; lookups
+     * the Stats tab started bring the Stats tab up to date.
+     */
+    private fun picturesArrived(after: (() -> Unit)?) {
+        refreshPictures()
+        statsExec.execute { if (after != null) after() else statsInner() }
     }
 
     /** The lookups for one page (an artist, song or album beyond the most played), then that page again. On [webExec]. */
@@ -263,7 +279,7 @@ object Core {
                 return@execute
             }
             saveGlobals()
-            stats = null
+            refreshPictures()
             handle(msg)
         }
     }
@@ -1496,13 +1512,7 @@ object Core {
                 break
             }
         }
-        if (any) {
-            stats = null
-            statsExec.execute {
-                statsInner()
-                after?.invoke()
-            }
-        }
+        if (any) picturesArrived(after)
     }
 
     /** Artist photos from Deezer for [names] not looked up yet ("" is kept when there is none). On [historyExec]. */
@@ -1520,13 +1530,7 @@ object Core {
                 break // offline or over the quota: next time
             }
         }
-        if (any) {
-            stats = null
-            statsExec.execute {
-                statsInner()
-                after?.invoke()
-            }
-        }
+        if (any) picturesArrived(after)
     }
 
     /** The colors of a cover or photo (downloaded once, scaled down), for tinting its page. On [paletteExec]. */

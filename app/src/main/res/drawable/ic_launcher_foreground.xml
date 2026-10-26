@@ -1,66 +1,19 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- A record sliding out of a holo-foil sleeve with the star sticker: the collector's edition from the app. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="-2" android:translateY="2">
-        <!-- Record, grooves, sheen -->
-        <path android:fillColor="#FF121016" android:pathData="M43,49a21,21 0,1 0,42 0a21,21 0,1 0,-42 0z" />
-        <path android:strokeColor="#29FFFFFF" android:strokeWidth="0.7" android:pathData="M46,49a18,18 0,1 0,36 0a18,18 0,1 0,-36 0z" />
-        <path android:strokeColor="#21FFFFFF" android:strokeWidth="0.7" android:pathData="M49,49a15,15 0,1 0,30 0a15,15 0,1 0,-30 0z" />
-        <path android:strokeColor="#1AFFFFFF" android:strokeWidth="0.7" android:pathData="M52,49a12,12 0,1 0,24 0a12,12 0,1 0,-24 0z" />
-        <path android:fillColor="#1AFFFFFF" android:pathData="M64,49L64,28A21,21 0,0 1,82.2,38.5z" />
-        <path android:fillColor="#0FFFFFFF" android:pathData="M64,49L64,70A21,21 0,0 1,45.8,59.5z" />
-        <!-- Label and spindle hole -->
-        <path android:pathData="M56.5,49a7.5,7.5 0,1 0,15 0a7.5,7.5 0,1 0,-15 0z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:type="radial" android:centerX="64" android:centerY="49" android:gradientRadius="8">
-                    <item android:offset="0" android:color="#FFFFC15E" />
-                    <item android:offset="1" android:color="#FFF0574A" />
-                </gradient>
-            </aapt:attr>
-        </path>
-        <path android:fillColor="#FF2B1C55" android:pathData="M62.6,49a1.4,1.4 0,1 0,2.8 0a1.4,1.4 0,1 0,-2.8 0z" />
-        <!-- Sleeve, tilted -->
-        <group android:rotation="-7" android:pivotX="44" android:pivotY="56">
-            <path android:fillColor="#59000000" android:pathData="M32,41.5H59A3.5,3.5 0,0 1,62.5 45V72A3.5,3.5 0,0 1,59 75.5H32A3.5,3.5 0,0 1,28.5 72V45A3.5,3.5 0,0 1,32 41.5Z" />
-            <path android:pathData="M30.5,39H57.5A3.5,3.5 0,0 1,61 42.5V69.5A3.5,3.5 0,0 1,57.5 73H30.5A3.5,3.5 0,0 1,27 69.5V42.5A3.5,3.5 0,0 1,30.5 39Z">
-                <aapt:attr name="android:fillColor">
-                    <gradient android:type="linear" android:startX="30" android:startY="36" android:endX="62" android:endY="72">
-                        <item android:offset="0" android:color="#FFFF7AC8" />
-                        <item android:offset="0.28" android:color="#FFFFD76E" />
-                        <item android:offset="0.52" android:color="#FF76F0A8" />
-                        <item android:offset="0.76" android:color="#FF6EC8FF" />
-                        <item android:offset="1" android:color="#FFB47CFF" />
-                    </gradient>
-                </aapt:attr>
-            </path>
-            <path android:pathData="M30.5,39H57.5A3.5,3.5 0,0 1,61 42.5V69.5A3.5,3.5 0,0 1,57.5 73H30.5A3.5,3.5 0,0 1,27 69.5V42.5A3.5,3.5 0,0 1,30.5 39Z">
-                <aapt:attr name="android:fillColor">
-                    <gradient android:type="linear" android:startX="30" android:startY="38" android:endX="56" android:endY="66">
-                        <item android:offset="0" android:color="#00FFFFFF" />
-                        <item android:offset="0.45" android:color="#8CFFFFFF" />
-                        <item android:offset="0.6" android:color="#00FFFFFF" />
-                    </gradient>
-                </aapt:attr>
-            </path>
-            <!-- A hint of artwork on the sleeve -->
-            <path android:fillColor="#2E1B1530" android:pathData="M37,61a7,7 0,1 0,14 0a7,7 0,1 0,-14 0z" />
-            <path android:strokeColor="#471B1530" android:strokeWidth="1.6" android:strokeLineCap="round" android:pathData="M32,68L56,68" />
-            <path android:strokeColor="#331B1530" android:strokeWidth="1.2" android:strokeLineCap="round" android:pathData="M32,64.5L46,64.5" />
-            <!-- The foil star sticker -->
-            <path android:pathData="M50.9,44.5a4.6,4.6 0,1 0,9.2 0a4.6,4.6 0,1 0,-9.2 0z">
-                <aapt:attr name="android:fillColor">
-                    <gradient android:type="radial" android:centerX="57" android:centerY="40" android:gradientRadius="5">
-                        <item android:offset="0" android:color="#FFFFF1A8" />
-                        <item android:offset="1" android:color="#FFFF9BD2" />
-                    </gradient>
-                </aapt:attr>
-            </path>
-            <path android:fillColor="#FFFFFFFF" android:pathData="M55.5,41.9L56.27,43.84L58.3,43.9L56.7,45.15L57.25,47.15L55.5,46L53.75,47.15L54.3,45.15L52.7,43.9L54.73,43.84Z" />
-        </group>
-    </group>
+    <!-- Record -->
+    <path android:fillColor="#17151A" android:pathData="M24,54a30,30 0,1 0,60 0a30,30 0,1 0,-60 0z" />
+    <!-- Grooves -->
+    <path android:strokeColor="#2EFFFFFF" android:strokeWidth="0.8" android:pathData="M28,54a26,26 0,1 0,52 0a26,26 0,1 0,-52 0z" />
+    <path android:strokeColor="#24FFFFFF" android:strokeWidth="0.8" android:pathData="M32,54a22,22 0,1 0,44 0a22,22 0,1 0,-44 0z" />
+    <path android:strokeColor="#1CFFFFFF" android:strokeWidth="0.8" android:pathData="M36,54a18,18 0,1 0,36 0a18,18 0,1 0,-36 0z" />
+    <!-- Sheen -->
+    <path android:fillColor="#1AFFFFFF" android:pathData="M54,54L54,24A30,30 0,0 1,79.98,39z" />
+    <path android:fillColor="#12FFFFFF" android:pathData="M54,54L54,84A30,30 0,0 1,28.02,69z" />
+    <!-- Label and spindle hole -->
+    <path android:fillColor="#E8613C" android:pathData="M43,54a11,11 0,1 0,22 0a11,11 0,1 0,-22 0z" />
+    <path android:fillColor="#F2B544" android:pathData="M49,54a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:fillColor="#EFE7DC" android:pathData="M52.4,54a1.6,1.6 0,1 0,3.2 0a1.6,1.6 0,1 0,-3.2 0z" />
 </vector>
