@@ -464,6 +464,10 @@ object Core {
                 val photos = s?.exploreNeedingPhotos().orEmpty()
                 if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
             }
+            "atlas" -> statsExec.execute {
+                val s = currentStats()
+                push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
+            }
             "vs" -> statsExec.execute {
                 val s = currentStats()
                 val j = s?.vs() ?: JSONObject().put("empty", true)

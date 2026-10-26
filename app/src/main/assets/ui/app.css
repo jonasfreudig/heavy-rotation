@@ -919,3 +919,62 @@ input[type=datetime-local] { color-scheme: inherit; }
 .taste .tl small { font-size: 12px; color: var(--md-on-surface-variant); }
 .viz.vs .tiles { margin-top: 12px; }
 .viz.vs .hint { margin: 8px 0 0; }
+
+/* The atlas: universe, family tree, landscape */
+.atlas-seg { margin: 4px 0 8px; }
+.atlas-seg button { flex: 1; }
+.uni-intro { margin: 10px 2px 8px; font-size: 14px; line-height: 21px; color: var(--md-on-surface-variant); }
+.uni-intro b { color: var(--md-on-surface); }
+button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padding: 0; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; flex: none; }
+.dot.big { width: 16px; height: 16px; margin: 0; }
+.uni-find { position: absolute; left: 10px; right: 60px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 21px; background: rgba(30, 32, 48, .82); color: #f1ecff; }
+.uni-find .i { width: 20px; height: 20px; color: rgba(241, 236, 255, .7); flex: none; }
+.uni-find input { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 15px; outline: none; }
+.uni-find input::placeholder { color: rgba(241, 236, 255, .55); }
+#uniFound { position: absolute; left: 0; right: 0; top: 46px; z-index: 6; color: var(--md-on-surface); display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; background: var(--md-surface-container-highest); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+#uniFound:empty { display: none; }
+#uniFound button { display: flex; align-items: center; gap: 4px; padding: 12px 16px; text-align: left; color: inherit; font-size: 15px; }
+#uniFound button small { margin-left: auto; color: var(--md-on-surface-variant); font-size: 12px; }
+.uni-cons, .uni-years, .land-kinds { margin-top: 8px; }
+.uni-wrap { position: relative; margin: 6px -16px 0; overflow: hidden; background: #0b0d17; touch-action: none; }
+.uni-wrap canvas { display: block; touch-action: none; }
+.uni-zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.uni-zoom button { width: 40px; height: 40px; border-radius: 12px; background: rgba(255, 255, 255, .1); color: #f1ecff; font: 500 18px/1 var(--font); }
+.uni-zoom button[data-uz="fit"] { font-size: 11px; letter-spacing: .06em; }
+.uni-hint { position: absolute; left: 12px; bottom: 8px; margin: 0; font: 400 10.5px/14px var(--mono, var(--font)); letter-spacing: .04em; color: rgba(236, 232, 250, .55); pointer-events: none; }
+.uni-card { position: absolute; left: 8px; right: 8px; bottom: 8px; max-height: 46%; overflow-y: auto; padding: 12px 12px 10px; border-radius: 20px; background: color-mix(in srgb, var(--md-surface-container) 94%, transparent); color: var(--md-on-surface); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.uni-card .x { position: absolute; right: 4px; top: 4px; }
+.uni-card .uh { display: flex; align-items: center; gap: 10px; width: calc(100% - 40px); text-align: left; color: inherit; padding: 0; }
+.uni-card .uh span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.uni-card .uh b { font: 650 19px/24px var(--display, var(--font)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uni-card .uh small { font-size: 12px; color: var(--md-on-surface-variant); }
+.uni-card p { margin: 8px 0 0; font-size: 13.5px; line-height: 19px; }
+.uni-card .chip-row { margin: 10px -12px 0; padding: 0 12px 2px; }
+.uni-card .chip small.n, .uni-cons .chip small.n, .land-kinds .chip small.n { margin-left: 6px; opacity: .7; font-size: 11px; }
+.tree { margin-top: 10px; }
+.tnode { position: relative; }
+.tnode .tkids { margin-left: 15px; border-left: 1.5px solid var(--md-outline-variant); padding-left: 4px; }
+.trow { display: flex; align-items: center; gap: 6px; min-height: 48px; }
+.trow .tt { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 16px; color: var(--md-on-surface-variant); }
+.trow .tt .i { width: 20px; height: 20px; }
+.trow .cover.tiny { width: 32px; height: 32px; flex: none; }
+.trow .tn { display: flex; flex-direction: column; text-align: left; color: inherit; padding: 4px 0; min-width: 0; }
+.trow .tn b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow .tn small { font-size: 12px; color: var(--md-on-surface-variant); }
+.tnode.via > .trow .tn b { font-weight: 400; color: var(--md-on-surface-variant); }
+.landscape { width: 100%; height: auto; display: block; margin-top: 8px; }
+.landscape .occl { fill: var(--md-surface-container-low); stroke: none; }
+.landscape path + path { stroke-width: 1.2; }
+.landscape text { font: 500 9px var(--mono, var(--font)); fill: var(--md-on-surface); text-anchor: middle; paint-order: stroke; stroke: var(--md-surface-container-low); stroke-width: 3px; }
+.landscape text.dim { opacity: .3; }
+.landscape text.yr { font-size: 9px; fill: var(--md-on-surface-variant); }
+.landscape .mtn { cursor: pointer; }
+.land-rows { margin-top: 12px; }
+.land-rows .r.on { background: var(--md-secondary-container); }
+.land-rows .n .dot { margin: 0; }
+.land-det { padding: 8px 14px 12px; font-size: 13px; line-height: 19px; color: var(--md-on-surface-variant); background: var(--md-secondary-container); }
+.lineage { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.lineage .arr { color: var(--md-on-surface-variant); }
+.viz.origin .btn.text { margin-top: 6px; }
+.uni-wrap.carded .uni-hint { display: none; }

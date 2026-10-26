@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.13 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.14 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -202,6 +202,35 @@ you loved and haven't played for half a year or more; **Everyone in …**, every
 in it; when its music came out; its listening barcode, plays per month and hours; and the records
 on your shelf with that genre or style. **Full stats for …** opens the Stats tab for that genre.
 
+#### Your musical atlas
+
+The **Your musical atlas** card on the Explore tab opens three views of your whole history, worked
+out from the order of your scrobbles:
+
+- **Universe**: your 150 most played artists as stars, sized by plays. Two stars are linked when
+  you often play them back to back (in the same listening session, relative to how much you play
+  both), or, for artists you rarely play next to anything, when they share the same months. Linked
+  stars are pulled close, so groups form; those groups are the **constellations** (colored, named
+  after their biggest star, with their main genre). **Bridges** are artists strongly linked into
+  two constellations. Drag to move, pinch or use + and − to zoom, and tap near a star: the nearest
+  one within a finger's width is picked, the map flies to it and a card shows its links as buttons,
+  so you hop from star to star without aiming. The card also says how you found it and what you
+  usually play before and after it. Search for an artist, pick a constellation, or pick a year to
+  light up who was around then.
+- **Family tree**: for every artist you kept playing (5 plays or more), what you played right
+  before your very first play of them, in the same session. Artists that led you to the most
+  others are the **gateways**; unfold them into their tree. "Right after" means the very next song:
+  with radio or autoplay, that was the app's pick. Artists from the first two weeks of your
+  history have no known origin. Artist pages show the same as **How you found them**: the chain
+  back as far as it goes, and who they led you to.
+- **Landscape**: your 14 most played artists as mountains of plays per month, the earliest peaks
+  at the back. Each is read as an **obsession** (most plays within a few months), a **companion**
+  (a year or more), a **comeback** (six quiet months or more, then back) or a **phase**. Tap a
+  mountain or a row for its peak.
+
+Play counts are song plays: an album's "124 plays" means 124 scrobbles of its songs. Record and
+album pages turn that into "≈ 12 times through" when the number of songs is known.
+
 #### You vs everyone
 
 Last.fm knows how many people listened to every artist, album and song, and how often, all time.
@@ -283,6 +312,11 @@ of the last one you played; pick **Your records**, **Wallpaper** (your Material 
 
 The shelf has three views (the buttons next to the record count): the grid of covers, big covers
 two to a row with year and plays, and a list with year, label, format, two styles and plays.
+
+Record, album, song and artist pages and Now spinning take their cover or photo as the
+background, blurred and fading into the page, with the cards over it see-through. The app icon is
+a record sliding out of a holo-foil sleeve; on Android 13 and later it can follow your wallpaper
+colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over: the back has the tracklist by side, the label
 and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:
@@ -384,6 +418,7 @@ already playing).
 | `history/HistorySync.kt` | Resumable import of user.getRecentTracks with a time cursor |
 | `history/History.kt`, `history/Stats.kt` | The history in memory; every figure on the Stats and Explore tabs, song and album pages, playlists |
 | `history/Genres.kt` | Genres from Discogs styles and cleaned Last.fm tags |
+| `history/Atlas.kt` | The atlas: links between artists, the spring layout, constellations, mountain shapes |
 | `history/Globals.kt` | Last.fm's all-time counts for everyone (listeners, plays, top songs), kept on the phone for "you vs everyone" |
 | `tidal/` | TIDAL API: app and user tokens (PKCE), catalog search and matching, playlists; the cache of found songs |
 | `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |

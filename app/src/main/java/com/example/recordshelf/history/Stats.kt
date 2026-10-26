@@ -502,6 +502,165 @@ class Stats(
             .put("decades", s.decades(0, sub.size))
     }
 
+    // ---- the musical atlas: universe, family tree, landscape (all time) ----
+
+    /** Each artist's first scrobble (index), and what came right before it: an artist, -1 (nothing in that session) or -2 (around from the start). */
+    private val origins: Pair<IntArray, IntArray> by lazy {
+        val first = IntArray(h.artistNames.size) { -1 }
+        for (i in 0 until h.size) if (first[h.artist[i]] < 0) first[h.artist[i]] = i
+        val from = IntArray(h.artistNames.size) { a ->
+            val f = first[a]
+            when {
+                f < 0 -> -1
+                h.ts[f] < h.ts[0] + Atlas.START_GRACE -> -2
+                f > 0 && h.ts[f] - h.ts[f - 1] <= Atlas.SESSION_GAP && h.artist[f - 1] != a -> h.artist[f - 1]
+                else -> -1
+            }
+        }
+        first to from
+    }
+
+    /** The genre most of an artist's plays are filed under (an index into the genre keys; -1 if none). */
+    private val artistGenre: IntArray by lazy {
+        val (g, _) = scrobbleGenre
+        val counts = HashMap<Long, Int>()
+        for (i in 0 until h.size) if (g[i] >= 0) counts.merge(Atlas.pair(h.artist[i], g[i]), 1, Int::plus)
+        val best = IntArray(h.artistNames.size) { -1 }
+        val bestN = IntArray(h.artistNames.size)
+        for ((k, c) in counts) {
+            val a = Atlas.first(k)
+            if (c > bestN[a]) {
+                bestN[a] = c
+                best[a] = Atlas.second(k)
+            }
+        }
+        best
+    }
+
+    private fun genreOfArtist(a: Int) = artistGenre[a].let { if (it >= 0) Genres.label(genreKeys[it]) else "" }
+
+    /** How you found artist [a]: "after" (with [from]), "start" (around from the start) or "blue" (nothing right before it). */
+    private fun originJson(a: Int): JSONObject {
+        val (first, from) = origins
+        val o = JSONObject().put("how", when { from[a] >= 0 -> "after"; from[a] == -2 -> "start"; else -> "blue" })
+        if (first[a] >= 0) o.put("at", h.ts[first[a]] * 1000)
+        if (from[a] >= 0) o.put("from", h.artistNames[from[a]])
+        return o
+    }
+
+    /** The atlas, worked out once per history: see [Atlas]. */
+    fun atlas(): JSONObject = atlasJson
+
+    private val atlasJson: JSONObject by lazy {
+        val o = JSONObject().put("plays", h.size)
+        if (h.size == 0) return@lazy o.put("empty", true)
+        val l = artistLife
+        val trans = Atlas.transitions(h)
+        val m0 = monthKey(h.ts[0])
+        val nm = monthKey(nowSec) - m0 + 1
+        // The universe
+        val stars = h.artistNames.indices.filter { l.plays[it] >= Atlas.STAR_MIN }.sortedByDescending { l.plays[it] }.take(Atlas.STARS).toIntArray()
+        val index = HashMap<Int, Int>()
+        stars.forEachIndexed { i, a -> index[a] = i }
+        val monthly = Array(stars.size) { DoubleArray(nm) }
+        val years = Array(stars.size) { java.util.TreeMap<Int, Int>() }
+        for (i in 0 until h.size) {
+            val s = index[h.artist[i]] ?: continue
+            monthly[s][monthKey(h.ts[i]) - m0] += 1.0
+            years[s].merge(date(h.ts[i]).year, 1, Int::plus)
+        }
+        val plays = IntArray(stars.size) { l.plays[stars[it]] }
+        val links = Atlas.links(stars, plays, trans, monthly)
+        val pos = Atlas.layout(stars.size, links)
+        val cl = Atlas.clusters(stars.size, links, plays)
+        // What you usually play right before and right after each star.
+        val before = IntArray(stars.size) { -1 }
+        val beforeN = IntArray(stars.size)
+        val after = IntArray(stars.size) { -1 }
+        val afterN = IntArray(stars.size)
+        for ((k, c) in trans) {
+            if (c < 2) continue
+            index[Atlas.second(k)]?.let { s -> if (c > beforeN[s]) { beforeN[s] = c; before[s] = Atlas.first(k) } }
+            index[Atlas.first(k)]?.let { s -> if (c > afterN[s]) { afterN[s] = c; after[s] = Atlas.second(k) } }
+        }
+        fun round(v: Double) = Math.round(v * 1000) / 1000.0
+        fun near(a: Int, n: Int) = if (a >= 0) JSONObject().put("name", h.artistNames[a]).put("n", n) else JSONObject.NULL
+        val nodes = JSONArray(stars.indices.map { i ->
+            val a = stars[i]
+            JSONObject().put("name", h.artistNames[a]).put("plays", plays[i]).put("x", round(pos[i][0])).put("y", round(pos[i][1])).put("c", cl[i])
+                .put("genre", genreOfArtist(a)).put("photo", artistPhoto(h.artistNames[a])).put("origin", originJson(a))
+                .put("years", JSONObject(years[i].mapKeys { it.key.toString() } as Map<*, *>))
+                .put("before", near(before[i], beforeN[i])).put("after", near(after[i], afterN[i]))
+        })
+        val nc = (cl.maxOrNull() ?: -1) + 1
+        val clusters = JSONArray((0 until nc).map { c ->
+            val members = stars.indices.filter { cl[it] == c }
+            val byGenre = HashMap<String, Int>()
+            members.forEach { i -> genreOfArtist(stars[i]).takeIf { it.isNotEmpty() }?.let { byGenre.merge(it, plays[i], Int::plus) } }
+            JSONObject().put("name", h.artistNames[stars[members[0]]]).put("genre", byGenre.maxByOrNull { it.value }?.key ?: "")
+                .put("plays", members.sumOf { plays[it] }).put("size", members.size).put("top", JSONArray(members.take(5).map { h.artistNames[stars[it]] }))
+        })
+        // Bridges: stars strongly linked both into their own constellation and into another one.
+        val pull = Array(stars.size) { HashMap<Int, Double>() }
+        for (lk in links) {
+            if (cl[lk.b] >= 0) pull[lk.a].merge(cl[lk.b], lk.w, Double::plus)
+            if (cl[lk.a] >= 0) pull[lk.b].merge(cl[lk.a], lk.w, Double::plus)
+        }
+        val bridges = stars.indices.filter { cl[it] >= 0 }.mapNotNull { i ->
+            val own = pull[i][cl[i]] ?: 0.0
+            val other = pull[i].filterKeys { it != cl[i] }.maxByOrNull { it.value } ?: return@mapNotNull null
+            Triple(i, other.key, minOf(own, other.value))
+        }.filter { it.third > 0 }.sortedByDescending { it.third }.take(4)
+        o.put("universe", JSONObject().put("nodes", nodes).put("clusters", clusters)
+            .put("links", JSONArray(links.map { JSONArray().put(it.a).put(it.b).put(it.together).put(round(it.sameTime)).put(round(it.w)) }))
+            .put("bridges", JSONArray(bridges.map { (i, c2, _) -> JSONObject().put("name", h.artistNames[stars[i]]).put("from", cl[i]).put("to", c2) }))
+            .put("plays", plays.sum()))
+        // The family tree: the artists you kept playing, and everyone on the way to them.
+        val (first, from) = origins
+        val kept = BooleanArray(h.artistNames.size) { l.plays[it] >= Atlas.KEPT_MIN }
+        val inTree = kept.copyOf()
+        for (a in kept.indices) if (kept[a]) {
+            var p = from[a]
+            while (p >= 0 && !inTree[p]) {
+                inTree[p] = true
+                p = from[p]
+            }
+        }
+        // Latest first, so each artist's count is complete before it's added to the one before it.
+        val desc = IntArray(h.artistNames.size)
+        for (a in h.artistNames.indices.filter { inTree[it] && first[it] >= 0 }.sortedByDescending { first[it] }) {
+            val p = from[a]
+            if (p >= 0) desc[p] += desc[a] + (if (kept[a]) 1 else 0)
+        }
+        val treeIds = h.artistNames.indices.filter { inTree[it] && first[it] >= 0 }
+        o.put("tree", JSONObject()
+            .put("nodes", JSONArray(treeIds.map { a ->
+                JSONObject().put("id", a).put("name", h.artistNames[a]).put("plays", l.plays[a]).put("at", h.ts[first[a]] * 1000).put("p", from[a]).put("d", desc[a]).put("kept", kept[a])
+            }))
+            .put("gateways", JSONArray(treeIds.filter { desc[it] >= 2 }.sortedByDescending { desc[it] }.take(8).map { a ->
+                JSONObject().put("id", a).put("name", h.artistNames[a]).put("d", desc[a]).put("photo", artistPhoto(h.artistNames[a]))
+            }))
+            .put("after", kept.indices.count { kept[it] && from[it] >= 0 }).put("blue", kept.indices.count { kept[it] && from[it] == -1 })
+            .put("start", kept.indices.count { kept[it] && from[it] == -2 }).put("kept", kept.count { it }))
+        // The landscape: your most played artists' plays per month.
+        val tops = h.artistNames.indices.filter { l.plays[it] > 0 }.sortedByDescending { l.plays[it] }.take(Atlas.MOUNTAINS)
+        val topIndex = HashMap<Int, Int>()
+        tops.forEachIndexed { i, a -> topIndex[a] = i }
+        val counts = Array(tops.size) { IntArray(nm) }
+        for (i in 0 until h.size) topIndex[h.artist[i]]?.let { counts[it][monthKey(h.ts[i]) - m0]++ }
+        val series = tops.indices.map { i ->
+            val c = counts[i]
+            val peak = c.indices.maxByOrNull { c[it] } ?: 0
+            val s = Atlas.shape(c)
+            JSONObject().put("name", h.artistNames[tops[i]]).put("plays", l.plays[tops[i]]).put("counts", JSONArray(c.toList()))
+                .put("peak", c[peak]).put("peakAt", monthStart(m0 + peak)).put("kind", s.kind).put("months", s.months)
+                .put("genre", genreOfArtist(tops[i])).put("photo", artistPhoto(h.artistNames[tops[i]]))
+                .put("from", monthStart(m0 + (c.indexOfFirst { it > 0 }.takeIf { it >= 0 } ?: 0)))
+                .put("_peak", peak)
+        }.sortedBy { it.getInt("_peak") }.onEach { it.remove("_peak") }
+        o.put("landscape", JSONObject().put("monthsFrom", monthStart(m0)).put("months", nm).put("series", JSONArray(series)))
+    }
+
     // ---- you against everyone on Last.fm (all time) ----
 
     /** You against everyone: your all-time plays [mine] next to Last.fm's counts [g]. */
@@ -1091,6 +1250,16 @@ class Stats(
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", h.albumKeys[it.key] in ownedKeys) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
+        // How you found them, back as far as the history goes, and who they led you to.
+        val chain = JSONArray()
+        var p = origins.second[a]
+        while (p >= 0 && chain.length() < 6) {
+            chain.put(originJson(p).put("name", h.artistNames[p]).put("plays", artistLife.plays[p]))
+            p = origins.second[p]
+        }
+        o.put("origin", originJson(a).put("chain", chain))
+        o.put("ledTo", JSONArray(h.artistNames.indices.filter { origins.second[it] == a && artistLife.plays[it] >= Atlas.KEPT_MIN }
+            .sortedByDescending { artistLife.plays[it] }.take(8).map { JSONObject().put("name", h.artistNames[it]).put("plays", artistLife.plays[it]).put("at", h.ts[origins.first[it]] * 1000) }))
         globals.artist(h.artistNames[a])?.let { o.put("global", vsJson(plays, it)) }
         globals.top(h.artistNames[a])?.let { top ->
             val mine = songsOf(a)

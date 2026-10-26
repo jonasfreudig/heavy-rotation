@@ -283,6 +283,7 @@ const PAGE_STATE = {
   albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
   playlistPage: { get: () => [PLAYLIST, TIDALJOB], set: (s) => { [PLAYLIST, TIDALJOB] = s; renderPlaylist(); } },
   vsPage: { get: () => VS, set: (s) => { VS = s; renderVs(); } },
+  atlasPage: { get: () => atlasView, set: (s) => { atlasView = s; renderAtlas(); } },
   genrePage: { get: () => GENRE, set: (s) => { GENRE = s; renderGenre(); } },
 };
 /** Per back-stack entry: what a page further down showed (state and scroll), while another of its kind is on top. */
@@ -542,7 +543,7 @@ function renderRecord() {
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
-      <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')} on Last.fm${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
+      <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')}${rel && rel.tracks.length && plays >= rel.tracks.length ? ` · ≈${Math.round(plays / rel.tracks.length)}× through` : ' on Last.fm'}${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
       ${listenRow('albums', artist, title)}
     </div>
     <div class="record-actions"><button class="btn filled big" id="scrobbleBtn" ${rel && rel.tracks.length ? '' : 'disabled'}>${icon('play')}Scrobble</button></div>
@@ -569,6 +570,7 @@ function renderRecord() {
       ${unknown ? `<br><button class="btn text small" id="refreshLen">${icon('sync')}Look up lengths again</button>` : ''}</div>`;
   }
   $('#recordBody').innerHTML = h;
+  setBackdrop($('#recordBody'), coverUrl);
   if (reuse) $('#recHolo').appendChild(keep);
   const sb = $('#recHolo .sleeve-back');
   if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays);
@@ -734,6 +736,7 @@ function renderSpin(force) {
     <div class="list" id="spList"></div>
     <p class="hint">Out of step with the record? Tap the track that is playing right now, and the times after it move.</p>`;
   if (reuse) $('#spinHolo').appendChild(keep);
+  setBackdrop(body, sp.cover);
   lastCur = -2;
   tickUi();
   Tilt.refresh();
@@ -1658,9 +1661,33 @@ function tintStyle(colors, seedHue) {
   return `--tint-d:hsl(${h.toFixed(0)} ${sat}% ${sat ? 70 : 78}%);--tint-l:hsl(${h.toFixed(0)} ${sat}% ${sat ? 38 : 32}%);`
     + `--glow-d:hsl(${gh.toFixed(0)} ${gsat}% 24%);--glow-l:hsl(${gh.toFixed(0)} ${gsat}% 86%)`;
 }
+/**
+ * The page behind [el] takes the picture at [url] as its background: blurred, faded into the
+ * page color further down, with the cards over it see-through. Drawn once per picture, so
+ * nothing about it moves or redraws while you scroll or tilt.
+ */
+function setBackdrop(el, url) {
+  const page = el && el.closest('.page');
+  if (!page) return;
+  let bd = page.querySelector(':scope > .backdrop');
+  if (!url) { page.classList.remove('has-backdrop'); return; }
+  if (!bd) {
+    bd = document.createElement('div');
+    bd.className = 'backdrop';
+    bd.setAttribute('aria-hidden', 'true');
+    bd.innerHTML = '<i></i>';
+    page.prepend(bd);
+  }
+  if (bd.dataset.url !== url) {
+    bd.dataset.url = url;
+    bd.firstChild.style.backgroundImage = `url('${url.replace(/'/g, '%27')}')`;
+  }
+  page.classList.add('has-backdrop');
+}
 /** Tints [el] by the picture at [url] (asking the app for its colors once), or by a hue from [seed] without a picture. */
 function tint(el, url, seed) {
   if (!el) return;
+  setBackdrop(el, url);
   el.classList.add('tinted');
   el.dataset.tintUrl = url || '';
   const c = url ? TINTS[url] : null;
@@ -2193,6 +2220,8 @@ function renderAlbum() {
       ${tile('First heard', esc(monthYear(a.first)), `last played ${esc(dateLabel(a.last))}`, '', 'history')}
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
+    const songs = a.dzInfo && !a.dzInfo.error && a.dzInfo.tracks ? a.dzInfo.tracks.length : 0;
+    if (songs) h += `<p class="hint center">Plays count songs, not whole albums: ${num(a.plays)} song plays are about ${a.plays >= songs ? `${num(Math.round(a.plays / songs))} times` : 'less than once'} through its ${plural(songs, 'song')}.</p>`;
     const tl = a.trackList || [];
     const tracklist = tracklistHtml(a, cover);
     if (tracklist) h += tracklist;
@@ -2206,6 +2235,465 @@ function renderAlbum() {
   }
   keepHolo($('#albumBody'), h);
   tint($('#albumBody'), cover, a.title + a.artist);
+}
+
+// ---- the atlas: your artists as a universe, how you found them, the landscape of your top ones ----
+
+let ATLAS = null;
+let atlasView = 'universe';
+const TREE_OPEN = new Set();
+let landSel = -1;
+/** The universe on its canvas: the camera, what is picked, and the fingers on it. */
+const UNI = { cam: { x: 0, y: 0, k: 1 }, sel: -1, cluster: -1, year: 0, src: null, nodes: [], adj: [], w: 0, h: 0, dpr: 1, raf: 0, fly: null, pts: new Map(), gesture: null, lastTap: null };
+/** Constellations take the record's inks, in order; loose stars are gray. */
+const starColor = (c) => (c >= 0 && c < INKS_ON_VINYL.length ? INKS_ON_VINYL[c] : '#8b8a99');
+
+function openAtlas(view) {
+  openPage('atlasPage');
+  if (view) atlasView = view;
+  renderAtlas();
+  if (!ATLAS) send({ t: 'atlas' });
+}
+window.onAtlas = (a) => {
+  ATLAS = a;
+  if (isOpen('atlasPage')) renderAtlas();
+};
+
+function renderAtlas() {
+  if (!isOpen('atlasPage')) return;
+  const body = $('#atlasBody');
+  $$('#atlasSeg button').forEach((b) => b.classList.toggle('on', b.dataset.av === atlasView));
+  const a = ATLAS;
+  if (!a) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
+  if (a.empty) { body.innerHTML = '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>'; return; }
+  if (atlasView === 'tree') body.innerHTML = treeHtml(a.tree);
+  else if (atlasView === 'land') body.innerHTML = landHtml(a.landscape);
+  else {
+    body.innerHTML = universeHtml(a.universe);
+    setupUniverse(a.universe);
+  }
+}
+
+// -- the universe --
+
+function universeHtml(u) {
+  if (!u || !u.nodes.length) return '<div class="empty"><p>Not enough plays yet for a universe.</p></div>';
+  const cl = u.clusters || [];
+  const tot = Math.max(1, u.plays);
+  const big = cl[0];
+  const bridges = u.bridges || [];
+  const years = [...new Set(u.nodes.flatMap((n) => Object.keys(n.years || {})))].sort();
+  return `<p class="uni-intro">Your ${num(u.nodes.length)} most played artists as stars${cl.length ? ` in ${plural(cl.length, 'constellation')}` : ''}: close together when you play them back to back or in the same months.</p>
+    <div class="uni-wrap" id="uniWrap"><canvas id="uniCanvas" aria-label="Your artists as a universe of stars"></canvas>
+      <div class="uni-find">${icon('search')}<input id="uniFind" type="search" placeholder="Find an artist" autocomplete="off" enterkeyhint="search"><div id="uniFound"></div></div>
+      <div class="uni-zoom"><button data-uz="in" aria-label="Zoom in">+</button><button data-uz="out" aria-label="Zoom out">−</button><button data-uz="fit" aria-label="Show everything">All</button></div>
+      <p class="uni-hint">Drag, pinch, tap near a star</p>
+      <div class="uni-card" id="uniCard" hidden></div>
+    </div>
+    ${cl.length ? `<div class="chip-row uni-cons">${cl.map((c, k) => `<button class="chip${UNI.cluster === k ? ' on' : ''}" data-uni-c="${k}"><i class="dot" style="background:${starColor(k)}"></i>${esc(c.name)} &amp; co.<small class="n">${pct(c.plays / tot)}</small></button>`).join('')}</div>` : ''}
+    ${years.length > 1 ? `<div class="chip-row uni-years"><button class="chip${!UNI.year ? ' on' : ''}" data-uni-y="0">All years</button>${years.map((y) => `<button class="chip${UNI.year === +y ? ' on' : ''}" data-uni-y="${y}">${y}</button>`).join('')}</div>` : ''}
+    <p class="uni-intro">${big ? `The biggest constellation, <b>${esc(big.name)} &amp; co.</b>${big.genre ? ` (mostly ${esc(big.genre)})` : ''}, holds ${pct(big.plays / tot)} of these plays.` : ''}${bridges.length ? ` Bridges between constellations: ${bridges.map((x) => `<button class="link" data-uni-go="${esc(x.name)}">${esc(x.name)}</button>`).join(', ')}.` : ''} Colors are constellations; a star's size is its plays.</p>`;
+}
+
+function setupUniverse(u) {
+  const cv = $('#uniCanvas');
+  const wrap = $('#uniWrap');
+  if (!cv || !wrap) return;
+  const W = wrap.clientWidth;
+  const H = Math.round(Math.min(window.innerHeight * 0.6, W * 1.2));
+  wrap.style.height = `${H}px`;
+  const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  cv.style.width = `${W}px`;
+  cv.style.height = `${H}px`;
+  Object.assign(UNI, { w: W, h: H, dpr });
+  if (UNI.src !== u) {
+    UNI.src = u;
+    UNI.nodes = u.nodes;
+    UNI.maxPlays = Math.max(1, ...u.nodes.map((n) => n.plays));
+    UNI.adj = u.nodes.map(() => []);
+    u.links.forEach(([a, b, t, s, w]) => { UNI.adj[a].push({ o: b, t, s, w }); UNI.adj[b].push({ o: a, t, s, w }); });
+    UNI.adj.forEach((l) => l.sort((p, q) => q.w - p.w));
+    UNI.cam = { x: 0, y: 0, k: 1 };
+    UNI.sel = -1;
+    UNI.cluster = -1;
+    UNI.year = 0;
+    // A sky of faint dust behind the stars, the same every time.
+    let s = 7;
+    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    UNI.dust = Array.from({ length: 140 }, () => [rnd(), rnd(), 0.3 + rnd() * 0.9, 0.15 + rnd() * 0.35]);
+  }
+  bindUniverse(cv);
+  uniCard();
+  drawUni();
+}
+
+const uniScale = () => (Math.min(UNI.w, UNI.h) / 2) * 0.9;
+const uniToScreen = (x, y) => [UNI.w / 2 + (x - UNI.cam.x) * uniScale() * UNI.cam.k, UNI.h / 2 + (y - UNI.cam.y) * uniScale() * UNI.cam.k];
+/** Plays that count for a star: all of them, or one year's. */
+const uniPlays = (n) => (UNI.year ? (n.years || {})[UNI.year] || 0 : n.plays);
+function uniRadius(n) {
+  const p = uniPlays(n);
+  if (!p) return 1.6;
+  return (2 + 10 * Math.sqrt(p / UNI.maxPlays)) * (0.8 + 0.2 * Math.min(4, UNI.cam.k));
+}
+/** Whether a star is in focus: the picked one and its links, the picked constellation, and stars played in the picked year. */
+function uniLit(i) {
+  const n = UNI.nodes[i];
+  if (UNI.year && !uniPlays(n)) return false;
+  if (UNI.sel >= 0) return i === UNI.sel || UNI.adj[UNI.sel].some((l) => l.o === i);
+  if (UNI.cluster >= 0) return n.c === UNI.cluster;
+  return true;
+}
+
+function drawUni() { if (!UNI.raf) UNI.raf = requestAnimationFrame(uniFrame); }
+function uniFrame(now) {
+  UNI.raf = 0;
+  const cv = $('#uniCanvas');
+  if (!cv || !isOpen('atlasPage')) return;
+  if (UNI.fly) {
+    const f = UNI.fly;
+    const p = Math.min(1, (now - f.t0) / f.dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    UNI.cam = { x: f.from.x + (f.to.x - f.from.x) * e, y: f.from.y + (f.to.y - f.from.y) * e, k: f.from.k * Math.pow(f.to.k / f.from.k, e) };
+    if (p < 1) drawUni(); else UNI.fly = null;
+  }
+  const { w: W, h: H, dpr, nodes } = UNI;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b0d17';
+  ctx.fillRect(0, 0, W, H);
+  // dust drifts a little with the camera, for depth
+  for (const [dx, dy, r, a] of UNI.dust) {
+    const x = (((dx * W - UNI.cam.x * 18) % W) + W) % W, y = (((dy * H - UNI.cam.y * 18) % H) + H) % H;
+    ctx.fillStyle = `rgba(230,225,255,${a})`;
+    ctx.fillRect(x, y, r, r);
+  }
+  const P = nodes.map((n) => uniToScreen(n.x, n.y));
+  const lit = nodes.map((_, i) => uniLit(i));
+  const R = nodes.map((n) => uniRadius(n));
+  // links
+  ctx.lineCap = 'round';
+  for (const [a, b, , , wgt] of UNI.src.links) {
+    const on = lit[a] && lit[b];
+    const picked = UNI.sel >= 0 && (a === UNI.sel || b === UNI.sel);
+    ctx.strokeStyle = picked ? 'rgba(255,240,215,0.75)' : on ? `rgba(200,205,255,${(0.06 + 0.26 * wgt).toFixed(3)})` : 'rgba(200,205,255,0.03)';
+    ctx.lineWidth = picked ? 1.6 : 0.5 + wgt;
+    ctx.beginPath();
+    ctx.moveTo(P[a][0], P[a][1]);
+    ctx.lineTo(P[b][0], P[b][1]);
+    ctx.stroke();
+  }
+  // stars, small first so the big ones sit on top
+  const order = nodes.map((_, i) => i).sort((p, q) => R[p] - R[q]);
+  for (const i of order) {
+    const [x, y] = P[i];
+    const r = R[i];
+    if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
+    const col = starColor(nodes[i].c);
+    ctx.globalAlpha = lit[i] ? 1 : 0.16;
+    if (lit[i] && r > 3) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+      g.addColorStop(0, col + '66');
+      g.addColorStop(1, col + '00');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if (UNI.sel >= 0) {
+    const [x, y] = P[UNI.sel];
+    ctx.strokeStyle = '#fff6e4';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, R[UNI.sel] + 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // names: the picked star and its links first, then the biggest, wherever there is room
+  ctx.font = '500 11px "DM Mono", ui-monospace, monospace';
+  ctx.textBaseline = 'middle';
+  const placed = [];
+  const want = (i) => i === UNI.sel || (UNI.sel >= 0 && lit[i]) || (lit[i] && (R[i] >= 6.5 || (UNI.cam.k >= 2 && R[i] >= 3.5)));
+  const labelOrder = nodes.map((_, i) => i).filter(want)
+    .sort((p, q) => (q === UNI.sel) - (p === UNI.sel) || R[q] - R[p]);
+  for (const i of labelOrder.slice(0, 60)) {
+    const [x, y] = P[i];
+    const t = nodes[i].name.length > 22 ? nodes[i].name.slice(0, 21) + '…' : nodes[i].name;
+    const tw = ctx.measureText(t).width;
+    const lx = x + R[i] + 5, ly = y;
+    const box = [lx - 2, ly - 8, lx + tw + 2, ly + 8];
+    if (box[2] > W - 4 || box[0] < 0 || ly < 10 || ly > H - 10) continue;
+    if (placed.some((b) => b[0] < box[2] && box[0] < b[2] && b[1] < box[3] && box[1] < b[3])) continue;
+    placed.push(box);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(11,13,23,0.85)';
+    ctx.strokeText(t, lx, ly);
+    ctx.fillStyle = i === UNI.sel ? '#fff6e4' : 'rgba(236,232,250,0.9)';
+    ctx.fillText(t, lx, ly);
+  }
+}
+
+/** Moves the camera to [to] smoothly. */
+function uniFly(to) {
+  UNI.fly = { from: { ...UNI.cam }, to, t0: performance.now(), dur: 480 };
+  drawUni();
+}
+/** Picks a star and brings it to the upper part of the map, above the card. */
+function uniSelect(i) {
+  UNI.sel = i;
+  UNI.cluster = -1;
+  const n = UNI.nodes[i];
+  const k = Math.max(UNI.cam.k, 1.8);
+  uniFly({ x: n.x, y: n.y + (UNI.h * 0.17) / (uniScale() * k), k });
+  uniCard();
+  $$('.uni-cons .chip').forEach((c) => c.classList.remove('on'));
+}
+function uniClear() {
+  UNI.sel = -1;
+  UNI.cluster = -1;
+  $$('.uni-cons .chip').forEach((c) => c.classList.remove('on'));
+  uniCard();
+  drawUni();
+}
+function uniShowCluster(c) {
+  UNI.sel = -1;
+  UNI.cluster = UNI.cluster === c ? -1 : c;
+  $$('.uni-cons .chip').forEach((b) => b.classList.toggle('on', +b.dataset.uniC === UNI.cluster));
+  if (UNI.cluster < 0) { uniCard(); uniFly({ x: 0, y: 0, k: 1 }); return; }
+  const m = UNI.nodes.filter((n) => n.c === c);
+  const xs = m.map((n) => n.x), ys = m.map((n) => n.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const S = uniScale();
+  const k = Math.max(0.8, Math.min(6, (UNI.w * 0.8) / ((x1 - x0) * S + 1), (UNI.h * 0.5) / ((y1 - y0) * S + 1)));
+  uniCard();
+  uniFly({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 + (UNI.h * 0.17) / (S * k), k });
+}
+function uniZoomAt(x, y, f) {
+  const S = uniScale();
+  const k = Math.max(0.7, Math.min(10, UNI.cam.k * f));
+  const wx = UNI.cam.x + (x - UNI.w / 2) / (S * UNI.cam.k), wy = UNI.cam.y + (y - UNI.h / 2) / (S * UNI.cam.k);
+  UNI.fly = null;
+  UNI.cam = { k, x: wx - (x - UNI.w / 2) / (S * k), y: wy - (y - UNI.h / 2) / (S * k) };
+  drawUni();
+}
+/** A tap picks the nearest star within a finger's width, so stars never need to be hit exactly. */
+function uniTap(x, y) {
+  const now = performance.now();
+  const last = UNI.lastTap;
+  UNI.lastTap = { x, y, t: now };
+  if (last && now - last.t < 320 && Math.hypot(x - last.x, y - last.y) < 30) { UNI.lastTap = null; uniZoomAt(x, y, 2); return; }
+  let best = -1, bd = Infinity;
+  UNI.nodes.forEach((n, i) => {
+    const [sx, sy] = uniToScreen(n.x, n.y);
+    const d = Math.hypot(sx - x, sy - y) - uniRadius(n) * (uniLit(i) ? 1 : 0.3);
+    if (d < bd) { bd = d; best = i; }
+  });
+  if (best >= 0 && bd <= 30) uniSelect(best);
+  else if (UNI.sel >= 0 || UNI.cluster >= 0) uniClear();
+}
+function bindUniverse(cv) {
+  const at = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const two = () => [...UNI.pts.values()];
+  cv.onpointerdown = (e) => {
+    cv.setPointerCapture(e.pointerId);
+    const p = at(e);
+    UNI.pts.set(e.pointerId, { ...p, x0: p.x, y0: p.y, t0: performance.now() });
+    UNI.fly = null;
+    if (UNI.pts.size === 1) UNI.gesture = { kind: 'pan', cam: { ...UNI.cam }, moved: false };
+    else if (UNI.pts.size === 2) {
+      const [a, b] = two();
+      UNI.gesture = { kind: 'pinch', cam: { ...UNI.cam }, d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, moved: true };
+    }
+  };
+  cv.onpointermove = (e) => {
+    const p = UNI.pts.get(e.pointerId);
+    const g = UNI.gesture;
+    if (!p || !g) return;
+    Object.assign(p, at(e));
+    const S = uniScale();
+    if (g.kind === 'pan' && UNI.pts.size === 1) {
+      const dx = p.x - p.x0, dy = p.y - p.y0;
+      if (!g.moved && Math.hypot(dx, dy) > 7) g.moved = true;
+      if (g.moved) {
+        UNI.cam = { k: g.cam.k, x: g.cam.x - dx / (S * g.cam.k), y: g.cam.y - dy / (S * g.cam.k) };
+        drawUni();
+      }
+    } else if (g.kind === 'pinch' && UNI.pts.size === 2) {
+      const [a, b] = two();
+      const k = Math.max(0.7, Math.min(10, (g.cam.k * Math.hypot(a.x - b.x, a.y - b.y)) / g.d0));
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const wx = g.cam.x + (g.m0.x - UNI.w / 2) / (S * g.cam.k), wy = g.cam.y + (g.m0.y - UNI.h / 2) / (S * g.cam.k);
+      UNI.cam = { k, x: wx - (m.x - UNI.w / 2) / (S * k), y: wy - (m.y - UNI.h / 2) / (S * k) };
+      drawUni();
+    }
+  };
+  cv.onpointerup = cv.onpointercancel = (e) => {
+    const p = UNI.pts.get(e.pointerId);
+    const g = UNI.gesture;
+    UNI.pts.delete(e.pointerId);
+    if (e.type === 'pointerup' && g && g.kind === 'pan' && !g.moved && p && performance.now() - p.t0 < 500) uniTap(p.x, p.y);
+    if (!UNI.pts.size) UNI.gesture = null;
+    else {
+      // One finger left after a pinch: carry on panning from here.
+      const q = two()[0];
+      Object.assign(q, { x0: q.x, y0: q.y });
+      UNI.gesture = { kind: 'pan', cam: { ...UNI.cam }, moved: true };
+    }
+  };
+  cv.onwheel = (e) => { e.preventDefault(); const p = at(e); uniZoomAt(p.x, p.y, e.deltaY < 0 ? 1.25 : 0.8); };
+  const find = $('#uniFind');
+  if (find) {
+    find.oninput = () => {
+      const q = norm(find.value.trim());
+      const hits = q ? UNI.nodes.map((n, i) => [n, i]).filter(([n]) => norm(n.name).includes(q)).slice(0, 6) : [];
+      $('#uniFound').innerHTML = hits.map(([n, i]) => `<button data-uni-i="${i}"><i class="dot" style="background:${starColor(n.c)}"></i>${esc(n.name)}<small>${compact(n.plays)}</small></button>`).join('');
+    };
+  }
+}
+
+/** The card over the bottom of the map: the picked star (its links as buttons to hop along) or the picked constellation. */
+function uniCard() {
+  const card = $('#uniCard');
+  if (!card) return;
+  const u = UNI.src;
+  $('#uniWrap').classList.toggle('carded', UNI.sel >= 0 || UNI.cluster >= 0);
+  if (UNI.sel >= 0) {
+    const n = u.nodes[UNI.sel];
+    const c = u.clusters[n.c];
+    const o = n.origin || {};
+    const how = o.how === 'after' ? `Found right after <button class="link" data-uni-go="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.`
+      : o.how === 'start' ? 'With you since your history starts.' : `Out of the blue, ${esc(dateLabel(o.at))}.`;
+    const ba = [n.before ? `after <b>${esc(n.before.name)}</b>` : '', n.after ? `before <b>${esc(n.after.name)}</b>` : ''].filter(Boolean).join(' and ');
+    const near = UNI.adj[UNI.sel].slice(0, 8).map((l) => {
+      const m = u.nodes[l.o];
+      return `<button class="chip" data-uni-i="${l.o}"><i class="dot" style="background:${starColor(m.c)}"></i>${esc(m.name)}<small class="n">${l.t >= 2 ? `${l.t}× in a row` : 'same months'}</small></button>`;
+    }).join('');
+    card.innerHTML = `<button class="icon-btn x" data-uni-x aria-label="Close">${icon('close')}</button>
+      <button class="uh" data-artist="${esc(n.name)}">${coverHtml(n.photo, n.name, n.name, 'tiny round')}<span><b>${esc(n.name)}</b><small>${[n.genre, plural(UNI.year ? uniPlays(n) : n.plays, 'play') + (UNI.year ? ` in ${UNI.year}` : ''), c ? `${c.name} & co.` : 'a loose star'].filter(Boolean).map(esc).join(' · ')}</small></span>${icon('chevron-right')}</button>
+      <p>${how}${ba ? ` Usually played ${ba}.` : ''}</p>
+      ${near ? `<div class="chip-row">${near}</div>` : '<p class="hint">No strong links: a star of its own.</p>'}`;
+    card.hidden = false;
+  } else if (UNI.cluster >= 0) {
+    const c = u.clusters[UNI.cluster];
+    const members = u.nodes.map((n, i) => [n, i]).filter(([n]) => n.c === UNI.cluster);
+    card.innerHTML = `<button class="icon-btn x" data-uni-x aria-label="Close">${icon('close')}</button>
+      <div class="uh"><i class="dot big" style="background:${starColor(UNI.cluster)}"></i><span><b>${esc(c.name)} &amp; co.</b><small>${[plural(c.size, 'artist'), c.genre ? `mostly ${c.genre}` : '', `${pct(c.plays / Math.max(1, u.plays))} of these plays`].filter(Boolean).map(esc).join(' · ')}</small></span></div>
+      <div class="chip-row">${members.slice(0, 12).map(([n, i]) => `<button class="chip" data-uni-i="${i}">${esc(n.name)}<small class="n">${compact(n.plays)}</small></button>`).join('')}</div>`;
+    card.hidden = false;
+  } else card.hidden = true;
+}
+
+// -- the family tree --
+
+let TREE = null;
+function treeIndex(t) {
+  if (TREE && TREE.src === t) return TREE;
+  const byId = new Map(t.nodes.map((n) => [n.id, n]));
+  const kids = new Map();
+  t.nodes.forEach((n) => { if (n.p >= 0 && byId.has(n.p)) { if (!kids.has(n.p)) kids.set(n.p, []); kids.get(n.p).push(n.id); } });
+  kids.forEach((l) => l.sort((a, b) => byId.get(b).plays - byId.get(a).plays));
+  TREE = { src: t, byId, kids };
+  if (!TREE_OPEN.size && t.gateways.length) TREE_OPEN.add(t.gateways[0].id);
+  return TREE;
+}
+function treeRow(id, depth) {
+  const T = TREE;
+  const n = T.byId.get(id);
+  const kids = T.kids.get(id) || [];
+  const open = TREE_OPEN.has(id);
+  const gw = depth === 0 ? (TREE.src.gateways.find((g) => g.id === id) || {}) : null;
+  const meta = [depth ? `found ${monthYear(n.at)}` : '', n.kept ? plural(n.plays, 'play') : 'a stepping stone', n.d ? `led to ${n.d}` : ''].filter(Boolean).join(' · ');
+  return `<div class="tnode${n.kept ? '' : ' via'}" style="--depth:${Math.min(depth, 7)}">
+    <div class="trow">${kids.length ? `<button class="tt" data-tree="${id}" aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Unfold'}">${icon(open ? 'down' : 'chevron-right')}</button>` : '<span class="tt"></span>'}
+      ${gw ? coverHtml(gw.photo, n.name, n.name, 'tiny round') : ''}<button class="tn" data-artist="${esc(n.name)}"><b>${esc(n.name)}</b><small>${esc(meta)}</small></button></div>
+    ${open && kids.length ? `<div class="tkids">${kids.map((k) => treeRow(k, depth + 1)).join('')}</div>` : ''}</div>`;
+}
+function treeHtml(t) {
+  if (!t || !t.nodes || !t.nodes.length) return '<div class="empty"><p>Not enough plays yet for a family tree.</p></div>';
+  treeIndex(t);
+  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), <b>${num(t.after)}</b> came right after another artist in the same listening session, ${num(t.blue)} came out of the blue (a search, an album, a tip), and ${num(t.start)} were with you from the start of your history.`;
+  return `<p class="uni-intro">${intro}</p>
+    <div class="viz"><h2>Gateways</h2><span class="sub">The artists that led you to the most others you kept playing. "Right after" means the very next song; with radio or autoplay, that was the app's pick.</span>
+    <div class="tree">${t.gateways.map((g) => treeRow(g.id, 0)).join('') || '<p class="hint">No artist has led you to two or more others yet.</p>'}</div></div>`;
+}
+
+// -- the landscape --
+
+const LAND_KINDS = {
+  obsession: ['var(--a2)', 'Obsession', 'most plays within a few months'],
+  companion: ['var(--a3)', 'Companion', 'with you for a year or more'],
+  comeback: ['var(--a7)', 'Comeback', 'back after six quiet months or more'],
+  phase: ['var(--a1)', 'Phase', 'a stretch of months, then less'],
+};
+function spanWords(m) {
+  const y = Math.floor(m / 12), r = m % 12;
+  return [y ? plural(y, 'year') : '', r ? plural(r, 'month') : ''].filter(Boolean).join(' and ') || 'a month';
+}
+function landKindText(s) {
+  if (s.kind === 'obsession') return `${s.months <= 1 ? 'a one-month' : `a ${s.months}-month`} obsession, ${monthYear(s.peakAt)}`;
+  if (s.kind === 'companion') return `with you for ${spanWords(s.months)}`;
+  if (s.kind === 'comeback') return `back after ${s.months} months away`;
+  return `a phase of ${plural(s.months, 'busy month')}`;
+}
+function landHtml(l) {
+  const S = (l && l.series) || [];
+  if (!S.length) return '<div class="empty"><p>Not enough plays yet for a landscape.</p></div>';
+  const n = Math.max(2, l.months);
+  const W = 360, peakH = 70, gap = 25, top = 22;
+  const H = top + peakH + gap * (S.length - 1) + 26;
+  const X = (m) => 10 + (m / (n - 1)) * (W - 20);
+  const smooth = (c) => c.map((v, i) => 0.25 * (c[i - 1] ?? v) + 0.5 * v + 0.25 * (c[i + 1] ?? v));
+  const max = Math.max(1, ...S.map((s) => Math.max(...smooth(s.counts))));
+  let svg = '', names = '';
+  S.forEach((s, i) => {
+    const base = top + peakH + i * gap;
+    const c = smooth(s.counts);
+    const pts = c.map((v, m) => [X(m), base - (v / max) * peakH]);
+    const d = `${smoothPath(pts)} L${X(n - 1)},${base} L${X(0)},${base} Z`;
+    const [col] = LAND_KINDS[s.kind] || LAND_KINDS.phase;
+    const dim = landSel >= 0 && landSel !== i;
+    const haze = 0.45 + 0.5 * (i / Math.max(1, S.length - 1));
+    const pk = c.indexOf(Math.max(...c));
+    const lx = Math.max(34, Math.min(W - 34, X(pk)));
+    svg += `<g class="mtn${landSel === i ? ' on' : ''}" data-land="${i}"><path d="${d}" class="occl"/><path d="${d}" style="fill:${col};fill-opacity:${(dim ? 0.12 : haze).toFixed(2)};stroke:${col};stroke-opacity:${dim ? 0.3 : 1}"/></g>`;
+    // Names go on top of all the mountains, so the ones in front don't hide them.
+    names += `<text x="${lx.toFixed(1)}" y="${(base - (c[pk] / max) * peakH - 5).toFixed(1)}" class="${dim ? 'dim' : ''}" data-land="${i}">${esc(s.name.length > 18 ? s.name.slice(0, 17) + '…' : s.name)}</text>`;
+  });
+  const y0 = new Date(l.monthsFrom).getFullYear();
+  const m0 = new Date(l.monthsFrom).getMonth();
+  let ticks = '';
+  // Each January gets its year; the first month too when the next January is far enough away.
+  for (let m = 0; m < n; m++) if ((m0 + m) % 12 === 0 || (m === 0 && m0 <= 8)) ticks += `<text x="${X(m).toFixed(1)}" y="${H - 6}" class="yr">${y0 + Math.floor((m0 + m) / 12)}</text>`;
+  const kinds = Object.entries(LAND_KINDS).map(([k, [col, name, what]]) => [k, col, name, what, S.filter((s) => s.kind === k).length]).filter((x) => x[4]);
+  const intro = `Your ${S.length} most played artists as mountains: height is plays per month, from your first scrobble to now, the earliest peaks at the back. ${kinds.map(([, , name, , cnt]) => `${cnt} ${name.toLowerCase()}${cnt === 1 ? '' : 's'}`).join(', ')}.`;
+  return `<p class="uni-intro">${intro}</p>
+    <div class="chip-row land-kinds">${kinds.map(([, col, name, what]) => `<span class="chip static"><i class="dot" style="background:${col}"></i>${name}<small class="n">${what}</small></span>`).join('')}</div>
+    <div class="viz land"><svg viewBox="0 0 ${W} ${H}" class="landscape">${svg}${names}${ticks}</svg>
+    <div class="rank land-rows">${S.map((s, i) => `<button class="r${landSel === i ? ' on' : ''}" data-land="${i}"><span class="n"><i class="dot" style="background:${(LAND_KINDS[s.kind] || LAND_KINDS.phase)[0]}"></i></span><span class="t"><b>${esc(s.name)}</b><small>${esc(landKindText(s))}</small></span><span class="v">${compact(s.plays)}</span></button>
+      ${landSel === i ? `<div class="land-det">Peaked in ${esc(monthYear(s.peakAt))} with ${plural(s.peak, 'play')}; first played ${esc(monthYear(s.from))}. <button class="link" data-artist="${esc(s.name)}">Open ${esc(s.name)}</button></div>` : ''}`).join('')}</div></div>`;
+}
+
+/** How you found an artist, back along the chain of first plays, and who they led you to. */
+function originHtml(a) {
+  const o = a.origin;
+  if (!o) return '';
+  const line = o.how === 'after' ? `Right after <button class="link" data-artist="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.`
+    : o.how === 'start' ? 'With you since your Last.fm history starts.' : `Out of the blue on ${esc(dateLabel(o.at))}: nothing played right before.`;
+  const chain = (o.chain || []).slice().reverse();
+  const path = chain.length ? `<div class="lineage">${chain.map((c) => `<button class="chip" data-artist="${esc(c.name)}">${esc(c.name)}</button>`).join('<span class="arr">→</span>')}<span class="arr">→</span><span class="chip static on">${esc(a.name)}</span></div>` : '';
+  const led = (a.ledTo || []).length ? `<p class="hint">Led you to ${a.ledTo.map((x) => `<button class="link" data-artist="${esc(x.name)}">${esc(x.name)}</button>`).join(', ')}.</p>` : '';
+  return `<div class="viz origin"><h2>How you found them</h2><span class="sub">${line}</span>${path}${led}<button class="btn text" data-atlas="tree">${icon('atlas')}Your family tree</button></div>`;
 }
 
 // ---- you against everyone on Last.fm (all time) ----
@@ -2361,7 +2849,7 @@ function renderExplore() {
   if (!x) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (x.empty) { body.innerHTML = `<div class="empty"><p>Nothing to explore yet.</p></div>`; return; }
   const tail = x.tail || {};
-  let h = `<div id="vsCard"></div><div class="dig-card">${icon('explore', 'i big')}<div><h2>The long tail</h2>
+  let h = `<button class="dig-card vs-card atlas-card" data-atlas>${icon('atlas', 'i big')}<div><h2>Your musical atlas</h2><p>Your artists as a universe of constellations, how you found each of them, and the landscape of your obsessions.</p></div></button><div id="vsCard"></div><div class="dig-card">${icon('explore', 'i big')}<div><h2>The long tail</h2>
     <p>You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}. Here's where to dig.</p>
     <button class="btn filled" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button></div></div>`;
   const la = x.lostArtists || [];
@@ -2535,6 +3023,7 @@ function renderArtist() {
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
   h += vsBlock(a.global, esc(a.name));
+  h += originHtml(a);
   h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
   h += lifeCharts(a, 'them', pic, a.name + a.name);
   if (STATS && STATS.record && STATS.record.days) {
@@ -3138,6 +3627,8 @@ function build() {
     if (sg) { while (pageStack.length) closePage(); statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
+    const atl = e.target.closest('[data-atlas]');
+    if (atl) { openAtlas(atl.dataset.atlas || ''); return; }
     if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
     if (e.target.closest('[data-gclear]')) { setStatsGenre(''); return; }
     if (e.target.closest('[data-dpick]')) { openDecadeSheet(); return; }
@@ -3237,6 +3728,29 @@ function build() {
     const rec = e.target.closest('[data-rec]');
     if (rec) openRecord(+rec.dataset.rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
+  };
+  $('#atlasSeg').onclick = (e) => { const b = e.target.closest('[data-av]'); if (b) { atlasView = b.dataset.av; renderAtlas(); } };
+  $('#atlasBody').onclick = (e) => {
+    const t = e.target;
+    const z = t.closest('[data-uz]');
+    if (z) { const f = z.dataset.uz; if (f === 'fit') { UNI.sel = -1; UNI.cluster = -1; uniCard(); $$('.uni-cons .chip').forEach((c) => c.classList.remove('on')); uniFly({ x: 0, y: 0, k: 1 }); } else uniZoomAt(UNI.w / 2, UNI.h / 2, f === 'in' ? 1.6 : 1 / 1.6); return; }
+    const i = t.closest('[data-uni-i]');
+    if (i) { const f = $('#uniFind'); if (f) { f.value = ''; $('#uniFound').innerHTML = ''; } uniSelect(+i.dataset.uniI); return; }
+    const go = t.closest('[data-uni-go]');
+    if (go) {
+      const k = UNI.nodes.findIndex((n) => norm(n.name) === norm(go.dataset.uniGo));
+      if (k >= 0) uniSelect(k); else openArtist(go.dataset.uniGo);
+      return;
+    }
+    const c = t.closest('[data-uni-c]');
+    if (c) { uniShowCluster(+c.dataset.uniC); return; }
+    const y = t.closest('[data-uni-y]');
+    if (y) { UNI.year = +y.dataset.uniY; $$('.uni-years .chip').forEach((b) => b.classList.toggle('on', +b.dataset.uniY === UNI.year)); uniCard(); drawUni(); return; }
+    if (t.closest('[data-uni-x]')) { uniClear(); return; }
+    const tr = t.closest('[data-tree]');
+    if (tr) { const id = +tr.dataset.tree; if (TREE_OPEN.has(id)) TREE_OPEN.delete(id); else TREE_OPEN.add(id); renderAtlas(); return; }
+    const ld = t.closest('[data-land]');
+    if (ld && !t.closest('[data-artist]')) { const k = +ld.dataset.land; landSel = landSel === k ? -1 : k; renderAtlas(); }
   };
   $('#exploreBody').onclick = (e) => {
     if (e.target.closest('#exploreGoStats')) showTab('stats');

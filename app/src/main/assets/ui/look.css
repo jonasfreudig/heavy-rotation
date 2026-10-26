@@ -290,3 +290,19 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .slide .dots2 .avg { background: color-mix(in srgb, currentColor 30%, transparent); }
 .slide .dots2 em { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; font-style: normal; }
 .slide .dots2 .avg em { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); white-space: nowrap; }
+
+/* ---- pages over their cover: the picture blurred behind everything, cards see-through ---- */
+.page > .backdrop { display: none; position: absolute; left: 0; right: 0; top: 0; height: 120vh; z-index: 0; overflow: hidden; pointer-events: none; }
+.page.has-backdrop > .backdrop { display: block; }
+.page > .backdrop i { position: absolute; inset: -14%; background: center 30% / cover no-repeat; filter: blur(40px) saturate(1.8) brightness(1.05); opacity: .95; will-change: transform; }
+.page > .backdrop::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 26%, transparent) 0%, color-mix(in srgb, var(--md-surface) 46%, transparent) 38%, color-mix(in srgb, var(--md-surface) 78%, transparent) 70%, var(--md-surface) 100%); }
+.page.has-backdrop > .page-body, .page.has-backdrop > div:not(.backdrop) { position: relative; z-index: 1; }
+.page.has-backdrop > .appbar { background: color-mix(in srgb, var(--md-surface) 30%, transparent); }
+.page.has-backdrop .page-hero .glow { display: none; }
+.page.has-backdrop .viz, .page.has-backdrop .tile, .page.has-backdrop .card, .page.has-backdrop .list, .page.has-backdrop .dig-card {
+  background: color-mix(in srgb, var(--md-surface-container) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.page.has-backdrop .rank .r { background: color-mix(in srgb, var(--md-surface-container-high) 42%, transparent); }
+.page.has-backdrop .viz .rank .r { background: color-mix(in srgb, var(--md-surface-container-highest) 28%, transparent); }
+.page.has-backdrop .chip:not(.on) { background: color-mix(in srgb, var(--md-surface-container-high) 50%, transparent); }
+.page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .flip-hint, .page.has-backdrop .hero .meta { text-shadow: 0 1px 12px color-mix(in srgb, var(--md-surface) 80%, transparent), 0 0 2px color-mix(in srgb, var(--md-surface) 60%, transparent); }

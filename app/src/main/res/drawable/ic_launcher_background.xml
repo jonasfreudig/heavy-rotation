@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deep violet with the warm glow the app has behind its pages. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="108" android:endY="108">
+                <item android:offset="0" android:color="#FF2B1C55" />
+                <item android:offset="0.55" android:color="#FF3B1846" />
+                <item android:offset="1" android:color="#FF5A1F3A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="20" android:centerY="18" android:gradientRadius="50">
+                <item android:offset="0" android:color="#BF7B6BFF" />
+                <item android:offset="1" android:color="#007B6BFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="84" android:centerY="88" android:gradientRadius="56">
+                <item android:offset="0" android:color="#E6FF8A4C" />
+                <item android:offset="1" android:color="#00FF8A4C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

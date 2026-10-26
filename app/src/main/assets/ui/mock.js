@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.13 (browser preview)',
+    version: '0.14 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -490,6 +490,116 @@ const Mock = (() => {
       gems: known.filter((x) => x.mine >= 20).sort((p, q) => p.listeners - q.listeners).slice(0, 8), songs: songs.sort((p, q) => q.ratio - p.ratio).slice(0, 10), taste };
   }
   let vsLooked = false;
+  // The atlas from the made-up log, worked out like Atlas.kt does (links, spring layout, constellations, shapes).
+  let atlasCache = null;
+  function fakeAtlas() {
+    if (atlasCache) return atlasCache;
+    const L = history();
+    const GAP = 30 * 60e3;
+    const ac = counts(0, L.ts.length, (L2, i) => L2.a[i]);
+    const trans = new Map();
+    for (let i = 1; i < L.ts.length; i++) if (L.a[i] !== L.a[i - 1] && L.ts[i] - L.ts[i - 1] <= GAP) { const k = L.a[i - 1] + ':' + L.a[i]; trans.set(k, (trans.get(k) || 0) + 1); }
+    const start = new Date(L.start);
+    const mk = (ts) => { const d = new Date(ts); return (d.getFullYear() - start.getFullYear()) * 12 + d.getMonth() - start.getMonth(); };
+    const nm = mk(Date.now()) + 1;
+    const stars = ranked(ac).filter((a) => ac[a] >= 5).slice(0, 150);
+    const idx = new Map(stars.map((a, i) => [a, i]));
+    const monthly = stars.map(() => new Array(nm).fill(0));
+    const years = stars.map(() => ({}));
+    L.ts.forEach((ts, i) => { const s = idx.get(L.a[i]); if (s == null) return; monthly[s][mk(ts)]++; const y = new Date(ts).getFullYear(); years[s][y] = (years[s][y] || 0) + 1; });
+    const n = stars.length, plays = stars.map((a) => ac[a]);
+    const cos = (a, b) => { let d = 0, x = 0, y = 0; for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; x += a[i] * a[i]; y += b[i] * b[i]; } return x && y ? d / Math.sqrt(x * y) : 0; };
+    const tog = (i, j) => (trans.get(stars[i] + ':' + stars[j]) || 0) + (trans.get(stars[j] + ':' + stars[i]) || 0);
+    const strength = (i, j) => tog(i, j) / Math.sqrt(plays[i] * plays[j]);
+    const keep = new Set();
+    for (let i = 0; i < n; i++) {
+      const others = [...Array(n).keys()].filter((j) => j !== i);
+      const partners = others.filter((j) => tog(i, j) >= 2).sort((p, q) => strength(i, q) - strength(i, p)).slice(0, 3);
+      partners.forEach((j) => keep.add(Math.min(i, j) + ':' + Math.max(i, j)));
+      if (partners.length >= 2) continue;
+      let best = -1, bc = 0;
+      others.forEach((j) => { const c = cos(monthly[i], monthly[j]); if (c > bc) { bc = c; best = j; } });
+      if (best >= 0 && bc >= 0.7) keep.add(Math.min(i, best) + ':' + Math.max(i, best));
+    }
+    const pairs = [...keep].map((k) => k.split(':').map(Number));
+    const top = Math.max(1e-9, ...pairs.map(([i, j]) => strength(i, j)));
+    const links = pairs.map(([i, j]) => { const c = cos(monthly[i], monthly[j]); return [i, j, tog(i, j), Math.round(c * 1000) / 1000, Math.max(0.05, 0.7 * strength(i, j) / top + 0.3 * c)]; });
+    // spring layout from a sunflower spiral
+    const x = [], y = [], g = Math.PI * (3 - Math.sqrt(5)), k = Math.sqrt(4 / n);
+    for (let i = 0; i < n; i++) { const r = Math.sqrt((i + 0.5) / n); x[i] = r * Math.cos(i * g); y[i] = r * Math.sin(i * g); }
+    for (let step = 0; step < 300; step++) {
+      const temp = 0.08 * (1 - step / 300) + 0.002, dx = new Array(n).fill(0), dy = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const ex = x[i] - x[j], ey = y[i] - y[j], f = (k * k) / Math.max(ex * ex + ey * ey, 1e-6); dx[i] += ex * f; dy[i] += ey * f; dx[j] -= ex * f; dy[j] -= ey * f; }
+      for (const [a, b, , , w] of links) { const ex = x[a] - x[b], ey = y[a] - y[b], f = (Math.hypot(ex, ey) / k) * (0.3 + 1.7 * w); dx[a] -= ex * f; dy[a] -= ey * f; dx[b] += ex * f; dy[b] += ey * f; }
+      for (let i = 0; i < n; i++) { dx[i] -= (x[i] * 0.6) / k; dy[i] -= (y[i] * 0.6) / k; const len = Math.hypot(dx[i], dy[i]); if (len > 0) { const m = Math.min(len, temp) / len; x[i] += dx[i] * m; y[i] += dy[i] * m; } }
+    }
+    const cx = x.reduce((s, v) => s + v, 0) / n, cy = y.reduce((s, v) => s + v, 0) / n;
+    const rr = Math.max(1e-9, ...x.map((v, i) => Math.max(Math.abs(v - cx), Math.abs(y[i] - cy))));
+    // constellations: label propagation
+    const adj = stars.map(() => []);
+    links.forEach(([a, b, , , w]) => { adj[a].push([b, w]); adj[b].push([a, w]); });
+    const label = stars.map((_, i) => i);
+    for (let round = 0; round < 40; round++) {
+      let changed = false;
+      for (let u = 0; u < n; u++) {
+        if (!adj[u].length) continue;
+        const sc = new Map();
+        adj[u].forEach(([v, w]) => sc.set(label[v], (sc.get(label[v]) || 0) + w));
+        const best = [...sc.entries()].sort((p, q) => q[1] - p[1] || p[0] - q[0])[0][0];
+        if (best !== label[u]) { label[u] = best; changed = true; }
+      }
+      if (!changed) break;
+    }
+    const groups = [...new Set(label)].map((l) => label.map((v, i) => [v, i]).filter(([v]) => v === l).map(([, i]) => i)).filter((gr) => gr.length >= 3)
+      .sort((p, q) => q.reduce((s, i) => s + plays[i], 0) - p.reduce((s, i) => s + plays[i], 0));
+    const cl = new Array(n).fill(-1);
+    groups.forEach((gr, c) => gr.forEach((i) => { cl[i] = c; }));
+    // first plays: what came right before
+    const first = {}, from = {};
+    L.ts.forEach((ts, i) => { if (first[L.a[i]] == null) first[L.a[i]] = i; });
+    Object.entries(first).forEach(([a, f]) => { from[a] = L.ts[f] < L.start + 14 * DAY ? -2 : f > 0 && L.ts[f] - L.ts[f - 1] <= GAP && L.a[f - 1] !== +a ? L.a[f - 1] : -1; });
+    const originOf = (a) => ({ how: from[a] >= 0 ? 'after' : from[a] === -2 ? 'start' : 'blue', at: L.ts[first[a]], ...(from[a] >= 0 ? { from: L.artists[from[a]] } : {}) });
+    const genreName = (a) => GENRES[genreOf(a)] || '';
+    const near = (a, dir) => { let best = -1, bn = 0; trans.forEach((c, kk) => { const [p, q] = kk.split(':').map(Number); if (c >= 2 && (dir ? p === a : q === a) && c > bn) { bn = c; best = dir ? q : p; } }); return best >= 0 ? { name: L.artists[best], n: bn } : null; };
+    const nodes = stars.map((a, i) => ({ name: L.artists[a], plays: plays[i], x: Math.round(((x[i] - cx) / rr) * 1000) / 1000, y: Math.round(((y[i] - cy) / rr) * 1000) / 1000, c: cl[i], genre: genreName(a), photo: '', origin: originOf(a), years: years[i], before: near(a, 0), after: near(a, 1) }));
+    const clusters = groups.map((gr) => { const byG = {}; gr.forEach((i) => { const gn = genreName(stars[i]); if (gn) byG[gn] = (byG[gn] || 0) + plays[i]; }); return { name: L.artists[stars[gr[0]]], genre: Object.entries(byG).sort((p, q) => q[1] - p[1])[0]?.[0] || '', plays: gr.reduce((s, i) => s + plays[i], 0), size: gr.length, top: gr.slice(0, 5).map((i) => L.artists[stars[i]]) }; });
+    const pull = stars.map(() => new Map());
+    links.forEach(([a, b, , , w]) => { if (cl[b] >= 0) pull[a].set(cl[b], (pull[a].get(cl[b]) || 0) + w); if (cl[a] >= 0) pull[b].set(cl[a], (pull[b].get(cl[a]) || 0) + w); });
+    const bridges = stars.map((_, i) => i).filter((i) => cl[i] >= 0).map((i) => { const own = pull[i].get(cl[i]) || 0; const other = [...pull[i].entries()].filter(([c]) => c !== cl[i]).sort((p, q) => q[1] - p[1])[0]; return other ? [i, other[0], Math.min(own, other[1])] : null; })
+      .filter((b) => b && b[2] > 0).sort((p, q) => q[2] - p[2]).slice(0, 4).map(([i, to]) => ({ name: L.artists[stars[i]], from: cl[i], to }));
+    // family tree
+    const kept = (a) => (ac[a] || 0) >= 5;
+    const inTree = new Set(Object.keys(first).map(Number).filter(kept));
+    [...inTree].forEach((a) => { let p = from[a]; while (p >= 0 && !inTree.has(p)) { inTree.add(p); p = from[p]; } });
+    const desc = {};
+    [...inTree].sort((p, q) => first[q] - first[p]).forEach((a) => { const p = from[a]; if (p >= 0) desc[p] = (desc[p] || 0) + (desc[a] || 0) + (kept(a) ? 1 : 0); });
+    const ids = [...inTree];
+    const keptIds = Object.keys(first).map(Number).filter(kept);
+    const tree = { nodes: ids.map((a) => ({ id: a, name: L.artists[a], plays: ac[a] || 0, at: L.ts[first[a]], p: from[a], d: desc[a] || 0, kept: kept(a) })),
+      gateways: ids.filter((a) => (desc[a] || 0) >= 2).sort((p, q) => desc[q] - desc[p]).slice(0, 8).map((a) => ({ id: a, name: L.artists[a], d: desc[a], photo: '' })),
+      after: keptIds.filter((a) => from[a] >= 0).length, blue: keptIds.filter((a) => from[a] === -1).length, start: keptIds.filter((a) => from[a] === -2).length, kept: keptIds.length };
+    // landscape
+    const shape = (c) => {
+      const total = c.reduce((s, v) => s + v, 0); if (!total) return { kind: 'phase', months: 0 };
+      const peak = Math.max(...c), floor = Math.max(2, Math.ceil(peak / 10)), act = c.map((v, i) => [v, i]).filter(([v]) => v >= floor).map(([, i]) => i);
+      let gap = 0, before = 0, k0 = 0;
+      for (let q = 1; q < act.length; q++) { while (k0 <= act[q - 1]) before += c[k0++]; const gg = act[q] - act[q - 1] - 1; if (gg > gap && before >= total * 0.1 && total - before >= total * 0.1) gap = gg; }
+      const top4 = [...c].sort((p, q) => q - p).slice(0, 4).reduce((s, v) => s + v, 0);
+      if (gap >= 6) return { kind: 'comeback', months: gap };
+      if (act.length <= 4 && top4 >= total * 0.75) return { kind: 'obsession', months: act.length };
+      if (act.length >= 12) return { kind: 'companion', months: act[act.length - 1] - act[0] + 1 };
+      return { kind: 'phase', months: act.length };
+    };
+    const monthStart = (m) => +new Date(start.getFullYear(), start.getMonth() + m, 1);
+    const series = ranked(ac).slice(0, 14).map((a) => {
+      const c = new Array(nm).fill(0);
+      L.ts.forEach((ts, i) => { if (L.a[i] === a) c[mk(ts)]++; });
+      const pk = c.indexOf(Math.max(...c));
+      return { name: L.artists[a], plays: ac[a], counts: c, peak: c[pk], peakAt: monthStart(pk), ...shape(c), genre: genreName(a), photo: '', from: monthStart(c.findIndex((v) => v > 0)), _pk: pk };
+    }).sort((p, q) => p._pk - q._pk);
+    atlasCache = { plays: L.ts.length, universe: { nodes, clusters, links: links.map((l) => [l[0], l[1], l[2], l[3], Math.round(l[4] * 1000) / 1000]), bridges, plays: plays.reduce((s, v) => s + v, 0) }, tree, landscape: { monthsFrom: monthStart(0), months: nm, series } };
+    return atlasCache;
+  }
   function fakeStory(id) {
     const s = fakeStats(id);
     const L = history();
@@ -783,6 +893,18 @@ const Mock = (() => {
       albums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays * 0.6), cover: '', owned: owned.length > 0 }],
       owned, genres: [GENRES[Math.max(0, genreOf(ai))] || 'Indie Rock'],
       global: globalOf(name, plays),
+      ...(() => {
+        const t = fakeAtlas().tree;
+        const byName = new Map(t.nodes.map((nd) => [nd.name, nd]));
+        const me = byName.get(name);
+        if (!me) return {};
+        const byId = new Map(t.nodes.map((nd) => [nd.id, nd]));
+        const how = (nd) => (nd.p >= 0 ? 'after' : nd.p === -2 ? 'start' : 'blue');
+        const chain = [];
+        for (let p = byId.get(me.p); p && chain.length < 6; p = byId.get(p.p)) chain.push({ name: p.name, plays: p.plays, how: how(p), at: p.at, ...(p.p >= 0 && byId.get(p.p) ? { from: byId.get(p.p).name } : {}) });
+        return { origin: { how: how(me), at: me.at, ...(me.p >= 0 && byId.get(me.p) ? { from: byId.get(me.p).name } : {}), chain },
+          ledTo: t.nodes.filter((nd) => nd.p === me.id && nd.kept).sort((p, q) => q.plays - p.plays).slice(0, 8).map((nd) => ({ name: nd.name, plays: nd.plays, at: nd.at })) };
+      })(),
       globalTop: (() => {
         const mine = topTrackOf(ai);
         return [mine[2], mine[0], { title: 'The Radio Edit', plays: 0 }, mine[1], ...mine.slice(3, 9)].filter(Boolean)
@@ -994,6 +1116,7 @@ const Mock = (() => {
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
         case 'genre': later(300, () => onGenre({ ...fakeGenre(m.key), req: m.req })); break;
+        case 'atlas': later(500, () => onAtlas(fakeAtlas())); break;
         case 'vs':
           if (!vsLooked) {
             // The first time: Last.fm is asked, a few artists a second.
