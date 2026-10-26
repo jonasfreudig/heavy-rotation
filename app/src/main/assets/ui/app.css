@@ -981,3 +981,8 @@ button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padd
 
 /* The shelf's now-playing card for a phone app */
 .spin-card.phone { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+
+/* Settings: a second way in, folded away */
+details.more { margin-top: 14px; }
+details.more summary { cursor: pointer; color: var(--md-primary); font-size: 14px; padding: 6px 0; }
+details.more[open] summary { margin-bottom: 6px; }

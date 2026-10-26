@@ -6,3 +6,6 @@ app/build/
 *.iml
 .kotlin/
 *.apk
+keystore.properties
+*.jks
+*.keystore

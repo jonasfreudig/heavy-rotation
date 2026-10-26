@@ -85,7 +85,7 @@ const Mock = (() => {
   }
 
   const S = {
-    lastfm: { hasKey: true, keyHint: '…9f2c', connected: true, user: 'vinylfan', waiting: false, busy: false, error: '', needsAuth: false },
+    lastfm: { hasKey: true, builtIn: true, keyHint: '', connected: true, user: 'vinylfan', waiting: false, busy: false, error: '', needsAuth: false },
     discogs: { connected: true, user: 'vinylfan', syncing: false, done: 0, page: 0, pages: 0, lastSync: Date.now() - 5 * 3600e3, count: 0, error: '' },
     prefs: { theme: 'system', defaultTrackSec: 210 },
     queue: { waiting: 0, oldest: 0, error: '' },
@@ -98,8 +98,8 @@ const Mock = (() => {
       ],
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
-    tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.20 (browser preview)',
+    tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
+    version: '0.21 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -1181,7 +1181,7 @@ const Mock = (() => {
           break;
         case 'saveDiscogs':
           S.discogs.syncing = true; pushState();
-          later(800, () => { Object.assign(S.discogs, { connected: true, user: 'vinylfan' }); toast('Connected to Discogs as vinylfan'); Mock.handle({ t: 'sync' }); });
+          later(800, () => { const user = m.user || 'vinylfan'; Object.assign(S.discogs, { connected: true, user, public: !m.token }); toast(`Connected to Discogs as ${user}`); Mock.handle({ t: 'sync' }); });
           break;
         case 'discogsDisconnect':
           Object.assign(S.discogs, { connected: false, user: '', lastSync: 0, count: 0 }); coll = []; pushState(); pushColl();

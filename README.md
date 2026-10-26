@@ -1,6 +1,6 @@
 # Record Shelf
 
-A personal Android app for a vinyl collection catalogued on Discogs. It shows the collection as a
+An Android app for a vinyl collection catalogued on Discogs. It shows the collection as a
 cover wall and scrobbles the records you play to Last.fm, side by side, with "now playing" while a
 side spins.
 
@@ -12,43 +12,48 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.19 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Open source (MIT). Everything stays on your phone: there is no server and no account with this app;
+it talks to Discogs, Last.fm, Deezer, MusicBrainz and TIDAL directly.
 
-## Setup on the phone (once)
+## Get it
 
-You need two things from your own accounts: a **Discogs personal access token** and a free
-**Last.fm API account** (API key and shared secret). You type them into the app yourself. They stay
-on the phone in the app's private storage and are left out of Android backups.
+Download the latest `RecordShelf-x.y.apk` from the project's **Releases** page and open it on the
+phone (Android 8 or newer). Android asks once to allow installs from the app you opened it with.
 
-### 1. Install the APK
+- **Play Protect** may warn about an unknown app, mostly because it isn't from the Play Store and
+  can use notification access (for phone scrobbling). Tap **More details → Install anyway**.
+- **Updates**: install a newer APK over the old one; your data stays. [Obtainium](https://obtainium.imranr.dev/)
+  can watch the Releases page and update for you.
 
-Copy `app-debug.apk` to the phone and open it. Android asks once to allow installs from the
-app you opened it with (Files, Chrome, ...).
+## Set up (a few minutes)
 
-### 2. Connect Discogs
+### 1. Discogs: your shelf
 
-1. On discogs.com (signed in), open **Settings → Developers**: <https://www.discogs.com/settings/developers>
-2. Tap **Generate new token** and copy it.
-3. In Record Shelf, tap the gear → **Discogs** → paste the token → **Connect**.
+Gear → **Discogs** → type your **Discogs username** → **Connect**. That's all if your collection is
+public on Discogs (your Discogs privacy settings). The collection syncs right away; tap the shelf's
+sync button whenever you add records.
 
-The collection syncs right away (100 records per request; Discogs allows 60 requests a minute, so
-even a big collection takes well under a minute). Sync again from the shelf's sync button whenever
-you add records.
+Private collection? Under **Connect with a token**: on discogs.com open **Settings → Developers**
+(<https://www.discogs.com/settings/developers>), tap **Generate new token**, paste it, connect. The
+app only reads your collection and release data with it; revoke it there any time.
 
-A personal token works for everything your account can do through the Discogs API. Record Shelf
-only reads your identity, your collection and release data. You can revoke the token on the same
-Discogs page at any time.
+### 2. Last.fm: where scrobbles go
 
-### 3. Connect Last.fm
+Gear → **Last.fm** → **Connect Last.fm**. Your browser opens Last.fm's "connect application" page:
+tap **Yes, allow access**, then switch back to Record Shelf. It finishes on its own; if not, tap
+**I've allowed it**.
 
-1. Signed in to Last.fm, open <https://www.last.fm/api/account/create>.
-2. Fill in the form: your contact email, an application name such as "Record Shelf", any
-   description. Leave **Callback URL** and **Application homepage** empty.
-3. Submit. The next page shows an **API key** and a **Shared secret** (both 32 letters and digits).
-   You can look them up again later at <https://www.last.fm/api/accounts>.
-4. In Record Shelf, tap the gear → **Last.fm** → paste both → **Save and connect**.
-5. The browser opens Last.fm's "connect application" page. Tap **Yes, allow access**, then switch
-   back to Record Shelf. It finishes on its own when you return; if not, tap **I've allowed it**.
+If the app asks for an API key instead (a build without the app's own key, or you chose **Use your
+own API key**): signed in to Last.fm, open <https://www.last.fm/api/account/create>, fill in an email,
+a name such as "Record Shelf" and any description, leave **Callback URL** empty, and paste the **API
+key** and **Shared secret** it shows.
+
+### 3. Moving from another phone or version
+
+Gear → **Backup** → **Export backup** saves one file with your history, hide list, activity,
+collection, tracklists, caches and settings. In the other app: **Restore…** and pick the file; the
+app starts again with it. Keys, tokens and logins aren't in the file (connect again after
+restoring), and neither are scrobbles still waiting to be sent.
 
 ### 4. Notifications
 
@@ -86,28 +91,24 @@ art) and how far it is; tap it for the song's page.
 
 ### 6. TIDAL (optional: exact links and playlists)
 
-Without this, the TIDAL buttons open TIDAL's search. With your own (free) TIDAL developer app,
-they open the exact song, album or artist, and playlists from the Explore tab go straight into
-your TIDAL.
+Without TIDAL, the TIDAL buttons open TIDAL's search. Connected, they open the exact song, album or
+artist, and playlists from the Explore tab go straight into your TIDAL.
 
-1. Open the TIDAL developer dashboard, <https://developer.tidal.com/dashboard>, and log in with
-   your TIDAL account. The first time, accept TIDAL's developer guidelines.
-2. Create an app. Any name will do, for example "Record Shelf".
-3. In the app's settings:
-   - add the **redirect URI** `recordshelf://tidal` (exactly like that; Settings → TIDAL has a
-     Copy button), and
-   - switch on the scope **playlists.write** (nothing else is needed).
-4. Copy the app's **Client ID** and **Client Secret** into Record Shelf: gear → **TIDAL** →
-   **Save**. The status turns to "Exact links are on".
-5. Tap **Sign in to TIDAL**. TIDAL's login page opens in the browser; approve, and the browser
-   hands you back to Record Shelf ("Signed in to TIDAL").
+Gear → **TIDAL** → **Sign in to TIDAL**. TIDAL's login page opens; approve, and the browser hands
+you back to Record Shelf ("Signed in to TIDAL").
+
+If the app asks for a Client ID and secret instead (a build without the app's own TIDAL app, or you
+chose **Use your own TIDAL app**): open <https://developer.tidal.com/dashboard>, log in, accept the
+developer guidelines, create an app (any name), add the **redirect URI** `recordshelf://tidal`
+(Settings → TIDAL has a Copy button) and the scope **playlists.write**, then copy its **Client ID**
+and **Client Secret** into the app and sign in.
 
 Then a playlist page has **Create in TIDAL**: Record Shelf finds each song in TIDAL's catalog,
 creates an unlisted playlist in your library and adds them; songs TIDAL doesn't have are listed.
 Found songs are remembered on the phone, so the next time is quicker.
 
-The client secret and the TIDAL login stay in the app's private storage, left out of backups
-like the Last.fm keys. **Disconnect** forgets them; playlists already made stay in TIDAL.
+Your TIDAL login (and your own client secret, if you entered one) stays in the app's private
+storage, left out of backups like the Last.fm keys. **Disconnect** forgets them; playlists already made stay in TIDAL.
 
 If the dashboard doesn't accept `recordshelf://tidal` as a redirect URI, the sign-in can't come
 back to the app; exact links still work without signing in, and playlists still go through
@@ -389,15 +390,58 @@ as "≈3:30" on the record page. "Look up lengths again" retries the lookups.
 Play counts on the shelf are your Last.fm all-time album plays, so they include streaming (Tidal via
 Pano Scrobbler) as well as vinyl. They refresh after a sync and at most every 12 hours.
 
-## Build
+## Building it yourself
 
-Needs JDK 17 and the Android SDK (platform 34). From Git Bash:
+Needs JDK 17 and the Android SDK (platform 34).
 
 ```bash
-export JAVA_HOME="C:/Users/Freud/AppData/Local/Programs/jdk-17"; ./gradlew testDebugUnitTest assembleDebug
+./gradlew testDebugUnitTest assembleDebug
 ```
 
-The APK ends up in `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK (`app/build/outputs/apk/debug/app-debug.apk`) installs as **Record Shelf (debug)**
+(`app.recordshelf.debug`), next to a release build.
+
+### The app's own keys (for builds you share)
+
+So that people only sign in, a build can carry its own Last.fm API account and TIDAL app. Create
+them (the Last.fm and TIDAL steps above, under "If the app asks…") and put them in
+`local.properties` in the project folder, which stays out of git:
+
+```properties
+recordshelf.lastfm.key=...
+recordshelf.lastfm.secret=...
+recordshelf.tidal.clientId=...
+recordshelf.tidal.secret=...
+```
+
+Leave them out and everyone enters their own in Settings. Keys inside an APK can be dug out, as
+with every app of this kind, so use accounts made just for this app, and check TIDAL's developer
+terms before handing out builds with your TIDAL app in them.
+
+### Release builds
+
+Make your signing key once, and keep the file and its passwords safe: every update has to be signed
+with the same key, or it won't install over the previous version.
+
+```bash
+keytool -genkeypair -v -keystore record-shelf.jks -alias recordshelf -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then describe it in `keystore.properties` next to `settings.gradle` (also kept out of git):
+
+```properties
+storeFile=record-shelf.jks
+storePassword=...
+keyAlias=recordshelf
+keyPassword=...
+```
+
+```bash
+./gradlew assembleRelease
+```
+
+gives `app/build/outputs/apk/release/app-release.apk` (`app.recordshelf`). Without
+`keystore.properties` the release APK comes out unsigned.
 
 ### Preview the UI in a browser
 
@@ -414,7 +458,7 @@ already playing).
 
 | Path | What |
 | --- | --- |
-| `discogs/` | Discogs client (token auth, rate limit), collection and release parsing, tracklists and sides |
+| `discogs/` | Discogs client (public collections by username, or a token; rate limits), collection and release parsing, tracklists and sides |
 | `lastfm/LastfmClient.kt` | Last.fm API: web auth, signing, `track.scrobble` (batches of 50), now playing, album info, top albums, everyone's counts (`*.getInfo`, `artist.getTopTracks`) |
 | `mb/MusicBrainzClient.kt` | MusicBrainz lookups for missing track lengths (1 request per second) |
 | `scrobble/Planner.kt`, `Spin.kt` | Timing a record: start times, Last.fm's half-or-4-minutes rule, flip, stop, resync |
@@ -430,6 +474,7 @@ already playing).
 | `tidal/` | TIDAL API: app and user tokens (PKCE), catalog search and matching, playlists; the cache of found songs |
 | `history/Hidden.kt` | Scrobbles hidden from the stats, and spotting videos and app sounds |
 | `HistoryDb.kt` | SQLite store for the history, genre tags and cover URLs |
+| `Backup.kt` | Backup and restore: history, files and settings in one zip, without keys and tokens |
 | `Core.kt` | App state and work: sync, lookups, the spinning record, sending |
 | `Background.kt` | Alarms at track changes, the flush job for offline scrobbles, the notification |
 | `MainActivity.kt` | Hosts the web UI, Material You palette, theme, browser hand-off |
@@ -439,3 +484,9 @@ already playing).
 Unit tests in `app/src/test` run the API clients against a local fake server, using real
 Discogs and MusicBrainz responses (`src/test/resources/fixtures`) and Last.fm answers in the
 documented format.
+
+## License and credits
+
+MIT, see `LICENSE`. The fonts Fraunces and DM Mono are under the SIL Open Font License
+(`app/src/main/assets/ui/fonts`). Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL;
+Record Shelf isn't affiliated with any of them.

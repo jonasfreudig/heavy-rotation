@@ -186,6 +186,11 @@
     <div class="section-head" id="lfSection"><h2>Last.fm</h2><span class="sub">where your scrobbles go</span></div>
     <div class="card">
       <div class="status-line" id="lfStatus"></div>
+      <div id="lfQuick" hidden>
+        <p class="body">Tap Connect, then <b>Yes, allow access</b> on the Last.fm page in your browser, and come back here.</p>
+        <button class="btn filled wide" id="lfQuickBtn">Connect Last.fm</button>
+        <button class="btn text small" id="lfOwnKey">Use your own API key instead</button>
+      </div>
       <div id="lfSetup">
         <ol class="steps">
           <li>Create a free API account on Last.fm. Any application name and description will do; leave <b>Callback URL</b> empty.
@@ -245,13 +250,19 @@
     <div class="card">
       <div class="status-line" id="dgStatus"></div>
       <div id="dgSetup">
-        <ol class="steps">
-          <li>On Discogs, open <b>Settings → Developers</b> and tap <b>Generate new token</b>.
-            <button class="btn text small link" data-url="https://www.discogs.com/settings/developers"><svg class="i"><use href="#i-open"/></svg>Open Discogs developer settings</button></li>
-          <li>Copy the token and paste it here. It gives this app read access to your collection.</li>
-        </ol>
-        <label class="field"><span>Personal access token</span><input type="password" id="dgToken" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <button class="btn filled wide" id="dgSave">Connect</button>
+        <p class="body">Your Discogs username is enough if your collection is public on Discogs (your privacy settings there).</p>
+        <label class="field"><span>Discogs username</span><input type="text" id="dgUser" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <button class="btn filled wide" id="dgUserSave">Connect</button>
+        <details class="more">
+          <summary>Private collection? Connect with a token</summary>
+          <ol class="steps">
+            <li>On Discogs, open <b>Settings → Developers</b> and tap <b>Generate new token</b>.
+              <button class="btn text small link" data-url="https://www.discogs.com/settings/developers"><svg class="i"><use href="#i-open"/></svg>Open Discogs developer settings</button></li>
+            <li>Copy the token and paste it here. It gives this app read access to your collection.</li>
+          </ol>
+          <label class="field"><span>Personal access token</span><input type="password" id="dgToken" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <button class="btn tonal wide" id="dgSave">Connect with the token</button>
+        </details>
       </div>
       <div id="dgConnected" hidden>
         <div class="lin inline" id="dgProgress" hidden><i></i></div>
@@ -303,7 +314,7 @@
         <div class="btn-row">
           <button class="btn filled" id="tdLogin">Sign in to TIDAL</button>
           <button class="btn outlined" id="tdSignOut">Sign out</button>
-          <button class="btn text" id="tdChange">Use another app</button>
+          <button class="btn text" id="tdChange">Use your own TIDAL app</button>
           <button class="btn text" id="tdForget">Disconnect</button>
         </div>
       </div>
@@ -336,7 +347,7 @@
       <p class="hint" id="bkStatus" hidden></p>
     </div>
 
-    <p class="hint about">Your API key, secret and tokens stay on this phone and are left out of backups. Track lengths come from Discogs, MusicBrainz and Last.fm.<br><span id="version"></span></p>
+    <p class="hint about">Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL; Record Shelf isn't affiliated with any of them. Your keys and tokens stay on this phone and are left out of backups. Track lengths come from Discogs, MusicBrainz and Last.fm.<br><span id="version"></span></p>
   </div>
 </div>
 

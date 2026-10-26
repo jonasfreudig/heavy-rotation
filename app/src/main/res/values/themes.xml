@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#23306B</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
 
     <!-- Material 3; on Android 12+ the colors follow the wallpaper (dynamic color). -->
     <style name="Theme.RecordShelf" parent="Theme.Material3.DynamicColors.DayNight.NoActionBar">

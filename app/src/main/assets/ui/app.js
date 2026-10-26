@@ -3638,7 +3638,7 @@ function renderTidalSettings() {
   let st;
   if (t.busy) st = statusLine('busy', 'Talking to TIDAL…', '');
   else if (t.loggedIn) st = statusLine('ok', 'Connected and signed in', 'Exact links, and playlists straight into TIDAL');
-  else if (t.hasApp) st = statusLine('ok', 'Exact links are on', `Client ID ${esc(t.clientHint || '')} · sign in to make playlists`);
+  else if (t.hasApp) st = statusLine('ok', 'Exact links are on', t.builtIn ? 'Sign in to make playlists' : `Client ID ${esc(t.clientHint || '')} · sign in to make playlists`);
   else st = statusLine('', 'Not set up', 'The TIDAL buttons open a search instead');
   $('#tdStatus').innerHTML = st;
   $('#tdSetup').hidden = !!t.hasApp && !showTidalForm;
@@ -3669,7 +3669,11 @@ function renderSettings() {
     setup: statusLine(l.connected ? 'ok' : '', l.connected ? `Connected as <b>${esc(l.user)}</b>` : 'Not connected', l.connected ? 'Enter a new key to switch' : 'Scrobbles wait on this phone until you connect'),
   }[mode];
   $('#lfStatus').innerHTML = lfStatus;
-  $('#lfSetup').hidden = mode !== 'setup';
+  // With the app's own key, connecting is one tap; the key form is there for people who want their own.
+  const quick = mode === 'setup' && l.builtIn && !showKeyForm;
+  $('#lfQuick').hidden = !quick;
+  $('#lfQuickBtn').disabled = !!l.busy;
+  $('#lfSetup').hidden = mode !== 'setup' || quick;
   $('#lfWaiting').hidden = mode !== 'waiting';
   $('#lfConnected').hidden = mode !== 'connected';
   $('#lfReconnect').hidden = mode !== 'reconnect';
@@ -3681,13 +3685,14 @@ function renderSettings() {
 
   let dgStatus;
   if (d.connected && d.syncing) dgStatus = statusLine('busy', `Syncing <b>${esc(d.user)}</b>`, d.pages ? `${plural(d.done, 'record')} · page ${d.page} of ${d.pages}` : 'starting…');
-  else if (d.connected) dgStatus = statusLine('ok', `Connected as <b>${esc(d.user)}</b>`, `${plural(d.count || 0, 'record')}${d.lastSync ? ` · synced ${ago(d.lastSync)}` : ''}`);
-  else if (d.syncing) dgStatus = statusLine('busy', 'Checking the token…', '');
+  else if (d.connected) dgStatus = statusLine('ok', `Connected as <b>${esc(d.user)}</b>`, `${plural(d.count || 0, 'record')}${d.public ? ' · public collection' : ''}${d.lastSync ? ` · synced ${ago(d.lastSync)}` : ''}`);
+  else if (d.syncing) dgStatus = statusLine('busy', 'Looking for your collection…', '');
   else dgStatus = statusLine('', 'Not connected', 'Your collection shows up on the shelf once connected');
   $('#dgStatus').innerHTML = dgStatus;
   $('#dgSetup').hidden = !!d.connected;
   $('#dgConnected').hidden = !d.connected;
   $('#dgSave').disabled = !!d.syncing;
+  $('#dgUserSave').disabled = !!d.syncing;
   $('#dgSync').disabled = !!d.syncing;
   const prog = $('#dgProgress');
   prog.hidden = !d.syncing;
@@ -3992,6 +3997,13 @@ function build() {
   $('#lfReconnectBtn').onclick = () => send({ t: 'lastfmConnect' });
   $('#lfDisconnect').onclick = () => confirmSheet('Disconnect Last.fm?', 'New scrobbles will wait on this phone until you connect again.', 'Disconnect', () => send({ t: 'lastfmDisconnect' }));
   $('#lfChangeKey').onclick = () => { showKeyForm = true; renderSettings(); };
+  $('#lfQuickBtn').onclick = () => send({ t: 'lastfmConnect' });
+  $('#lfOwnKey').onclick = () => { showKeyForm = true; renderSettings(); };
+  $('#dgUserSave').onclick = () => {
+    const user = $('#dgUser').value.trim().replace(/^@/, '');
+    if (!user) { toast('Type your Discogs username.'); return; }
+    send({ t: 'saveDiscogs', user });
+  };
   $('#dgSave').onclick = () => {
     const token = $('#dgToken').value.trim();
     if (token.length < 20) { toast('That looks too short for a Discogs token. Copy it again.'); return; }

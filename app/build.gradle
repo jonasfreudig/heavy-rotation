@@ -3,16 +3,56 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// The app's own Last.fm and TIDAL keys, for builds other people install: they only sign in.
+// They come from local.properties, which stays out of git (see README, "Building it yourself");
+// without them, everyone enters their own keys in Settings.
+def localProps = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
+def builtIn = { String name -> (localProps.getProperty(name) ?: '').trim().replace('"', '') }
+
+// Release signing: your own key, described in keystore.properties next to this project's
+// settings.gradle (storeFile, storePassword, keyAlias, keyPassword). Stays out of git.
+def signing = new Properties()
+def signingFile = rootProject.file('keystore.properties')
+if (signingFile.exists()) signingFile.withInputStream { signing.load(it) }
+
 android {
-    namespace 'com.example.recordshelf'
+    namespace 'app.recordshelf'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.example.recordshelf"
+        applicationId "app.recordshelf"
         minSdk 26
         targetSdk 34
-        versionCode 20
-        versionName "0.20"
+        versionCode 21
+        versionName "0.21"
+        buildConfigField 'String', 'LASTFM_KEY', "\"${builtIn('recordshelf.lastfm.key')}\""
+        buildConfigField 'String', 'LASTFM_SECRET', "\"${builtIn('recordshelf.lastfm.secret')}\""
+        buildConfigField 'String', 'TIDAL_CLIENT_ID', "\"${builtIn('recordshelf.tidal.clientId')}\""
+        buildConfigField 'String', 'TIDAL_SECRET', "\"${builtIn('recordshelf.tidal.secret')}\""
+    }
+
+    signingConfigs {
+        if (signingFile.exists()) {
+            release {
+                storeFile rootProject.file(signing.getProperty('storeFile'))
+                storePassword signing.getProperty('storePassword')
+                keyAlias signing.getProperty('keyAlias')
+                keyPassword signing.getProperty('keyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Installs next to the release build, as "Record Shelf (debug)".
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled false
+            if (signingFile.exists()) signingConfig signingConfigs.release
+        }
     }
 
     buildFeatures {
