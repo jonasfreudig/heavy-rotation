@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.11 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.12 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -122,11 +122,14 @@ The charts adapt: a week or a month is shown per day, a year per week or month, 
 month, quarter or year. What the tab shows for the chosen period:
 
 - **Your story** (the card at the top): a Wrapped-style story you tap through, like Instagram
-  stories (right side forward, left side back, hold to pause). Total plays, your listening
-  personality (night owl, early bird, loyalist, explorer, on repeat, weekender, crate digger,
-  genre hopper or all-rounder), top artist and top 5, song and album of the period (the album as a
-  moving cover), your golden hour, new artists, a song on repeat, your sound (genres), vinyl,
-  your longest streak, and a summary card to finish.
+  stories (right side forward, left side back, hold to pause). It takes its colors from the
+  period's top album, drifting behind each slide. Total plays with a ticker running across, your
+  listening personality (night owl, early bird, loyalist, explorer, on repeat, weekender, crate
+  digger, genre hopper or all-rounder) in a turning ring of words, your top artist's photo
+  full-screen in two colors, the top 5 with photos, song of the period as a 7" single spinning at
+  45, the album as a moving cover, your golden hour on a sundial, one star per new artist, a song
+  on repeat, your genres as a cloud of words, vinyl, your longest streak as a row of days, and a
+  summary printed like the back of a record sleeve.
 - **Totals**: plays, hours (about 3.5 minutes a track), artists and new artists, each with the
   change against the period before. For a period still running (this week, this month) it
   compares with the same stretch of the previous one: Monday to Wednesday against last Monday to
@@ -189,6 +192,16 @@ and kept on the phone; they show on artist pages, in Top 10 and Explore, and in 
 Phone scrobbles carry no cover, so the Activity tab takes one from your shelf (if you own the
 album) or from Last.fm's album art, looked up once and kept on the phone.
 
+#### Genres
+
+Genre names are buttons: the styles on a record page, the genres on an artist page, and the
+legend of the genre charts on the Stats tab. Each opens that genre's page: how much of your
+listening it is and where it ranks, plays and artists, since when and its biggest day; your top
+artists (with photos), albums and songs in it; **Rediscover**, the artists and albums of that genre
+you loved and haven't played for half a year or more; **Everyone in …**, every artist you played
+in it; when its music came out; its listening barcode, plays per month and hours; and the records
+on your shelf with that genre or style. **Full stats for …** opens the Stats tab for that genre.
+
 #### Explore
 
 The **Explore** tab digs into what never makes the top lists:
@@ -233,6 +246,22 @@ their own: "Fontaines D.C., ROSALÍA" counts for Fontaines D.C., and anything "f
 first name, but "Earth, Wind & Fire" stays one band.
 
 Days, weeks and hours are in the phone's local time.
+
+### The look
+
+Headings and big numbers are set in Fraunces, a soft serif; labels and details in DM Mono, like
+liner notes (both bundled, under the SIL Open Font License, in `assets/ui/fonts`). A faint print
+grain lies over everything. Behind the top of the app glows the color of the record spinning, or
+of the last one you played; pick **Your records**, **Wallpaper** (your Material You colors) or
+**Off** in Settings → Look → Background color.
+
+The shelf has three views (the buttons next to the record count): the grid of covers, big covers
+two to a row with year and plays, and a list with year, label, format, two styles and plays.
+
+On a record page, tap the sleeve to turn it over: the back has the tracklist by side, the label
+and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:
+the cover is the label, the platter turns while a track plays, and the tonearm moves from the
+outer groove toward the label as the side goes on.
 
 ### Moving covers
 
@@ -335,7 +364,8 @@ already playing).
 | `Core.kt` | App state and work: sync, lookups, the spinning record, sending |
 | `Background.kt` | Alarms at track changes, the flush job for offline scrobbles, the notification |
 | `MainActivity.kt` | Hosts the web UI, Material You palette, theme, browser hand-off |
-| `assets/ui/` | The interface (HTML/JS in a WebView; `mock.js` stands in for the app in a browser) |
+| `assets/ui/` | The interface (HTML/JS in a WebView; `mock.js` stands in for the app in a browser); `look.css` holds the type, grain, glow, sleeve back, turntable and story styles |
+| `assets/ui/fonts/` | Fraunces and DM Mono (woff2) with their licenses |
 
 Unit tests in `app/src/test` run the API clients against a local fake server, using real
 Discogs and MusicBrainz responses (`src/test/resources/fixtures`) and Last.fm answers in the

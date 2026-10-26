@@ -28,7 +28,9 @@ let tab = 'shelf';
 const pageStack = [];
 let recordId = 0;
 let showKeyForm = false;
-const shelf = { q: '', sort: 'added', rev: false, decade: 0, genre: '' };
+const shelf = { q: '', sort: 'added', rev: false, decade: 0, genre: '', view: 'grid' };
+/** The shelf as a grid of covers, a grid of big covers, or a list with the details. */
+const SHELF_VIEWS = [['grid', 'apps', 'Grid'], ['big', 'big-grid', 'Big covers'], ['list', 'view-list', 'List']];
 
 // ---------- constants ----------
 
@@ -113,8 +115,9 @@ function holoCover(url, title, artist, opts = {}) {
   const lbl = url ? `background-image:url('${esc(url)}')` : '';
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const foil = owned ? '<i class="sheen"></i><i class="sticker" aria-label="On your shelf">★</i>' : '';
-  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo data-key="${esc(opts.key || url || title)}">
-    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div></div></div>`;
+  const back = opts.back ? '<div class="sleeve-back"></div>' : '';
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} data-key="${esc(opts.key || url || title)}" style="--h:${hue((title || '') + (artist || ''))}">
+    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div>${back}</div></div>`;
 }
 
 /**
@@ -204,6 +207,7 @@ window.onState = (s) => {
   const hadSpin = !!(ST.spin);
   ST = s;
   renderState();
+  applyAmbient();
   if (!hadSpin && s.spin && pendingSpinOpen) { pendingSpinOpen = false; openPage('spinPage'); renderSpin(true); }
 };
 window.onCollection = (c) => {
@@ -214,7 +218,7 @@ window.onCollection = (c) => {
   renderShelf();
   if (isOpen('recordPage')) renderRecord();
 };
-window.onActivity = (a) => { ACT = a || []; renderActivity(); };
+window.onActivity = (a) => { ACT = a || []; renderActivity(); applyAmbient(); };
 window.onRelease = (r) => {
   const old = REL[r.id];
   if ((r.loading || r.error) && old && old.tracks) return;
@@ -271,6 +275,7 @@ const PAGE_STATE = {
   trackPage: { get: () => TRACK, set: (s) => { TRACK = s; renderTrack(); } },
   albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
   playlistPage: { get: () => [PLAYLIST, TIDALJOB], set: (s) => { [PLAYLIST, TIDALJOB] = s; renderPlaylist(); } },
+  genrePage: { get: () => GENRE, set: (s) => { GENRE = s; renderGenre(); } },
 };
 /** Per back-stack entry: what a page further down showed (state and scroll), while another of its kind is on top. */
 const pageSaved = [];
@@ -422,8 +427,7 @@ function tickUi() {
     $('#scBar').style.width = pct + '%';
   }
   if (isOpen('spinPage') && $('#spTitle')) {
-    const holo = $('#spinBody [data-holo]');
-    if (holo) holo.classList.toggle('spinning', !!it);
+    tickTurntable(n, now);
     $('#spTitle').textContent = it ? it.title : n.next ? n.next.title : sp.album;
     $('#spSide').textContent = it ? [it.side ? sideLabel(it.side) : '', `${n.live.indexOf(it) + 1} of ${n.live.length}`].filter(Boolean).join(' · ') : n.next ? `Starts at ${fmtTime(n.next.start)}` : '';
     $('#spBar').style.width = pct + '%';
@@ -457,11 +461,20 @@ function renderShelf() {
   $('#shelfCount').textContent = shelf.q.trim() || shelfFiltered() ? `${list.length} of ${plural(COLL.length, 'record')}` : plural(COLL.length, 'record');
   renderFilterChips();
   $('#shelfSummary').innerHTML = shelfSummaryHtml(list);
+  $('#shelfViews').innerHTML = SHELF_VIEWS.map(([v, ic, label]) => `<button class="icon-btn small${shelf.view === v ? ' on' : ''}" data-view="${v}" aria-label="${label}">${icon(ic)}</button>`).join('');
+  $('#grid').className = `grid ${shelf.view}`;
   $('#grid').innerHTML = list.map((r) => {
+    const cover = coverHtml(shelf.view === 'list' ? r.thumb || r.cover : r.cover || r.thumb, r.title, r.artist, '', r.id === spinId);
+    if (shelf.view === 'list') {
+      const meta = [r.year || '', (r.label || '').split(' · ')[0], (r.format || '').split(',')[0]].filter(Boolean).join(' · ');
+      const styles = (r.styles || []).slice(0, 2).map((x) => `<span class="mini-chip">${esc(x)}</span>`).join('');
+      return `<button class="rec" data-id="${r.id}">${cover}<span class="lmain"><b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${esc(meta)}</small>${styles ? `<span class="lchips">${styles}</span>` : ''}</span>
+        <span class="lplays"><b>${r.plays ? compact(r.plays) : '–'}</b><small>${r.plays === 1 ? 'play' : 'plays'}</small></span></button>`;
+    }
     let meta = '';
-    if (shelf.sort === 'plays') meta = `<small class="meta">${r.plays ? plural(r.plays, 'play') : 'no plays yet'}</small>`;
+    if (shelf.sort === 'plays' || shelf.view === 'big') meta = `<small class="meta">${[shelf.view === 'big' && r.year ? r.year : '', r.plays ? plural(r.plays, 'play') : 'no plays yet'].filter(Boolean).join(' · ')}</small>`;
     else if (shelf.sort === 'year' && r.year) meta = `<small class="meta">${r.year}</small>`;
-    return `<button class="rec" data-id="${r.id}">${coverHtml(r.cover || r.thumb, r.title, r.artist, '', r.id === spinId)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
+    return `<button class="rec" data-id="${r.id}">${cover}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
   }).join('');
   renderShelfEmpty();
 }
@@ -516,7 +529,8 @@ function renderRecord() {
   const keep = $('#recordBody [data-holo]');
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero">
-      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, key: holoKey })}</div>
+      <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, key: holoKey })}</div>
+      <span class="flip-hint">Tap the sleeve to turn it over</span>
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
@@ -525,7 +539,7 @@ function renderRecord() {
     </div>
     <div class="record-actions"><button class="btn filled big" id="scrobbleBtn" ${rel && rel.tracks.length ? '' : 'disabled'}>${icon('play')}Scrobble</button></div>
     <div id="recordSpinNote"></div>`;
-  if (tags.length) h += `<div class="tags">${tags.map((t) => `<span class="chip static">${esc(t)}</span>`).join('')}</div>`;
+  if (tags.length) h += `<div class="tags">${tags.map((t) => `<button class="chip link" data-genre="${esc(genreKeyOf(t))}" data-glabel="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;
 
   if (!rel && r && r.error) {
     h += `<div class="card bad"><div class="card-title">${icon('warning')}Couldn't load the tracklist</div><p>${esc(r.error)}</p><div class="btn-row"><button class="btn tonal" id="retryRel">Try again</button></div></div>`;
@@ -548,6 +562,8 @@ function renderRecord() {
   }
   $('#recordBody').innerHTML = h;
   if (reuse) $('#recHolo').appendChild(keep);
+  const sb = $('#recHolo .sleeve-back');
+  if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays);
   renderRecordSpinNote();
   Tilt.refresh();
 }
@@ -692,10 +708,10 @@ function renderSpin(force) {
   const sig = sp.id + sp.items.map((i) => i.state.charAt(0) + i.start).join(',') + sp.nextSide;
   if (!force && sig === spinSig) { tickUi(); return; }
   spinSig = sig;
-  const keep = $('#spinBody [data-holo]');
+  const keep = $('#spinBody .tt');
   const reuse = keep && keep.dataset.key === sp.id;
   body.innerHTML = `<div class="spin-hero">
-      <div id="spinHolo">${reuse ? '' : holoCover(sp.cover, sp.album, sp.artist, { owned: true, key: sp.id })}</div>
+      <div id="spinHolo">${reuse ? '' : turntableHtml(sp)}</div>
       <div class="side" id="spSide"></div>
       <h1 id="spTitle"></h1>
       <div class="artist">${esc(sp.artist)} — ${esc(sp.album)}</div>
@@ -1052,7 +1068,10 @@ function storyCardHtml(s) {
   if (!s.summary.scrobbles) return '';
   const name = periodName(s.range);
   const al = (s.top.albums || []).find((x) => x.cover) || {};
-  return `<button class="story-card" data-story="${esc(s.range.id)}">
+  // The colors the story itself opens with: the top album's, once its palette is known.
+  const c = al.cover && TINTS[al.cover];
+  const h1 = c ? hexHsl(c.vibrant)[0] : hue(name + ' story');
+  return `<button class="story-card" data-story="${esc(s.range.id)}" style="--s1:${h1.toFixed(0)};--s2:${((h1 + 55) % 360).toFixed(0)}">
     <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${esc(al.cover)}')` : ''}"></i></div>
     <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</div>
     <h2>${esc(name)}, on record</h2>
@@ -1215,7 +1234,11 @@ function genreViz(g) {
   }).join('');
   const step = Math.max(1, Math.ceil(periods.length / 4));
   const labels = periods.filter((x, i) => i % step === 0).map((p) => periodLabel(p.start, g.unit, true));
-  const legend = g.names.map((name, k) => `<div><span class="sw" style="background:${color(k)}"></span><span class="nm">${esc(name)}</span><span class="pc">${Math.round((totals[k] / all) * 100)}%</span></div>`).join('');
+  const legend = g.names.map((name, k) => {
+    const key = (g.keys || [])[k];
+    const open = key && key !== 'other' ? ` data-genre="${esc(key)}" data-glabel="${esc(name)}"` : '';
+    return `<div${open}><span class="sw" style="background:${color(k)}"></span><span class="nm">${esc(name)}</span><span class="pc">${Math.round((totals[k] / all) * 100)}%</span></div>`;
+  }).join('');
   const cov = g.coverage || {};
   const last = periods.length - 1;
   return `<div class="viz"><h2>Genre drift</h2><span class="sub">Share of plays per ${g.unit}</span>
@@ -1471,6 +1494,87 @@ const missingNote = () => ((ST.history || {}).count > 0
   ? 'Not in your Last.fm history on this phone yet. New scrobbles arrive here when you open the Stats tab.'
   : 'Import your Last.fm history on the Stats tab to see its story here.');
 
+// ---- the look: the color glow behind the app, the back of the sleeve, the turntable ----
+
+/** Where the glow behind the top of the app takes its colors: "records" (the record spinning, else the last one played), "wallpaper" (Material You) or "off". */
+function ambientMode() {
+  try { return localStorage.getItem('ambient') || 'records'; } catch (_) { return 'records'; }
+}
+let ambientUrl = '';
+function applyAmbient() {
+  const root = document.documentElement;
+  const mode = ambientMode();
+  root.dataset.ambient = mode;
+  if (mode === 'off') return;
+  if (mode === 'wallpaper') {
+    root.style.setProperty('--amb1', 'var(--md-primary)');
+    root.style.setProperty('--amb2', 'var(--md-tertiary)');
+    root.style.setProperty('--amb3', 'var(--md-secondary)');
+    return;
+  }
+  const sp = ST.spin;
+  const e = sp ? null : (ACT || []).slice().sort((a, b) => b.ts - a.ts)[0];
+  const src = sp ? { cover: sp.cover, seed: sp.album + sp.artist } : e ? { cover: e.cover, seed: (e.album || e.track) + e.artist } : { cover: '', seed: 'Record Shelf' };
+  ambientUrl = src.cover || '';
+  const c = ambientUrl ? TINTS[ambientUrl] : null;
+  if (ambientUrl && !c) send({ t: 'palette', url: ambientUrl });
+  let h1, h2, sat;
+  if (c) {
+    const v = hexHsl(c.vibrant), d = hexHsl(c.dominant);
+    [h1, h2, sat] = [v[0], d[0], Math.max(v[1], d[1])];
+  } else [h1, h2, sat] = [hue(src.seed), (hue(src.seed) + 48) % 360, 0.6];
+  const k = sat < 0.12 ? 0 : 1; // black-and-white covers glow gray
+  root.style.setProperty('--amb1', `hsl(${h1.toFixed(0)} ${70 * k}% 46%)`);
+  root.style.setProperty('--amb2', `hsl(${h2.toFixed(0)} ${60 * k}% 40%)`);
+  root.style.setProperty('--amb3', `hsl(${((h1 + 320) % 360).toFixed(0)} ${55 * k}% 36%)`);
+}
+
+/** What the back of a record's sleeve says: the tracklist by side, label and format, and your plays as a stamp. */
+function sleeveBackInner(base, rel, plays) {
+  const tracks = (rel && rel.tracks) || [];
+  const sides = [];
+  tracks.forEach((t) => {
+    let s = sides.find((x) => x.side === t.side);
+    if (!s) sides.push(s = { side: t.side, list: [] });
+    s.list.push(t);
+  });
+  const row = (t) => `<p><span>${esc(t.pos)}</span><b>${esc(t.title)}</b><em>${fmtDur(lenOf(t))}</em></p>`;
+  // Up to a dozen songs fit one full-width column (A1, B1 tell the sides apart); longer records get two.
+  const one = tracks.length <= 12;
+  const half = Math.ceil(sides.length / 2);
+  const cols = sides.length > 2 ? [sides.slice(0, half), sides.slice(half)] : sides.map((s) => [s]);
+  const list = !tracks.length ? '<p class="sb-empty">The tracklist is on its way…</p>'
+    : one ? `<div>${sides.map((s) => s.list.map(row).join('')).join('<hr>')}</div>`
+      : cols.map((c) => `<div>${c.map((s) => `<h6>Side ${esc(s.side)}</h6>${s.list.map(row).join('')}`).join('')}</div>`).join('');
+  const info = rel || base;
+  return `<div class="sb-head"><b>${esc(info.title || base.title || '')}</b><i>${esc(info.artist || base.artist || '')}<br>${info.year || base.year || ''}</i></div>
+    <div class="sb-cols${one ? ' one' : ''}">${list}</div>
+    <div class="sb-foot"><small>${esc([info.label || base.label, info.format || base.format].filter(Boolean).join(' · '))}</small><span class="barcode"></span></div>
+    ${plays ? `<div class="sb-notes">played ${num(plays)}×</div>` : ''}`;
+}
+
+/** Now spinning as a turntable: the record on the platter with its cover as the label. */
+function turntableHtml(sp) {
+  const label = sp.cover ? `style="background-image:url('${esc(sp.cover)}')"` : '';
+  return `<div class="tt" data-key="${esc(sp.id)}" style="--h:${hue(sp.album + sp.artist)}"><div class="tt-plinth">
+    <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-disc"><div class="tt-label" ${label}>${sp.cover ? '' : esc(sp.album)}</div></div><i class="tt-spindle"></i></div>
+    <i class="tt-counter"></i><div class="tt-arm"><i class="tube"></i><i class="head"></i></div><i class="tt-pivot"></i>
+    <div class="tt-speed"><i class="on">33</i><i>45</i></div><i class="tt-start"></i></div></div>`;
+}
+/** The tonearm travels through the side as it plays (outer groove at 25°, the label at 44°); the platter turns while a track plays. */
+function tickTurntable(n, now) {
+  const tt = $('#spinBody .tt');
+  if (!tt) return;
+  const side = n.item ? n.live.filter((it) => it.side === n.item.side) : [];
+  let arm = 0;
+  if (side.length) {
+    const a = side[0].start, b = Math.max(...side.map((it) => it.start + it.dur * 1000));
+    arm = 25 + Math.max(0, Math.min(1, (now - a) / Math.max(1, b - a))) * 19;
+  }
+  tt.style.setProperty('--arm', `${arm.toFixed(2)}deg`);
+  tt.classList.toggle('spinning', !!n.item);
+}
+
 // ---- page colors: song, album and artist pages take theirs from the cover or the photo ----
 
 /** Colors per picture URL from the app (onPalette); a page without them keeps the wallpaper's colors. */
@@ -1514,6 +1618,8 @@ function tint(el, url, seed) {
 }
 window.onPalette = (p) => {
   TINTS[p.url] = p;
+  if (p.url === ambientUrl) applyAmbient();
+  if (p.url === storyTintUrl && !$('#story').hidden) applyStoryTint();
   $$('.tinted').forEach((el) => { if (el.dataset.tintUrl === p.url) el.setAttribute('style', tintStyle(p)); });
 };
 
@@ -1867,6 +1973,80 @@ function setStatsGenre(key) {
   requestStats();
 }
 
+// ---- one genre: its stats, your music in it, what to rediscover, your records ----
+
+let GENRE = null;
+function openGenre(key, label) {
+  if (!key) return;
+  openPage('genrePage');
+  GENRE = { key, label: label || genreLabel(key), loading: true, req: ++REQ };
+  renderGenre();
+  send({ t: 'genre', key, req: GENRE.req });
+}
+window.onGenre = (g) => {
+  GENRE = deliver('genrePage', g.req, GENRE, (s, shown) => {
+    const next = { ...s, ...g, label: s.label || g.label, req: s.req, loading: false };
+    if (shown) { GENRE = next; renderGenre(); }
+    return next;
+  });
+};
+
+function renderGenre() {
+  const g = GENRE;
+  if (!g || !isOpen('genrePage')) return;
+  const shelfRecs = COLL.filter((r) => [...(r.genres || []), ...(r.styles || [])].some((x) => genreKeyOf(x) === g.key));
+  let h = `<div class="genre-hero page-hero"><i class="glow"></i><span class="k">Genre</span><h1>${esc(g.label)}</h1>
+    ${g.plays ? `<div class="meta">${pct(g.share)} of everything you play${g.rank ? `, your number ${g.rank} genre` : ''}</div>` : ''}</div>`;
+  if (g.loading) h += '<div class="lin inline indet"><i></i></div>';
+  else if (g.missing) h += `<div class="empty small"><p>None of your plays has ${esc(g.label)} as its main genre${shelfRecs.length ? ', but some of your records do' : ''}.</p></div>`;
+  else {
+    const top = g.top || {};
+    h += `<div class="tiles">
+      ${tile('Plays', num(g.plays), `on ${plural(g.days, 'day')}`, '', 'music')}
+      ${tile('Artists', num(g.artists), (top.artists || [])[0] ? `most: ${top.artists[0].name}` : '', '', 'heart')}
+      ${tile('Since', esc(monthYear(g.first)), `last played ${esc(dateLabel(g.last))}`, '', 'history')}
+      ${tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire')}
+    </div>
+    <div class="btn-row"><button class="btn tonal" data-statsgenre="${esc(g.key)}">${icon('chart')}Full stats for ${esc(g.label)}</button></div>`;
+    if ((top.artists || []).length) {
+      h += `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
+        <div class="xcards">${top.artists.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
+    }
+    const lost = g.lost || [], lostAlbums = g.lostAlbums || [];
+    if (lost.length || lostAlbums.length) {
+      h += `<div class="viz"><h2>Rediscover</h2><span class="sub">${esc(g.label)} you loved, quiet for half a year or more</span>
+        <div class="xcards">${lost.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small>last ${esc(monthYear(a.last))}</small><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}
+        ${lostAlbums.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`).join('')}</div></div>`;
+    }
+    if ((top.albums || []).length) {
+      h += `<div class="viz"><h2>Albums</h2><div class="xcards">${top.albums.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
+    }
+    if ((top.tracks || []).length) {
+      const max = Math.max(1, ...top.tracks.map((t) => t.plays));
+      h += `<div class="viz"><h2>Songs</h2><div class="rank">${top.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${num(t.plays)}</span><div class="bar"><i style="width:${(t.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
+    }
+    const all = g.all || [];
+    if (all.length > (top.artists || []).length) {
+      const shown = g.showAll ? all : all.slice(0, 30);
+      h += `<div class="viz"><h2>Everyone in ${esc(g.label)}</h2><span class="sub">All ${num(g.artists)} artists you played, most first</span>
+        <div class="chips everyone">${shown.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div>
+        ${all.length > shown.length ? `<button class="btn text" data-genreall>Show all ${num(all.length)}</button>` : ''}</div>`;
+    }
+    const ds = (g.decades && g.decades.decades) || [];
+    if (ds.length > 1) {
+      const max = Math.max(1, ...ds.map((d) => d.plays));
+      h += `<div class="viz"><h2>Decades</h2><span class="sub">When your ${esc(g.label)} came out</span><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
+    }
+    h += lifeCharts(g, 'it', '', g.label + g.label);
+  }
+  if (shelfRecs.length) {
+    h += `<div class="viz"><h2>On your shelf</h2><span class="sub">${plural(shelfRecs.length, 'record')} with ${esc(g.label)} on Discogs</span>
+      <div class="xcards">${shelfRecs.map((r) => `<button class="xcard" data-rec="${r.id}">${coverHtml(r.cover || r.thumb, r.title, r.artist)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${r.year || ''}</small></button>`).join('')}</div></div>`;
+  }
+  $('#genreBody').innerHTML = h;
+  tint($('#genreBody'), '', g.label + g.label);
+}
+
 // ---- one song ----
 
 let TRACK = null;
@@ -2160,7 +2340,7 @@ function renderArtist() {
       ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}|${pic}` })}
       <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
         <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}</div></div></div>
-    ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<span class="chip static">${esc(g)}</span>`).join('')}</div>` : ''}
+    ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
     ${listenRow('artists', a.name)}
     <p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
     <div class="tiles">
@@ -2415,14 +2595,16 @@ let storyIdx = 0;
 
 function openStory(id) {
   STORY = null;
-  storySlides = [{ cls: 'c5', wait: true, html: '<div class="t m in">Putting it together…</div>' }];
+  storySlides = [{ cls: 'deep', wait: true, html: '<div class="t m in">Putting it together…</div>' }];
   $('#story').hidden = false;
+  applyStoryTint(null);
   showSlide(0);
   send({ t: 'story', range: id });
 }
 window.onStory = (s) => {
   if ($('#story').hidden) return;
   STORY = s;
+  applyStoryTint(s);
   storySlides = buildSlides(s);
   showSlide(0);
 };
@@ -2436,7 +2618,11 @@ function showSlide(i) {
   storyIdx = Math.max(0, Math.min(storySlides.length - 1, i));
   const sl = storySlides[storyIdx];
   $('#storyBars').innerHTML = storySlides.map((x, k) => `<i class="${k < storyIdx ? 'done' : k === storyIdx && !x.wait ? 'now' : ''}" style="--dur:${x.dur || 7}s"><b></b></i>`).join('');
-  $('#storySlide').innerHTML = `<div class="slide ${sl.cls}">${sl.html}</div>`;
+  $('#storySlide').innerHTML = `<div class="slide ${sl.cls}"><div class="aur bg"><i></i><i></i><i></i></div>${sl.html}</div>`;
+  $$('#storySlide [data-fit]').forEach((el) => {
+    const big = el.classList.contains('xl') ? 96 : el.classList.contains('pt') ? 40 : 54;
+    fitText(el, +el.dataset.fit, big, el.classList.contains('pt') ? 22 : 26);
+  });
   $('#story').classList.remove('paused');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     $$('#storySlide [data-w]').forEach((el) => { el.style.width = el.dataset.w; });
@@ -2461,109 +2647,181 @@ function countUp() {
 }
 
 const dly = (s) => `style="--d:${s}s"`;
+
+/** The story's colors: three hues from the period's top album (or top artist's photo), mixed differently on each slide. */
+let storyTintUrl = '';
+function applyStoryTint(s) {
+  const x = s || STORY;
+  const seed = x ? periodName(x.range) : 'Record Shelf';
+  const al = x ? (x.albums || [])[0] : null, ar = x ? (x.artists || [])[0] : null;
+  storyTintUrl = (al && al.cover) || (ar && ar.cover) || '';
+  const c = storyTintUrl ? TINTS[storyTintUrl] : null;
+  if (storyTintUrl && !c) send({ t: 'palette', url: storyTintUrl });
+  let h1 = hue(seed + ' story'), h2 = (h1 + 55) % 360, k = 1;
+  if (c) {
+    const v = hexHsl(c.vibrant), d = hexHsl(c.dominant);
+    h1 = v[0];
+    h2 = Math.abs(v[0] - d[0]) < 25 ? (v[0] + 50) % 360 : d[0];
+    k = Math.max(v[1], d[1]) < 0.12 ? 0.12 : 1; // black-and-white covers: an almost gray story
+  }
+  const st = $('#story').style;
+  st.setProperty('--s1', h1.toFixed(0));
+  st.setProperty('--s2', h2.toFixed(0));
+  st.setProperty('--s3', ((h1 + 300) % 360).toFixed(0));
+  st.setProperty('--ss', String(k));
+}
+
+/** A small seeded random generator, so the stars land in the same places every time. */
+function seededRandom(seed) {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The day as a sundial: one ray per hour, as long as its plays, the golden hour lit. */
+function storyClock(hours, gh) {
+  const max = Math.max(1, ...hours), C = 150, r0 = 58, band = 74;
+  const at = (r, deg) => [(C + r * Math.sin((deg * Math.PI) / 180)).toFixed(1), (C - r * Math.cos((deg * Math.PI) / 180)).toFixed(1)];
+  const rays = hours.map((v, i) => {
+    const [x1, y1] = at(r0, i * 15), [x2, y2] = at(r0 + 6 + band * (v / max), i * 15);
+    return `<line class="${i === gh ? 'on' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" pathLength="1" style="--d:${(0.25 + i * 0.03).toFixed(2)}s;opacity:${i === gh ? 1 : (0.25 + 0.55 * (v / max)).toFixed(2)}"/>`;
+  }).join('');
+  const ticks = [0, 6, 12, 18].map((hh) => { const [x, y] = at(146, hh * 15); return `<text x="${x}" y="${(+y + 4).toFixed(1)}">${hh}</text>`; }).join('');
+  return `<svg class="sundial in" viewBox="0 0 300 300"><circle cx="${C}" cy="${C}" r="${r0 - 8}" class="face"/>${rays}${ticks}<text class="hr" x="${C}" y="${C + 11}">${pad(gh)}:00</text></svg>`;
+}
+
+/** A 7" single spinning at 45: the song's cover as the label, the big hole in the middle. */
+function singleHtml(cover, seed) {
+  const label = cover ? `background-image:url('${esc(cover)}')` : '';
+  return `<div class="single in" style="--h:${hue(seed)}"><div class="sv"><i class="lab" style="${label}">${cover ? '' : '<b>45</b>'}</i><i class="hole"></i></div></div>`;
+}
+
 function buildSlides(s) {
   const out = [];
   const name = periodName(s.range);
   const per = periodWord(s.range.kind);
   const sm = s.summary;
-  if (!sm.scrobbles) return [{ cls: 'c4', dur: 5, html: `<div class="t m in">No plays in ${esc(name)}.</div>` }];
+  if (!sm.scrobbles) return [{ cls: 'deep', dur: 5, html: `<div class="t m in">No plays in ${esc(name)}.</div>` }];
   const album = (s.albums || [])[0];
-  const disc = (cover, hueKey) => `<div class="spinner-disc" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${esc(cover)}')` : ''}"></i></div>`;
-  // Intro
-  out.push({ cls: 'c5', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">${s.range.kind === 'all' ? 'Your whole history' : `Your ${per}`}</div>
-    <div class="t in" ${dly(0.15)}>${esc(name)}</div><p class="p in" ${dly(0.35)}>on record. Tap the right side to go on, the left to go back, hold to pause.</p>` });
-  // Volume
+  const disc = (cover, hueKey) => `<div class="spinner-disc bg" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${esc(cover)}')` : ''}"></i></div>`;
+  // Intro: a record rising from the bottom of the screen
+  out.push({ cls: 'deep intro', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">Record Shelf · ${s.range.kind === 'all' ? 'your whole history' : `your ${per}`}</div>
+    <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(name)}</div><p class="p in" ${dly(0.35)}>on record.</p>
+    <p class="hint bg in" ${dly(0.9)}>Tap right for next, left for back, hold to pause</p>` });
+  // Volume: one huge number and a ticker running across
   let vs = '';
   if (sm.prev && sm.prev.scrobbles > 0) {
     const p = Math.round(((sm.scrobbles - sm.prev.scrobbles) * 100) / sm.prev.scrobbles);
     vs = `<span class="badge in" ${dly(0.6)}>${icon(p >= 0 ? 'trend-up' : 'down-trend')}${Math.abs(p)}% ${p >= 0 ? 'more' : 'less'} than ${esc(lastWord(s.range.kind))}</span>`;
   }
-  out.push({ cls: 'c2', html: `<div class="k in">You played</div><div class="t in" ${dly(0.1)}><span data-count="${sm.scrobbles}">0</span></div>
-    <p class="p in" ${dly(0.3)}>tracks. That's about <b>${num(sm.hours)} hours</b> of music, on ${sm.days} of ${sm.spanDays} days.</p>${vs}` });
-  // Personality
+  const tick = `≈ ${num(sm.hours)} hours of music · ${sm.days} of ${sm.spanDays} days · ${num(sm.scrobbles)} plays · `;
+  out.push({ cls: 'bright', html: `<div class="k in">You played</div><div class="t huge in" ${dly(0.1)}><span data-count="${sm.scrobbles}">0</span></div>
+    <div class="k in" ${dly(0.2)}>tracks</div>
+    <p class="p in" ${dly(0.3)}>That's about <b>${num(sm.hours)} hours</b> of music, on ${sm.days} of ${sm.spanDays} days.</p>${vs}
+    <div class="ticker bg"><div><span>${esc(tick.repeat(3))}</span><span>${esc(tick.repeat(3))}</span></div></div>` });
+  // Personality: its icon inside a turning ring of words
   const ps = s.personality;
   if (ps && PERSONAS[ps.id]) {
     const P = PERSONAS[ps.id];
     const R = ps.runnerUp && PERSONAS[ps.runnerUp];
-    out.push({ cls: 'c3', html: `<svg class="i bigicon in"><use href="#i-${P.icon}"/></svg><div class="k in" ${dly(0.1)}>Your listening personality</div>
-      <div class="t m in" ${dly(0.2)}>${P.title}</div><p class="p in" ${dly(0.4)}>${P.why(ps.metrics)}</p>
+    const words = 'Your listening personality · '.toUpperCase().repeat(2);
+    out.push({ cls: 'deep', html: `<div class="ring in"><svg viewBox="0 0 200 200"><defs><path id="ringPath" d="M100,100 m-82,0 a82,82 0 1,1 164,0 a82,82 0 1,1 -164,0"/></defs>
+      <text><textPath href="#ringPath" textLength="512" lengthAdjust="spacing">${words}</textPath></text></svg><span class="core">${icon(P.icon)}</span></div>
+      <div class="t m in" ${dly(0.2)} data-fit="2">${P.title}</div><p class="p in" ${dly(0.4)}>${P.why(ps.metrics)}</p>
       ${R ? `<span class="badge in" ${dly(0.7)}>${icon(R.icon)}with a touch of ${R.title}</span>` : ''}` });
   }
-  // Top artist and the top five
+  // Top artist: the photo full-bleed in two colors, the name across the bottom
   const a0 = (s.artists || [])[0];
   if (a0) {
-    out.push({ cls: 'c1', html: `${a0.cover ? `<div class="bgcover" style="background-image:url('${esc(a0.cover)}')"></div>` : ''}<div class="k in">Your top artist</div>
-      <div class="t in" ${dly(0.15)}>${esc(a0.name)}</div><p class="p in" ${dly(0.35)}><b>${plural(a0.plays, 'play')}</b>, ${pct(a0.share)} of everything you played, on ${plural(a0.days, 'day')}.</p>` });
+    const bg = a0.cover
+      ? `<div class="duo bg"><i class="img" style="background-image:url('${esc(a0.cover)}')"></i><i class="lo"></i><i class="hi"></i><i class="fade"></i></div>`
+      : `<div class="duo bg none"><b>${esc(String(a0.name).trim().charAt(0).toUpperCase())}</b><i class="fade"></i></div>`;
+    out.push({ cls: 'deep photo', html: `${bg}<div class="k in">Your top artist</div>
+      <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(a0.name)}</div><p class="p mono in" ${dly(0.35)}>${plural(a0.plays, 'play')} · ${pct(a0.share)} of everything · on ${plural(a0.days, 'day')}</p>` });
   }
   if ((s.artists || []).length >= 3) {
-    out.push({ cls: 'c2', html: `<div class="k in">Your top artists</div><div class="list5">${s.artists.map((x, i) => `<div class="row in" ${dly(0.1 + i * 0.12)}><span class="n">${i + 1}</span>
-      <span class="nm">${esc(x.name)}</span><span class="v">${num(x.plays)}</span><i class="bar5" data-w="${(x.plays / s.artists[0].plays) * 100}%"></i></div>`).join('')}</div>` });
+    out.push({ cls: 'deep', html: `<div class="k in">Your top artists</div><div class="list5">${s.artists.map((x, i) => `<div class="row in" ${dly(0.1 + i * 0.12)}><span class="n">${i + 1}</span>
+      ${coverHtml(x.cover, x.name, x.name, 'round')}<span class="nm">${esc(x.name)}<small>${plural(x.plays, 'play')}</small></span><i class="bar5" data-w="${(x.plays / s.artists[0].plays) * 100}%"></i></div>`).join('')}</div>` });
   }
-  // Song
+  // Song: a 7" single
   const t0 = (s.tracks || [])[0];
   if (t0) {
     const best = s.songBestDay && s.songBestDay.count > 1 ? `, ${s.songBestDay.count} of them on ${esc(dayName(s.songBestDay.day))} alone` : '';
-    out.push({ cls: 'c3', html: `<div class="eqbig in"><i></i><i></i><i></i><i></i><i></i></div><div class="k in" ${dly(0.1)}>${ofThe(s.range.kind, 'Song')}</div>
-      <div class="t m in" ${dly(0.2)}>${esc(t0.title)}</div><p class="p in" ${dly(0.4)}>by ${esc(t0.artist)}. <b>${plural(t0.plays, 'play')}</b>${best}.</p>
-      ${s.tracks.length > 1 ? `<p class="p in" ${dly(0.7)} style="font-size:15px">Then: ${s.tracks.slice(1, 4).map((x) => esc(x.title)).join(' · ')}</p>` : ''}` });
+    out.push({ cls: 'bright alt', html: `${singleHtml(t0.cover, t0.title + t0.artist)}<div class="k in" ${dly(0.1)}>${ofThe(s.range.kind, 'Song')}</div>
+      <div class="t m in" ${dly(0.2)} data-fit="2">${esc(t0.title)}</div><p class="p in" ${dly(0.4)}>by ${esc(t0.artist)}. <b>${plural(t0.plays, 'play')}</b>${best}.</p>
+      ${s.tracks.length > 1 ? `<p class="p mono small in" ${dly(0.7)}>Then: ${s.tracks.slice(1, 4).map((x) => esc(x.title)).join(' · ')}</p>` : ''}` });
   }
   // Album, as a card that moves with the phone
   if (album) {
-    out.push({ cls: 'c1', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { owned: album.owned, disc: false, key: 'story-album' })}</div>
-      <div class="t m in" ${dly(0.25)}>${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
+    out.push({ cls: 'deep', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { owned: album.owned, key: 'story-album' })}</div>
+      <div class="t m in" ${dly(0.25)} data-fit="2">${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
   }
-  // Golden hour
+  // Golden hour, on a sundial
   const gh = s.goldenHour;
-  const hmax = Math.max(1, ...s.hours);
   const mood = gh >= 5 && gh < 10 ? 'Mornings are yours.' : gh >= 10 && gh < 17 ? 'Music through the day.' : gh >= 17 && gh < 22 ? 'Evenings are for records.' : 'The night shift.';
-  out.push({ cls: 'c2', html: `<div class="k in">Your golden hour</div><div class="t in" ${dly(0.1)}>${pad(gh)}:00</div><p class="p in" ${dly(0.3)}>${mood} More plays start in this hour than in any other.</p>
-    <div class="h24">${s.hours.map((v, i) => `<i class="${i === gh ? 'on' : ''}" style="height:${Math.max(2, (v / hmax) * 100)}%;--d:${0.3 + i * 0.025}s"></i>`).join('')}</div>
-    <div class="h24x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>` });
-  // Discovery
+  out.push({ cls: 'deep', html: `<div class="k in">Your golden hour</div>${storyClock(s.hours, gh)}
+    <div class="t m in" ${dly(0.4)}>${mood}</div><p class="p in" ${dly(0.55)}>More plays start between ${pad(gh)}:00 and ${pad((gh + 1) % 24)}:00 than in any other hour.</p>` });
+  // Discovery: one star per new artist
   const na = s.newArtists || {};
   if (na.count > 0) {
-    out.push({ cls: 'c3', html: `<svg class="i bigicon in"><use href="#i-explore"/></svg><div class="k in" ${dly(0.1)}>New to you</div>
-      <div class="t in" ${dly(0.15)}><span data-count="${na.count}">0</span></div><p class="p in" ${dly(0.35)}>artists you had never played before.${na.best ? ` The one that stuck: <b>${esc(na.best.name)}</b>, ${plural(na.best.plays, 'play')} since ${esc(dateLabel(na.best.first))}.` : ''}</p>` });
+    const rnd = seededRandom(hue(name) * 7919 + na.count);
+    const stars = Array.from({ length: Math.min(na.count, 160) }, (_, i) => {
+      const big = i < 6;
+      return `<i style="left:${(3 + rnd() * 94).toFixed(1)}%;top:${(4 + rnd() * 92).toFixed(1)}%;--z:${big ? 5 : 2 + rnd() * 2}px;--d:${(rnd() * 2.4).toFixed(2)}s;--t:${(2.2 + rnd() * 3).toFixed(1)}s"></i>`;
+    }).join('');
+    out.push({ cls: 'deep night', html: `<div class="stars bg">${stars}</div><div class="k in">New to you</div>
+      <div class="t huge in" ${dly(0.15)}><span data-count="${na.count}">0</span></div><p class="p in" ${dly(0.35)}>artists you had never played before.${na.best ? ` The one that stuck: <b>${esc(na.best.name)}</b>, ${plural(na.best.plays, 'play')} since ${esc(dateLabel(na.best.first))}.` : ''}</p>` });
   }
-  // On repeat
+  // On repeat: the title, again and again
   if (s.loop || s.obsession) {
     const lp = s.loop;
     const ob = s.obsession;
     const x = lp || ob;
     const what = lp ? `<b>${lp.run} times in a row</b> on ${esc(dayName(lp.at))}` : `<b>${ob.count} plays</b> in the week of ${esc(dateLabel(ob.week))}`;
-    out.push({ cls: 'c4', html: `<svg class="i bigicon in"><use href="#i-repeat"/></svg><div class="k in" ${dly(0.1)}>On repeat</div>
-      <div class="t m in" ${dly(0.2)}>${esc(x.track)}</div><p class="p in" ${dly(0.4)}>by ${esc(x.artist)}: ${what}.</p>` });
+    out.push({ cls: 'bright', html: `<div class="k in">On repeat</div><div class="stutter">${[0, 1, 2, 3, 4, 5].map((i) => `<div class="in" style="--d:${(0.1 + i * 0.09).toFixed(2)}s;--o:${(1 - i * 0.17).toFixed(2)}">${esc(x.track)}</div>`).join('')}</div>
+      <p class="p in" ${dly(0.7)}>by ${esc(x.artist)}: ${what}.</p>` });
   }
-  // Genres
+  // Genres, as a cloud of words
   const gs = s.genres || [];
   if (gs.length) {
-    out.push({ cls: 'c1', html: `<div class="k in">Your sound</div><div class="t m in" ${dly(0.1)}>${esc(gs[0].name)}</div><p class="p in" ${dly(0.3)}>${pct(gs[0].share)} of everything with a known genre.</p>
-      <div class="gbars">${gs.map((g, i) => `<div class="in" ${dly(0.4 + i * 0.1)}><span>${esc(g.name)}</span><span>${pct(g.share)}</span><i style="background:currentColor;opacity:${1 - i * 0.15}" data-w="${(g.share / gs[0].share) * 100}%"></i></div>`).join('')}</div>` });
+    const rnd = seededRandom(hue(gs[0].name) + 17);
+    const cloud = gs.map((g, i) => `<span class="gw in${i === 0 ? ' top' : ''}" style="--d:${(0.15 + i * 0.12).toFixed(2)}s;--fs:${(18 + 44 * Math.sqrt(g.share / gs[0].share)).toFixed(0)}px;--r:${i === 0 ? 0 : ((rnd() - 0.5) * 12).toFixed(1)}deg">${esc(g.name)}<sup>${pct(g.share)}</sup></span>`);
+    // the biggest word in the middle
+    const order = cloud.slice(1);
+    order.splice(Math.floor(order.length / 2), 0, cloud[0]);
+    out.push({ cls: 'paper', html: `<div class="k in">Your sound</div><div class="cloud">${order.join('')}</div>
+      <p class="p in" ${dly(0.8)}><b>${esc(gs[0].name)}</b> leads, with ${pct(gs[0].share)} of everything with a known genre.</p>` });
   }
   // Vinyl
   const v = s.vinyl || {};
   if (v.count > 0) {
     const r0 = (v.top || [])[0];
-    out.push({ cls: 'c4', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { owned: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
+    out.push({ cls: 'deep', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { owned: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
       <div class="t m in" ${dly(0.2)}><span data-count="${v.count}">0</span> tracks on vinyl</div><p class="p in" ${dly(0.4)}>${pct(v.share)} of your listening${r0 ? `. Most spun: <b>${esc(r0.title)}</b>` : ''}.</p>` });
   }
-  // Streak and the biggest day
+  // Streak: one dot per day in a row
   const st = s.streak || {};
   if (st.longest >= 2) {
-    out.push({ cls: 'c2', html: `<svg class="i bigicon in"><use href="#i-fire"/></svg><div class="k in" ${dly(0.1)}>Longest streak</div>
-      <div class="t in" ${dly(0.15)}><span data-count="${st.longest}">0</span> days</div><p class="p in" ${dly(0.35)}>with music in a row, ${esc(dateLabel(st.longestFrom))} – ${esc(dateLabel(st.longestTo))}.</p>
-      ${s.busiestDay ? `<p class="p in" ${dly(0.6)}>Biggest day: <b>${esc(dayName(s.busiestDay.day))}</b>, ${plural(s.busiestDay.count, 'play')}.</p>` : ''}` });
+    const n = Math.min(st.longest, 70);
+    out.push({ cls: 'bright alt', html: `<div class="k in">Longest streak</div>
+      <div class="t huge in" ${dly(0.1)}><span data-count="${st.longest}">0</span></div><div class="k in" ${dly(0.15)}>days in a row with music</div>
+      <div class="days">${Array.from({ length: n }, (_, i) => `<i style="--d:${(0.3 + i * (1.4 / n)).toFixed(2)}s"></i>`).join('')}${st.longest > n ? '<span>…</span>' : ''}</div>
+      <p class="p in" ${dly(0.5)}>${esc(dateLabel(st.longestFrom))} – ${esc(dateLabel(st.longestTo))}.${s.busiestDay ? ` Biggest day: <b>${esc(dayName(s.busiestDay.day))}</b>, ${plural(s.busiestDay.count, 'play')}.` : ''}</p>` });
   }
-  // Summary
+  // Summary: the back of the sleeve, as a poster
   const P = ps && PERSONAS[ps.id];
-  out.push({ cls: 'c5', dur: 14, html: `<div class="sumhead in">${coverHtml(album && album.cover, (album && album.title) || name, '', 'small')}<div><div class="k">${esc(name)}</div><div class="t m" style="margin:2px 0 0">on record</div></div></div>
-    <div class="sum">
-      <div class="in" ${dly(0.15)}><h4>Top artists</h4><ol>${(s.artists || []).map((x) => `<li>${esc(x.name)}</li>`).join('')}</ol></div>
-      <div class="in" ${dly(0.25)}><h4>Top songs</h4><ol>${(s.tracks || []).map((x) => `<li>${esc(x.title)}</li>`).join('')}</ol></div>
-      <div class="in" ${dly(0.35)}><h4>Plays</h4><div class="big">${num(sm.scrobbles)}</div></div>
-      <div class="in" ${dly(0.45)}><h4>Hours</h4><div class="big">≈${num(sm.hours)}</div></div>
-      <div class="in" ${dly(0.55)}><h4>Top genre</h4><div class="big" style="font-size:20px;line-height:24px">${gs.length ? esc(gs[0].name) : '–'}</div></div>
-      <div class="in" ${dly(0.65)}><h4>Personality</h4><div class="big" style="font-size:20px;line-height:24px">${P ? P.title : '–'}</div></div>
+  const side = (list, letter, f) => list.map((x, i) => `<p><span>${letter}${i + 1}</span><b>${esc(f(x))}</b><em>${num(x.plays)}</em></p>`).join('');
+  out.push({ cls: 'paper poster', dur: 14, html: `<div class="sheet in">
+      <div class="ph"><span>Record Shelf</span><span>RS–${esc(String(s.range.id).toUpperCase())}</span></div>
+      <div class="ptop"><div><div class="pt" data-fit="2">${esc(name)}</div><div class="ps">on record · ${num(sm.scrobbles)} plays · ≈${num(sm.hours)} h</div></div>${coverHtml(album && album.cover, (album && album.title) || name, '', 'stamp')}</div>
+      <h6>Side A · Artists</h6>${side(s.artists || [], 'A', (x) => x.name)}
+      <h6>Side B · Songs</h6>${side(s.tracks || [], 'B', (x) => x.title)}
+      <div class="pnums"><div><small>Top genre</small><b>${gs.length ? esc(gs[0].name) : '–'}</b></div><div><small>Personality</small><b>${P ? P.title : '–'}</b></div><div><small>Golden hour</small><b>${pad(gh)}:00</b></div></div>
+      <div class="pfoot"><span class="code"></span><small>Pressed from your Last.fm history</small></div>
     </div>` });
   return out;
 }
@@ -2599,6 +2857,7 @@ function renderTidalSettings() {
 
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
+  $$('#ambSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === ambientMode()));
   renderServices();
   renderTidalSettings();
   const td = (STATS && STATS.tidy) || {};
@@ -2658,6 +2917,8 @@ function build() {
   document.addEventListener('click', (e) => {
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
+    const flip = e.target.closest('[data-flip]');
+    if (flip) { flip.classList.toggle('flipped'); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }
     if (e.target.closest('[data-hide-all]')) { hideAllSuggestions(); return; }
     const hide = e.target.closest('[data-hide],[data-unhide],[data-keep]');
@@ -2677,7 +2938,9 @@ function build() {
     const fc = e.target.closest('[data-fclear]');
     if (fc) { if (fc.dataset.fclear === 'decade') shelf.decade = 0; else shelf.genre = ''; renderShelf(); return; }
     const sg = e.target.closest('[data-statsgenre]');
-    if (sg) { statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
+    if (sg) { while (pageStack.length) closePage(); statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
+    const gn = e.target.closest('[data-genre]');
+    if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
     if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
     if (e.target.closest('[data-gclear]')) { setStatsGenre(''); return; }
     if (e.target.closest('[data-dpick]')) { openDecadeSheet(); return; }
@@ -2772,6 +3035,12 @@ function build() {
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec); };
+  $('#genreBody').addEventListener('pointerdown', (e) => onVizPointer(e, GENRE));
+  $('#genreBody').onclick = (e) => {
+    const rec = e.target.closest('[data-rec]');
+    if (rec) openRecord(+rec.dataset.rec);
+    if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
+  };
   $('#exploreBody').onclick = (e) => { if (e.target.closest('#exploreGoStats')) showTab('stats'); };
   $('#svcChips').onclick = (e) => {
     const c = e.target.closest('[data-svc]');
@@ -2907,11 +3176,28 @@ function build() {
   $('#dgDisconnect').onclick = () => confirmSheet('Disconnect Discogs?', 'Your shelf will be empty until you connect again. Your scrobbles are not affected.', 'Disconnect', () => send({ t: 'discogsDisconnect' }));
   $('#defLen').onclick = (e) => { const b = e.target.closest('[data-sec]'); if (b) send({ t: 'setDefaultTrack', sec: +b.dataset.sec }); };
   $('#themeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) send({ t: 'setTheme', v: b.dataset.v }); };
+  $('#ambSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('ambient', b.dataset.v); } catch (_) { /* preview without storage */ }
+    applyAmbient();
+    renderSettings();
+  };
+  applyAmbient();
 
   try {
     const s = JSON.parse(localStorage.getItem('shelfSort') || 'null');
     if (s && SORTS.some((x) => x.id === s.sort)) { shelf.sort = s.sort; shelf.rev = !!s.rev; }
+    const v = localStorage.getItem('shelfView');
+    if (SHELF_VIEWS.some(([x]) => x === v)) shelf.view = v;
   } catch (_) { /* preview without storage */ }
+  $('#shelfViews').onclick = (e) => {
+    const b = e.target.closest('[data-view]');
+    if (!b) return;
+    shelf.view = b.dataset.view;
+    try { localStorage.setItem('shelfView', shelf.view); } catch (_) { /* preview without storage */ }
+    renderShelf();
+  };
   setInterval(tickUi, 1000);
   renderShelf();
 }

@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.11 (browser preview)',
+    version: '0.12 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -401,7 +401,7 @@ const Mock = (() => {
       river: { unit: b40.unit, starts: b40.starts, artists: order.slice(0, 8).map((a) => L.artists[a]), series: rs, other },
       pulse: { unit: b60.unit, starts: b60.starts, bins: b60.count, rows: pulseRows },
       newArtists: { unit: b40.unit, buckets: naCounts.map((c, k) => ({ start: b40.starts[k], count: c, historyStart: k === startIdx && sm.historyStartsHere, top: naTop[k] })) },
-      genres: { names: GENRES, unit: b16.unit, coverage: { discogs: 0.34, lastfm: 0.59, none: 0.07 },
+      genres: { names: GENRES, keys: GENRES.map((x) => (x === 'Other' ? 'other' : x.toLowerCase().replace(/-/g, ' '))), unit: b16.unit, coverage: { discogs: 0.34, lastfm: 0.59, none: 0.07 },
         periods: gc.map((c, k) => { const tot = c.reduce((x, y) => x + y, 0); return { start: b16.starts[k], total: tot, shares: c.map((v) => (tot ? Math.round((v / tot) * 1000) / 1000 : 0)) }; }) },
       clock,
       streaks: streaksOf(r, i0, i1),
@@ -749,6 +749,59 @@ const Mock = (() => {
     };
   }
 
+  // One genre's page: the plays of the artists the made-up log files under it.
+  function fakeGenre(key) {
+    const L = history();
+    const g = GENRES.findIndex((x) => x.toLowerCase().replace(/-/g, ' ') === key);
+    const match = (i) => g >= 0 && genreOf(L.a[i]) === g;
+    let plays = 0, first = 0, last = 0, bestDay = 0, bestCount = 0, run = 0, runDay = -1;
+    const days = new Set(), months = {}, hours = new Array(24).fill(0);
+    const ac = {}, tc = {}, ta = {};
+    const start = new Date(L.start);
+    for (let i = 0; i < L.ts.length; i++) {
+      if (!match(i)) continue;
+      if (!plays++) first = L.ts[i];
+      last = L.ts[i];
+      const d = new Date(L.ts[i]);
+      const di = dayIdx(L.ts[i]);
+      days.add(di);
+      run = di === runDay ? run + 1 : 1;
+      runDay = di;
+      if (run > bestCount) { bestCount = run; bestDay = +new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+      const mk = (d.getFullYear() - start.getFullYear()) * 12 + d.getMonth() - start.getMonth();
+      months[mk] = (months[mk] || 0) + 1;
+      hours[d.getHours()]++;
+      ac[L.a[i]] = (ac[L.a[i]] || 0) + 1;
+      tc[L.t[i]] = (tc[L.t[i]] || 0) + 1;
+      ta[L.t[i]] = L.a[i];
+    }
+    if (!plays) return { key, missing: true };
+    const nowD = new Date();
+    const len = (nowD.getFullYear() - start.getFullYear()) * 12 + nowD.getMonth() - start.getMonth() + 1;
+    const mArr = Array.from({ length: len }, (_, i) => months[i] || 0);
+    const bm = mArr.indexOf(Math.max(...mArr));
+    const order = ranked(ac);
+    const decs = {};
+    order.forEach((a) => { const dd = Math.floor(RECORDS[a % RECORDS.length][2] / 10) * 10; decs[dd] = (decs[dd] || 0) + ac[a]; });
+    const x = fakeExplore();
+    const inG = (o) => genreOf(o.a) === g;
+    return {
+      key, label: GENRES[g].replace(/-/g, ' '), plays, days: days.size, first, last,
+      share: plays / L.ts.length, rank: 1 + Object.values(counts(0, L.ts.length, (L2, i) => genreOf(L2.a[i]))).filter((n) => n > plays).length,
+      artists: order.length, all: order.map((a) => ({ name: L.artists[a], plays: ac[a] })), ...weeksOf(match),
+      monthsFrom: +new Date(start.getFullYear(), start.getMonth(), 1), months: mArr, hours,
+      busiestMonth: { start: +new Date(start.getFullYear(), start.getMonth() + bm, 1), count: mArr[bm] || 0 },
+      bestDay: { day: bestDay, count: bestCount },
+      top: {
+        artists: order.slice(0, 10).map((a) => ({ name: L.artists[a], plays: ac[a], photo: '' })),
+        albums: order.slice(0, 8).map((a, i) => ({ title: albumOf(a), artist: L.artists[a], plays: Math.round(ac[a] * 0.7), cover: '', owned: i % 3 !== 2 })),
+        tracks: ranked(tc).slice(0, 10).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], plays: tc[t] })),
+      },
+      lost: x.lostArtists.filter(inG), lostAlbums: x.lostAlbums.filter((o) => genreOf(findArtist(o.artist)) === g),
+      decades: { known: plays, total: plays, decades: Object.keys(decs).map(Number).sort((a, b) => a - b).map((d) => ({ decade: d, plays: decs[d] })) },
+    };
+  }
+
   function tick() {
     phoneTick();
     if (!spin) return;
@@ -898,6 +951,7 @@ const Mock = (() => {
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'genre': later(300, () => onGenre({ ...fakeGenre(m.key), req: m.req })); break;
         case 'playlist': later(300, () => onPlaylist(fakePlaylist(m.kind))); break;
         case 'hide': case 'unhide': case 'keep':
           tidyApply(m.t, m.items || [m]);

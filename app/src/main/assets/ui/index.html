@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Record Shelf</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="look.css">
 </head>
 <body>
 
@@ -31,7 +32,7 @@
       <div class="chip-row" id="sortChips"></div>
       <div class="chip-row" id="filterChips"></div>
       <div id="shelfSummary"></div>
-      <div class="count" id="shelfCount"></div>
+      <div class="count-row"><div class="count" id="shelfCount"></div><div class="views" id="shelfViews"></div></div>
     </div>
     <div class="grid" id="grid"></div>
     <div class="empty" id="shelfEmpty" hidden></div>
@@ -124,6 +125,13 @@
     <div class="appbar-title">Album</div>
   </header>
   <div class="page-body" id="albumBody"></div>
+</div>
+<div class="page" id="genrePage" hidden>
+  <header class="appbar">
+    <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="appbar-title">Genre</div>
+  </header>
+  <div class="page-body" id="genreBody"></div>
 </div>
 <div class="page" id="playlistPage" hidden>
   <header class="appbar">
@@ -294,6 +302,13 @@
         <button data-v="dark"><svg class="i check"><use href="#i-check"/></svg>Dark</button>
       </div>
       <p class="hint">Colors always follow your wallpaper (Material You).</p>
+      <div class="row-label"><span>Background color</span></div>
+      <div class="seg" id="ambSeg">
+        <button data-v="records"><svg class="i check"><use href="#i-check"/></svg>Your records</button>
+        <button data-v="wallpaper"><svg class="i check"><use href="#i-check"/></svg>Wallpaper</button>
+        <button data-v="off"><svg class="i check"><use href="#i-check"/></svg>Off</button>
+      </div>
+      <p class="hint">The glow behind the top of the app: the colors of the record spinning or the last one you played, your wallpaper's colors, or none.</p>
       <label class="switch-row"><span>Moving covers<small>Album covers tilt and shine as you move the phone</small></span><input type="checkbox" id="tiltSw"><i class="switch"></i></label>
     </div>
 
@@ -366,6 +381,9 @@
   <symbol id="i-playlist" viewBox="0 0 24 24"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></symbol>
+  <symbol id="i-big-grid" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></symbol>
+  <symbol id="i-view-list" viewBox="0 0 24 24"><path d="M3 14h4v-4H3v4zm0 5h4v-4H3v4zM3 9h4V5H3v4zm5 5h13v-4H8v4zm0 5h13v-4H8v4zM8 5v4h13V5H8z"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></symbol>
 </svg>
 

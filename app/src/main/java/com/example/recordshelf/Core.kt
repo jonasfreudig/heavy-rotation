@@ -354,6 +354,20 @@ object Core {
                 val s = currentStats()
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
+            "genre" -> {
+                val key = msg.optString("key")
+                statsExec.execute {
+                    val s = currentStats()
+                    val j = s?.genrePage(key) ?: JSONObject().put("missing", true)
+                    push("onGenre") { j.put("key", key).put("req", msg.optInt("req")) }
+                    // Photos for its top artists, if Deezer has them; the page comes again.
+                    val top = j.optJSONObject("top")?.optJSONArray("artists")
+                    val need = (0 until (top?.length() ?: 0)).map { top!!.getJSONObject(it) }.filter { it.optString("photo").isEmpty() }.map { it.getString("name") }
+                    val tried = db.images().keys
+                    val missing = need.filter { Stats.photoKey(it) !in tried }
+                    if (missing.isNotEmpty()) historyExec.execute { fetchPhotosInner(missing) { handle(msg) } }
+                }
+            }
             "discography" -> {
                 val name = msg.optString("name")
                 val req = msg.optInt("req")

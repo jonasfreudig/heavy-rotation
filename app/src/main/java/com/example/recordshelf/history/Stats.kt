@@ -52,6 +52,7 @@ class Stats(
         const val DEEP_CUT_ARTISTS = 12
         const val TAIL_PLAYS = 5
         const val PLAYLIST_SIZE = 40
+        const val GENRE_ALL_MAX = 300
 
         /** Artist photos live in the image cache next to album covers, under this prefix and the artist's name. */
         const val ARTIST_PHOTO = "@artist:"
@@ -463,6 +464,27 @@ class Stats(
             out += h.artistNames[a] to als.map { h.albumTitles[it] to h.albumKeys[it] }
         }
         return out
+    }
+
+    /**
+     * One genre's page (the plays whose main genre is [key]): its life in plays, its top artists,
+     * albums and songs, its artists and albums gone quiet, and its decades; null if none.
+     */
+    fun genrePage(key: String): JSONObject? {
+        val sub = h.filter(inGenre(key))
+        if (sub.size == 0) return null
+        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears)
+        val o = s.life { true } ?: return null
+        val ex = s.explore()
+        val order = genreOptions(100)
+        val rank = (0 until order.length()).firstOrNull { order.getJSONObject(it).getString("key") == key }?.plus(1) ?: 0
+        val per = IntArray(sub.artistNames.size)
+        for (i in 0 until sub.size) per[sub.artist[i]]++
+        val all = per.indices.sortedByDescending { per[it] }.take(GENRE_ALL_MAX).map { JSONObject().put("name", sub.artistNames[it]).put("plays", per[it]) }
+        return o.put("key", key).put("all", JSONArray(all)).put("label", Genres.label(key)).put("share", sub.size.toDouble() / maxOf(1, h.size))
+            .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, 10))
+            .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
+            .put("decades", s.decades(0, sub.size))
     }
 
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
@@ -1351,7 +1373,7 @@ class Stats(
         return out
             .put("personality", personality(r, i0, i1))
             .put("artists", JSONArray(topA.map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("share", ap[it].toDouble() / n).put("days", aDays[it]).put("cover", artistPhoto(h.artistNames[it]).ifEmpty { artistCover(it) }) }))
-            .put("tracks", JSONArray(topT.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]) }))
+            .put("tracks", JSONArray(topT.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]).put("cover", trackAlbum[it].let { al -> if (al >= 0) cover(al) else "" }) }))
             .put("songBestDay", if (songBest != null) JSONObject().put("day", dayStart(songBest.key) * 1000).put("count", songBest.value) else JSONObject.NULL)
             .put("albums", JSONArray(topL.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
             .put("hours", JSONArray(byHour.toList()))

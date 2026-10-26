@@ -105,4 +105,29 @@ class DiscographyTest {
         assertEquals(listOf("Air"), only.artistNames.toList())
         assertEquals(2, s.albumPlaysOf("Air", "Moon Safari (Remastered)"))
     }
+
+    @Test
+    fun genrePage() {
+        val b = History.Builder()
+        repeat(3) { b.add(at(2026, 10, 1 + it), "IDLES", "Grace", "TANGK") }
+        repeat(2) { b.add(at(2026, 10, 5 + it), "Air", "La Femme d'Argent", "Moon Safari") }
+        b.add(at(2026, 10, 9), "Air", "Cherry Blossom Girl", "Talkie Walkie")
+        val h = b.build()
+        val shelf = listOf(
+            CollectionItem(1, 1, "TANGK", "IDLES", 2024, 0, "", "", "LP", "", listOf("Rock"), listOf("Post-Punk"), 0),
+            CollectionItem(2, 2, "Moon Safari", "Air", 1998, 0, "", "", "LP", "", listOf("Electronic"), listOf("Downtempo"), 0),
+        )
+        val s = Stats(h, ZoneId.of("UTC"), at(2026, 10, 25), shelf, Genres(shelf, emptyMap()))
+        val g = s.genrePage("downtempo")!!
+        assertEquals("Downtempo", g.getString("label"))
+        assertEquals(3, g.getInt("plays"))
+        assertEquals(0.5, g.getDouble("share"), 0.001)
+        assertEquals("second after post punk", 2, g.getInt("rank"))
+        assertEquals(1, g.getInt("artists"))
+        val top = g.getJSONObject("top")
+        assertEquals("Air", top.getJSONArray("artists").getJSONObject(0).getString("name"))
+        assertEquals("La Femme d'Argent", top.getJSONArray("tracks").getJSONObject(0).getString("title"))
+        assertEquals("the year from the shelf", 1990, g.getJSONObject("decades").getJSONArray("decades").getJSONObject(0).getInt("decade"))
+        assertEquals(null, s.genrePage("polka"))
+    }
 }

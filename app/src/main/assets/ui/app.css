@@ -578,7 +578,7 @@ input[type=datetime-local] { color-scheme: inherit; }
 .slide.c5 { background: linear-gradient(160deg, var(--md-primary-container), var(--md-tertiary-container)); color: var(--md-on-primary-container); }
 .slide .blob { position: absolute; border-radius: 50%; pointer-events: none; opacity: .5; filter: blur(30px); }
 .slide .bgcover { position: absolute; inset: -10%; background: center / cover no-repeat; filter: blur(28px) saturate(1.4); opacity: .35; }
-.slide > *:not(.blob):not(.bgcover):not(.spinner-disc) { position: relative; }
+.slide > *:not(.blob):not(.bgcover):not(.spinner-disc):not(.bg) { position: relative; }
 .slide .k { font: 500 13px/18px var(--font); letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
 .slide .t { font: 800 clamp(40px, 13vw, 66px)/1.02 var(--font); letter-spacing: -.02em; margin: 10px 0 12px; overflow-wrap: anywhere; }
 .slide .t.m { font-size: clamp(30px, 9.5vw, 46px); }
@@ -852,3 +852,32 @@ input[type=datetime-local] { color-scheme: inherit; }
 .decades .dec small { text-align: right; color: var(--md-on-surface-variant); font-size: 12px; }
 .decades .dec.on { background: var(--md-secondary-container); }
 #genreRow { gap: 8px; }
+
+/* Shelf views: big covers, or a list with the details */
+.count-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 4px; }
+.count-row .count { margin: 0 4px; }
+.views { display: flex; gap: 2px; }
+.views .icon-btn.small { width: 36px; height: 36px; color: var(--md-on-surface-variant); }
+.views .icon-btn.small.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.grid.big { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
+.grid.big .rec b { font-size: 17px; line-height: 22px; }
+.grid.list { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.grid.list .rec { flex-direction: row; align-items: center; gap: 14px; padding: 8px 12px 8px 8px; border-radius: 16px; background: var(--md-surface-container-low); contain-intrinsic-size: 300px 88px; }
+.grid.list .rec .cover { width: 72px; height: 72px; flex: none; margin: 0; }
+.grid.list .lmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.grid.list .lmain b { font-size: 16px; line-height: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid.list .lchips { display: flex; gap: 4px; margin-top: 4px; overflow: hidden; }
+.mini-chip { flex: none; font-size: 10.5px; line-height: 18px; padding: 0 8px; border-radius: 9px; background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); white-space: nowrap; }
+.grid.list .lplays { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.grid.list .lplays b { font: 600 20px/24px var(--display, var(--font)); }
+.grid.list .lplays small { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+
+/* Genre pages */
+.genre-hero { text-align: center; padding: 26px 8px 8px; }
+.genre-hero .k { display: block; font: 500 11px/16px var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.genre-hero h1 { margin: 6px 0 6px; font-size: 40px; line-height: 1.05; }
+.genre-hero .meta { color: var(--md-on-surface-variant); font-size: 13px; }
+.legend [data-genre] { cursor: pointer; }
+.tags .chip.link { height: 28px; padding: 0 12px; font-size: 13px; }
+.chips.everyone { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chips.everyone .chip small.n { margin-left: 6px; opacity: .7; font-size: 11px; }
