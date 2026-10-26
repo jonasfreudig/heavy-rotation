@@ -27,6 +27,13 @@ class History private constructor(
     var hiddenPlays = 0
         private set
 
+    /** The scrobbles [keep] picks (by index), as a history of their own: one genre's music, say. */
+    fun filter(keep: (Int) -> Boolean): History {
+        val b = Builder()
+        for (i in 0 until size) if (keep(i)) b.add(ts[i], artistNames[artist[i]], trackTitles[track[i]], if (album[i] >= 0) albumTitles[album[i]] else "")
+        return b.build().also { it.hiddenPlays = hiddenPlays }
+    }
+
     /** First index with ts >= [t]. */
     fun lowerBound(t: Long): Int {
         var lo = 0

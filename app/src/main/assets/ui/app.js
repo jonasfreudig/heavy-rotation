@@ -28,7 +28,7 @@ let tab = 'shelf';
 const pageStack = [];
 let recordId = 0;
 let showKeyForm = false;
-const shelf = { q: '', sort: 'added', rev: false };
+const shelf = { q: '', sort: 'added', rev: false, decade: 0, genre: '' };
 
 // ---------- constants ----------
 
@@ -439,7 +439,7 @@ function tickUi() {
 function sorted() {
   const q = norm(shelf.q.trim());
   const s = SORTS.find((x) => x.id === shelf.sort) || SORTS[0];
-  const list = q ? COLL.filter((r) => q.split(/\s+/).every((w) => r._s.includes(w))) : COLL.slice();
+  const list = (q ? COLL.filter((r) => q.split(/\s+/).every((w) => r._s.includes(w))) : COLL.slice()).filter((r) => shelfFilterOk(r));
   list.sort(s.cmp);
   if (shelf.rev) list.reverse();
   return list;
@@ -454,7 +454,9 @@ function renderShelf() {
   shownCount = list.length;
   const spinId = ST.spin && ST.spin.releaseId;
   $('#shelfTools').hidden = !COLL.length;
-  $('#shelfCount').textContent = shelf.q.trim() ? `${list.length} of ${plural(COLL.length, 'record')}` : plural(COLL.length, 'record');
+  $('#shelfCount').textContent = shelf.q.trim() || shelfFiltered() ? `${list.length} of ${plural(COLL.length, 'record')}` : plural(COLL.length, 'record');
+  renderFilterChips();
+  $('#shelfSummary').innerHTML = shelfSummaryHtml(list);
   $('#grid').innerHTML = list.map((r) => {
     let meta = '';
     if (shelf.sort === 'plays') meta = `<small class="meta">${r.plays ? plural(r.plays, 'play') : 'no plays yet'}</small>`;
@@ -471,7 +473,7 @@ function renderShelfEmpty() {
   let h = '';
   if (!COLL.length && d.connected && d.syncing) h = `${icon('album', 'i big')}<p>Loading your collection…${d.done ? `<br>${plural(d.done, 'record')} so far` : ''}</p>`;
   else if (!COLL.length && d.connected) h = `${icon('album', 'i big')}<p>No records yet.<br>Add some to your Discogs collection, then sync.</p><button class="btn tonal" id="emptySync">${icon('sync')}Sync now</button>`;
-  else if (COLL.length && !shownCount) h = `<p>No records match “${esc(shelf.q.trim())}”</p>`;
+  else if (COLL.length && !shownCount && shelf.q.trim()) h = `<p>No records match “${esc(shelf.q.trim())}”</p>`;
   e.innerHTML = h;
   e.hidden = !h;
 }
@@ -989,9 +991,9 @@ function periodId(kind, ms) {
 
 function requestStats(id) {
   if (id) statsRange = id;
-  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange }); return; }
+  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre }); return; }
   $('#statsBody').classList.add('stale');
-  send({ t: 'stats', range: statsRange });
+  send({ t: 'stats', range: statsRange, genre: statsGenre });
 }
 
 /** Above the stats: importing, or how fresh the history is. */
@@ -1036,6 +1038,7 @@ function renderPeriod(s) {
   $('#pLabel').textContent = periodName(s.range);
   $('#pPrev').disabled = !s.range.prev;
   $('#pNext').disabled = !s.range.next;
+  renderGenreRow();
 }
 
 function deltaHtml(cur, prev, kind) {
@@ -1051,7 +1054,7 @@ function storyCardHtml(s) {
   const al = (s.top.albums || []).find((x) => x.cover) || {};
   return `<button class="story-card" data-story="${esc(s.range.id)}">
     <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${esc(al.cover)}')` : ''}"></i></div>
-    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}</div>
+    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre ? ` in ${esc(genreLabel(s.genre))}` : ''}</div>
     <h2>${esc(name)}, on record</h2>
     <p>Your top artist, ${ofThe(s.range.kind, 'song')}, listening personality and more.</p>
     <span class="go">${icon('play')}Play the story</span></button>`;
@@ -1631,6 +1634,200 @@ function fitText(el, lines = 3, max = 40, min = 18) {
   if (el.scrollWidth > el.clientWidth + 1) el.style.overflowWrap = 'anywhere';
 }
 
+// ---- discographies: everything an artist released (Deezer), with your plays and your shelf ----
+
+const DISCO = {};
+let discoFilter = 'all';
+/** Titles without "(Deluxe Edition)", " - Remastered" and punctuation, to match across sources. */
+const looseKey = (s) => norm(String(s || '').replace(/\s*[([][^)\]]*[)\]]/g, ' ').split(' - ')[0]).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const DISCO_TYPES = [['album', 'Albums', 'album'], ['ep', 'EPs', 'EP'], ['single', 'Singles', 'single'], ['compile', 'Compilations', 'compilation']];
+
+function requestDiscography(name) {
+  const d = DISCO[norm(name)];
+  if (d && !d.error) return;
+  DISCO[norm(name)] = { loading: true };
+  send({ t: 'discography', name });
+}
+window.onDiscography = (d) => {
+  DISCO[norm(d.name)] = d;
+  const slot = $('#discoSlot');
+  if (slot && ARTIST && norm(ARTIST.name) === norm(d.name)) slot.innerHTML = discoHtml(ARTIST.name);
+  if (isOpen('albumPage')) albumNeedsDz();
+};
+
+const isNew = (date) => !!date && Date.now() - Date.parse(date) < 60 * 864e5;
+function discoCard(x, artist) {
+  return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-cover="${esc(x.cover)}" data-dz="${x.id}">
+    <span class="dcover">${coverHtml(x.cover, x.title, artist)}${x.owned ? '<i class="sticker mini" aria-label="On your shelf">★</i>' : ''}${isNew(x.date) ? '<i class="new">New</i>' : ''}</span>
+    <b>${esc(x.title)}</b><small>${x.year || ''}${x.editions > 1 ? `, ${x.editions} editions` : ''}</small>
+    <small class="meta">${x.plays ? plural(x.plays, 'play') : 'not heard yet'}</small></button>`;
+}
+
+/** The Discography section of an artist page: albums, EPs, singles and compilations, filterable. */
+function discoHtml(name) {
+  const d = DISCO[norm(name)];
+  if (!d || d.loading) return `<div class="viz disco"><h2>Discography</h2><div class="lin inline indet"><i></i></div><p class="hint">Looking up everything they released…</p></div>`;
+  if (d.error) return `<div class="viz disco"><h2>Discography</h2><p class="hint">${esc(d.error)}</p></div>`;
+  const items = d.items || [];
+  if (d.none || !items.length) return '';
+  const played = items.filter((x) => x.plays > 0).length;
+  const owned = items.filter((x) => x.owned).length;
+  const keep = { played: (x) => x.plays > 0, unheard: (x) => !x.plays, owned: (x) => !!x.owned }[discoFilter] || (() => true);
+  const counts = DISCO_TYPES.map(([t, , one]) => [one, items.filter((x) => x.type === t).length]).filter(([, n]) => n).map(([one, n]) => plural(n, one));
+  const chips = [['all', 'All'], ['played', `Played (${played})`], ['unheard', `Not heard yet (${items.length - played})`], ['owned', `On your shelf (${owned})`]]
+    .filter(([k]) => k !== 'owned' || owned)
+    .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}">${discoFilter === k ? icon('check', 'i small') : ''}${esc(l)}</button>`).join('');
+  const groups = DISCO_TYPES.map(([t, label]) => {
+    const list = items.filter((x) => x.type === t && keep(x));
+    return list.length ? `<h3>${label}</h3><div class="xcards${t === 'single' ? ' small' : ''}">${list.map((x) => discoCard(x, name)).join('')}</div>` : '';
+  }).join('');
+  return `<div class="viz disco"><div class="xhead"><h2>Discography</h2>${d.artist && d.artist.link ? `<button class="btn text small" data-url="${esc(d.artist.link)}">Deezer${icon('open')}</button>` : ''}</div>
+    <span class="sub">${counts.join(', ')}. You've played ${played} of them${owned ? `; ${owned} ${owned === 1 ? 'is' : 'are'} on your shelf` : ''}.</span>
+    <div class="chip-row">${chips}</div>${groups || '<p class="hint">Nothing with this filter.</p>'}</div>`;
+}
+
+/** An album page's tracklist from Deezer: by the id it was opened with, or found in the artist's discography. */
+function albumNeedsDz() {
+  const a = ALBUM;
+  if (!a || a.dzInfo || a.dzAsked) return;
+  let id = a.dz;
+  if (!id) {
+    const d = DISCO[norm(a.artist)];
+    if (!d) { requestDiscography(a.artist); return; }
+    const hit = (d.items || []).find((x) => looseKey(x.title) === looseKey(a.title));
+    if (!hit) return;
+    id = hit.id;
+  }
+  a.dzAsked = true;
+  send({ t: 'dzAlbum', id, req: a.req });
+}
+window.onDzAlbum = (x) => {
+  ALBUM = deliver('albumPage', x.req, ALBUM, (s, shown) => {
+    const next = { ...s, dzInfo: x };
+    if (shown) { ALBUM = next; renderAlbum(); }
+    return next;
+  });
+};
+
+/** The album's songs in order, with your plays of each (songs you never played are dimmed). */
+function tracklistHtml(a, cover) {
+  const dz = a.dzInfo && !a.dzInfo.error ? a.dzInfo : null;
+  if (!dz || !dz.tracks || !dz.tracks.length) return '';
+  const plays = {};
+  (a.trackList || []).forEach((t) => { plays[looseKey(t.title)] = (plays[looseKey(t.title)] || 0) + t.plays; });
+  const max = Math.max(1, ...Object.values(plays));
+  const total = dz.tracks.reduce((n, t) => n + (t.sec || 0), 0);
+  const heard = dz.tracks.filter((t) => plays[looseKey(t.title)]).length;
+  return `<div class="viz"><h2>Tracklist</h2><span class="sub">${plural(dz.tracks.length, 'song')}, ${Math.round(total / 60)} minutes${heard ? `; you've played ${heard} of them` : ''}</span>
+    <div class="rank">${dz.tracks.map((t, i) => {
+      const p = plays[looseKey(t.title)] || 0;
+      return `<button class="r${p ? '' : ' unheard'}" ${trackAttrs(a.artist, t.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${fmtDur(t.sec)}</small></span>
+        <span class="v">${p ? plural(p, 'play') : ''}</span>${p ? `<div class="bar"><i style="width:${(p / max) * 100}%"></i></div>` : ''}</button>`;
+    }).join('')}</div></div>`;
+}
+
+// ---- shelf filters: decade and genre or style, with a summary of the selection ----
+
+const genreKeyOf = (s) => String(s).toLowerCase().replace(/[-_]/g, ' ').trim().replace(/\s+/g, ' ');
+const decadeOf = (r) => (r.year ? Math.floor(r.year / 10) * 10 : 0);
+function shelfFilterOk(r, skip) {
+  if (skip !== 'decade' && shelf.decade && decadeOf(r) !== shelf.decade) return false;
+  if (skip !== 'genre' && shelf.genre) {
+    const kind = shelf.genre.slice(0, 1), v = shelf.genre.slice(2);
+    if (!((kind === 'g' ? r.genres : r.styles) || []).includes(v)) return false;
+  }
+  return true;
+}
+const shelfFiltered = () => !!(shelf.decade || shelf.genre);
+
+function renderFilterChips() {
+  const dec = shelf.decade
+    ? `<button class="chip on" data-fclear="decade">${shelf.decade}s${icon('close', 'i small')}</button>`
+    : `<button class="chip" data-fpick="decade">${icon('calendar', 'i small')}Decade</button>`;
+  const gen = shelf.genre
+    ? `<button class="chip on" data-fclear="genre">${esc(shelf.genre.slice(2))}${icon('close', 'i small')}</button>`
+    : `<button class="chip" data-fpick="genre">${icon('album', 'i small')}Genre or style</button>`;
+  $('#filterChips').innerHTML = dec + gen;
+}
+
+/** The sheet to pick a decade, or a genre and its styles, with how many records each has (within the other filter). */
+function openFilterSheet(which) {
+  const base = COLL.filter((r) => shelfFilterOk(r, which));
+  const count = (keys) => { const m = {}; base.forEach((r) => keys(r).forEach((k) => { if (k) m[k] = (m[k] || 0) + 1; })); return Object.entries(m); };
+  const chip = (val, label, n) => `<button class="chip" data-fset="${esc(val)}">${esc(label)}<small class="n">${n}</small></button>`;
+  let h;
+  if (which === 'decade') {
+    const ds = count((r) => [decadeOf(r)]).filter(([d]) => +d > 0).sort((a, b) => a[0] - b[0]);
+    h = `<div class="sheet-title">Decade</div><div class="chips">${ds.map(([d, n]) => chip(`decade:${d}`, `${d}s`, n)).join('')}</div>`;
+  } else {
+    const gs = count((r) => r.genres || []).sort((a, b) => b[1] - a[1]);
+    const ss = count((r) => r.styles || []).sort((a, b) => b[1] - a[1]);
+    h = `<div class="sheet-title">Genre or style</div><p class="label">Genres</p><div class="chips">${gs.map(([g, n]) => chip(`g:${g}`, g, n)).join('')}</div>
+      <p class="label">Styles</p><div class="chips">${ss.map(([g, n]) => chip(`s:${g}`, g, n)).join('')}</div>`;
+  }
+  openSheet(h);
+  $('#sheetContent').onclick = (e) => {
+    const b = e.target.closest('[data-fset]');
+    if (!b) return;
+    const v = b.dataset.fset;
+    if (v.startsWith('decade:')) shelf.decade = +v.slice(7);
+    else shelf.genre = v;
+    closeSheet();
+    renderShelf();
+  };
+}
+
+/** What's in the selection: records, artists, plays, the most played, and how it splits by style or decade. */
+function shelfSummaryHtml(list) {
+  if (!shelfFiltered()) return '';
+  const name = [shelf.decade ? `${shelf.decade}s` : '', shelf.genre ? shelf.genre.slice(2) : ''].filter(Boolean).join(' ');
+  if (!list.length) return `<div class="card sel-sum"><p class="body">No ${esc(name)} records on your shelf.</p></div>`;
+  const artists = new Set(list.map((r) => r._artist)).size;
+  const plays = list.reduce((n, r) => n + (r.plays || 0), 0);
+  const never = list.filter((r) => !r.plays).length;
+  const top = list.filter((r) => r.plays).sort((a, b) => b.plays - a.plays).slice(0, 3);
+  const split = {};
+  list.forEach((r) => (shelf.genre ? [decadeOf(r) ? `${decadeOf(r)}s` : ''] : r.styles || []).forEach((k) => { if (k) split[k] = (split[k] || 0) + 1; }));
+  const bars = Object.entries(split).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const max = bars.length ? bars[0][1] : 1;
+  const gk = shelf.genre ? genreKeyOf(shelf.genre.slice(2)) : '';
+  const known = !STATS || !STATS.genreOptions || STATS.genreOptions.some((o) => o.key === gk);
+  return `<div class="card sel-sum"><div class="card-title">${icon('album')}${esc(name)} on your shelf</div>
+    <div class="sum-nums"><div><b>${list.length}</b><small>${list.length === 1 ? 'record' : 'records'}</small></div><div><b>${artists}</b><small>${artists === 1 ? 'artist' : 'artists'}</small></div>
+      <div><b>${compact(plays)}</b><small>plays on Last.fm</small></div><div><b>${never}</b><small>never played</small></div></div>
+    ${top.length ? `<p class="body">Most played: ${top.map((r) => `<b>${esc(r.title)}</b>`).join(', ')}</p>` : ''}
+    ${bars.length > 1 ? `<p class="label">${shelf.genre ? 'By decade' : 'By style'}</p><div class="mini-bars">${bars.map(([k, n]) => `<div><span>${esc(k)}</span><i><b style="width:${(n / max) * 100}%"></b></i><small>${n}</small></div>`).join('')}</div>` : ''}
+    ${gk && known && (ST.history || {}).count ? `<div class="btn-row"><button class="btn tonal" data-statsgenre="${esc(gk)}">${icon('chart')}Your ${esc(shelf.genre.slice(2))} listening</button></div>` : ''}</div>`;
+}
+
+// ---- the Stats tab for one genre ----
+
+let statsGenre = '';
+const genreLabel = (key) => ((STATS && STATS.genreOptions) || []).find((o) => o.key === key)?.label || key.replace(/\b\w/g, (c) => c.toUpperCase());
+function renderGenreRow() {
+  const row = $('#genreRow');
+  if (!row) return;
+  row.innerHTML = statsGenre
+    ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button><span class="hint inline">Only this genre's plays</span>`
+    : `<button class="chip" data-gpick>${icon('album', 'i small')}All genres${icon('down', 'i small')}</button>`;
+}
+function openGenreSheet() {
+  const opts = (STATS && STATS.genreOptions) || [];
+  openSheet(`<div class="sheet-title">Stats for one genre</div><p class="body">Everything on the Stats tab and in the story, for the plays whose main genre is this one.</p>
+    <div class="chips">${opts.map((o) => `<button class="chip" data-gset="${esc(o.key)}">${esc(o.label)}<small class="n">${compact(o.plays)}</small></button>`).join('') || '<p class="hint">Genres show up once they are looked up.</p>'}</div>`);
+  $('#sheetContent').onclick = (e) => {
+    const b = e.target.closest('[data-gset]');
+    if (!b) return;
+    closeSheet();
+    setStatsGenre(b.dataset.gset);
+  };
+}
+function setStatsGenre(key) {
+  statsGenre = key;
+  renderGenreRow();
+  requestStats();
+}
+
 // ---- one song ----
 
 let TRACK = null;
@@ -1686,9 +1883,10 @@ let ALBUM = null;
 function openAlbum(artist, title, extra = {}) {
   if (!artist || !title) return;
   openPage('albumPage');
-  ALBUM = { loading: true, artist, title, cover: extra.cover || '', req: ++REQ };
+  ALBUM = { loading: true, artist, title, cover: extra.cover || '', dz: +extra.dz || 0, req: ++REQ };
   renderAlbum();
   send({ t: 'album', artist, title, range: statsRange, req: ALBUM.req });
+  albumNeedsDz();
 }
 window.onAlbum = (a) => {
   ALBUM = deliver('albumPage', a.req, ALBUM, (s, shown) => {
@@ -1707,10 +1905,13 @@ function renderAlbum() {
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
     ${listenRow('albums', a.artist, a.title)}
+    ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
     ${info.owned ? `<div class="stats"><button class="chip link" data-rec="${info.owned}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
   if (a.loading) h += '<div class="lin inline indet"><i></i></div>';
-  else if (a.missing) h += `<div class="empty"><p>${esc(missingNote())}</p></div>`;
-  else {
+  else if (a.missing) {
+    h += `<div class="empty small"><p>${(ST.history || {}).count > 0 ? 'You haven\'t played this one yet.' : esc(missingNote())}</p></div>`;
+    h += tracklistHtml(a, cover);
+  } else {
     const r = a.range || {};
     h += `<div class="tiles">
       ${tile('Plays', num(a.plays), `#${a.rank} of ${compact(a.albums)} albums`, '', 'music')}
@@ -1719,7 +1920,9 @@ function renderAlbum() {
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
     const tl = a.trackList || [];
-    if (tl.length) {
+    const tracklist = tracklistHtml(a, cover);
+    if (tracklist) h += tracklist;
+    else if (tl.length) {
       const max = Math.max(1, ...tl.map((x) => x.plays));
       h += `<div class="viz"><h2>The songs you play</h2><span class="sub">${plural(tl.length, 'different song')} from this album</span><div class="rank">${tl.map((x, i) =>
         `<button class="r" ${trackAttrs(a.artist, x.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
@@ -1892,6 +2095,7 @@ function openArtist(name) {
   if (!name) return;
   openPage('artistPage');
   ARTIST = { name, loading: true, req: ++REQ };
+  requestDiscography(name);
   $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
   send({ t: 'artist', name, range: statsRange, req: ARTIST.req });
 }
@@ -1907,7 +2111,8 @@ function renderArtist() {
   const a = ARTIST;
   if (!a || a.loading || !isOpen('artistPage')) return;
   if (a.missing) {
-    $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow('artists', a.name)}</div><div class="empty"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>`;
+    $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow('artists', a.name)}</div><div class="empty small"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>
+      <div id="discoSlot">${discoHtml(a.name)}</div>`;
     return;
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
@@ -1925,6 +2130,7 @@ function renderArtist() {
       ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'), '', 'chart')}
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
+  h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
   h += lifeCharts(a, 'them', pic, a.name + a.name);
   if (STATS && STATS.record && STATS.record.days) {
     const idx = STATS.record.artists.findIndex((n) => norm(n) === norm(a.name));
@@ -2424,7 +2630,17 @@ function build() {
     const tr = e.target.closest('[data-track]');
     if (tr) { openTrack(tr.dataset.a, tr.dataset.track, { album: tr.dataset.al, cover: tr.dataset.cover }); return; }
     const alb = e.target.closest('[data-album]');
-    if (alb) { openAlbum(alb.dataset.a, alb.dataset.album, { cover: alb.dataset.cover }); return; }
+    if (alb) { openAlbum(alb.dataset.a, alb.dataset.album, { cover: alb.dataset.cover, dz: alb.dataset.dz }); return; }
+    const df = e.target.closest('[data-dfilter]');
+    if (df) { discoFilter = df.dataset.dfilter; if (ARTIST && $('#discoSlot')) $('#discoSlot').innerHTML = discoHtml(ARTIST.name); return; }
+    const fp = e.target.closest('[data-fpick]');
+    if (fp) { openFilterSheet(fp.dataset.fpick); return; }
+    const fc = e.target.closest('[data-fclear]');
+    if (fc) { if (fc.dataset.fclear === 'decade') shelf.decade = 0; else shelf.genre = ''; renderShelf(); return; }
+    const sg = e.target.closest('[data-statsgenre]');
+    if (sg) { statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
+    if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
+    if (e.target.closest('[data-gclear]')) { setStatsGenre(''); return; }
     const canvas = e.target.closest('canvas[data-record]');
     if (canvas) { onRecordTap(canvas, e); return; }
     const ar = e.target.closest('[data-artist]');

@@ -403,6 +403,24 @@ class Stats(
         totals.indices.filter { totals[it] > 0 }.sortedByDescending { totals[it] }.take(TOP_GENRES)
     }
 
+    /** The biggest genres over all time (by each scrobble's main genre), to filter the stats by. */
+    fun genreOptions(max: Int = 16): JSONArray {
+        val (g, _) = scrobbleGenre
+        val totals = IntArray(genreKeys.size)
+        for (x in g) if (x >= 0) totals[x]++
+        return JSONArray(
+            totals.indices.filter { totals[it] > 0 }.sortedByDescending { totals[it] }.take(max)
+                .map { JSONObject().put("key", genreKeys[it]).put("label", Genres.label(genreKeys[it])).put("plays", totals[it]) },
+        )
+    }
+
+    /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
+    fun inGenre(key: String): (Int) -> Boolean {
+        val (g, _) = scrobbleGenre
+        val id = genreIds[key] ?: return { false }
+        return { g[it] == id }
+    }
+
     /** Genre shares of the period, biggest first. */
     fun genreShares(i0: Int, i1: Int, max: Int): List<Pair<String, Double>> {
         val (g, _) = scrobbleGenre
@@ -912,6 +930,9 @@ class Stats(
         val loose = Text.normLoose(title)
         return h.trackTitles.indices.firstOrNull { h.trackArtist[it] == a && Text.normLoose(h.trackTitles[it]) == loose } ?: -1
     }
+
+    /** All-time plays of an album, any edition ("(Deluxe Edition)" and the like count for the album). */
+    fun albumPlaysOf(artist: String, title: String): Int = findAlbum(artist, title).let { if (it < 0) 0 else albumPlays[it] }
 
     private fun findAlbum(artist: String, title: String): Int =
         albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)] ?: -1

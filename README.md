@@ -12,7 +12,7 @@ highlights compared with the period before, your plays as dots on a record with 
 in color, when you listen, streaks, new artists, genre drift, obsessions, records you own but
 rarely play, albums worth buying on vinyl, and a Wrapped-style story for any period.
 
-Version 0.9 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
+Version 0.10 covers milestones 1 (Discogs + vinyl), 2 (phone scrobbling) and 3 (history + stats).
 
 ## Setup on the phone (once)
 
@@ -176,6 +176,13 @@ since you first played it, stronger for more plays), **plays per month** as a sm
 its peak marked, and **around the clock**: the 24 hours as a ring around the cover, longer wedges
 for the hours you play it most. Tap any of them for the numbers.
 
+Artist pages show the whole **discography** from Deezer's catalog: albums, EPs, singles and
+compilations, with editions folded together ("Romance" and its deluxe edition are one record).
+Each shows your plays, a foil star if it's on your shelf, "New" for the last two months, and dims
+what you haven't heard; filter by Played, Not heard yet or On your shelf. Tap one for its album
+page: for any album, played or not, it shows the tracklist with your plays per song, the year and
+the label. Discographies are kept on the phone for a week, so new releases show up.
+
 Artist photos come from Deezer's public catalog (no account needed), looked up once per artist
 and kept on the phone; they show on artist pages, in Top 10 and Explore, and in the story.
 
@@ -255,6 +262,16 @@ Tap a record, then **Scrobble** (or **Scrobble** next to a side, or tap a single
   ignored and why.
 - **Two-week limit:** Last.fm silently ignores scrobbles older than about two weeks. The app
   blocks scrobbling a listen that old and warns when waiting scrobbles get close to the limit.
+
+### Filtering the shelf
+
+Under the sort chips, **Decade** and **Genre or style** narrow the shelf (Discogs genres like Rock,
+or styles like Post-Punk), each with how many records it has. A summary card then shows the
+selection: records, artists, Last.fm plays, never played, the most played, and how it splits by
+decade or style. For a genre, **Your … listening** opens the Stats tab for that genre.
+
+On the Stats tab, **All genres** picks one genre: everything there and in the story then counts
+only the plays whose main genre is that one (the same genre the genre charts count them under).
 
 ### Track lengths
 

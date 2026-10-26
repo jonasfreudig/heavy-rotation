@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: false, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    version: '0.9 (browser preview)',
+    version: '0.10 (browser preview)',
   };
 
   // A fake TIDAL session: plays these in a loop (lengths shortened so the preview moves).
@@ -439,6 +439,10 @@ const Mock = (() => {
       metrics: { night, morning: 0.08, weekend: (byDow[5] + byDow[6]) / Math.max(1, n), topShare, topArtist: order.length ? L.artists[order[0]] : '', newShare: 0.12, loop: 5, obsession: 12, vinyl: 0.03, genres: 7 } };
     out.storyExtra = { byHour, topT, tc, trackArtist, order, ac };
     out.tidy = tidySummary();
+    const gTotals = counts(0, L.ts.length, (L2, i) => genreOf(L2.a[i]));
+    out.genreOptions = Object.entries(gTotals).filter(([g]) => +g >= 0 && GENRES[g]).sort((a, b) => b[1] - a[1])
+      .map(([g, n]) => ({ key: GENRES[g].toLowerCase().replace(/-/g, ' '), label: GENRES[g].replace(/-/g, ' '), plays: n }));
+    out.genre = statsGenre;
     return out;
   }
 
@@ -584,10 +588,12 @@ const Mock = (() => {
       next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
       album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 } };
   }
+  const looseTitle = (t) => String(t || '').toLowerCase().replace(/\s*[([][^)\]]*[)\]]/g, '').trim();
   function fakeAlbum(artist, title) {
     const L = history();
     const a = findArtist(artist);
-    const life = a >= 0 ? lifeOf((i) => L.a[i] === a) : null;
+    // Like the app: only the album the made-up log plays has a history.
+    const life = a >= 0 && looseTitle(title) === looseTitle(albumOf(a)) ? lifeOf((i) => L.a[i] === a) : null;
     if (!life) return { missing: true, artist, title };
     const all = counts(0, L.ts.length, (L2, i) => L2.a[i]);
     const { r, c } = rangeCounts((L2, i) => L2.a[i]);
@@ -668,6 +674,35 @@ const Mock = (() => {
     }
     const [name, note, fn] = names[kind];
     return { kind, name, note, tracks: fn().slice(0, 40) };
+  }
+
+  // Made-up discographies: the artist's album from the made-up log, more albums, an EP, singles.
+  const MOCK_TITLES = ['Night Drive', 'Glass Houses', 'Paper Moons', 'Static Bloom', 'Low Tide', 'Neon Psalms', 'Field Notes', 'Afterglow'];
+  function fakeDiscography(name) {
+    const L = history();
+    const ai = findArtist(name);
+    if (ai < 0) return { name, none: true };
+    const r = rng(hashStr(name) + 11);
+    const main = albumOf(ai);
+    const owned = (t) => (coll.find((c) => c.artist === name && c.title === t) || {}).id || 0;
+    const plays = counts(0, L.ts.length, (L2, i) => L2.a[i])[ai] || 0;
+    const day = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const items = [
+      { title: MOCK_TITLES[ai % 8], type: 'album', date: day(2026, 10, 3), plays: 0 },
+      { title: main, type: 'album', date: day(2022, 4, 22), plays: Math.round(plays * 0.6) },
+      { title: MOCK_TITLES[(ai + 3) % 8], type: 'album', date: day(2019, 4, 12), plays: Math.round(plays * 0.15) },
+      { title: MOCK_TITLES[(ai + 5) % 8], type: 'album', date: day(2016, 9, 2), plays: 0 },
+      { title: 'Live at the Lighthouse', type: 'ep', date: day(2021, 11, 26), plays: 0 },
+      ...[0, 1, 2, 3, 4].map((k) => ({ title: L.titles[(ai * 7 + k) % L.titles.length], type: 'single', date: day(2026 - k, 1 + (k * 3) % 12, 10), plays: k < 2 ? 4 + Math.floor(r() * 20) : 0 })),
+    ];
+    return { name, artist: { id: ai + 1, name, link: 'https://www.deezer.com/artist/0', fans: 1000 + ai * 777 },
+      items: items.map((x, k) => ({ id: (ai + 1) * 100 + k, cover: '', link: '', editions: k === 1 ? 2 : 1, year: +x.date.slice(0, 4), owned: owned(x.title), ...x })) };
+  }
+  function fakeDzAlbum(id) {
+    const L = history();
+    const ai = Math.floor(id / 100) - 1;
+    const tracks = Array.from({ length: 10 }, (_, k) => ({ title: L.titles[(Math.max(0, ai) * 7 + k) % L.titles.length], sec: 150 + ((id * 7 + k * 37) % 180) }));
+    return { dz: id, title: '', date: '2022-04-22', label: 'Mock Records', genres: ['Alternative'], tracks };
   }
 
   function fakeArtist(name) {
@@ -847,6 +882,8 @@ const Mock = (() => {
           break;
         }
         case 'tidy': later(200, () => onTidy(S.history.count ? tidyOf() : { empty: true })); break;
+        case 'discography': later(400, () => onDiscography(fakeDiscography(m.name))); break;
+        case 'dzAlbum': later(250, () => onDzAlbum({ ...fakeDzAlbum(m.id), req: m.req })); break;
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;

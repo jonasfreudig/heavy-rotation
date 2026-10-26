@@ -702,9 +702,9 @@ input[type=datetime-local] { color-scheme: inherit; }
 .hero .dot { margin: 0 6px; color: var(--md-on-surface-variant); }
 .hint.center { text-align: center; }
 .item.act { cursor: pointer; }
-.viz.explore .xhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.viz.explore .xhead .btn { flex: none; }
-.xcards { display: flex; gap: 12px; overflow-x: auto; margin: 12px -16px 0; padding: 0 16px 4px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.xhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.xhead .btn { flex: none; }
+.xcards { display: flex; gap: 12px; overflow-x: auto; margin: 12px -16px 0; padding: 0 16px 4px; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; }
 .xcards::-webkit-scrollbar { display: none; }
 .xcard { flex: none; width: 128px; text-align: left; scroll-snap-align: start; }
 .xcard .cover { width: 128px; height: 128px; margin: 0; border-radius: 12px; }
@@ -808,3 +808,37 @@ input[type=datetime-local] { color-scheme: inherit; }
   font-weight: 800; line-height: 1.05; text-transform: uppercase; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .artist-hero .meta { color: var(--md-on-surface-variant); font-size: 13px; }
 .cover.round, .cover.round img { border-radius: 50%; }
+
+/* Discography on artist pages */
+.viz.disco h3 { margin: 18px 0 0; font: 500 14px/20px var(--font); color: var(--md-on-surface-variant); }
+.viz.disco .chip-row { margin-top: 12px; }
+.xcards.small .xcard { width: 104px; }
+.xcards.small .xcard .cover { width: 104px; height: 104px; }
+.dcard .dcover { position: relative; display: block; }
+.dcard.unheard .cover { opacity: .55; filter: saturate(.6); }
+.dcard .sticker.mini { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font: normal 700 13px/1 var(--font); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  background: conic-gradient(#ff7ac8, #ffd76e, #76f0a8, #6ec8ff, #b47cff, #ff7ac8); box-shadow: 0 2px 6px rgba(0, 0, 0, .35), inset 0 0 0 2px rgba(255, 255, 255, .55); }
+.dcard .new { position: absolute; left: 6px; bottom: 6px; padding: 1px 7px; border-radius: 8px; font: 700 10px/16px var(--font); font-style: normal;
+  letter-spacing: .06em; text-transform: uppercase; background: var(--tint); color: var(--md-surface); }
+.rank .r.unheard .t b { color: var(--md-on-surface-variant); }
+.empty.small { padding: 20px 24px 8px; }
+
+/* Shelf filters and the summary of a selection */
+#filterChips { margin-top: 8px; }
+#filterChips .chip .i.small, #genreRow .chip .i.small { width: 16px; height: 16px; }
+.chip .n { margin-left: 6px; color: var(--md-on-surface-variant); font-size: 11px; }
+.card.sel-sum { margin: 12px 0 0; }
+.sum-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 4px; }
+.sum-nums b { display: block; font: 400 22px/28px var(--font); }
+.sum-nums small { display: block; color: var(--md-on-surface-variant); font-size: 11px; line-height: 14px; }
+.mini-bars div { display: grid; grid-template-columns: 104px 1fr 28px; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
+.mini-bars span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-bars i { display: block; height: 8px; border-radius: 4px; background: var(--md-surface-container-highest); overflow: hidden; }
+.mini-bars i b { display: block; height: 100%; border-radius: 4px; background: var(--md-primary); }
+.mini-bars small { color: var(--md-on-surface-variant); text-align: right; }
+.card.sel-sum .label { margin: 14px 0 0; font: 500 12px/16px var(--font); color: var(--md-on-surface-variant); }
+
+/* Stats for one genre */
+#genreRow { margin: 10px -16px 0; justify-content: center; align-items: center; }
+.hint.inline { margin: 0; align-self: center; white-space: nowrap; }

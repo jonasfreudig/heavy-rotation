@@ -9,6 +9,7 @@ import com.example.recordshelf.discogs.CollectionItem
 import com.example.recordshelf.discogs.DiscogsClient
 import com.example.recordshelf.discogs.DiscogsException
 import com.example.recordshelf.discogs.Release
+import com.example.recordshelf.history.Discography
 import com.example.recordshelf.history.Genres
 import com.example.recordshelf.history.Hidden
 import com.example.recordshelf.history.History
@@ -20,6 +21,8 @@ import com.example.recordshelf.lastfm.LastfmException
 import com.example.recordshelf.lastfm.Scrobble
 import com.example.recordshelf.mb.MusicBrainzClient
 import com.example.recordshelf.net.DeezerClient
+import com.example.recordshelf.net.DzArtist
+import com.example.recordshelf.net.DzRelease
 import com.example.recordshelf.net.Http
 import com.example.recordshelf.scrobble.ActivityLog
 import com.example.recordshelf.scrobble.Compare
@@ -64,6 +67,11 @@ object Core {
 
     private const val HOUR = 3_600_000L
     private const val HIDDEN_FILE = "hidden.json"
+    private const val DISCO_FILE = "discographies.json"
+
+    /** Discographies are looked up again after a week, so new releases show up. */
+    private const val DISCO_TTL = 7L * 24 * HOUR
+    private const val DISCO_MAX = 150
 
     /** Album covers looked up for the activity list at a time (newest first). */
     private const val COVER_BATCH = 40
@@ -145,6 +153,15 @@ object Core {
 
     // ---- pictures: artist photos (Deezer) and the colors of covers and photos ----
     private val deezer = DeezerClient()
+
+    /** Deezer lookups for pages (discographies, tracklists), apart from the history work. */
+    private val webExec = Executors.newSingleThreadExecutor()
+
+    /** The Stats tab shows one genre's music when set (a genre key; "" for everything). */
+    @Volatile private var statsGenre = ""
+    @Volatile private var genreStats: Stats? = null
+    @Volatile private var genreStatsKey = ""
+    @Volatile private var genreBase: Stats? = null
     private val paletteExec = Executors.newSingleThreadExecutor()
 
     /** Colors per picture URL, kept across starts (covers don't change). */
@@ -268,6 +285,7 @@ object Core {
             }
             "stats" -> {
                 statsRange = msg.optString("range").ifEmpty { statsRange }
+                if (msg.has("genre")) statsGenre = msg.optString("genre")
                 statsExec.execute { statsInner() }
             }
             "artist" -> {
@@ -313,6 +331,30 @@ object Core {
                 val s = currentStats()
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
+            "discography" -> {
+                val name = msg.optString("name")
+                val req = msg.optInt("req")
+                if (name.isNotEmpty()) webExec.execute {
+                    val j = try {
+                        discographyJson(name)
+                    } catch (_: Exception) {
+                        JSONObject().put("error", "Can't reach Deezer right now. Try again later.")
+                    }
+                    push("onDiscography") { j.put("name", name).put("req", req) }
+                }
+            }
+            "dzAlbum" -> {
+                val id = msg.optLong("id")
+                val req = msg.optInt("req")
+                if (id > 0) webExec.execute {
+                    val j = try {
+                        deezer.album(id).toJson()
+                    } catch (_: Exception) {
+                        JSONObject().put("error", true)
+                    }
+                    push("onDzAlbum") { j.put("dz", id).put("req", req) }
+                }
+            }
             "palette" -> {
                 val url = msg.optString("url")
                 if (url.startsWith("https://")) paletteExec.execute { paletteInner(url) }
@@ -349,8 +391,8 @@ object Core {
             "story" -> {
                 val id = msg.optString("range")
                 statsExec.execute {
-                    val s = currentStats() ?: return@execute
-                    push("onStory") { s.story(s.range(id)) }
+                    val s = shownStats() ?: return@execute
+                    push("onStory") { s.story(s.range(id)).put("genre", statsGenre) }
                 }
             }
             "saveLastfm" -> {
@@ -1068,6 +1110,57 @@ object Core {
             .also { stats = it }
     }
 
+    /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre]. */
+    private fun shownStats(): Stats? {
+        val base = currentStats() ?: return null
+        val g = statsGenre
+        if (g.isEmpty()) return base
+        genreStats?.takeIf { genreStatsKey == g && genreBase === base }?.let { return it }
+        val h = history ?: return base
+        val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
+        return Stats(h.filter(base.inGenre(g)), java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images())
+            .also {
+                genreStats = it
+                genreStatsKey = g
+                genreBase = base
+            }
+    }
+
+    /**
+     * An artist's discography from Deezer (kept a week on the phone, so new releases show up),
+     * with your plays and your shelf. On [webExec].
+     */
+    private fun discographyJson(name: String): JSONObject {
+        val key = Text.norm(name)
+        val cache = try {
+            JSONObject(file(DISCO_FILE).read() ?: "{}")
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        var c = cache.optJSONObject(key)
+        if (c == null || System.currentTimeMillis() - c.optLong("at") > DISCO_TTL) {
+            val a = deezer.findArtist(name)
+            c = JSONObject().put("at", System.currentTimeMillis())
+            if (a != null) {
+                c.put("artist", a.toJson()).put("releases", JSONArray(deezer.releases(a.id).map { it.toJson() }))
+                // The photo comes along for free.
+                if (a.photo.isNotEmpty() && Stats.photoKey(name) !in db.images().keys) db.saveImage(Stats.photoKey(name), a.photo)
+            }
+            cache.put(key, c)
+            // Keep the most recent lookups only.
+            val keys = cache.keys().asSequence().toList()
+            if (keys.size > DISCO_MAX) keys.sortedBy { cache.getJSONObject(it).optLong("at") }.take(keys.size - DISCO_MAX).forEach { cache.remove(it) }
+            file(DISCO_FILE).write(cache.toString())
+        }
+        val artist = c.optJSONObject("artist") ?: return JSONObject().put("none", true)
+        val rel = c.optJSONArray("releases") ?: JSONArray()
+        val releases = (0 until rel.length()).map { DzRelease.fromJson(rel.getJSONObject(it)) }
+        val s = currentStats()
+        val shelf = collection.associateBy { Text.albumKey(it.artist, it.title) }
+        val items = Discography.json(Discography.merge(releases), { t -> s?.albumPlaysOf(name, t) ?: 0 }, { t -> shelf[Text.albumKey(name, t)]?.releaseId ?: 0L })
+        return JSONObject().put("artist", DzArtist.fromJson(artist).toJson()).put("items", items)
+    }
+
     /** Computes and pushes the stats for [statsRange]. On [statsExec]. */
     private fun statsInner() {
         if (ui == null) return
@@ -1077,7 +1170,8 @@ object Core {
             return
         }
         val id = statsRange
-        push("onStats") { s.compute(s.range(id)).put("tidy", tidySummary()) }
+        val shown = shownStats() ?: s
+        push("onStats") { shown.compute(shown.range(id)).put("tidy", tidySummary()).put("genre", statsGenre).put("genreOptions", s.genreOptions()) }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
         val photos = s.artistsNeedingPhotos(id)
