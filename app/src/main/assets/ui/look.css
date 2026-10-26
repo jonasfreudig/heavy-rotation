@@ -65,7 +65,7 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 /* ---- the back of the sleeve: records on the shelf turn over to their tracklist ---- */
 .holo .sleeve { transition: transform .6s cubic-bezier(.3, .7, .2, 1); backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }
 /* Turned over, the front's light effects stop drawing; a record that slid out stays out on redraws. */
-.holo.flipped .glare, .holo.flipped .sheen, .holo.flipped .sticker { visibility: hidden; transition: visibility 0s .35s; }
+.holo.flipped .glare, .holo.flipped .sheen, .holo.flipped .sticker { visibility: hidden; transition: visibility 0s .62s; }
 .holo.settled .disc { animation: none; }
 .holo .sleeve-back { position: absolute; left: 0; top: 0; width: var(--w); aspect-ratio: 1; border-radius: 20px; overflow: hidden;
   transform: translateZ(22px) rotateY(-180deg); backface-visibility: hidden; -webkit-backface-visibility: hidden; transition: transform .6s cubic-bezier(.3, .7, .2, 1);
@@ -75,7 +75,17 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .5  0 0 0 0 .42  0 0 0 .5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23p)'/></svg>"); }
 .holo.flipped .sleeve { transform: translateZ(22px) rotateY(180deg); }
 .holo.flipped .sleeve-back { transform: translateZ(22px) rotateY(0deg); }
-.holo.flipped .disc { opacity: 0; transition: opacity .3s; }
+/*
+ * Turning a record over: it rolls back into its sleeve (moving left, turning as a rolling disc
+ * does: 37% of its width is 42 degrees), hides inside, then the sleeve turns. Turning it back:
+ * the sleeve turns first, then the record rolls out again. Each step's timing is set on the state
+ * it leads to, so both directions play in their own order.
+ */
+.holo .disc { transition: translate .42s cubic-bezier(.2, .7, .2, 1) .6s, opacity 0s .6s; }
+.holo .vinyl { transition: rotate .42s cubic-bezier(.2, .7, .2, 1) .6s; }
+.holo.flipped .disc { translate: -37% 0; opacity: 0; transition: translate .34s cubic-bezier(.5, 0, .7, .4), opacity 0s .34s; }
+.holo.flipped .vinyl { rotate: -42deg; transition: rotate .34s cubic-bezier(.5, 0, .7, .4); }
+.holo.with-disc.flipped .sleeve, .holo.with-disc.flipped .sleeve-back { transition-delay: .3s; }
 .holo[data-flip] { cursor: pointer; }
 .sleeve-back .sb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1.5px solid #1f1b16; padding-bottom: 5px; }
 .sleeve-back .sb-head b { font: 800 italic 16px/1.05 var(--display); font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 36; letter-spacing: -.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

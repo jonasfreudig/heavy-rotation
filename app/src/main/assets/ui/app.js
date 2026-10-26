@@ -1613,7 +1613,8 @@ function turnSleeve(el) {
   el.classList.add('turning');
   el.classList.toggle('flipped');
   clearTimeout(el._turn);
-  el._turn = setTimeout(() => el.classList.remove('turning'), 650);
+  // The record rolls (about .35 s) and the sleeve turns (.6 s), one after the other.
+  el._turn = setTimeout(() => el.classList.remove('turning'), 1100);
 }
 // A record that has slid out of its sleeve stays out when the page draws again.
 document.addEventListener('animationend', (e) => { if (e.animationName === 'discOut') { const h = e.target.closest('.holo'); if (h) h.classList.add('settled'); } });
