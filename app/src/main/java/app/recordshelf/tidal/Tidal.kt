@@ -33,6 +33,9 @@ class Tidal(
     companion object {
         /** A search that found nothing is tried again after this long (the catalog grows). */
         const val MISS_TTL_MS = 30L * 24 * 3_600_000
+
+        /** A link found is looked up again after this long: TIDAL asks that its data isn't kept indefinitely. */
+        const val HIT_TTL_MS = 30L * 24 * 3_600_000
     }
 
     @Volatile private var appToken: TidalToken? = null
@@ -148,8 +151,10 @@ class Tidal(
     fun find(kind: String, artist: String, title: String = ""): TidalHit? {
         val key = "$kind|${Text.norm(artist)}|${Text.normLoose(title)}"
         synchronized(links) { links[key] }?.let { c ->
-            if (c.optString("id").isNotEmpty()) return TidalHit(c.getString("id"), kind, title.ifEmpty { artist }, "", emptyList(), c.getString("link"))
-            if (now() - c.optLong("at") < MISS_TTL_MS) return null
+            val found = c.optString("id").isNotEmpty()
+            if (now() - c.optLong("at") < if (found) HIT_TTL_MS else MISS_TTL_MS) {
+                return if (found) TidalHit(c.getString("id"), kind, title.ifEmpty { artist }, "", emptyList(), c.getString("link")) else null
+            }
         }
         val queries = if (kind == "artists") listOf(artist) else listOf("$artist $title", "$artist ${title.replace(Regex("\\s*[(\\[].*?[)\\]]"), "").substringBefore(" - ").trim()}").distinct()
         var hit: TidalHit? = null

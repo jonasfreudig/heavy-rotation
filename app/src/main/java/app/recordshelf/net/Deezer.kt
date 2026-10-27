@@ -85,18 +85,24 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
      * The album called [title] by [artist], as a music app names it ("(Deluxe)" and the like don't
      * matter), with its tracklist; null if Deezer has none.
      */
-    fun findAlbum(artist: String, title: String): DzAlbum? {
+    fun findAlbum(artist: String, title: String): DzAlbum? = searchAlbum(artist, title)?.let { album(it.optLong("id")) }
+
+    /** The cover (500 px) of the album called [title] by [artist]; null if Deezer has none. One request, no tracklist. */
+    fun albumCover(artist: String, title: String): String? =
+        searchAlbum(artist, title)?.let { it.optString("cover_big").ifEmpty { it.optString("cover_xl") } }?.takeIf { it.startsWith("https://") }
+
+    /** Deezer's search hit for the album, matched the way a music app names it; null if none. */
+    private fun searchAlbum(artist: String, title: String): JSONObject? {
         val want = Text.normLoose(title)
         val who = Text.norm(artist).removePrefix("the ")
-        fun pick(query: String): Long? {
+        fun pick(query: String): JSONObject? {
             val data = get("/search/album?q=${q(query)}&limit=25").optJSONArray("data") ?: return null
             return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
                 val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
                 Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
-            }?.optLong("id")
+            }
         }
-        val id = pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title") ?: return null
-        return album(id)
+        return pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title")
     }
 
     /** One album with its tracklist, label and genres. */

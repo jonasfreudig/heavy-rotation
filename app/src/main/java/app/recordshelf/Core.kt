@@ -418,6 +418,8 @@ object Core {
             Phone.refresh(ctx)
             ready = true
             historyExec.execute {
+                // Covers once fetched from Last.fm go (its terms leave artwork out); Deezer's come instead.
+                db.dropImagesFrom("lastfm")
                 histCount = db.count()
                 // Settings back without their history (Android's cloud backup leaves the database out): import again.
                 if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
@@ -462,6 +464,8 @@ object Core {
             tickInner()
             if (queue.size() > 0) flushInner()
         }
+        // Discogs asks that what it gave isn't shown more than 6 hours older than on discogs.com: the shelf syncs again.
+        if (prefs.discogsUser.isNotEmpty() && !syncing && System.currentTimeMillis() - prefs.lastSync > 6 * HOUR) sync()
         if (prefs.lastfmSession.isNotEmpty() && collection.isNotEmpty() && System.currentTimeMillis() - prefs.playsUpdated > 12 * HOUR) {
             syncExec.execute { refreshPlaysInner() }
         }
@@ -1669,17 +1673,19 @@ object Core {
         }
     }
 
-    /** Cover images for wishlist albums (from Last.fm's album info). On [historyExec]. */
+    /**
+     * Covers of albums that aren't on your shelf, from Deezer (Last.fm's terms leave its artwork
+     * out of what apps may show). "" is kept when there is none. On [historyExec].
+     */
     private fun fetchImagesInner(missing: List<Triple<String, String, String>>, after: (() -> Unit)? = null) {
-        val c = lastfm() ?: return
         val tried = db.images().keys
         var any = false
         for ((artist, album, key) in missing) {
             if (key in tried) continue
             try {
-                db.saveImage(key, c.albumInfo(artist, album)?.image.orEmpty())
+                db.saveImage(key, deezer.albumCover(artist, album).orEmpty())
                 any = true
-                Thread.sleep(220)
+                Thread.sleep(120) // Deezer allows 50 requests in 5 seconds
             } catch (_: Exception) {
                 break
             }
@@ -1773,7 +1779,7 @@ object Core {
 
     /**
      * The activity log with covers: a record's own, else your shelf's copy of the album, else
-     * Last.fm's album art (phone scrobbles carry none). Missing ones are looked up in the
+     * Deezer's (phone scrobbles carry none). Missing ones are looked up in the
      * background and the list comes again.
      */
     private fun activityJson(): JSONArray {
@@ -1790,7 +1796,7 @@ object Core {
             val c = owned[key]?.let { it.cover.ifEmpty { it.thumb } } ?: images[key]
             if (c == null) missing[key] = Triple(e.optString("artist"), album, key) else if (c.isNotEmpty()) e.put("cover", c)
         }
-        if (missing.isNotEmpty() && lastfm() != null) historyExec.execute { fetchImagesInner(missing.values.toList().takeLast(COVER_BATCH)) { pushActivity() } }
+        if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing.values.toList().takeLast(COVER_BATCH)) { pushActivity() } }
         return a
     }
 
@@ -1853,7 +1859,7 @@ object Core {
     /** The album key and cover of what a phone app is playing, once found ("" while looking or when there is none). */
     @Volatile private var nowCover = "" to ""
 
-    /** The phone's state, with the cover of what plays right now: from your shelf, or Last.fm's album art (looked up once). */
+    /** The phone's state, with the cover of what plays right now: from your shelf, or Deezer's (looked up once). */
     private fun phoneJson(): JSONObject {
         val p = Phone.stateJson().put("comparing", comparing).put("compareError", compareError)
         val n = p.optJSONObject("now") ?: return p
@@ -1869,7 +1875,7 @@ object Core {
             webExec.execute {
                 val owned = collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { it.cover.ifEmpty { it.thumb } }
                 val url = owned ?: db.images()[key] ?: try {
-                    lastfm()?.albumInfo(artist, album)?.image.orEmpty().also {
+                    deezer.albumCover(artist, album).orEmpty().also {
                         db.saveImage(key, it)
                         refreshPictures()
                     }

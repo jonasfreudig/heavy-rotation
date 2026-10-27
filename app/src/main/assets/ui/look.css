@@ -582,3 +582,9 @@ html.locked .page { overflow: hidden; }
 .ar-sw input { display: none; }
 .ar-sw input:checked + .switch { background: var(--md-primary); box-shadow: none; }
 .ar-sw input:checked + .switch::after { top: 4px; left: 24px; width: 24px; height: 24px; background: var(--md-on-primary); }
+
+/* ---- credits the data's sources ask for (Discogs, Last.fm): quiet, but there and linked ---- */
+.credit { margin: 20px 0 6px; text-align: center; }
+.page > .credit { margin: 0 16px 24px; }
+.credit button, .inline-link { padding: 6px 8px; background: none; border: 0; color: var(--md-on-surface-variant); font: 500 12px/16px var(--font); text-decoration: underline; text-underline-offset: 3px; }
+.inline-link { padding: 0; font: inherit; }

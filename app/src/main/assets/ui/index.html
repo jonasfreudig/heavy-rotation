@@ -37,6 +37,7 @@
       <div id="shelfSummary"></div>
     </div>
     <div class="grid" id="grid"></div>
+    <p class="credit" id="shelfCredit" hidden><button data-url="https://www.discogs.com/">Data provided by Discogs</button></p>
     <div class="empty" id="shelfEmpty" hidden></div>
   </section>
 
@@ -58,6 +59,7 @@
       <div class="chip-row" id="genreRow" hidden></div>
     </div>
     <div id="statsBody"></div>
+    <p class="credit" id="statsCredit" hidden><button data-url="https://www.last.fm/">Powered by AudioScrobbler · Last.fm</button></p>
   </section>
 
   <!-- ACTIVITY -->
@@ -84,6 +86,7 @@
     <button class="icon-btn" id="recordDiscogs" aria-label="Open on Discogs"><svg class="i"><use href="#i-open"/></svg></button>
   </header>
   <div class="page-body" id="recordBody"></div>
+  <p class="credit"><button id="recordCredit">Data provided by Discogs</button></p>
 </div>
 
 <!-- NOW SPINNING (full-screen page) -->
@@ -374,7 +377,9 @@
       <p class="hint" id="bkStatus" hidden></p>
     </div>
 
-    <p class="hint about">Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL; Heavy Rotation isn't affiliated with any of them. Your keys and tokens stay on this phone and are left out of backups. Track lengths come from Discogs, MusicBrainz and Last.fm.<br><span id="version"></span></p>
+    <p class="hint about">This application uses Discogs’ API but is not affiliated with, sponsored or endorsed by Discogs. ‘Discogs’ is a trademark of Zink Media, LLC.
+      Listening data powered by AudioScrobbler (<button class="inline-link" data-url="https://www.last.fm/">Last.fm</button>). Covers, artist photos and discographies from Deezer, track lengths also from MusicBrainz, exact links and playlists with TIDAL; Heavy Rotation isn't affiliated with any of them.
+      Your keys and tokens stay on this phone and are left out of backups.<br><span id="version"></span></p>
   </div>
 </div>
 

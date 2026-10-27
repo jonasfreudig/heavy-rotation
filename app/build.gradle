@@ -10,6 +10,8 @@ def localProps = new Properties()
 def localFile = rootProject.file('local.properties')
 if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
 def builtIn = { String name -> (localProps.getProperty(name) ?: '').trim().replace('"', '') }
+// -PwithoutTidal: a build to hand out before TIDAL has approved the app (docs/DEVELOPING.md) leaves the TIDAL app out.
+def tidalBuiltIn = { String name -> project.hasProperty('withoutTidal') ? '' : builtIn(name) }
 
 // Release signing: your own key, described in keystore.properties next to this project's
 // settings.gradle (storeFile, storePassword, keyAlias, keyPassword). Stays out of git.
@@ -25,12 +27,12 @@ android {
         applicationId "app.recordshelf"
         minSdk 26
         targetSdk 34
-        versionCode 29
-        versionName "0.29"
+        versionCode 30
+        versionName "0.30"
         buildConfigField 'String', 'LASTFM_KEY', "\"${builtIn('recordshelf.lastfm.key')}\""
         buildConfigField 'String', 'LASTFM_SECRET', "\"${builtIn('recordshelf.lastfm.secret')}\""
-        buildConfigField 'String', 'TIDAL_CLIENT_ID', "\"${builtIn('recordshelf.tidal.clientId')}\""
-        buildConfigField 'String', 'TIDAL_SECRET', "\"${builtIn('recordshelf.tidal.secret')}\""
+        buildConfigField 'String', 'TIDAL_CLIENT_ID', "\"${tidalBuiltIn('recordshelf.tidal.clientId')}\""
+        buildConfigField 'String', 'TIDAL_SECRET', "\"${tidalBuiltIn('recordshelf.tidal.secret')}\""
     }
 
     signingConfigs {

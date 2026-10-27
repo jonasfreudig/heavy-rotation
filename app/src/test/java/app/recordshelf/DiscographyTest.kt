@@ -92,7 +92,7 @@ class DiscographyTest {
                     r.path == "/search/album" -> Res(
                         200,
                         // A namesake by another artist first; the music app's "(Deluxe Edition)" doesn't matter.
-                        """{"data":[{"id":5,"title":"Romance","artist":{"name":"Camila Cabello"}},{"id":9,"title":"Romance","artist":{"name":"Fontaines D.C."}}]}""",
+                        """{"data":[{"id":5,"title":"Romance","artist":{"name":"Camila Cabello"},"cover_big":"https://e-cdns/5.jpg"},{"id":9,"title":"Romance","artist":{"name":"Fontaines D.C."},"cover_big":"https://e-cdns/9.jpg"}]}""",
                     )
                     r.path == "/album/9" -> Res(
                         200,
@@ -106,6 +106,9 @@ class DiscographyTest {
             assertEquals(9L, a?.id)
             assertEquals(listOf("Romance", "Starburster"), a?.tracks?.map { it.first })
             assertEquals(null, d.findAlbum("Fontaines D.C.", "Skinty Fia"))
+            // Covers for albums off the shelf come from the same search, in one request.
+            assertEquals("https://e-cdns/9.jpg", d.albumCover("Fontaines D.C.", "Romance"))
+            assertEquals(null, d.albumCover("Fontaines D.C.", "Skinty Fia"))
         } finally {
             server.stop()
         }

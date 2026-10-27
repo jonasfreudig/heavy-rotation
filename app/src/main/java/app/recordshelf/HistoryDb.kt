@@ -141,6 +141,11 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), Ba
         return out
     }
 
+    /** Forgets looked-up pictures whose address contains [host], so they are looked up again elsewhere. */
+    fun dropImagesFrom(host: String) {
+        writableDatabase.execSQL("DELETE FROM album_images WHERE url LIKE ?", arrayOf("%$host%"))
+    }
+
     override fun saveImage(albumKey: String, url: String) {
         writableDatabase.execSQL(
             "INSERT OR REPLACE INTO album_images (album, url, fetched) VALUES (?, ?, ?)",

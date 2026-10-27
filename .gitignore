@@ -9,3 +9,8 @@ app/build/
 keystore.properties
 *.jks
 *.keystore
+
+# Drafts for posting about the app, kept out of the repo
+publish/
+# Icon drafts
+icon-*.png

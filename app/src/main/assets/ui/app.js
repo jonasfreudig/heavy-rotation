@@ -1007,6 +1007,10 @@ function renderShelf() {
     return `<button class="rec" data-id="${r.id}">${cover}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
   }).join('');
   renderShelfEmpty();
+  // Discogs asks for this under its data, linked to where it lives on discogs.com.
+  const du = (ST.discogs || {}).user;
+  $('#shelfCredit').hidden = !COLL.length;
+  $('#shelfCredit button').dataset.url = du ? `https://www.discogs.com/user/${encodeURIComponent(du)}/collection` : 'https://www.discogs.com/';
 }
 
 let shownCount = 0;
@@ -2134,8 +2138,17 @@ function drawRecord(c) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const lab = spot >= 0 ? rec.artists[spot] : st.label;
-  ctx.font = `500 ${Math.round(11 * dpr)}px Roboto, system-ui, sans-serif`;
-  ctx.fillText(lab.length > 16 ? lab.slice(0, 15) + '…' : lab, g.cx, g.cy - 10 * dpr);
+  // As big as fits on the label (a month's name, a long artist), down to 8 px, then cut short.
+  const room = 2 * (g.r0 - 3 * dpr) - 14 * dpr;
+  let size = 11, text = lab;
+  const setFont = () => { ctx.font = `500 ${(size * dpr).toFixed(1)}px Roboto, system-ui, sans-serif`; };
+  setFont();
+  while (size > 8 && ctx.measureText(text).width > room) { size -= 0.5; setFont(); }
+  if (ctx.measureText(text).width > room) {
+    while (text.length > 1 && ctx.measureText(text + '…').width > room) text = text.slice(0, -1);
+    text += '…';
+  }
+  ctx.fillText(text, g.cx, g.cy - 10 * dpr);
   ctx.font = `${Math.round(9 * dpr)}px Roboto, system-ui, sans-serif`;
   ctx.fillText(`${compact(spot >= 0 ? rec.plays[spot] : n)} plays`, g.cx, g.cy + 9 * dpr);
   // the clock around the rim
@@ -4141,6 +4154,10 @@ function renderStats() {
   const s = STATS;
   const body = $('#statsBody');
   renderPeriod(s);
+  // Last.fm asks for this credit, linked back to it (here: your profile).
+  const lu = (ST.lastfm || {}).user;
+  $('#statsCredit').hidden = !s || s.empty;
+  $('#statsCredit button').dataset.url = lu ? `https://www.last.fm/user/${encodeURIComponent(lu)}` : 'https://www.last.fm/';
   if (!s || s.empty) { body.innerHTML = ''; return; }
   statsRange = s.range.id;
   const k = s.range.kind;
@@ -5008,7 +5025,7 @@ function build() {
     if (e.target.closest('#retryRel')) { delete REL[recordId]; send({ t: 'openRelease', id: recordId }); renderRecord(); return; }
     if (e.target.closest('#refreshLen')) send({ t: 'openRelease', id: recordId, refresh: true });
   };
-  $('#recordDiscogs').onclick = () => {
+  $('#recordDiscogs').onclick = $('#recordCredit').onclick = () => {
     const r = REL[recordId];
     openUrl((r && r.uri) || `https://www.discogs.com/release/${recordId}`);
   };
