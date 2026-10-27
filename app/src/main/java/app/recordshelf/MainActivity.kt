@@ -21,7 +21,12 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.window.BackEvent
+import android.window.OnBackAnimationCallback
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -99,13 +104,13 @@ class MainActivity : AppCompatActivity(), Core.Ui {
             insets
         }
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                web.evaluateJavascript("window.onBack ? window.onBack() : false") { handled ->
-                    if (handled != "true") moveTaskToBack(true)
-                }
-            }
-        })
+        // Before Android 13 the app takes every back press; from 13 on only while the page has
+        // somewhere to go back to (see setCanGoBack), so Android can show its own way out.
+        if (Build.VERSION.SDK_INT < 33) {
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() = goBack()
+            })
+        }
         handleIntent(intent)
     }
 
@@ -146,6 +151,49 @@ class MainActivity : AppCompatActivity(), Core.Ui {
         Core.detachUi(this)
         super.onStop()
         updateTiltSensor()
+    }
+
+    // ---- back ----
+
+    private var backCallback: Any? = null
+    private var backTaken = false
+
+    /**
+     * The page says whether back stays in the app (a page, sheet, story or search to close, a tab
+     * to leave). Only then is back taken, so otherwise Android's back swipe previews leaving the
+     * app, as in any modern app.
+     */
+    private fun setCanGoBack(on: Boolean) {
+        if (Build.VERSION.SDK_INT < 33 || on == backTaken) return
+        backTaken = on
+        val cb = (backCallback ?: makeBackCallback().also { backCallback = it }) as OnBackInvokedCallback
+        if (on) onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+        else onBackInvokedDispatcher.unregisterOnBackInvokedCallback(cb)
+    }
+
+    /** From Android 14 the swipe's progress goes to the page, which lets the layer it closes follow the finger. */
+    @RequiresApi(33)
+    private fun makeBackCallback(): OnBackInvokedCallback =
+        if (Build.VERSION.SDK_INT >= 34) {
+            object : OnBackAnimationCallback {
+                override fun onBackStarted(e: BackEvent) = js("window.onBackStart&&onBackStart(${e.swipeEdge})")
+                override fun onBackProgressed(e: BackEvent) =
+                    js("window.onBackProgress&&onBackProgress(%.3f,%d)".format(java.util.Locale.ROOT, e.progress, e.swipeEdge))
+                override fun onBackCancelled() = js("window.onBackCancel&&onBackCancel()")
+                override fun onBackInvoked() = goBack()
+            }
+        } else {
+            OnBackInvokedCallback { goBack() }
+        }
+
+    private fun js(code: String) {
+        if (!isDestroyed) web.evaluateJavascript(code, null)
+    }
+
+    private fun goBack() {
+        web.evaluateJavascript("window.onBack ? window.onBack() : false") { handled ->
+            if (handled != "true") moveTaskToBack(true)
+        }
     }
 
     override fun push(fn: String, json: String) {
@@ -351,6 +399,7 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 tiltWanted = msg.optBoolean("on")
                 updateTiltSensor()
             }
+            "canBack" -> setCanGoBack(msg.optBoolean("v"))
             "startSpin" -> {
                 if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

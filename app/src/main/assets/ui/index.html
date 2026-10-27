@@ -284,30 +284,30 @@
     <div class="card">
       <div class="row-label"><span>Theme</span></div>
       <div class="seg" id="themeSeg">
-        <button data-v="system"><svg class="i check"><use href="#i-check"/></svg>System</button>
-        <button data-v="light"><svg class="i check"><use href="#i-check"/></svg>Light</button>
-        <button data-v="dark"><svg class="i check"><use href="#i-check"/></svg>Dark</button>
+        <button data-v="system">System</button>
+        <button data-v="light">Light</button>
+        <button data-v="dark">Dark</button>
       </div>
       <p class="hint">Colors always follow your wallpaper (Material You).</p>
       <div class="row-label"><span>Style</span></div>
       <div class="seg" id="lookSeg">
-        <button data-v="soft"><svg class="i check"><use href="#i-check"/></svg>Tinted soft</button>
-        <button data-v="glass"><svg class="i check"><use href="#i-check"/></svg>Soft glass</button>
+        <button data-v="soft">Tinted soft</button>
+        <button data-v="glass">Soft glass</button>
       </div>
       <p class="hint">Tinted soft: calm raised shapes in the cover's color, the cover only glowing at the top. Soft glass: the cover blurred behind the whole page, frosted buttons over it.</p>
       <div class="row-label"><span>Now playing</span></div>
       <div class="seg" id="nowSeg">
-        <button data-v="line"><svg class="i check"><use href="#i-check"/></svg>On the shelf</button>
-        <button data-v="corner"><svg class="i check"><use href="#i-check"/></svg>In the corner</button>
+        <button data-v="line">On the shelf</button>
+        <button data-v="corner">In the corner</button>
       </div>
       <p class="hint">What plays, on the turntable or the phone: as a line at the top of the shelf, or as a record peeking out above the search button.</p>
       <div class="row-label"><span>Background color</span></div>
       <div class="seg" id="ambSeg">
-        <button data-v="records"><svg class="i check"><use href="#i-check"/></svg>Your records</button>
-        <button data-v="wallpaper"><svg class="i check"><use href="#i-check"/></svg>Wallpaper</button>
-        <button data-v="off"><svg class="i check"><use href="#i-check"/></svg>Off</button>
+        <button data-v="records">Your records</button>
+        <button data-v="wallpaper">Wallpaper</button>
+        <button data-v="off">Off</button>
       </div>
-      <p class="hint">The glow behind the top of the app: the colors of the record spinning or the last one you played, your wallpaper's colors, or none.</p>
+      <p class="hint">The shade of the tabs and the glow behind their top: the colors of what plays now (the record spinning or the song on the phone, else the last one you played), your wallpaper's colors, or none.</p>
       <label class="switch-row"><span>Moving covers<small>Album covers tilt and shine as you move the phone</small></span><input type="checkbox" id="tiltSw"><i class="switch"></i></label>
     </div>
 
@@ -316,9 +316,9 @@
       <summary><span class="acct-head"><b>Phone scrobbling</b><span class="sub">instead of Pano Scrobbler</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="phStatus"></span></summary>
       <div class="acct-body">
         <div class="seg" id="phMode">
-          <button data-v="off"><svg class="i check"><use href="#i-check"/></svg>Off</button>
-          <button data-v="shadow"><svg class="i check"><use href="#i-check"/></svg>Shadow</button>
-          <button data-v="on"><svg class="i check"><use href="#i-check"/></svg>On</button>
+          <button data-v="off">Off</button>
+          <button data-v="shadow">Shadow</button>
+          <button data-v="on">On</button>
         </div>
         <p class="hint" id="phHint"></p>
         <div id="phAccess" hidden>
@@ -391,7 +391,7 @@
 <div class="sheet" id="sheet" hidden>
   <div class="scrim" id="scrim"></div>
   <div class="sheet-body" id="sheetBody">
-    <div class="handle-bar"></div>
+    <div class="sheet-grab"><div class="handle-bar"></div></div>
     <div id="sheetContent"></div>
   </div>
 </div>

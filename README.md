@@ -319,9 +319,10 @@ Days, weeks and hours are in the phone's local time.
 
 Headings and big numbers are set in Fraunces, a soft serif; labels and details in DM Mono, like
 liner notes (both bundled, under the SIL Open Font License, in `assets/ui/fonts`). A faint print
-grain lies over everything. Behind the top of the app glows the color of the record spinning, or
-of the last one you played; pick **Your records**, **Wallpaper** (your Material You colors) or
-**Off** in Settings → Look → Background color.
+grain lies over everything. Behind the top of the app glows the color of what plays now (the
+record spinning, or the song on the phone), else of the last one you played; in Tinted soft the
+tabs take a calm shade of it too. Pick **Your records**, **Wallpaper** (your Material You colors)
+or **Off** in Settings → Look → Background color.
 
 The shelf's count sits next to its title. One line under it has the order (tap it for the others:
 recently or first added, artist A–Z or Z–A, year, plays), the filter button, and three views: the
@@ -343,9 +344,17 @@ veil of the page color so the text stays readable. Settings → Look → Style p
 - **Soft glass**: the blurred cover lies behind the whole page, and buttons and cards float over it
   frosted, with a soft shadow and a lit edge.
 
-Both give each page one solid button and its links in the cover's color. Top bars blend into the page, step aside
-while you scroll down and come back when you scroll up; the tabs sit in a floating bar at the
-bottom, with the page fading out underneath. The app icon is a record with a tonearm shaped like a music note
+Both give each page one solid button and its links in the cover's color. Top bars scroll away
+with the page and come back over it, on a soft fade of the page's color, as soon as you scroll up;
+the tabs sit in a floating bar at the bottom, with the page fading out underneath.
+
+Things move the way they connect: a pill slides to the chosen tab, view or option; pages come in
+from the side and leave the same way; a record's cover flies from the shelf up to its page and back
+home; sheets rise from the bottom and can be dragged down; search grows out of its round button.
+Android's back swipe shows where it goes: from Android 14 the page (or sheet, or search) follows
+your finger and closes on release, or springs back if you change your mind; on the shelf, with
+nothing left to close, back is Android's own, with its preview of leaving the app where the phone
+shows one (Android 15 does by default). The app icon is a record with a tonearm shaped like a music note
 resting on it; on Android 13 and later it can follow your wallpaper colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over (the record rolls back into the sleeve first, and rolls out again after you turn it back): the back has the tracklist by side, the label

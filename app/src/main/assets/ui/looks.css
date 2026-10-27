@@ -77,7 +77,7 @@
 :root[data-look="glass"] .chip:not(:where(.on, .mode, .static)), :root[data-look="glass"] .btn.tonal, :root[data-look="glass"] .search,
 :root[data-look="glass"] .icon-btn.small.on, :root[data-look="glass"] .seg {
   background: var(--frost); color: var(--md-on-surface); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
-:root[data-look="glass"] .chip.on, :root[data-look="glass"] .seg button.on {
+:root[data-look="glass"] .chip.on, :root[data-look="glass"] :is(.seg, .views) > .pill {
   background: color-mix(in srgb, var(--tint) 24%, var(--frost)); color: var(--md-on-surface); box-shadow: inset 2px 2px 6px var(--drop), inset -1px -1px 0 var(--hi); }
 :root[data-look="glass"] .tinted .tags .chip.link { background: color-mix(in srgb, var(--tint) 20%, var(--frost)); }
 :root[data-look="glass"] :is(.list, .rank, .viz, .tile, .xp-tile, .spin-card, .card:not(:where(.bad, .warn, .tonal, .tidal-job))), :root[data-look="glass"] .grid.list .rec {
@@ -89,20 +89,26 @@
 
 /* ---- soft ---- */
 :root[data-look="soft"], :root[data-look="soft"] .page { background: var(--soft); }
-:root[data-look="soft"]:not([data-ambient="off"]) body::before { opacity: .25; }
+:root[data-look="soft"]:not([data-ambient="off"]) body::before { opacity: .42; }
+/* "Your records": the tabs take a calm shade of what plays now (or played last), as pages take their cover's. */
+:root[data-look="soft"] { transition: background-color .8s ease; }
+:root[data-look="soft"][data-ambient="records"] { --soft: color-mix(in srgb, var(--amb1, var(--tint)) 12%, var(--md-surface-container)); }
+:root[data-look="soft"][data-ambient="records"][data-theme="light"] { --sh-d: color-mix(in srgb, var(--amb1, var(--tint)) 22%, var(--soft)); }
 /* The cover glows behind the top only, and scrolls away with it. */
 :root[data-look="soft"] .page > .backdrop { position: absolute; bottom: auto; height: 640px; }
 :root[data-look="soft"] .page > .backdrop canvas { height: 88%; }
 :root[data-look="soft"] .page > .backdrop::after { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 62%, transparent), var(--soft) 78%); }
 :root[data-look="soft"] .page.has-backdrop :is(.hero h1, .spin-hero h1, .page-hero h1, .hero .meta, .page-hero .meta, .flip-hint, .hint) { text-shadow: none; }
-:root[data-look="soft"] .chip:not(:where(.on, .mode, .static)), :root[data-look="soft"] .btn.tonal, :root[data-look="soft"] .icon-btn.small.on, :root[data-look="soft"] .seg button.on {
+:root[data-look="soft"] .chip:not(:where(.on, .mode, .static)), :root[data-look="soft"] .btn.tonal, :root[data-look="soft"] .icon-btn.small.on, :root[data-look="soft"] :is(.seg, .views) > .pill {
   background: var(--soft); color: var(--md-on-surface); box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }
 :root[data-look="soft"] .chip.on, :root[data-look="soft"] .chip:not(.static):active, :root[data-look="soft"] .btn.tonal:active {
   background: var(--soft); color: var(--tint-text); box-shadow: inset 3px 3px 7px var(--sh-d), inset -3px -3px 7px var(--sh-l); }
 :root[data-look="soft"] .search { background: var(--soft); box-shadow: inset 4px 4px 10px var(--sh-d), inset -4px -4px 10px var(--sh-l); }
 /* A segmented control is a shallow groove; the chosen part sits in it, raised just a little. */
 :root[data-look="soft"] .seg { padding: 4px; background: var(--soft); box-shadow: inset 2px 2px 6px var(--sh-d), inset -2px -2px 6px var(--sh-l); }
-:root[data-look="soft"] .seg button.on { color: var(--tint-text); box-shadow: 2px 2px 5px var(--sh-d), -2px -2px 5px var(--sh-l); }
+:root[data-look="soft"] :is(.seg, .views) > .pill { box-shadow: 2px 2px 5px var(--sh-d), -2px -2px 5px var(--sh-l); }
+:root[data-look="soft"] :is(.seg, .views) > button.on { color: var(--tint-text); }
+:root[data-look] .views > .icon-btn.small.on { background: transparent; box-shadow: none; }
 :root[data-look="soft"] :is(.list, .rank, .viz, .tile, .xp-tile, .spin-card, .card:not(:where(.bad, .warn, .tonal, .tidal-job))), :root[data-look="soft"] .grid.list .rec {
   background: var(--soft); color: var(--md-on-surface); box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
 :root[data-look="soft"] :is(.dig-card, .card.tonal, .card.warn) { box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
@@ -110,15 +116,13 @@
 :root[data-look="soft"] .btn.filled { box-shadow: 5px 5px 14px var(--sh-d), -4px -4px 10px var(--sh-l); }
 :root[data-look="soft"] .navbar { background: var(--soft); box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l); }
 :root[data-look="soft"] .bottom-fade { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--soft) 80%, transparent) 55%, var(--soft)); }
-:root[data-look="soft"] .appbar.scrolled { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 90%, transparent), color-mix(in srgb, var(--soft) 72%, transparent)); }
-:root[data-look="soft"] .appbar.scrolled::after { background: linear-gradient(color-mix(in srgb, var(--soft) 72%, transparent), transparent); }
+:root[data-look="soft"] .appbar { --bar-bg: var(--soft); }
 
 /* ---- the search circle, the search field, the record in the corner, the view switch ---- */
 :root[data-look] .views { background: transparent; }
 :root[data-look="glass"] .search-fab, :root[data-look="glass"] .search-dock .search {
   background: color-mix(in srgb, var(--md-surface) 72%, transparent); box-shadow: 0 14px 34px var(--drop), inset 1px 1px 0 var(--hi) !important; }
 :root[data-look="glass"] .views { background: var(--frost); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
-:root[data-look="glass"] .views .icon-btn.small.on { background: color-mix(in srgb, var(--tint) 24%, var(--frost)); box-shadow: none; }
 :root[data-look="glass"] .filter-btn { background: var(--frost); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
 :root[data-look="glass"] .np-art .cover { box-shadow: 0 10px 22px var(--drop), inset 1px 1px 0 var(--hi); }
 :root[data-look="soft"] .search-page { background: var(--soft); }
@@ -127,7 +131,6 @@
 :root[data-look="soft"] .search-dock .search { background: var(--soft);
   box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l), inset 0 0 0 2px color-mix(in srgb, var(--tint) 30%, transparent); }
 :root[data-look="soft"] .views { background: var(--soft); box-shadow: inset 2px 2px 5px var(--sh-d), inset -2px -2px 5px var(--sh-l); }
-:root[data-look="soft"] .views .icon-btn.small.on { background: var(--soft); color: var(--tint-text); box-shadow: 2px 2px 5px var(--sh-d), -2px -2px 5px var(--sh-l); }
 :root[data-look="soft"] .filter-btn { background: var(--soft); box-shadow: 3px 3px 7px var(--sh-d), -3px -3px 7px var(--sh-l); }
 :root[data-look="soft"] .filter-btn:active { box-shadow: inset 2px 2px 5px var(--sh-d), inset -2px -2px 5px var(--sh-l); }
 :root[data-look="soft"] .np-art .cover { box-shadow: 5px 6px 14px var(--sh-d), -3px -3px 10px var(--sh-l), inset 0 0 0 1px rgb(255 255 255 / .2); }

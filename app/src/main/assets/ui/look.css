@@ -311,18 +311,19 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
   background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 50%, transparent) 0%, color-mix(in srgb, var(--md-surface) 56%, transparent) 50%, color-mix(in srgb, var(--md-surface) 68%, transparent) 100%); }
 .page.has-backdrop { background: var(--md-surface); }
 .page.has-backdrop > .page-body, .page.has-backdrop > div:not(.backdrop) { position: relative; z-index: 1; }
-.page.has-backdrop > .appbar.scrolled { background: color-mix(in srgb, var(--md-surface) 72%, transparent); }
-.page.has-backdrop > .appbar.scrolled::after { background: linear-gradient(color-mix(in srgb, var(--md-surface) 72%, transparent), transparent); }
+.page.has-backdrop > .appbar { --bar-bg: color-mix(in srgb, var(--md-surface) 78%, transparent); }
 .page.has-backdrop .page-hero .glow { display: none; }
 .page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .flip-hint, .page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta, .page.has-backdrop .hint { text-shadow: 0 0 10px var(--md-surface), 0 0 3px var(--md-surface); }
 .page.has-backdrop .hero .meta, .page.has-backdrop .flip-hint, .page.has-backdrop .page-hero .meta { color: var(--md-on-surface); }
 
-/* ---- bars: a top bar that fades into the page and steps aside, a floating bottom bar ---- */
-.appbar { background: transparent; transition: transform .28s cubic-bezier(.2, .7, .2, 1), background-color .2s; }
-.appbar.scrolled { background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 90%, transparent), color-mix(in srgb, var(--md-surface) 72%, transparent)); }
-.appbar.scrolled::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 26px; pointer-events: none; background: linear-gradient(color-mix(in srgb, var(--md-surface) 72%, transparent), transparent); }
-.appbar.away { transform: translateY(-100%); }
-.appbar.away::after { opacity: 0; }
+/* ---- bars: a top bar that scrolls with the page and comes back over it, a floating bottom bar ---- */
+.appbar { position: relative; background: transparent; }
+.appbar::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: -30px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .25s;
+  background: linear-gradient(180deg, var(--bar-bg, var(--md-surface)) 0%, var(--bar-bg, var(--md-surface)) calc(100% - 54px), transparent 100%); }
+.appbar.back { position: sticky; top: 0; animation: barIn .32s cubic-bezier(.2, 0, 0, 1); }
+.appbar.back::before { opacity: 1; }
+.appbar.back.away { transform: translateY(calc(-100% - 30px)); transition: transform .26s cubic-bezier(.3, 0, .8, .15); }
+@keyframes barIn { from { transform: translateY(-100%); } }
 body.bar-away .lin:not(.inline) { top: var(--inset-top); }
 :root { --nav-h: 76px; }
 .navbar { left: 14px; right: 14px; bottom: calc(var(--inset-bottom) + 10px); height: 64px; max-width: 480px; margin: 0 auto; padding: 6px 6px; gap: 2px; border-radius: 32px;
@@ -330,7 +331,7 @@ body.bar-away .lin:not(.inline) { top: var(--inset-top); }
   box-shadow: 0 12px 32px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .18), inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
 .navbar button { gap: 2px; font-size: 11px; line-height: 14px; letter-spacing: .2px; border-radius: 26px; justify-content: center; }
 .navbar .ind { width: 52px; height: 30px; }
-.navbar button.on .ind { background: var(--md-primary); color: var(--md-on-primary); }
+.navbar button.on .ind { background: transparent; color: var(--md-on-primary); }
 .navbar .badge { left: 32px; }
 .bottom-fade { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(var(--inset-bottom) + 120px); pointer-events: none;
   background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--md-surface) 80%, transparent) 55%, var(--md-surface)); }
@@ -427,5 +428,53 @@ body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none
 .ptabs { flex: 1; display: flex; gap: 2px; margin-left: -10px; }
 .ptabs button { position: relative; padding: 8px 12px 12px; font: 500 15px/20px var(--font); color: var(--md-on-surface-variant); }
 .ptabs button.on { color: var(--md-on-surface); font-weight: 650; }
-.ptabs button.on::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--tint-text, var(--md-primary)); }
 #genreRow { justify-content: flex-start; }
+
+/* ---- motion: one pill slides to the chosen part of a switch, the tabs or the tab bar (Pill in app.js) ---- */
+.seg, .ptabs, .views { position: relative; isolation: isolate; }
+.pill { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; border-radius: 20px;
+  transition: transform .36s cubic-bezier(.2, 0, 0, 1), width .36s cubic-bezier(.2, 0, 0, 1), height .36s cubic-bezier(.2, 0, 0, 1), opacity .2s; }
+.seg > .pill, .views > .pill { background: var(--md-secondary-container); }
+.views > .pill { border-radius: 16px; }
+.navbar > .pill { background: var(--md-primary); border-radius: 15px; }
+.ptabs > .pill::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--tint-text, var(--md-primary)); }
+:is(.seg, .views, .ptabs, .navbar) > button { transition: color .25s; }
+.navbar .ind { transition: color .25s; }
+
+/* ---- sheets slide up, follow a drag down, slide away; nothing behind them scrolls ---- */
+.sheet-grab { display: grid; place-items: center; height: 44px; margin: 0 -20px 6px; touch-action: none; }
+.sheet-grab .handle-bar { margin: 0; }
+.sheet-body.fits, .scrim { touch-action: none; }
+.sheet.closing { pointer-events: none; }
+html.locked, html.locked body, html.locked-root, html.locked-root body { overflow: hidden; }
+html.locked .page { overflow: hidden; }
+
+/* ---- a record's cover flying between the shelf and its page ---- */
+.cover.fly { position: fixed; z-index: 200; margin: 0; aspect-ratio: auto; transform-origin: 0 0; pointer-events: none; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
+
+/* ---- search grows out of its circle; now playing slides in, the record out of its sleeve ---- */
+.search-dock:not([hidden]) { animation: dockIn .36s cubic-bezier(.2, 0, 0, 1); }
+@keyframes dockIn { from { clip-path: inset(0 0 0 calc(100% - 62px) round 31px); } to { clip-path: inset(0 0 0 0 round 31px); } }
+.np-peek { animation: peekIn .55s cubic-bezier(.2, 0, 0, 1); }
+@keyframes peekIn { from { transform: translateY(110px) rotate(4deg); opacity: 0; } }
+.np-line .np-disc { animation: npSlide .7s .12s cubic-bezier(.2, 0, 0, 1) both; }
+.np-line.playing .np-disc { animation: npSlide .7s .12s cubic-bezier(.2, 0, 0, 1) both, spin33 3.6s linear infinite; }
+@keyframes npSlide { from { left: 4px; } }
+.np-peek .np-disc { animation: npRise .7s .2s cubic-bezier(.2, 0, 0, 1) both; }
+.np-peek.playing .np-disc { animation: npRise .7s .2s cubic-bezier(.2, 0, 0, 1) both, spin33 3.6s linear infinite; }
+@keyframes npRise { from { left: 3px; top: 3px; } }
+@media (prefers-reduced-motion: reduce) { .np-line .np-disc, .np-peek .np-disc, .np-peek, .search-dock { animation: none !important; } }
+
+/* ---- small things ---- */
+.snackbar { border-radius: 16px; }
+/* Account cards open and close smoothly where the WebView can animate to "auto". */
+:root { interpolate-size: allow-keywords; }
+.acct::details-content { height: 0; overflow: clip; transition: height .32s cubic-bezier(.2, 0, 0, 1), content-visibility .32s allow-discrete; }
+.acct[open]::details-content { height: auto; }
+/* Buttons give a little under the finger. */
+:is(.btn, .chip:not(.static), .icon-btn, .search-fab, .sort-btn, .np-line, .np-peek .np-art) { transition: transform .14s cubic-bezier(.2, 0, 0, 1), box-shadow .2s, background-color .2s, color .2s; }
+:is(.btn, .chip:not(.static), .icon-btn, .search-fab, .sort-btn):active { transform: scale(.95); }
+:is(.np-line, .np-peek):active .np-art { transform: scale(.96); }
+/* The story opens out of the page. */
+.story:not([hidden]) { animation: storyIn .32s cubic-bezier(.2, 0, 0, 1); }
+@keyframes storyIn { from { opacity: 0; transform: scale(.94); } }

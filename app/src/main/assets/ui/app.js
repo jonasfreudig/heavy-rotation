@@ -183,6 +183,65 @@ const Tilt = {
 };
 window.onTilt = (x, y) => { Tilt.seen = true; Tilt.tx = x; Tilt.ty = y; };
 
+/**
+ * Segmented controls, tabs and the tab bar: one pill (a dot under the period tabs) slides to the
+ * chosen part. It follows the "on" class wherever that changes; a control that is drawn again
+ * starts its pill where the same control had it, so it slides then too.
+ */
+const Pill = {
+  BOX: '.seg, .ptabs, .views, .navbar',
+  last: new Map(),
+  seen: new WeakSet(),
+  ro: null,
+  sync(box) {
+    if (!box.isConnected) return;
+    if (!Pill.seen.has(box)) { Pill.seen.add(box); Pill.ro.observe(box); }
+    let pill = box.querySelector(':scope > .pill');
+    const fresh = !pill;
+    if (fresh) {
+      pill = document.createElement('i');
+      pill.className = 'pill';
+      box.prepend(pill);
+    }
+    const on = box.querySelector(':scope > .on');
+    const b = box.getBoundingClientRect();
+    if (!on) { pill.style.opacity = '0'; return; }
+    if (!b.width) return;
+    const t = (on.querySelector(':scope > .ind') || on).getBoundingClientRect();
+    const key = box.id || box.className;
+    const now = { transform: `translate(${(t.left - b.left - box.clientLeft).toFixed(1)}px, ${(t.top - b.top - box.clientTop).toFixed(1)}px)`, width: `${t.width}px`, height: `${t.height}px`, opacity: '' };
+    if (fresh) {
+      pill.style.transition = 'none';
+      Object.assign(pill.style, Pill.last.get(key) || now);
+      void pill.offsetWidth;
+      pill.style.transition = '';
+    }
+    Object.assign(pill.style, now);
+    Pill.last.set(key, now);
+  },
+  init() {
+    Pill.ro = new ResizeObserver((es) => es.forEach((e) => Pill.sync(e.target)));
+    new MutationObserver((ms) => {
+      const boxes = new Set();
+      for (const m of ms) {
+        const t = m.target;
+        if (m.type === 'attributes') {
+          if (t.parentElement && t.parentElement.matches(Pill.BOX)) boxes.add(t.parentElement);
+          continue;
+        }
+        if (t.matches(Pill.BOX)) boxes.add(t);
+        m.addedNodes.forEach((n) => {
+          if (n.nodeType !== 1 || n.classList.contains('pill')) return;
+          if (n.matches(Pill.BOX)) boxes.add(n);
+          else n.querySelectorAll(Pill.BOX).forEach((x) => boxes.add(x));
+        });
+      }
+      boxes.forEach(Pill.sync);
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+    $$(Pill.BOX).forEach(Pill.sync);
+  },
+};
+
 let toastTimer = 0;
 function toast(msg) {
   const t = $('#snackbar');
@@ -261,7 +320,16 @@ window.onRestored = (r) => {
   setTimeout(() => send({ t: 'restartApp' }), 1200);
 };
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
-window.onStats = (s) => { STATS = s; $('#statsBody').classList.remove('stale'); renderStats(); if (isOpen('settingsPage')) renderSettings(); };
+let statsLook = '';
+window.onStats = (s) => {
+  STATS = s;
+  $('#statsBody').classList.remove('stale');
+  renderStats();
+  const look = s && s.range ? [s.range.id, statsGenre, statsDecade].join('|') : '';
+  if (statsLook && look && look !== statsLook) settle($('#statsBody'));
+  if (look) statsLook = look;
+  if (isOpen('settingsPage')) renderSettings();
+};
 window.onOpenSpin = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
 window.onTheme = (th) => {
   const root = document.documentElement;
@@ -277,8 +345,9 @@ window.onInsets = (i) => {
   root.setProperty('--ime', `${i.ime || 0}px`);
 };
 window.onBack = () => {
+  backFx = null;
   if (!$('#story').hidden) { closeStory(); return true; }
-  if (!$('#sheet').hidden) { closeSheet(); return true; }
+  if (sheetOpen()) { closeSheet(); return true; }
   if (pageStack.length) { closePage(); return true; }
   if (searching()) { closeSearch(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
@@ -287,13 +356,18 @@ window.onBack = () => {
 
 // ---------- navigation ----------
 
+/** Where each tab was scrolled to, so switching back finds it there. */
+const tabScroll = {};
 function showTab(name) {
+  const other = name !== tab;
+  if (other) tabScroll[tab] = window.scrollY;
   tab = name;
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
   $('#appbarTitle').textContent = { shelf: 'Shelf', stats: 'Stats', explore: 'Explore', activity: 'Activity' }[name];
   $('#shelfCount').hidden = name !== 'shelf';
-  window.scrollTo(0, 0);
+  window.scrollTo(0, other ? tabScroll[name] || 0 : 0);
+  syncBack();
   renderState();
   if (name === 'stats') requestStats();
   if (name === 'explore') requestExplore();
@@ -318,8 +392,36 @@ const PAGE_STATE = {
 const pageSaved = [];
 
 /** Opens a page on top. Callers set the page's state after this, so the one below can be remembered first. */
-function openPage(id) {
+/** Material's emphasized easing: quick out of the gate and a long settle; the accelerating one for things leaving. */
+const EASE_OUT = 'cubic-bezier(.2, 0, 0, 1)';
+const EASE_IN = 'cubic-bezier(.3, 0, .8, .15)';
+/** [el] leaves (sliding right and fading, or only fading), starting from wherever a back swipe left it. */
+function animateOut(el, how, done) {
+  const t = getComputedStyle(el).transform;
+  const from = t === 'none' ? '' : t;
+  const ms = how === 'fade' ? 200 : 230;
+  const a = el.animate([
+    { transform: from || 'none', opacity: 1 },
+    { transform: how === 'fade' ? from || 'none' : `${from} translateX(30%)`, opacity: 0 },
+  ], { duration: ms, easing: EASE_IN });
+  // Finished, cancelled, or never run (a page in the background): either way it ends once.
+  let over = false;
+  const end = () => {
+    if (over) return;
+    over = true;
+    done();
+    el.style.transform = '';
+    el.style.borderRadius = '';
+    el.style.transition = '';
+  };
+  a.onfinish = end;
+  a.oncancel = end;
+  setTimeout(end, ms + 250);
+  return a;
+}
+function openPage(id, how) {
   const p = $('#' + id);
+  if (p._closing) { p._closing.cancel(); p._closing = null; p.hidden = true; p.style.transform = ''; p.style.borderRadius = ''; }
   if (p.hidden) {
     p.hidden = false;
     pageStack.push(id);
@@ -336,29 +438,37 @@ function openPage(id) {
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
   const bar = p.querySelector(':scope > .appbar');
-  if (bar) bar.classList.remove('away', 'scrolled');
+  if (bar) bar.classList.remove('away', 'back');
+  // In from the right; a page a cover flies into only fades in, so the cover has a still place to land.
+  p.animate(how === 'fly' ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(32px)' }, { opacity: 1, transform: 'none' }],
+    { duration: how === 'fly' ? 220 : 300, easing: EASE_OUT });
   Tilt.refresh();
+  syncBack();
 }
 
 /**
- * Top bars step aside while you scroll down and come back as soon as you scroll up; over
- * scrolled content they fade into the page instead of cutting it off.
+ * Top bars scroll away with the page, like the rest of it. Scrolling up brings them back over the
+ * page ("back": held at the top, a soft fade of the page's color behind them) until the page is at
+ * its top again or you scroll down, when they slide away. [onAway] hears whether the bar is out of view.
  */
 function watchBar(scroller, bar, onAway) {
   const el = scroller === window ? document.scrollingElement : scroller;
-  let last = 0;
+  let last = 0, gone = false;
   scroller.addEventListener('scroll', () => {
-    const y = el.scrollTop;
-    bar.classList.toggle('scrolled', y > 4);
-    const d = y - last;
-    if (Math.abs(d) < 8 && y > 4) return;
-    const away = d > 0 && y > 90;
-    if (away !== bar.classList.contains('away')) {
-      bar.classList.toggle('away', away);
-      if (onAway) onAway(away);
+    const y = el.scrollTop, d = y - last;
+    if (y <= 2) {
+      bar.classList.remove('back', 'away');
+      last = y;
+    } else if (Math.abs(d) >= 6) {
+      if (d < 0 && y > bar.offsetHeight) { bar.classList.add('back'); bar.classList.remove('away'); }
+      else if (d > 0 && bar.classList.contains('back')) bar.classList.add('away');
+      last = y;
     }
-    last = y;
+    const nowGone = bar.classList.contains('back') ? bar.classList.contains('away') : y > bar.offsetHeight - 8;
+    if (nowGone !== gone) { gone = nowGone; if (onAway) onAway(gone); }
   }, { passive: true });
+  // Slid away: back into the page's flow, where it waits out of view at the top.
+  bar.addEventListener('transitionend', (e) => { if (e.propertyName === 'transform' && bar.classList.contains('away')) bar.classList.remove('back', 'away'); });
 }
 function closePage() {
   const id = pageStack.pop();
@@ -373,9 +483,104 @@ function closePage() {
     PAGE_STATE[id].set(saved.state);
     p.style.zIndex = 10 + i + 1;
     p.scrollTop = saved.scroll;
-  } else if (i < 0) p.hidden = true;
+    p.style.transform = '';
+    p.style.borderRadius = '';
+    p.animate([{ opacity: 0.4, transform: 'translateX(-24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
+  } else if (i < 0) {
+    const flew = id === 'recordPage' && flyBack();
+    const a = animateOut(p, flew ? 'fade' : 'slide', () => { if (p._closing === a) { p.hidden = true; p._closing = null; } });
+    p._closing = a;
+  }
   if (id === 'settingsPage') showKeyForm = false;
   Tilt.refresh();
+  syncBack();
+}
+
+/**
+ * Whether back stays in the app (a layer to close, or a tab to leave for the shelf). Android
+ * only previews the way out of the app with its back swipe when it doesn't.
+ */
+const sheetOpen = () => !$('#sheet').hidden && !$('#sheet').classList.contains('closing');
+const canGoBack = () => !$('#story').hidden || sheetOpen() || pageStack.length > 0 || searching() || tab !== 'shelf';
+let backSent = null;
+function syncBack() {
+  const v = canGoBack();
+  if (v !== backSent && Native) send({ t: 'canBack', v });
+  backSent = v;
+  // Nothing behind a sheet, the story or search scrolls along with them.
+  document.documentElement.classList.toggle('locked', sheetOpen() || !$('#story').hidden);
+  document.documentElement.classList.toggle('locked-root', searching());
+}
+/**
+ * Android 14+ back swipe: the layer it would close follows the finger (a page shrinks toward the
+ * swipe, a sheet sinks), then either closes from there (onBack) or springs back.
+ */
+let backFx = null;
+function backTarget() {
+  if (!$('#story').hidden) return { el: $('#story'), kind: 'page' };
+  if (sheetOpen()) return { el: $('#sheetBody'), kind: 'sheet' };
+  if (pageStack.length) return { el: $('#' + pageStack[pageStack.length - 1]), kind: 'page' };
+  if (searching()) return { el: $('#searchPage'), kind: 'page' };
+  return null;
+}
+window.onBackStart = () => {
+  backFx = backTarget();
+  if (backFx) backFx.el.style.transition = 'none';
+};
+window.onBackProgress = (p, edge) => {
+  if (!backFx) return;
+  const el = backFx.el, k = Math.min(1, Math.max(0, p));
+  if (backFx.kind === 'sheet') { el.style.transform = `translateY(${(k * 80).toFixed(1)}px)`; return; }
+  const dir = edge === 1 ? -1 : 1;
+  el.style.transform = `translateX(${(dir * k * 24).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
+  el.style.borderRadius = `${Math.round(k * 32)}px`;
+};
+window.onBackCancel = () => {
+  if (!backFx) return;
+  const el = backFx.el;
+  backFx = null;
+  el.style.transition = 'transform .3s cubic-bezier(.2, 0, 0, 1), border-radius .3s';
+  el.style.transform = '';
+  el.style.borderRadius = '';
+  setTimeout(() => { if (!el.style.transform) el.style.transition = ''; }, 320);
+};
+
+/** A copy of cover [from] flies onto cover [to], both hidden meanwhile, the way a shared element moves between pages. */
+function flyCover(from, to, ms) {
+  const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+  if (!a.width || !b.width) return;
+  const c = from.cloneNode(true);
+  c.classList.add('fly');
+  c.removeAttribute('style');
+  c.style.cssText = `left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;--h:${from.style.getPropertyValue('--h')}`;
+  document.body.append(c);
+  from.style.visibility = 'hidden';
+  to.style.visibility = 'hidden';
+  const s = a.width / b.width;
+  const rFrom = parseFloat(getComputedStyle(from).borderTopLeftRadius) || 12, rTo = parseFloat(getComputedStyle(to).borderTopLeftRadius) || 20;
+  const anim = c.animate([
+    { transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${s})`, borderRadius: `${rFrom / s}px` },
+    { transform: 'none', borderRadius: `${rTo}px` },
+  ], { duration: ms, easing: EASE_OUT });
+  const end = () => { from.style.visibility = ''; to.style.visibility = ''; c.remove(); };
+  anim.onfinish = end;
+  anim.oncancel = end;
+  setTimeout(end, ms + 250);
+}
+/** Where the record page's cover came from, so Back can fly it home. */
+let flyHome = null;
+const heroCover = () => $('#recHolo .sleeve .cover') || $('#recHolo .cover');
+function flyBack() {
+  const h = flyHome;
+  flyHome = null;
+  if (!h || h.id !== recordId) return false;
+  const home = h.el.isConnected ? h.el : document.querySelector(`.rec[data-id="${h.id}"] .cover`);
+  const hero = heroCover();
+  if (!home || !hero) return false;
+  const r = home.getBoundingClientRect();
+  if (!r.width || r.bottom < 0 || r.top > innerHeight) return false;
+  flyCover(hero, home, 380);
+  return true;
 }
 /** An answer for a page that may have been covered meanwhile: [apply] it to whichever state asked ([req]). */
 let REQ = 0;
@@ -397,13 +602,78 @@ function openSettings(section) {
   if (section) setTimeout(() => { const s = $('#' + section); if (s) $('#settingsPage').scrollTop = s.offsetTop - 72; }, 30);
 }
 
+let sheetGen = 0;
 function openSheet(html) {
+  sheetGen++;
+  const sh = $('#sheet'), body = $('#sheetBody');
   $('#sheetContent').innerHTML = html;
-  $('#sheet').hidden = false;
+  if (sh.hidden || sh.classList.contains('closing')) {
+    sh.classList.remove('closing');
+    [body, $('#scrim')].forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
+    body.style.transform = '';
+    $('#scrim').style.opacity = '';
+    sh.hidden = false;
+    body.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 340, easing: EASE_OUT });
+    $('#scrim').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
+  }
+  // A short sheet drags down from anywhere; a long one scrolls, and drags by its handle.
+  body.classList.toggle('fits', body.scrollHeight <= body.clientHeight + 1);
+  syncBack();
 }
 function closeSheet() {
-  $('#sheet').hidden = true;
-  $('#sheetContent').innerHTML = '';
+  const sh = $('#sheet');
+  if (sh.hidden || sh.classList.contains('closing')) return;
+  const gen = ++sheetGen;
+  sh.classList.add('closing');
+  const body = $('#sheetBody');
+  const t = getComputedStyle(body).transform;
+  body.animate([{ transform: t === 'none' ? 'none' : t }, { transform: 'translateY(100%)' }], { duration: 220, easing: EASE_IN, fill: 'forwards' });
+  $('#scrim').animate([{ opacity: getComputedStyle($('#scrim')).opacity }, { opacity: 0 }], { duration: 220, easing: 'ease-in', fill: 'forwards' });
+  setTimeout(() => {
+    if (gen !== sheetGen) return;
+    sh.hidden = true;
+    sh.classList.remove('closing');
+    body.getAnimations().forEach((a) => a.cancel());
+    $('#scrim').getAnimations().forEach((a) => a.cancel());
+    body.style.transform = '';
+    $('#scrim').style.opacity = '';
+    $('#sheetContent').innerHTML = '';
+  }, 230);
+  syncBack();
+}
+/** Dragging a sheet down: it follows the finger, and closes past a third of its height or on a flick. */
+function sheetDrag() {
+  const body = $('#sheetBody'), scrim = $('#scrim');
+  let y0 = 0, t0 = 0, dy = 0, id = null, dragging = false, dragged = false;
+  body.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.sheet-grab') && !(body.classList.contains('fits') && body.scrollTop <= 0)) return;
+    id = e.pointerId; y0 = e.clientY; t0 = e.timeStamp; dy = 0; dragging = false;
+  });
+  body.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== id) return;
+    dy = Math.max(0, e.clientY - y0);
+    if (!dragging && dy > 8) { dragging = true; body.setPointerCapture(id); body.getAnimations().forEach((a) => a.cancel()); }
+    if (!dragging) return;
+    body.style.transform = `translateY(${dy}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - dy / body.offsetHeight));
+  });
+  const end = (e) => {
+    if (e.pointerId !== id) return;
+    id = null;
+    if (!dragging) return;
+    dragging = false;
+    dragged = true;
+    setTimeout(() => { dragged = false; }, 0);
+    const fast = dy / Math.max(1, e.timeStamp - t0) > 0.6;
+    if (dy > body.offsetHeight / 3 || fast) { closeSheet(); return; }
+    body.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 240, easing: EASE_OUT });
+    body.style.transform = '';
+    scrim.style.opacity = '';
+  };
+  body.addEventListener('pointerup', end);
+  body.addEventListener('pointercancel', end);
+  // A tap that ended a drag isn't a tap on whatever is under the finger.
+  body.addEventListener('click', (e) => { if (dragged) e.stopPropagation(); }, true);
 }
 function confirmSheet(title, text, yes, onYes) {
   openSheet(`<div class="sheet-title">${esc(title)}</div><p class="body">${esc(text)}</p>
@@ -550,6 +820,11 @@ function sorted() {
   return list;
 }
 
+/** A quick settle (fade and rise) for content that was just swapped for something else. */
+function settle(el) {
+  if (el && el.offsetParent) el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
+}
+let shelfLook = '';
 function renderShelf() {
   const srt = SORTS.find((x) => x.id === shelf.sort) || SORTS[0];
   $('#sortBtn').innerHTML = `${esc(srt.labels[shelf.rev ? 1 : 0])}${icon('drop')}`;
@@ -563,6 +838,9 @@ function renderShelf() {
   $('#shelfSummary').innerHTML = shelfSummaryHtml(list);
   $('#shelfViews').innerHTML = SHELF_VIEWS.map(([v, ic, label]) => `<button class="icon-btn small${shelf.view === v ? ' on' : ''}" data-view="${v}" aria-label="${label}">${icon(ic)}</button>`).join('');
   $('#grid').className = `grid ${shelf.view}`;
+  const look = [shelf.view, shelf.sort, shelf.rev, shelf.decade, shelf.genre].join('|');
+  if (shelfLook && look !== shelfLook) requestAnimationFrame(() => settle($('#grid')));
+  shelfLook = look;
   $('#grid').innerHTML = list.map((r) => {
     const cover = coverHtml(shelf.view === 'list' ? r.thumb || r.cover : r.cover || r.thumb, r.title, r.artist, '', r.id === spinId);
     if (shelf.view === 'list') {
@@ -594,21 +872,33 @@ function renderShelfEmpty() {
 
 let SEARCH = { q: '', res: null };
 let searchTimer = 0;
-const searching = () => !$('#searchPage').hidden;
+const searching = () => document.body.classList.contains('searching');
+let searchOut = null;
 function openSearch() {
+  if (searchOut) { searchOut.cancel(); searchOut = null; }
   $('#searchPage').hidden = false;
   $('#searchDock').hidden = false;
   document.body.classList.add('searching');
   renderSearch();
   $('#gSearch').focus();
+  syncBack();
 }
 function closeSearch() {
-  $('#searchPage').hidden = true;
-  $('#searchDock').hidden = true;
+  if (!searching()) return;
+  const page = $('#searchPage'), dock = $('#searchDock');
   document.body.classList.remove('searching');
-  $('#gSearch').value = '';
   $('#gSearch').blur();
-  SEARCH = { q: '', res: null };
+  dock.animate([{ clipPath: 'inset(0 0 0 0 round 31px)', opacity: 1 }, { clipPath: 'inset(0 0 0 calc(100% - 62px) round 31px)', opacity: 0 }], { duration: 220, easing: EASE_IN });
+  const a = animateOut(page, 'fade', () => {
+    if (searchOut !== a) return;
+    searchOut = null;
+    page.hidden = true;
+    dock.hidden = true;
+    $('#gSearch').value = '';
+    SEARCH = { q: '', res: null };
+  });
+  searchOut = a;
+  syncBack();
 }
 function onSearchInput(e) {
   SEARCH.q = e.target.value;
@@ -654,12 +944,17 @@ function renderSearch() {
 
 // ---------- record page ----------
 
-function openRecord(id) {
-  openPage('recordPage');
+/** The record page; [from] (a tapped record) lends its cover, which flies up to the big one. */
+function openRecord(id, from) {
+  const cover = from && from.querySelector('.cover');
+  openPage('recordPage', cover ? 'fly' : '');
   recordId = id;
   const r = REL[id];
   if (!r || r.error || !r.tracks) send({ t: 'openRelease', id });
   renderRecord();
+  flyHome = cover ? { id, el: cover } : null;
+  const to = cover && heroCover();
+  if (to) flyCover(cover, to, 440);
 }
 
 function trackGroups(tracks) {
@@ -776,7 +1071,7 @@ function openScrobble(preset = {}) {
     const now = Date.now();
     if (st.when === 'at' && st.at == null) st.at = Math.round((now - 3600e3) / 300e3) * 300e3;
     const plan = sel.length ? planStarts(sel, st.when, st.at, now) : null;
-    const chip = (v, label, sub) => `<button class="chip ${st.what === v ? 'on' : ''}" data-what="${esc(v)}">${st.what === v ? icon('check') : ''}${esc(label)}${sub ? ` <small>${sub}</small>` : ''}</button>`;
+    const chip = (v, label, sub) => `<button class="chip ${st.what === v ? 'on' : ''}" data-what="${esc(v)}">${esc(label)}${sub ? ` <small>${sub}</small>` : ''}</button>`;
     let h = `<div class="sheet-title">Scrobble</div>
       <div class="mini">${coverHtml(rel.thumb || rel.cover, rel.title, rel.artist, 'tiny')}<div><b>${esc(rel.title)}</b><small>${esc(rel.artist)}</small></div></div>
       <div class="label">What you play</div>
@@ -790,7 +1085,7 @@ function openScrobble(preset = {}) {
     }
     h += `<div class="label">When</div>
       <div class="seg" id="whenSeg">
-        ${[['now', 'Starting now'], ['at', 'Earlier'], ['finished', 'Just finished']].map(([v, l]) => `<button data-v="${v}" class="${st.when === v ? 'on' : ''}">${icon('check', 'i check')}${l}</button>`).join('')}
+        ${[['now', 'Starting now'], ['at', 'Earlier'], ['finished', 'Just finished']].map(([v, l]) => `<button data-v="${v}" class="${st.when === v ? 'on' : ''}">${l}</button>`).join('')}
       </div>`;
     if (st.when === 'at') h += `<label class="field"><span>Started at</span><input type="datetime-local" id="atInput" value="${toLocalInput(st.at)}"></label>`;
 
@@ -1685,8 +1980,12 @@ function applyAmbient() {
     return;
   }
   const sp = ST.spin;
-  const e = sp ? null : (ACT || []).slice().sort((a, b) => b.ts - a.ts)[0];
-  const src = sp ? { cover: sp.cover, seed: sp.album + sp.artist } : e ? { cover: e.cover, seed: (e.album || e.track) + e.artist } : { cover: '', seed: 'Record Shelf' };
+  const pn = sp ? null : (ST.phone || {}).now;
+  const now = pn && pn.title && pn.playing ? pn : null;
+  const e = sp || now ? null : (ACT || []).slice().sort((a, b) => b.ts - a.ts)[0];
+  const src = sp ? { cover: sp.cover, seed: sp.album + sp.artist }
+    : now ? { cover: now.cover || '', seed: (now.album || now.title) + now.artist }
+      : e ? { cover: e.cover, seed: (e.album || e.track) + e.artist } : { cover: '', seed: 'Record Shelf' };
   ambientUrl = src.cover || '';
   const c = ambientUrl ? TINTS[ambientUrl] : null;
   if (ambientUrl && !c) send({ t: 'palette', url: ambientUrl });
@@ -2065,7 +2364,7 @@ function discoHtml(name) {
   const counts = DISCO_TYPES.map(([t, , one]) => [one, items.filter((x) => x.type === t).length]).filter(([, n]) => n).map(([one, n]) => plural(n, one));
   const chips = [['all', 'All'], ['played', `Played (${played})`], ['unheard', `Not heard yet (${items.length - played})`], ['owned', `On your shelf (${owned})`]]
     .filter(([k]) => k !== 'owned' || owned)
-    .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}">${discoFilter === k ? icon('check', 'i small') : ''}${esc(l)}</button>`).join('');
+    .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}">${esc(l)}</button>`).join('');
   const groups = DISCO_TYPES.map(([t, label]) => {
     const list = items.filter((x) => x.type === t && keep(x));
     return list.length ? `<h3>${label}</h3><div class="xcards${t === 'single' ? ' small' : ''}">${list.map((x) => discoCard(x, name)).join('')}</div>` : '';
@@ -2140,7 +2439,7 @@ function renderFilterChips() {
 function openSortSheet() {
   openSheet(`<div class="sheet-title">Sort</div><div class="sort-grid">${SORTS.map((s) => s.labels.map((l, k) => {
     const on = shelf.sort === s.id && shelf.rev === !!k;
-    return `<button class="chip${on ? ' on' : ''}" data-sort="${s.id}" data-rev="${k}">${on ? icon('check', 'i small') : ''}${esc(l)}</button>`;
+    return `<button class="chip${on ? ' on' : ''}" data-sort="${s.id}" data-rev="${k}">${esc(l)}</button>`;
   }).join('')).join('')}</div>`);
   $('#sheetContent').onclick = (e) => {
     const b = e.target.closest('[data-sort]');
@@ -3413,7 +3712,7 @@ function topViz(top) {
     return `<button class="r ${topKind === 'tracks' ? '' : 'with-cover'}" ${open}>${pic}<span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
   }).join('');
   return `<div class="viz"><h2>Top 10</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
-    `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${icon('check', 'i check')}${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
+    `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
     <div class="rank">${rows || '<p class="hint">Nothing in this period.</p>'}</div>
     ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}</div>` : ''}</div>`;
 }
@@ -3519,6 +3818,7 @@ function openStory(id) {
   STORY = null;
   storySlides = [{ cls: 'deep', wait: true, html: '<div class="t m in">Putting it together…</div>' }];
   $('#story').hidden = false;
+  syncBack();
   applyStoryTint(null);
   showSlide(0);
   send({ t: 'story', range: id });
@@ -3532,8 +3832,11 @@ window.onStory = (s) => {
 };
 function closeStory() {
   $('#story').hidden = true;
+  $('#story').style.transform = '';
+  $('#story').style.borderRadius = '';
   $('#storySlide').innerHTML = '';
   Tilt.refresh();
+  syncBack();
 }
 
 function showSlide(i) {
@@ -3766,7 +4069,7 @@ function statusLine(dot, title, sub) {
 
 function renderServices() {
   const on = services();
-  $('#svcChips').innerHTML = Object.entries(SERVICES).map(([k, s]) => `<button class="chip ${on.includes(k) ? 'on' : ''}" data-svc="${k}">${on.includes(k) ? icon('check', 'i small') : ''}${esc(s.name)}</button>`).join('');
+  $('#svcChips').innerHTML = Object.entries(SERVICES).map(([k, s]) => `<button class="chip ${on.includes(k) ? 'on' : ''}" data-svc="${k}">${esc(s.name)}</button>`).join('');
 }
 
 function renderTidalSettings() {
@@ -3838,7 +4141,7 @@ function renderSettings() {
   $('#dgError').textContent = d.error || '';
 
   const def = ST.prefs.defaultTrackSec;
-  $('#defLen').innerHTML = DEF_LENGTHS.map((s) => `<button class="chip ${s === def ? 'on' : ''}" data-sec="${s}">${s === def ? icon('check') : ''}${fmtDur(s)}</button>`).join('');
+  $('#defLen').innerHTML = DEF_LENGTHS.map((s) => `<button class="chip ${s === def ? 'on' : ''}" data-sec="${s}">${fmtDur(s)}</button>`).join('');
   $$('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (ST.prefs.theme || 'system')));
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
@@ -3850,7 +4153,13 @@ function renderSettings() {
 // ---------- wiring ----------
 
 function build() {
-  $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
+  // The tab you're on goes back to its top.
+  $('#tabs').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.tab === tab) window.scrollTo({ top: 0, behavior: 'smooth' });
+    else showTab(b.dataset.tab);
+  };
   $('#settingsBtn').onclick = () => openSettings();
   $('#syncBtn').onclick = () => { send({ t: 'sync' }); toast('Syncing your collection…'); };
   document.addEventListener('click', (e) => {
@@ -3908,10 +4217,10 @@ function build() {
   $('#searchBody').onclick = (e) => {
     $('#gSearch').blur();
     const r = e.target.closest('.rec[data-id]');
-    if (r) openRecord(+r.dataset.id);
+    if (r) openRecord(+r.dataset.id, r);
   };
   $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
-  $('#grid').onclick = (e) => { const b = e.target.closest('.rec'); if (b) openRecord(+b.dataset.id); };
+  $('#grid').onclick = (e) => { const b = e.target.closest('.rec'); if (b) openRecord(+b.dataset.id, b); };
   $('#shelfEmpty').onclick = (e) => { if (e.target.closest('#emptySync')) send({ t: 'sync' }); };
   $('#spinSlot').onclick = (e) => { if (e.target.closest('#spinCard')) { openPage('spinPage'); renderSpin(true); } };
   $('#queueCard').onclick = (e) => { if (e.target.closest('#flushBtn')) send({ t: 'flush' }); };
@@ -3963,23 +4272,26 @@ function build() {
       return;
     }
     const rec = e.target.closest('[data-rec]');
-    if (rec) { openRecord(+rec.dataset.rec); return; }
+    if (rec) { openRecord(+rec.dataset.rec, rec); return; }
     const tk = e.target.closest('[data-top]');
     if (tk) { topKind = tk.dataset.top; renderStats(); }
   };
   const artistBody = $('#artistBody');
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
-  artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec); };
+  artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
-  $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec); };
+  $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
   $('#genreBody').addEventListener('pointerdown', (e) => onVizPointer(e, GENRE));
   $('#genreBody').onclick = (e) => {
     const rec = e.target.closest('[data-rec]');
-    if (rec) openRecord(+rec.dataset.rec);
+    if (rec) openRecord(+rec.dataset.rec, rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
   };
   watchBar(window, $('#appbar'), (away) => document.body.classList.toggle('bar-away', away));
+  sheetDrag();
+  Pill.init();
+  syncBack();
   $$('.page').forEach((p) => { const bar = p.querySelector(':scope > .appbar'); if (bar) watchBar(p, bar); });
   $('#atlasSeg').onclick = (e) => { const b = e.target.closest('[data-av]'); if (b) { atlasView = b.dataset.av; renderAtlas(); } };
   $('#atlasBody').onclick = (e) => {

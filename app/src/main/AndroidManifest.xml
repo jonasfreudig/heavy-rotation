@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Discogs, Last.fm and MusicBrainz -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -37,7 +38,9 @@
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:usesCleartextTraffic="false">
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="false"
+        tools:targetApi="33">
 
         <activity
             android:name=".MainActivity"
