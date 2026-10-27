@@ -636,7 +636,7 @@ function renderRecord() {
       ${unknown ? `<br><button class="btn text small" id="refreshLen">${icon('sync')}Look up lengths again</button>` : ''}</div>`;
   }
   $('#recordBody').innerHTML = h;
-  setBackdrop($('#recordBody'), coverUrl);
+  tint($('#recordBody'), coverUrl, title + artist);
   if (reuse) $('#recHolo').appendChild(keep);
   const sb = $('#recHolo .sleeve-back');
   if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays);
@@ -802,7 +802,7 @@ function renderSpin(force) {
     <div class="list" id="spList"></div>
     <p class="hint">Out of step with the record? Tap the track that is playing right now, and the times after it move.</p>`;
   if (reuse) $('#spinHolo').appendChild(keep);
-  setBackdrop(body, sp.cover);
+  tint(body, sp.cover, sp.album + sp.artist);
   lastCur = -2;
   tickUi();
   Tilt.refresh();
@@ -1581,6 +1581,11 @@ const missingNote = () => ((ST.history || {}).count > 0
 function ambientMode() {
   try { return localStorage.getItem('ambient') || 'records'; } catch (_) { return 'records'; }
 }
+/** Settings → Look → Style: 'glass' (the cover behind frosted controls) or 'soft' (raised shapes in the cover's color); see looks.css. */
+function lookMode() {
+  try { return localStorage.getItem('look') === 'soft' ? 'soft' : 'glass'; } catch (_) { return 'glass'; }
+}
+document.documentElement.dataset.look = lookMode();
 let ambientUrl = '';
 function applyAmbient() {
   const root = document.documentElement;
@@ -1793,14 +1798,26 @@ function tint(el, url, seed) {
   el.classList.add('tinted');
   el.dataset.tintUrl = url || '';
   const c = url ? TINTS[url] : null;
-  el.setAttribute('style', tintStyle(c, url ? null : hue(seed || '')));
+  paintTint(el, tintStyle(c, url ? null : hue(seed || '')));
   if (url && !c) send({ t: 'palette', url });
+}
+/** Puts the tint on [el], and on its page as well, whose own background takes it in the soft look. */
+function paintTint(el, css) {
+  el.setAttribute('style', css);
+  const page = el.closest('.page');
+  if (!page) return;
+  page.classList.add('tinted');
+  for (const k of ['--tint-d', '--tint-l', '--glow-d', '--glow-l']) page.style.removeProperty(k);
+  for (const d of css.split(';')) {
+    const i = d.indexOf(':');
+    if (i > 0) page.style.setProperty(d.slice(0, i), d.slice(i + 1));
+  }
 }
 window.onPalette = (p) => {
   TINTS[p.url] = p;
   if (p.url === ambientUrl) applyAmbient();
   if (p.url === storyTintUrl && !$('#story').hidden) applyStoryTint();
-  $$('.tinted').forEach((el) => { if (el.dataset.tintUrl === p.url) el.setAttribute('style', tintStyle(p)); });
+  $$('.tinted').forEach((el) => { if (el.dataset.tintUrl === p.url) paintTint(el, tintStyle(p)); });
 };
 
 // ---- charts for songs, albums and artists ----
@@ -3704,6 +3721,7 @@ function renderSettings() {
   const def = ST.prefs.defaultTrackSec;
   $('#defLen').innerHTML = DEF_LENGTHS.map((s) => `<button class="chip ${s === def ? 'on' : ''}" data-sec="${s}">${s === def ? icon('check') : ''}${fmtDur(s)}</button>`).join('');
   $$('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (ST.prefs.theme || 'system')));
+  $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   try { $('#tiltSw').checked = localStorage.getItem('tilt') !== 'off'; } catch (_) { $('#tiltSw').checked = true; }
   $('#version').textContent = ST.version ? `Record Shelf ${ST.version}` : '';
   renderPhoneSettings();
@@ -4014,6 +4032,13 @@ function build() {
   $('#dgDisconnect').onclick = () => confirmSheet('Disconnect Discogs?', 'Your shelf will be empty until you connect again. Your scrobbles are not affected.', 'Disconnect', () => send({ t: 'discogsDisconnect' }));
   $('#defLen').onclick = (e) => { const b = e.target.closest('[data-sec]'); if (b) send({ t: 'setDefaultTrack', sec: +b.dataset.sec }); };
   $('#themeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) send({ t: 'setTheme', v: b.dataset.v }); };
+  $('#lookSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('look', b.dataset.v); } catch (_) { /* preview without storage */ }
+    document.documentElement.dataset.look = lookMode();
+    renderSettings();
+  };
   $('#bkExport').onclick = () => {
     const ui = {};
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ui[k] = localStorage.getItem(k); } } catch (_) { /* preview without storage */ }

@@ -318,10 +318,17 @@ of the last one you played; pick **Your records**, **Wallpaper** (your Material 
 The shelf has three views (the buttons next to the record count): the grid of covers, big covers
 two to a row with year and plays, and a list with year, label, format, two styles and plays.
 
-Record, album, song and artist pages and Now spinning take their cover or photo as the
-background, behind the whole screen: shrunk to a few pixels once and stretched over it (that is
-the blur, so nothing is recomputed while scrolling), under a veil of the page color so the text
-stays readable, with the cards over it see-through. Top bars blend into the page, step aside
+Record, album, song and artist pages and Now spinning take their cover or photo: shrunk to a few
+pixels once and stretched (that is the blur, so nothing is recomputed while scrolling), under a
+veil of the page color so the text stays readable. Settings → Look → Style picks how:
+
+- **Soft glass**: the blurred cover lies behind the whole page, and buttons and cards float over it
+  frosted, with a soft shadow and a lit edge.
+- **Tinted soft**: soft UI. The page takes a calm shade of the cover's color, buttons and cards are
+  raised from it with light and shade (pressed ones sink in), and the cover only glows behind the
+  top of the page.
+
+Both give each page one solid button and its links in the cover's color. Top bars blend into the page, step aside
 while you scroll down and come back when you scroll up; the tabs sit in a floating bar at the
 bottom, with the page fading out underneath. The app icon is a record with a tonearm shaped like a music note
 resting on it; on Android 13 and later it can follow your wallpaper colors (themed icons).

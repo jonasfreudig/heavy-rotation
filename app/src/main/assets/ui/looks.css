@@ -1,0 +1,104 @@
+/*
+ * Settings → Look → Style: two skins over the same pages, chosen by data-look on <html> (app.js).
+ *   glass: the cover blurred behind the whole page; frosted controls raised on it, with a soft drop
+ *          and a lit edge.
+ *   soft:  soft UI in the page's own color (the cover's, on song, album and artist pages), raised
+ *          and pressed with light and shade; the cover only glows behind the top.
+ * Both take the cover's color from --tint (see .tinted in app.css) and keep one solid button in it.
+ * Exclusions sit in :where() so they add no weight: pressed beats raised, flat-in-a-card beats card.
+ */
+
+/* ---- colors: dark, then light ---- */
+:root[data-look], :root[data-look] .tinted {
+  --soft: color-mix(in srgb, var(--tint) 8%, var(--md-surface-container));
+  --sh-d: rgb(0 0 0 / .55);
+  --sh-l: color-mix(in srgb, var(--tint) 9%, transparent);
+  --frost: color-mix(in srgb, var(--md-surface) 62%, transparent);
+  --frost-card: color-mix(in srgb, var(--md-surface) 70%, transparent);
+  --drop: rgb(0 0 0 / .42);
+  --hi: rgb(255 255 255 / .13);
+  --on-tint: #17121a;
+  /* The cover's color as text: pulled towards the text color, so light greens and yellows still read. */
+  --tint-text: color-mix(in srgb, var(--tint) 62%, var(--md-on-surface));
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look]:not([data-theme]), :root[data-look]:not([data-theme]) .tinted {
+    --soft: color-mix(in srgb, var(--tint) 9%, var(--md-surface-container));
+    --sh-d: color-mix(in srgb, var(--tint) 26%, var(--soft));
+    --sh-l: rgb(255 255 255 / .85);
+    --frost: color-mix(in srgb, var(--md-surface) 66%, transparent);
+    --frost-card: color-mix(in srgb, var(--md-surface) 74%, transparent);
+    --drop: rgb(60 40 50 / .17);
+    --hi: rgb(255 255 255 / .75);
+    --on-tint: #fff;
+  }
+}
+:root[data-look][data-theme="light"], :root[data-look][data-theme="light"] .tinted {
+  --soft: color-mix(in srgb, var(--tint) 9%, var(--md-surface-container));
+  --sh-d: color-mix(in srgb, var(--tint) 26%, var(--soft));
+  --sh-l: rgb(255 255 255 / .85);
+  --frost: color-mix(in srgb, var(--md-surface) 66%, transparent);
+  --frost-card: color-mix(in srgb, var(--md-surface) 74%, transparent);
+  --drop: rgb(60 40 50 / .17);
+  --hi: rgb(255 255 255 / .75);
+  --on-tint: #fff;
+}
+
+/* ---- both: chips and small text that read on anything, one solid button in the cover's color ---- */
+:root[data-look] .chip:not(:where(.on, .mode, .static)) { color: var(--md-on-surface); }
+:root[data-look] .chip.static { background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); box-shadow: none; color: var(--md-on-surface-variant); }
+:root[data-look] .hero .meta { font: 400 14px/20px var(--font); letter-spacing: 0; }
+:root[data-look] .rec small, :root[data-look] .count { color: var(--md-on-surface-variant); }
+:root[data-look] .tinted .btn.filled { background: var(--tint); color: var(--on-tint); }
+:root[data-look] .tinted :is(.artist-link, .btn.text), :root[data-look] .tinted .tags .chip.link { color: var(--tint-text); }
+/* A list is one card: its rows lie flat in it, a hairline apart. */
+:root[data-look] :is(.list, .rank) { gap: 0; }
+:root[data-look] :is(.list, .rank) > :not(.now):not(:active) { background: transparent; }
+:root[data-look] :is(.list, .rank) > * + * { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+:root[data-look] .seg { border-radius: 20px; }
+:root[data-look] .seg button { box-shadow: none; border-radius: 20px; }
+
+/* ---- glass ---- */
+:root[data-look="glass"] .page > .backdrop::after {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 46%, transparent), color-mix(in srgb, var(--md-surface) 62%, transparent)); }
+:root[data-look="glass"]:not([data-ambient="off"]) body::before { opacity: .55; }
+:root[data-look="glass"] .chip:not(:where(.on, .mode, .static)), :root[data-look="glass"] .btn.tonal, :root[data-look="glass"] .search,
+:root[data-look="glass"] .icon-btn.small.on, :root[data-look="glass"] .seg {
+  background: var(--frost); color: var(--md-on-surface); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
+:root[data-look="glass"] .chip.on, :root[data-look="glass"] .seg button.on {
+  background: color-mix(in srgb, var(--tint) 24%, var(--frost)); color: var(--md-on-surface); box-shadow: inset 2px 2px 6px var(--drop), inset -1px -1px 0 var(--hi); }
+:root[data-look="glass"] .tinted .tags .chip.link { background: color-mix(in srgb, var(--tint) 20%, var(--frost)); }
+:root[data-look="glass"] :is(.list, .rank, .viz, .tile, .xp-tile, .spin-card, .card:not(:where(.bad, .warn, .tonal, .tidal-job))), :root[data-look="glass"] .grid.list .rec {
+  background: var(--frost-card); color: var(--md-on-surface); box-shadow: 0 12px 30px var(--drop), inset 1px 1px 0 var(--hi); }
+:root[data-look="glass"] :is(.dig-card, .card.tonal, .card.warn) { box-shadow: 0 12px 30px var(--drop), inset 1px 1px 0 var(--hi); }
+:root[data-look="glass"] .rec .cover { box-shadow: 0 10px 22px var(--drop), inset 1px 1px 0 var(--hi); }
+:root[data-look="glass"] .btn.filled { box-shadow: 0 10px 22px color-mix(in srgb, var(--tint) 40%, transparent), inset 1px 1px 0 rgb(255 255 255 / .3); }
+:root[data-look="glass"] .navbar { background: color-mix(in srgb, var(--md-surface) 72%, transparent); box-shadow: 0 14px 34px var(--drop), inset 1px 1px 0 var(--hi); }
+
+/* ---- soft ---- */
+:root[data-look="soft"], :root[data-look="soft"] .page { background: var(--soft); }
+:root[data-look="soft"]:not([data-ambient="off"]) body::before { opacity: .25; }
+/* The cover glows behind the top only, and scrolls away with it. */
+:root[data-look="soft"] .page > .backdrop { position: absolute; bottom: auto; height: 640px; }
+:root[data-look="soft"] .page > .backdrop canvas { height: 88%; }
+:root[data-look="soft"] .page > .backdrop::after { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 62%, transparent), var(--soft) 78%); }
+:root[data-look="soft"] .page.has-backdrop :is(.hero h1, .spin-hero h1, .page-hero h1, .hero .meta, .page-hero .meta, .flip-hint, .hint) { text-shadow: none; }
+:root[data-look="soft"] .chip:not(:where(.on, .mode, .static)), :root[data-look="soft"] .btn.tonal, :root[data-look="soft"] .icon-btn.small.on, :root[data-look="soft"] .seg button.on {
+  background: var(--soft); color: var(--md-on-surface); box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }
+:root[data-look="soft"] .chip.on, :root[data-look="soft"] .chip:not(.static):active, :root[data-look="soft"] .btn.tonal:active {
+  background: var(--soft); color: var(--tint-text); box-shadow: inset 3px 3px 7px var(--sh-d), inset -3px -3px 7px var(--sh-l); }
+:root[data-look="soft"] .seg button.on { color: var(--tint-text); }
+:root[data-look="soft"] .search, :root[data-look="soft"] .seg { background: var(--soft); box-shadow: inset 4px 4px 10px var(--sh-d), inset -4px -4px 10px var(--sh-l); }
+:root[data-look="soft"] .seg { padding: 4px; }
+:root[data-look="soft"] :is(.list, .rank, .viz, .tile, .xp-tile, .spin-card, .card:not(:where(.bad, .warn, .tonal, .tidal-job))), :root[data-look="soft"] .grid.list .rec {
+  background: var(--soft); color: var(--md-on-surface); box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
+:root[data-look="soft"] :is(.dig-card, .card.tonal, .card.warn) { box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
+:root[data-look="soft"] .rec .cover { box-shadow: 6px 6px 14px var(--sh-d), -6px -6px 14px var(--sh-l); }
+:root[data-look="soft"] .btn.filled { box-shadow: 5px 5px 14px var(--sh-d), -4px -4px 10px var(--sh-l); }
+:root[data-look="soft"] .navbar { background: var(--soft); box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l); }
+:root[data-look="soft"] .bottom-fade { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--soft) 80%, transparent) 55%, var(--soft)); }
+:root[data-look="soft"] .appbar.scrolled { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 90%, transparent), color-mix(in srgb, var(--soft) 72%, transparent)); }
+:root[data-look="soft"] .appbar.scrolled::after { background: linear-gradient(color-mix(in srgb, var(--soft) 72%, transparent), transparent); }
+
+/* Lists and cards inside a card stay flat. */
+:root[data-look] :is(.viz, .card, .tile) :is(.list, .rank, .card) { background: none; box-shadow: none; }

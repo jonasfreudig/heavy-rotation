@@ -301,7 +301,7 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .slide .dots2 em { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; font-style: normal; }
 .slide .dots2 .avg em { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); white-space: nowrap; }
 
-/* ---- pages over their cover: the picture blurred behind everything, cards see-through ---- */
+/* ---- pages over their cover: the picture blurred behind everything (cards and chips: looks.css) ---- */
 .page > .backdrop { display: none; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .page.has-backdrop > .backdrop { display: block; }
 .page > .backdrop canvas { position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; opacity: 0; transition: opacity .45s; }
@@ -314,14 +314,8 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .page.has-backdrop > .appbar.scrolled { background: color-mix(in srgb, var(--md-surface) 72%, transparent); }
 .page.has-backdrop > .appbar.scrolled::after { background: linear-gradient(color-mix(in srgb, var(--md-surface) 72%, transparent), transparent); }
 .page.has-backdrop .page-hero .glow { display: none; }
-.page.has-backdrop .viz, .page.has-backdrop .tile, .page.has-backdrop .card, .page.has-backdrop .list, .page.has-backdrop .dig-card {
-  background: color-mix(in srgb, var(--md-surface-container) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
-.page.has-backdrop .rank .r { background: color-mix(in srgb, var(--md-surface-container-high) 42%, transparent); }
-.page.has-backdrop .viz .rank .r { background: color-mix(in srgb, var(--md-surface-container-highest) 28%, transparent); }
-.page.has-backdrop .chip:not(.on) { background: color-mix(in srgb, var(--md-surface-container-high) 50%, transparent); }
 .page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .flip-hint, .page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta, .page.has-backdrop .hint { text-shadow: 0 0 10px var(--md-surface), 0 0 3px var(--md-surface); }
 .page.has-backdrop .hero .meta, .page.has-backdrop .flip-hint, .page.has-backdrop .page-hero .meta { color: var(--md-on-surface); }
-.page.has-backdrop .viz, .page.has-backdrop .tile, .page.has-backdrop .card, .page.has-backdrop .list, .page.has-backdrop .dig-card { background: color-mix(in srgb, var(--md-surface-container) 72%, transparent); }
 
 /* ---- bars: a top bar that fades into the page and steps aside, a floating bottom bar ---- */
 .appbar { background: transparent; transition: transform .28s cubic-bezier(.2, .7, .2, 1), background-color .2s; }
