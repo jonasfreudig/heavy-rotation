@@ -150,7 +150,7 @@ class BackupTest {
     }
 
     @Test
-    fun onlyRecordShelfBackups() {
+    fun onlyThisAppsBackups() {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { z ->
             z.putNextEntry(ZipEntry("photo.jpg"))
@@ -162,7 +162,7 @@ class BackupTest {
             Backup.read(ByteArrayInputStream(out.toByteArray()), tmp.newFolder("x"), db)
             fail("not a backup")
         } catch (e: IOException) {
-            assertTrue(e.message!!.contains("isn't a Record Shelf backup"))
+            assertTrue(e.message!!.contains("isn't a backup of this app"))
         }
         assertEquals("a wrong file changes nothing", 1, db.count())
         val newer = ByteArrayOutputStream()

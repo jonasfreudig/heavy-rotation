@@ -426,7 +426,7 @@ class MainActivity : AppCompatActivity(), Core.Ui {
             }
             "copyText" -> {
                 val cm = getSystemService(ClipboardManager::class.java)
-                cm.setPrimaryClip(ClipData.newPlainText(msg.optString("label", "Record Shelf"), msg.optString("text")))
+                cm.setPrimaryClip(ClipData.newPlainText(msg.optString("label", "Heavy Rotation"), msg.optString("text")))
                 // Android 13+ shows its own "copied" note.
                 if (Build.VERSION.SDK_INT < 33) Core.toast("Copied")
             }

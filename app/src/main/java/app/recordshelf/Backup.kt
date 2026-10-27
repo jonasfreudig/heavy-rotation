@@ -149,7 +149,7 @@ object Backup {
             }
         } else null
         // "Record Shelf" names the backup format, whatever the app is called.
-        if (m == null || m.optString("app") != "Record Shelf") throw IOException("This isn't a Record Shelf backup.")
+        if (m == null || m.optString("app") != "Record Shelf") throw IOException("This isn't a backup of this app.")
         if (m.optInt("format") > FORMAT) throw IOException("This backup comes from a newer version of the app. Update the app first.")
         return m
     }

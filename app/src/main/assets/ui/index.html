@@ -5,7 +5,7 @@
   <!-- Only this folder's scripts run; covers and photos come from https (no inline handlers: see app.js). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: https: data: blob:; font-src 'self' file: data:; connect-src 'self' file:; object-src 'none'; base-uri 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Record Shelf</title>
+  <title>Heavy Rotation</title>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="look.css">
   <link rel="stylesheet" href="looks.css">
@@ -270,7 +270,7 @@
           <ol class="steps">
             <li>Open the TIDAL developer dashboard and log in with your TIDAL account. Accept the guidelines the first time.
               <button class="btn text small link" data-url="https://developer.tidal.com/dashboard"><svg class="i"><use href="#i-open"/></svg>Open the TIDAL dashboard</button></li>
-            <li>Create an app; any name will do, for example "Record Shelf".</li>
+            <li>Create an app; any name will do, for example "Heavy Rotation".</li>
             <li>In the app's settings, add this <b>redirect URI</b> and switch on the scope <b>playlists.write</b>:
               <span class="code-row"><code id="tdRedirect">recordshelf://tidal</code><button class="btn text small" id="tdCopy"><svg class="i"><use href="#i-copy"/></svg>Copy</button></span></li>
             <li>Copy the app's <b>Client ID</b> and <b>Client Secret</b> into these fields.</li>
@@ -334,7 +334,7 @@
         </div>
         <p class="hint" id="phHint"></p>
         <div id="phAccess" hidden>
-          <p class="body top">Android calls the permission <b>notification access</b>. Record Shelf uses it only to see what music apps are playing; it doesn't read your notifications.</p>
+          <p class="body top">Android calls the permission <b>notification access</b>. Heavy Rotation uses it only to see what music apps are playing; it doesn't read your notifications.</p>
           <button class="btn filled wide" id="phAccessBtn">Allow notification access</button>
           <p class="hint">Switch greyed out with "Restricted setting"? Open App info, tap ⋮ at the top right, choose <b>Allow restricted settings</b>, then try again.</p>
           <button class="btn text small link" id="phAppInfo"><svg class="i"><use href="#i-open"/></svg>Open App info</button>
@@ -374,7 +374,7 @@
       <p class="hint" id="bkStatus" hidden></p>
     </div>
 
-    <p class="hint about">Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL; Record Shelf isn't affiliated with any of them. Your keys and tokens stay on this phone and are left out of backups. Track lengths come from Discogs, MusicBrainz and Last.fm.<br><span id="version"></span></p>
+    <p class="hint about">Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL; Heavy Rotation isn't affiliated with any of them. Your keys and tokens stay on this phone and are left out of backups. Track lengths come from Discogs, MusicBrainz and Last.fm.<br><span id="version"></span></p>
   </div>
 </div>
 

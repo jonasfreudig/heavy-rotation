@@ -1,4 +1,4 @@
-# Record Shelf
+# Heavy Rotation
 
 An Android app for a vinyl collection catalogued on Discogs. It shows the collection as a
 cover wall and scrobbles the records you play to Last.fm, side by side, with "now playing" while a
@@ -17,7 +17,7 @@ it talks to Discogs, Last.fm, Deezer, MusicBrainz and TIDAL directly.
 
 ## Get it
 
-Download the latest `RecordShelf-x.y.apk` from the project's **Releases** page and open it on the
+Download the latest `HeavyRotation-x.y.apk` from the project's **Releases** page and open it on the
 phone (Android 8 or newer). Android asks once to allow installs from the app you opened it with.
 
 - **Play Protect** may warn about an unknown app, mostly because it isn't from the Play Store and
@@ -40,12 +40,12 @@ app only reads your collection and release data with it; revoke it there any tim
 ### 2. Last.fm: where scrobbles go
 
 Gear → **Last.fm** → **Connect Last.fm**. Your browser opens Last.fm's "connect application" page:
-tap **Yes, allow access**, then switch back to Record Shelf. It finishes on its own; if not, tap
+tap **Yes, allow access**, then switch back to Heavy Rotation. It finishes on its own; if not, tap
 **I've allowed it**.
 
 If the app asks for an API key instead (a build without the app's own key, or you chose **Use your
 own API key**): signed in to Last.fm, open <https://www.last.fm/api/account/create>, fill in an email,
-a name such as "Record Shelf" and any description, leave **Callback URL** empty, and paste the **API
+a name such as "Heavy Rotation" and any description, leave **Callback URL** empty, and paste the **API
 key** and **Shared secret** it shows.
 
 ### 3. Moving from another phone or version
@@ -63,17 +63,17 @@ shows the current track with a countdown and has **Stop** and **Flip to side B**
 ### 5. Phone scrobbling (replacing Pano Scrobbler)
 
 1. Gear → **Phone scrobbling** → **Shadow**.
-2. Tap **Allow notification access** and switch Record Shelf on. Android calls it notification
-   access because that is the only way an app may see other apps' media players; Record Shelf
+2. Tap **Allow notification access** and switch Heavy Rotation on. Android calls it notification
+   access because that is the only way an app may see other apps' media players; Heavy Rotation
    doesn't read your notifications.
    - If the switch is greyed out with **"Restricted setting"** (Android does that for apps
      installed from an APK file): open **App info** (button in the app), tap **⋮** at the top right,
      choose **Allow restricted settings**, then try again.
 3. TIDAL is switched on by default. Other apps appear in the list once they play something.
-4. Keep Pano running and listen as usual for a day or two. Record Shelf only *logs* what it would
+4. Keep Pano running and listen as usual for a day or two. Heavy Rotation only *logs* what it would
    scrobble (marked "Shadow" on the Activity tab) and sends nothing.
 5. On the Activity tab, tap **Compare with Pano**. It reads what reached Last.fm since shadow mode
-   started and shows how much Record Shelf caught, what only Pano scrobbled, what only Record Shelf
+   started and shows how much Heavy Rotation caught, what only Pano scrobbled, what only Heavy Rotation
    would have, and tracks the two named differently.
 6. When you're happy, switch **Phone scrobbling** to **On** and turn off Pano's scrobbling (or
    uninstall it). Otherwise every track is scrobbled twice; the app warns while Pano is installed.
@@ -95,7 +95,7 @@ Without TIDAL, the TIDAL buttons open TIDAL's search. Connected, they open the e
 artist, and playlists from the Explore tab go straight into your TIDAL.
 
 Gear → **TIDAL** → **Sign in to TIDAL**. TIDAL's login page opens; approve, and the browser hands
-you back to Record Shelf ("Signed in to TIDAL").
+you back to Heavy Rotation ("Signed in to TIDAL").
 
 If the app asks for a Client ID and secret instead (a build without the app's own TIDAL app, or you
 chose **Use your own TIDAL app**): open <https://developer.tidal.com/dashboard>, log in, accept the
@@ -103,7 +103,7 @@ developer guidelines, create an app (any name), add the **redirect URI** `record
 (Settings → TIDAL has a Copy button) and the scope **playlists.write**, then copy its **Client ID**
 and **Client Secret** into the app and sign in.
 
-Then a playlist page has **Create in TIDAL**: Record Shelf finds each song in TIDAL's catalog,
+Then a playlist page has **Create in TIDAL**: Heavy Rotation finds each song in TIDAL's catalog,
 creates an unlisted playlist in your library and adds them; songs TIDAL doesn't have are listed.
 Found songs are remembered on the phone, so the next time is quicker.
 
@@ -373,8 +373,8 @@ home; sheets rise from the bottom and can be dragged down; search grows out of i
 Android's back swipe shows where it goes: from Android 14 the page (or sheet, or search) follows
 your finger and closes on release, or springs back if you change your mind; on the shelf, with
 nothing left to close, back is Android's own, with its preview of leaving the app where the phone
-shows one (Android 15 does by default). The app icon is a walnut box shelf of records, some standing and the
-rest leaning back onto them; on Android 13 and later it can follow your wallpaper colors (themed icons).
+shows one (Android 15 does by default). The app icon is a record whose groove is one spiral in the app's
+colors, turning in to the label; on Android 13 and later it can follow your wallpaper colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over (the record rolls back into the sleeve first, and rolls out again after you turn it back): the back has the tracklist by side, the label
 and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:
@@ -449,7 +449,7 @@ Needs JDK 17 and the Android SDK (platform 34).
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
-The debug APK (`app/build/outputs/apk/debug/app-debug.apk`) installs as **Record Shelf (debug)**
+The debug APK (`app/build/outputs/apk/debug/app-debug.apk`) installs as **Heavy Rotation (debug)**
 (`app.recordshelf.debug`), next to a release build.
 
 ### The app's own keys (for builds you share)
@@ -540,4 +540,4 @@ documented format.
 
 MIT, see `LICENSE`. The fonts Fraunces and DM Mono are under the SIL Open Font License
 (`app/src/main/assets/ui/fonts`). Data from Discogs, Last.fm, Deezer, MusicBrainz and TIDAL;
-Record Shelf isn't affiliated with any of them.
+Heavy Rotation isn't affiliated with any of them.

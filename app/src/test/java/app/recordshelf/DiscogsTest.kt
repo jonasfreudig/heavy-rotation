@@ -42,7 +42,7 @@ class DiscogsTest {
         val r = server.requests.single()
         assertEquals("/oauth/identity", r.path)
         assertEquals("Discogs token=tok-abc", r.headers["authorization"])
-        assertTrue(r.headers["user-agent"]!!.startsWith("RecordShelf/"))
+        assertTrue(r.headers["user-agent"]!!.startsWith("HeavyRotation/"))
     }
 
     @Test
@@ -241,7 +241,7 @@ class DiscogsTest {
         assertEquals(191, tracks[3].durSec)
         assertEquals("ONE 1", tracks[0].number)
         assertNull(mb.releaseForDiscogs(1))
-        assertTrue(server.requests.all { it.headers["user-agent"]!!.startsWith("RecordShelf/") })
+        assertTrue(server.requests.all { it.headers["user-agent"]!!.startsWith("HeavyRotation/") })
     }
 
     @Test

@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * UI for Record Shelf (Material You). Inside the app, window.ShelfNative is the bridge to the
+ * UI for Heavy Rotation (Material You). Inside the app, window.ShelfNative is the bridge to the
  * Kotlin Core; opened in a normal browser, mock.js stands in for it so the interface can be
  * previewed without a phone or accounts (add ?mock=new or ?mock=spin to the URL for other states).
  *
@@ -1555,12 +1555,12 @@ function renderPhoneCard() {
   if (!p.mode || p.mode === 'off') {
     if (!dismissed('phoneIntro')) {
       h = `<div class="card tonal"><div class="card-title">${icon('phone')}Scrobble this phone too</div>
-        <p>Record Shelf can take over from Pano Scrobbler. Start with shadow mode: it only logs what it would scrobble, so you can compare it with Pano first.</p>
+        <p>Heavy Rotation can take over from Pano Scrobbler. Start with shadow mode: it only logs what it would scrobble, so you can compare it with Pano first.</p>
         <div class="btn-row"><button class="btn filled" data-go="phSection">Set up</button><button class="btn tonal" id="phIntroNo">Not now</button></div></div>`;
     }
   } else if (!p.access) {
     h = `<div class="card warn"><div class="card-title">${icon('phone')}Phone scrobbling needs access</div>
-      <p>Allow notification access so Record Shelf can see what music apps play. Nothing is scrobbled from the phone until then.</p>
+      <p>Allow notification access so Heavy Rotation can see what music apps play. Nothing is scrobbled from the phone until then.</p>
       <div class="btn-row"><button class="btn tonal" id="phAccessBtn2">Allow access</button></div></div>`;
   } else {
     const n = p.now;
@@ -1575,7 +1575,7 @@ function renderPhoneCard() {
     }
     if (p.mode === 'shadow') {
       const sum = CMP ? `${caughtPct(CMP)}% of what Pano sent to Last.fm was caught here; ${plural(CMP.onlyTheirs.length, 'track')} missed. Checked ${ago(CMP.at)}.`
-        : 'After a day or two of listening, compare what Record Shelf logged with what Pano sent to Last.fm.';
+        : 'After a day or two of listening, compare what Heavy Rotation logged with what Pano sent to Last.fm.';
       h += `<div class="card"><div class="card-title">${icon('compare')}Compare with Pano</div><p>${esc(sum)}</p>
         <div class="btn-row"><button class="btn tonal" id="cmpOpen">${CMP ? 'See comparison' : 'Compare now'}</button></div></div>`;
     }
@@ -1617,7 +1617,7 @@ function renderCompare() {
   if (p.comparing) h += `<div class="lin inline indet"><i></i></div><p class="hint">Reading your scrobbles from Last.fm…</p>`;
   if (p.compareError) h += `<div class="card bad"><p>${esc(p.compareError)}</p></div>`;
   if (!c) {
-    h += `<div class="empty">${icon('compare', 'i big')}<p>Nothing compared yet.<br>This reads what reached Last.fm while shadow mode was on and puts it next to what Record Shelf logged.</p></div>`;
+    h += `<div class="empty">${icon('compare', 'i big')}<p>Nothing compared yet.<br>This reads what reached Last.fm while shadow mode was on and puts it next to what Heavy Rotation logged.</p></div>`;
   } else {
     const theirs = c.matched + c.renamed.length + c.onlyTheirs.length;
     const pct = caughtPct(c);
@@ -1637,7 +1637,7 @@ function renderCompare() {
     const row = (x, sub) => `<div class="cmp-row"><span class="t">${esc(dayLabel(x.ts * 1000))}<br>${esc(fmtTime(x.ts * 1000))}</span><span class="w"><div>${esc(x.artist)} — ${esc(x.title)}</div>${sub ? `<small>${esc(sub)}</small>` : ''}</span></div>`;
     if (c.onlyTheirs.length) {
       h += `<div class="section-head"><h2>Only on Last.fm</h2></div>
-        <p class="hint">Pano (or another scrobbler) sent these; Record Shelf didn't log them. Was the app switched on here, or the track skipped early?</p>
+        <p class="hint">Pano (or another scrobbler) sent these; Heavy Rotation didn't log them. Was the app switched on here, or the track skipped early?</p>
         <div class="list">${c.onlyTheirs.slice().sort((a, b) => b.ts - a.ts).map((x) => row(x)).join('')}</div>`;
     }
     if (c.renamed.length) {
@@ -1647,7 +1647,7 @@ function renderCompare() {
     }
     if (c.onlyOurs.length) {
       h += `<div class="section-head"><h2>Only here</h2></div>
-        <p class="hint">Record Shelf would have scrobbled these, but Last.fm has nothing at that time.</p>
+        <p class="hint">Heavy Rotation would have scrobbled these, but Last.fm has nothing at that time.</p>
         <div class="list">${c.onlyOurs.slice().sort((a, b) => b.ts - a.ts).map((x) => row(x)).join('')}</div>`;
     }
   }
@@ -1664,7 +1664,7 @@ function setPhoneMode(v) {
     return;
   }
   send({ t: 'setPhoneMode', mode: v });
-  if (v !== 'off' && !p.access) toast('Now allow notification access for Record Shelf');
+  if (v !== 'off' && !p.access) toast('Now allow notification access for Heavy Rotation');
 }
 
 function renderPhoneSettings() {
@@ -1672,7 +1672,7 @@ function renderPhoneSettings() {
   const mode = p.mode || 'off';
   $$('#phMode button').forEach((b) => b.classList.toggle('on', b.dataset.v === mode));
   let st;
-  if (mode === 'off') st = statusLine('', 'Off', 'Nothing on this phone is scrobbled by Record Shelf');
+  if (mode === 'off') st = statusLine('', 'Off', 'Nothing on this phone is scrobbled by Heavy Rotation');
   else if (!p.access) st = statusLine('bad', 'Needs notification access', '');
   else if (!p.connected) st = statusLine('busy', 'Starting…', 'Android is connecting the listener');
   else st = statusLine('ok', mode === 'shadow' ? 'Shadow mode: logging only' : 'Scrobbling this phone', p.now ? `${p.now.app}: ${p.now.title}` : 'Waiting for music');
@@ -2296,7 +2296,7 @@ function applyAmbient() {
   const e = sp || now ? null : (ACT || []).slice().sort((a, b) => b.ts - a.ts)[0];
   const src = sp ? { cover: sp.cover, seed: sp.album + sp.artist }
     : now ? { cover: now.cover || '', seed: (now.album || now.title) + now.artist }
-      : e ? { cover: e.cover, seed: (e.album || e.track) + e.artist } : { cover: '', seed: 'Record Shelf' };
+      : e ? { cover: e.cover, seed: (e.album || e.track) + e.artist } : { cover: '', seed: 'Heavy Rotation' };
   ambientUrl = src.cover || '';
   const c = ambientUrl ? TINTS[ambientUrl] : null;
   if (ambientUrl && !c) send({ t: 'palette', url: ambientUrl });
@@ -3845,7 +3845,7 @@ function renderPlaylist() {
     if (e.target.closest('#plTidal')) {
       TIDALJOB = { state: 'finding', done: 0, total: p.tracks.length, found: 0, name: p.name };
       $('#plTidalBlock').innerHTML = tidalBlock();
-      send({ t: 'tidalPlaylist', name: p.name, note: `${p.note}. Made with Record Shelf.`, tracks: p.tracks.map((t) => ({ artist: t.artist, title: t.title })) });
+      send({ t: 'tidalPlaylist', name: p.name, note: `${p.note}. Made with Heavy Rotation.`, tracks: p.tracks.map((t) => ({ artist: t.artist, title: t.title })) });
     }
   };
   $('#plCopy').onclick = () => {
@@ -4466,7 +4466,7 @@ const dly = (s) => `style="--d:${s}s"`;
 let storyTintUrl = '';
 function applyStoryTint(s) {
   const x = s || STORY;
-  const seed = x ? periodName(x.range) : 'Record Shelf';
+  const seed = x ? periodName(x.range) : 'Heavy Rotation';
   const al = x ? (x.albums || [])[0] : null, ar = x ? (x.artists || [])[0] : null;
   storyTintUrl = (al && al.cover) || (ar && ar.cover) || '';
   const c = storyTintUrl ? TINTS[storyTintUrl] : null;
@@ -4523,7 +4523,7 @@ function buildSlides(s) {
   const album = (s.albums || [])[0];
   const disc = (cover, hueKey) => `<div class="spinner-disc bg" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${cssUrl(cover)}')` : ''}"></i></div>`;
   // Intro: a record rising from the bottom of the screen
-  out.push({ cls: 'deep intro', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">Record Shelf · ${s.range.kind === 'all' ? 'your whole history' : `your ${per}`}</div>
+  out.push({ cls: 'deep intro', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">Heavy Rotation · ${s.range.kind === 'all' ? 'your whole history' : `your ${per}`}</div>
     <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(name)}</div><p class="p in" ${dly(0.35)}>on record.</p>
     <p class="hint bg in" ${dly(0.9)}>Tap right for next, left for back, hold to pause</p>` });
   // Volume: one huge number and a ticker running across
@@ -4640,7 +4640,7 @@ function buildSlides(s) {
   const P = ps && PERSONAS[ps.id];
   const side = (list, letter, f) => list.map((x, i) => `<p><span>${letter}${i + 1}</span><b>${esc(f(x))}</b><em>${num(x.plays)}</em></p>`).join('');
   out.push({ cls: 'paper poster', dur: 14, html: `<div class="sheet in">
-      <div class="ph"><span>Record Shelf</span><span>RS–${esc(String(s.range.id).toUpperCase())}</span></div>
+      <div class="ph"><span>Heavy Rotation</span><span>HR–${esc(String(s.range.id).toUpperCase())}</span></div>
       <div class="ptop"><div><div class="pt" data-fit="2">${esc(name)}</div><div class="ps">on record · ${num(sm.scrobbles)} plays · ≈${num(sm.hours)} h</div></div>${coverHtml(album && album.cover, (album && album.title) || name, '', 'stamp')}</div>
       <h6>Side A · Artists</h6>${side(s.artists || [], 'A', (x) => x.name)}
       <h6>Side B · Songs</h6>${side(s.tracks || [], 'B', (x) => x.title)}
@@ -4736,7 +4736,7 @@ function renderSettings() {
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
   try { $('#tiltSw').checked = localStorage.getItem('tilt') !== 'off'; } catch (_) { $('#tiltSw').checked = true; }
-  $('#version').textContent = ST.version ? `Record Shelf ${ST.version}` : '';
+  $('#version').textContent = ST.version ? `Heavy Rotation ${ST.version}` : '';
   renderPhoneSettings();
 }
 
@@ -5036,7 +5036,7 @@ function build() {
   $('#tdLogin').onclick = () => send({ t: 'tidalLogin' });
   $('#tdSignOut').onclick = () => send({ t: 'tidalSignOut' });
   $('#tdChange').onclick = () => { showTidalForm = true; renderTidalSettings(); };
-  $('#tdForget').onclick = () => confirmSheet('Disconnect TIDAL?', 'Record Shelf forgets your TIDAL app and login. Playlists already in TIDAL stay there.', 'Disconnect', () => send({ t: 'tidalForget' }));
+  $('#tdForget').onclick = () => confirmSheet('Disconnect TIDAL?', 'Heavy Rotation forgets your TIDAL app and login. Playlists already in TIDAL stay there.', 'Disconnect', () => send({ t: 'tidalForget' }));
   $('#tdCopy').onclick = () => {
     const text = (ST.tidal || {}).redirect || 'recordshelf://tidal';
     if (Native) send({ t: 'copyText', text, label: 'Redirect URI' });
@@ -5101,7 +5101,7 @@ function build() {
   };
   $('#bkImport').onclick = () => {
     openSheet(`<div class="sheet-title">Restore a backup?</div>
-      <p class="body">The backup replaces this app's history, hide list, activity, collection and settings. Record Shelf starts again afterwards; then connect Last.fm (and TIDAL) again.</p>
+      <p class="body">The backup replaces this app's history, hide list, activity, collection and settings. Heavy Rotation starts again afterwards; then connect Last.fm (and TIDAL) again.</p>
       <div class="btn-row"><button class="btn filled" id="bkGo">Choose the backup file</button></div>`);
     $('#sheetContent').onclick = (e) => { if (e.target.closest('#bkGo')) { closeSheet(); send({ t: 'backupImport' }); } };
   };

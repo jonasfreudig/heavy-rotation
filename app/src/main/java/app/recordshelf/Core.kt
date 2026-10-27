@@ -569,7 +569,7 @@ object Core {
             }
             "backupExport" -> {
                 backupUi = msg.optJSONObject("ui") ?: JSONObject()
-                ui?.pickBackup(true, "record-shelf-backup-${java.time.LocalDate.now()}.zip")
+                ui?.pickBackup(true, "heavy-rotation-backup-${java.time.LocalDate.now()}.zip")
             }
             "backupImport" -> ui?.pickBackup(false, "")
             "atlas" -> statsExec.execute {

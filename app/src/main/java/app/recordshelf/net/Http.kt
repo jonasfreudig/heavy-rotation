@@ -14,7 +14,7 @@ class HttpResponse(val code: Int, val body: String, private val headers: Map<Str
  * bodies of the APIs); only network failures throw (IOException).
  */
 object Http {
-    val USER_AGENT = "RecordShelf/${app.recordshelf.BuildConfig.VERSION_NAME} (open-source Android app)"
+    val USER_AGENT = "HeavyRotation/${app.recordshelf.BuildConfig.VERSION_NAME} (open-source Android app)"
 
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
