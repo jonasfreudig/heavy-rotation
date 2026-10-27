@@ -125,9 +125,21 @@ function holoCover(url, title, artist, opts = {}) {
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const sheen = owned ? '<i class="sheen"></i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
-  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''} ${opts.back && turnHintDue() ? 'nudge' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
     <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<span class="fx">${sheen}<i class="glare"></i></span></div>${back}</div></div>`;
 }
+
+/*
+ * Until a sleeve has been turned once, a turnable one starts to turn on its own when its page
+ * opens (the first three times): that it turns over needs no words, and nothing on the cover.
+ */
+function turnHintDue() {
+  try { return Number(localStorage.getItem('turnHint') || 0) < 3; } catch (_) { return false; }
+}
+document.addEventListener('animationstart', (e) => {
+  if (e.animationName !== 'sleeveNudge') return;
+  try { localStorage.setItem('turnHint', String(Number(localStorage.getItem('turnHint') || 0) + 1)); } catch (_) { /* preview without storage */ }
+});
 
 /**
  * Moving covers: the phone's tilt (from MainActivity, ~30 per second, only while a big
@@ -300,6 +312,7 @@ window.onState = (s) => {
   const hadSpin = ST.spin ? ST.spin.id : null;
   ST = s;
   renderState();
+  askBadges();
   applyAmbient();
   vsStateTick();
   // The spin just asked for has started: from nothing, or in place of the record that was spinning.
@@ -317,6 +330,7 @@ window.onCollection = (c) => {
   }));
   renderShelf();
   if (isOpen('recordPage')) renderRecord();
+  askBadges();
 };
 window.onActivity = (a) => { ACT = a || []; renderActivity(); applyAmbient(); };
 window.onRelease = (r) => {
@@ -473,8 +487,9 @@ function openPage(id, how) {
   const bar = p.querySelector(':scope > .appbar');
   if (bar) bar.classList.remove('away', 'back');
   // In from the right; a page a cover flies into only fades in, so the cover has a still place to land.
+  // Held clear for two frames while the phone draws it: shown at once, it was a blank page for those.
   p.animate(how === 'fly' ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(32px)' }, { opacity: 1, transform: 'none' }],
-    { duration: how === 'fly' ? 220 : 300, easing: EASE_OUT });
+    { duration: how === 'fly' ? 220 : 300, delay: 34, fill: 'backwards', easing: EASE_OUT });
   Tilt.refresh();
   syncBack();
 }
@@ -581,7 +596,6 @@ window.onBackStart = () => {
   // Layers of their own from the start, and the corners rounded once: redrawing them on every
   // frame of the swipe is what made it stutter.
   backFx.el.style.willChange = 'transform';
-  if (backFx.kind !== 'sheet') backFx.el.style.borderRadius = '28px';
   if (!backFx.under) return;
   // The shade sits right under the page: same layer, just before it.
   const z = getComputedStyle(backFx.el).zIndex;
@@ -983,6 +997,58 @@ function settle(el) {
   if (el && el.offsetParent) el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
 }
 let shelfLook = '';
+/*
+ * Badges: one small drawn mark per record on the shelf (worked out from the whole history), and
+ * spelled out on the record's page. [name, the icon's strokes, what it says on the page].
+ */
+let BADGES = {};
+let badgesAsked = '';
+const BADGE = {
+  // A record turning, an arrow round it.
+  heavy: ['Heavy rotation', '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 9.2a8 8 0 1 0 .4 4.6"/><path d="M20.6 5.6l-1.1 3.7-3.7-1"/>', (b) => `${plural(b.n, 'play')} in two weeks`],
+  // A record, just in: a spark at its edge.
+  new: ['New arrival', '<circle cx="10.5" cy="13.5" r="7"/><circle cx="10.5" cy="13.5" r="2"/><path d="M19 3v4.4M16.8 5.2h4.4"/>', (b) => `added ${daysAgo(b.at)}`],
+  // A record gone faint, a clock's hands in it: time since.
+  lost: ['Lost favorite', '<circle cx="12" cy="12" r="8.6" stroke-dasharray="2.6 2.4"/><path d="M12 7.6V12l3 2"/>', (b) => `not played since ${monthYear(b.at)}`],
+  // The grooves of the records you play most.
+  worn: ['Worn in', '<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="5.6"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>', (b) => (b.rank === 1 ? 'your most played record' : `your #${b.rank} most played record`)],
+  // A sleeve still in its shrink-wrap: the wrap's shine across a corner.
+  sealed: ['Still sealed', '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M13.5 4.6l5.9 5.9M10.2 4.6l9.2 9.2"/><circle cx="8.5" cy="15.5" r="1.6"/>', (b) => (b.at ? `on your shelf since ${monthYear(b.at)}, never played` : 'never played')],
+};
+const daysAgo = (ms) => { const d = Math.round((Date.now() - ms) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
+const badgeMark = (k) => `<i class="rbadge b-${k}"><svg viewBox="0 0 24 24">${BADGE[k][1]}</svg></i>`;
+function badgeChip(id) {
+  const b = BADGES[id];
+  return b && BADGE[b.k] ? badgeMark(b.k).replace('<i ', `<i title="${BADGE[b.k][0]}" `) : '';
+}
+function badgeLine(id) {
+  const b = id && BADGES[id];
+  if (!b || !BADGE[b.k]) return '';
+  const [name, , say] = BADGE[b.k];
+  return `<div class="rbadge-line"><span class="rbadge-pill b-${b.k}">${badgeMark(b.k)}<b>${name}</b> · ${esc(say(b))}</span></div>`;
+}
+/** Asks again when the history or the shelf changed (and on a new day: two weeks move on). */
+function askBadges() {
+  const hs = ST.history || {};
+  const key = `${hs.count || 0}|${COLL.length}|${new Date().toDateString()}`;
+  if (!hs.done || !COLL.length || key === badgesAsked) return;
+  badgesAsked = key;
+  send({ t: 'badges' });
+}
+window.onBadges = (b) => {
+  BADGES = b || {};
+  // In place: the shelf's covers stay as they are.
+  $$('#grid .rec').forEach((r) => {
+    const old = r.querySelector('.rbadge');
+    const html = badgeChip(+r.dataset.id);
+    if (old && old.outerHTML === html) return;
+    if (old) old.remove();
+    if (html) r.insertAdjacentHTML('beforeend', html);
+  });
+  if (isOpen('recordPage')) renderRecord();
+  if (isOpen('albumPage')) renderAlbum();
+};
+
 function renderShelf() {
   const srt = SORTS.find((x) => x.id === shelf.sort) || SORTS[0];
   $('#sortBtn').innerHTML = `${esc(srt.labels[shelf.rev ? 1 : 0])}${icon('drop')}`;
@@ -1005,13 +1071,13 @@ function renderShelf() {
     if (shelf.view === 'list') {
       const meta = [r.year || '', (r.label || '').split(' · ')[0], (r.format || '').split(',')[0]].filter(Boolean).join(' · ');
       const styles = (r.styles || []).slice(0, 2).map((x) => `<span class="mini-chip">${esc(x)}</span>`).join('');
-      return `<button class="rec" data-id="${r.id}">${cover}<span class="lmain"><b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${esc(meta)}</small>${styles ? `<span class="lchips">${styles}</span>` : ''}</span>
+      return `<button class="rec" data-id="${r.id}">${cover}${badgeChip(r.id)}<span class="lmain"><b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${esc(meta)}</small>${styles ? `<span class="lchips">${styles}</span>` : ''}</span>
         <span class="lplays"><b>${r.plays ? compact(r.plays) : '–'}</b><small>${r.plays === 1 ? 'play' : 'plays'}</small></span></button>`;
     }
     let meta = '';
     if (shelf.sort === 'plays' || shelf.view === 'big') meta = `<small class="meta">${[shelf.view === 'big' && r.year ? r.year : '', r.plays ? plural(r.plays, 'play') : 'no plays yet'].filter(Boolean).join(' · ')}</small>`;
     else if (shelf.sort === 'year' && r.year) meta = `<small class="meta">${r.year}</small>`;
-    return `<button class="rec" data-id="${r.id}">${cover}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
+    return `<button class="rec" data-id="${r.id}">${cover}${badgeChip(r.id)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
   }).join('');
   renderShelfEmpty();
   // Discogs asks for this under its data, linked to where it lives on discogs.com.
@@ -1282,10 +1348,10 @@ function renderRecord() {
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero">
       <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, rel: recordId, key: holoKey })}</div>
-      <span class="flip-hint">Tap the sleeve to turn it over</span>
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
+      ${badgeLine(recordId)}
       <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')}${rel && rel.tracks.length && plays >= rel.tracks.length ? ` · ≈${Math.round(plays / rel.tracks.length)}× through` : ' on Last.fm'}${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
       ${listenRow('albums', artist, title)}
     </div>
@@ -1940,31 +2006,91 @@ function timelineViz(t) {
     <div class="readout" id="ro-tl">Most: <b>${esc(periodLabel(t.starts[best], t.unit))}</b>, ${plural(counts[best], 'play')}</div></div>`;
 }
 
-/** The river: plays per bin, the eight top artists in their inks stacked on everyone else. */
+/** A smooth line through [pts] ([x, y] pairs): Catmull-Rom, as cubic Béziers (no "M"). */
+function smoothThrough(pts) {
+  let d = '';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    d += ` C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)},${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)},${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+/** [a] softened over its neighbors (a Gaussian [s] bins wide). */
+function soften(a, s) {
+  if (s <= 0) return a.slice();
+  return a.map((v, i) => {
+    let t = 0, n = 0;
+    for (let j = i - 3; j <= i + 3; j++) {
+      if (j < 0 || j >= a.length) continue;
+      const k = Math.exp(-((j - i) ** 2) / (2 * s * s));
+      t += a[j] * k;
+      n += k;
+    }
+    return t / n;
+  });
+}
+/**
+ * The river: plays per bin flowing around a middle line, everyone else in grey through the
+ * middle and the top artists (in their record colors) above and below it, in the order they
+ * peaked, each named where it is widest. A long break shows as a pinch, with its length.
+ */
 function riverViz(rv) {
   const B = (rv && rv.starts) ? rv.starts.length : 0;
   if (B < 2 || !rv.artists.length) return '';
-  const W = 340, H = 150;
-  const totals = Array.from({ length: B }, (_, b) => rv.series.reduce((a, s) => a + s[b], 0) + rv.other[b]);
-  const max = Math.max(1, ...totals);
+  const W = 340, H = 190, mid = H / 2;
+  const sig = B > 24 ? 1.1 : B > 10 ? 0.6 : 0;
+  const S = rv.series.map((s, k) => ({ v: soften(s, sig), color: INKS[k], name: rv.artists[k] }));
+  const O = soften(rv.other, sig);
+  const totals = Array.from({ length: B }, (_, b) => O[b] + S.reduce((a, s) => a + s.v[b], 0));
+  const scale = (H - 16) / Math.max(1, ...totals);
   const x = (b) => (b / (B - 1)) * W;
-  const y = (v) => H - (v / max) * (H - 4);
-  const layers = rv.series.map((s, k) => ({ s, color: INKS[k] })).concat([{ s: rv.other, color: 'var(--md-outline-variant)' }]);
-  let base = new Array(B).fill(0);
-  let paths = '';
-  for (const L of layers) {
-    const top = base.map((v, b) => v + L.s[b]);
-    const up = top.map((v, b) => `${x(b).toFixed(1)},${y(v).toFixed(1)}`).join('L');
-    const down = base.map((v, b) => `${x(b).toFixed(1)},${y(v).toFixed(1)}`).reverse().join('L');
-    paths += `<path d="M${up}L${down}Z" fill="${L.color}"/>`;
-    base = top;
+  // Inside out: by when each artist peaked, alternately above and below the grey.
+  const peak = (s) => s.v.indexOf(Math.max(...s.v));
+  const byPeak = [...S].sort((p, q) => peak(p) - peak(q));
+  const above = byPeak.filter((_, i) => i % 2 === 0), below = byPeak.filter((_, i) => i % 2 === 1);
+  const stack = [...below.reverse(), { v: O, color: 'var(--md-outline-variant)', grey: true }, ...above];
+  let lo = totals.map((t) => mid - (t * scale) / 2);
+  let paths = '', labels = '';
+  const placed = [];
+  for (const L of stack) {
+    const hi = lo.map((y, b) => y + L.v[b] * scale);
+    const top = hi.map((y, b) => [x(b), y]), bot = lo.map((y, b) => [x(b), y]).reverse();
+    paths += `<path d="M${top[0][0].toFixed(1)},${top[0][1].toFixed(1)}${smoothThrough(top)} L${bot[0][0].toFixed(1)},${bot[0][1].toFixed(1)}${smoothThrough(bot)}Z" fill="${L.color}"/>`;
+    if (!L.grey) {
+      const b = L.v.indexOf(Math.max(...L.v)), thick = L.v[b] * scale;
+      if (thick > 8) {
+        const cx = x(b), cy = (lo[b] + hi[b]) / 2, lw = L.name.length * 5.4 + 4;
+        const anchor = cx < lw / 2 + 2 ? 'start' : cx > W - lw / 2 - 2 ? 'end' : 'middle';
+        const bx = anchor === 'start' ? cx : anchor === 'end' ? cx - lw : cx - lw / 2;
+        // Only where it doesn't run into another name.
+        if (!placed.some((p) => bx < p[0] + p[2] && p[0] < bx + lw && Math.abs(p[1] - cy) < 12)) {
+          placed.push([bx, cy, lw]);
+          labels += `<text class="rv-name" x="${cx.toFixed(1)}" y="${(cy + 3.5).toFixed(1)}" text-anchor="${anchor}">${esc(L.name)}</text>`;
+        }
+      }
+    }
+    lo = hi;
+  }
+  // Breaks: three bins or more without a play, with how long they were.
+  const raw = Array.from({ length: B }, (_, b) => rv.other[b] + rv.series.reduce((a, s) => a + s[b], 0));
+  let gaps = '';
+  for (let b = 0; b < B;) {
+    if (raw[b] > 0) { b++; continue; }
+    let e = b;
+    while (e + 1 < B && raw[e + 1] === 0) e++;
+    if (e - b >= 2 && b > 0 && e < B - 1) {
+      const days = Math.round((rv.starts[e + 1] - rv.starts[b]) / 864e5);
+      gaps += `<text class="rv-gap" x="${x((b + e) / 2).toFixed(1)}" y="${mid - 8}" text-anchor="middle">${days} days off</text>`;
+    }
+    b = e + 1;
   }
   const cw = W / (B - 1);
   const hits = rv.starts.map((s, b) => `<rect class="hit" data-rv="${b}" x="${Math.max(0, x(b) - cw / 2)}" y="0" width="${cw}" height="${H}"/>`).join('');
   const legend = rv.artists.map((n, k) => `<button class="ink" data-artist="${esc(n)}"><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span></button>`).join('')
     + '<span class="ink"><i class="sw" style="background:var(--md-outline-variant)"></i><span>Everyone else</span></span>';
-  return `<div class="viz"><h2>The river</h2><span class="sub">Plays per ${rv.unit}: your top artists on top of everyone else</span>
-    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}<line class="cursor" id="rvCursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
+  const topN = rv.series.reduce((a, s) => a + s.reduce((p, q) => p + q, 0), 0), all = topN + rv.other.reduce((p, q) => p + q, 0);
+  return `<div class="viz"><h2>The river</h2><span class="sub">Plays per ${rv.unit}, flowing around everyone else (grey). Your top ${rv.artists.length} are <b>${Math.round((topN / Math.max(1, all)) * 100)}%</b> of it.</span>
+    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}<line class="cursor" id="rvCursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
       <text x="0" y="${H + 12}">${esc(periodLabel(rv.starts[0], rv.unit, true))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(periodLabel(rv.starts[B - 1], rv.unit, true))}</text></svg></div>
     <div class="readout" id="ro-rv">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
 }
@@ -1987,9 +2113,66 @@ function newArtistsViz(na) {
   const step = Math.max(1, Math.ceil(b.length / 4));
   const labels = b.filter((x, i) => i % step === 0).map((x) => periodLabel(x.start, na.unit, true));
   const last = b[b.length - 1];
-  return `<div class="viz"><h2>New artists</h2><span class="sub">Artists you heard for the first time, per ${na.unit}</span>
+  const found = na.found || [];
+  const head = na.count ? `<div class="na-big"><b>${num(na.count)}</b><span>${na.count === 1 ? 'new artist' : 'new artists'}${na.kept ? `, <b>${num(na.kept)}</b> you kept playing` : ''}</span></div>` : '';
+  const finds = found.slice(0, 8);
+  const row = finds.length ? `<h3 class="na-h">Your best finds</h3>
+    <div class="na-row">${finds.map((f) => `<button class="na-find" data-artist="${esc(f.name)}">${artistFace(f)}<b>${esc(f.name)}</b><small>${esc(monthYear(f.first))}</small><small>${plural(f.plays, 'play')}</small></button>`).join('')}</div>
+    ${found.length > 1 ? `<button class="btn tonal wide" data-newlist>All ${num(na.count)} new artists</button>` : ''}` : '';
+  return `<div class="viz"><h2>New artists</h2><span class="sub">Artists you heard for the first time, per ${na.unit}</span>${head}
     <div class="cols"><span class="ymax">${num(max)}</span>${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-    <div class="readout" id="ro-na">${newArtistsText(last, na.unit)}</div></div>`;
+    <div class="readout" id="ro-na">${newArtistsText(last, na.unit)}</div>${row}</div>`;
+}
+/** An artist's round photo, or their initial in their hue while there is none. */
+function artistFace(f) {
+  return f.photo ? `<span class="na-face"><img src="${esc(f.photo)}" alt=""></span>`
+    : `<span class="na-face none" style="--h:${hue(f.name)}">${esc((f.name || '?').trim().charAt(0).toUpperCase())}</span>`;
+}
+/** Every new artist of the period, most played since first: when you found them and what you played right before. */
+function openNewArtists() {
+  const na = STATS && STATS.newArtists;
+  if (!na || !na.found) return;
+  const more = na.count > na.found.length ? `<p class="hint">The ${na.found.length} played most since; ${num(na.count - na.found.length)} more you heard only now and then.</p>` : '';
+  openSheet(`<div class="sheet-title">${num(na.count)} new artists</div><p class="body">Most played first, with what you played right before you found them.</p>
+    <div class="na-list">${na.found.map((f) => `<button class="na-item" data-artist="${esc(f.name)}">${artistFace(f)}<span class="t"><b>${esc(f.name)}</b><small>first played ${esc(dateLabel(f.first))}${f.from ? `, after ${esc(f.from)}` : ''}</small></span><span class="v">${num(f.plays)}<small>${f.plays === 1 ? 'play' : 'plays'}</small></span></button>`).join('')}</div>${more}`);
+}
+
+/**
+ * Habits: a row per artist, a tick for each week (or day) they were played in, taller for more
+ * plays; most often played first. A steady habit fills its row, a wave crowds into one stretch.
+ */
+function habitsViz(hb) {
+  const rows = (hb && hb.rows) || [];
+  const B = hb && hb.starts ? hb.starts.length : 0;
+  if (rows.length < 3 || B < 6) return '';
+  const unitWord = { day: 'days', week: 'weeks', month: 'months', quarter: 'quarters', year: 'years' }[hb.unit] || 'weeks';
+  const W = 340, nameW = 104, colW = 58, rh = 20, top = 16;
+  const w = W - nameW - colW - 6;
+  const X = (i) => nameW + 6 + (i / B) * w;
+  const bw = Math.max(1, Math.min(4, w / B - 0.4));
+  let s = `<text class="hb-head" x="${W}" y="10" text-anchor="end">${unitWord} · peak</text>`;
+  for (const i of hb.empty || []) s += `<rect class="hb-off" x="${X(i).toFixed(1)}" y="${top}" width="${(w / B + 0.4).toFixed(2)}" height="${rows.length * rh}"/>`;
+  rows.forEach((r, j) => {
+    const y = top + j * rh;
+    const col = r.ink >= 0 ? INKS[r.ink] : 'var(--md-on-surface-variant)';
+    const name = r.name.length > 16 ? r.name.slice(0, 15) + '…' : r.name;
+    s += `<text class="hb-name${r.ink >= 0 ? ' top' : ''}" x="${nameW}" y="${y + 13}" text-anchor="end" data-artist="${esc(r.name)}">${esc(name)}</text>`;
+    r.counts.forEach((n, i) => {
+      if (!n) return;
+      const hh = Math.min(16, 3 + Math.sqrt(n) * 2.2);
+      s += `<rect x="${X(i).toFixed(1)}" y="${(y + 10 - hh / 2).toFixed(1)}" width="${bw.toFixed(2)}" height="${hh.toFixed(1)}" rx="${Math.min(0.8, bw / 2)}" fill="${col}"${r.ink >= 0 ? '' : ' opacity=".55"'}/>`;
+    });
+    s += `<text class="hb-n" x="${W - 32}" y="${y + 13}" text-anchor="end">${r.present}</text><text class="hb-p" x="${W}" y="${y + 13}" text-anchor="end">${Math.round(r.peakShare * 100)}%</text>`;
+  });
+  const H = top + rows.length * rh;
+  const steady = [...rows].sort((a, b) => b.present - a.present)[0];
+  const wave = rows.filter((r) => r !== steady && r.plays >= 15 && r.peakShare >= 0.4).sort((a, b) => b.peakShare - a.peakShare)[0];
+  const month = (ms) => new Date(ms).toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const sub = `<b>${esc(steady.name)}</b> is your steadiest habit: played in ${steady.present} of the ${hb.active} ${unitWord} with music.`
+    + (wave ? ` <b>${esc(wave.name)}</b> came in a wave: ${Math.round(wave.peakShare * 100)}% of their plays fell in ${esc(month(wave.peakMonth))}.` : '');
+  return `<div class="viz habits"><h2>Habits</h2><span class="sub">${sub}</span>
+    <svg class="hb" viewBox="0 0 ${W} ${H + 16}">${s}<text class="hb-ax" x="${nameW + 6}" y="${H + 13}">${esc(periodLabel(hb.starts[0], hb.unit, true))}</text><text class="hb-ax" x="${nameW + 6 + w}" y="${H + 13}" text-anchor="end">${esc(periodLabel(hb.starts[B - 1], hb.unit, true))}</text></svg>
+    <p class="hint">A tick for each ${hb.unit} with a play, taller for more. Right: in how many ${unitWord}, and how much of their plays their busiest month holds.</p></div>`;
 }
 function newArtistsText(x, unit) {
   if (!x) return '';
@@ -2059,7 +2242,9 @@ function recordViz(rec, id, title, sub, opts = {}) {
   if (!rec || !rec.days) return '';
   const st = RECS[id];
   let h = `<div class="viz"><h2>${esc(title)}</h2><span class="sub">${esc(sub || 'Every play is a dot. Each groove is a day, from the label to the rim; noon is at the top, midnight at the bottom. Your top artists have their own colors.')}</span>
-    <div class="rec-wrap"><canvas data-record="${id}"></canvas></div>
+    <div class="rec-wrap${st && st.z > 1 ? ' zoomed' : ''}"><canvas data-record="${id}"></canvas>
+      <div class="rec-zoom"><button class="icon-btn small" data-rzoom="in" data-rec="${id}" aria-label="Zoom in">+</button><button class="icon-btn small" data-rzoom="out" data-rec="${id}" aria-label="Zoom out">−</button><button class="icon-btn small rz-reset" data-rzoom="reset" data-rec="${id}" aria-label="Whole record">1×</button></div>
+      <span class="rec-hint">Pinch or double-tap to zoom in</span></div>
     <div class="readout" id="ro-rec-${id}">${st && st.spot >= 0 ? spotText(id) : 'Tap a name below, search, or tap a dot to light an artist up.'}</div>`;
   if (opts.legend !== false) {
     h += `<div class="inks" id="inks-${id}">${rec.artists.slice(0, 8).map((n, k) => `<button class="ink ${st && st.spot === k ? 'on' : ''}" data-ink="${id}" data-k="${k}"><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span><small>${compact(rec.plays[k])}</small></button>`).join('')}</div>
@@ -2100,6 +2285,36 @@ function recordPos(g, rec, i) {
   return [g.cx + r * Math.cos(ang), g.cy + r * Math.sin(ang)];
 }
 
+/**
+ * Where a record is looked at: zoom [z] (1 to 8) around [vx, vy] (fractions of the canvas), as a
+ * transform from the record's own pixels to the screen's.
+ */
+function recordView(st, W) {
+  const z = st.z || 1, vx = (st.vx == null ? 0.5 : st.vx) * W, vy = (st.vy == null ? 0.5 : st.vy) * W;
+  return { z, vx, vy, toWorld: (sx, sy) => [vx + (sx - W / 2) / z, vy + (sy - W / 2) / z] };
+}
+/** Zooms record [id] to [z], keeping the point at canvas pixel [fx, fy] where it is (the middle by default). */
+function zoomRecord(id, z, fx, fy) {
+  const st = RECS[id];
+  const c = $(`canvas[data-record="${id}"]`);
+  if (!st || !c) return;
+  const W = c.width, v = recordView(st, W);
+  if (fx == null) { fx = W / 2; fy = W / 2; }
+  const [wx, wy] = v.toWorld(fx, fy);
+  const nz = Math.min(8, Math.max(1, z));
+  st.z = nz;
+  panRecord(st, W, wx - (fx - W / 2) / nz, wy - (fy - W / 2) / nz);
+  drawRecord(c);
+  c.closest('.rec-wrap').classList.toggle('zoomed', st.z > 1);
+}
+/** Moves the view of [st] to look at [x, y] (record pixels), kept on the record. */
+function panRecord(st, W, x, y) {
+  if (st.z <= 1.02) { st.z = 1; st.vx = st.vy = 0.5; return; }
+  const half = W / 2 / st.z;
+  st.vx = Math.min(W - half, Math.max(half, x)) / W;
+  st.vy = Math.min(W - half, Math.max(half, y)) / W;
+}
+
 function drawRecord(c) {
   const st = RECS[c.dataset.record];
   if (!st) return;
@@ -2109,14 +2324,24 @@ function drawRecord(c) {
   c.height = c.width;
   const ctx = c.getContext('2d');
   const g = recordGeometry(c, rec);
+  const v = recordView(st, c.width), z = v.z;
+  ctx.setTransform(z, 0, 0, z, c.width / 2 - v.vx * z, c.width / 2 - v.vy * z);
   // the vinyl, with faint grooves
   ctx.fillStyle = '#121214';
   ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, 2 * Math.PI); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.035)';
-  ctx.lineWidth = dpr;
+  ctx.lineWidth = dpr / z;
   for (let r = g.r0; r < g.R; r += 3 * dpr) { ctx.beginPath(); ctx.arc(g.cx, g.cy, r, 0, 2 * Math.PI); ctx.stroke(); }
-  // the plays: everyone else first, the eight inks on top, a spotlit artist above all
-  const ds = Math.max(1.4 * dpr, Math.min(3 * dpr, g.step * 1.3));
+  // Zoomed in: the hours as faint spokes.
+  if (z > 1.5) {
+    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    for (let hr = 0; hr < 24; hr++) {
+      const a = Math.PI / 2 + (hr / 24) * 2 * Math.PI;
+      ctx.beginPath(); ctx.moveTo(g.cx + g.r0 * Math.cos(a), g.cy + g.r0 * Math.sin(a)); ctx.lineTo(g.cx + g.r1 * Math.cos(a), g.cy + g.r1 * Math.sin(a)); ctx.stroke();
+    }
+  }
+  // the plays: everyone else first, the eight inks on top, a spotlit artist above all (zoomed in, the dots get room)
+  const ds = Math.max(1.4 * dpr, Math.min(3 * dpr, g.step * 1.3)) * (1 + (z - 1) * 0.3) / z;
   const n = rec.d.length;
   const spot = st.spot;
   const pass = (test, color, alpha, size) => {
@@ -2136,6 +2361,13 @@ function drawRecord(c) {
     pass((a) => a === spot, spot < 8 ? INKS_ON_VINYL[spot] : '#ffffff', 1, ds * 1.5);
   }
   ctx.globalAlpha = 1;
+  // The play tapped last, ringed.
+  if (st.sel >= 0 && st.sel < n) {
+    const [x, y] = recordPos(g, rec, st.sel);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.6 * dpr / z;
+    ctx.beginPath(); ctx.arc(x, y, ds * 1.6 + 2 * dpr / z, 0, 2 * Math.PI); ctx.stroke();
+  }
   // the label
   ctx.fillStyle = themeColor('primary-container') || '#4f378b';
   ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r0 - 3 * dpr, 0, 2 * Math.PI); ctx.fill();
@@ -2158,10 +2390,38 @@ function drawRecord(c) {
   ctx.fillText(text, g.cx, g.cy - 10 * dpr);
   ctx.font = `${Math.round(9 * dpr)}px Roboto, system-ui, sans-serif`;
   ctx.fillText(`${compact(spot >= 0 ? rec.plays[spot] : n)} plays`, g.cx, g.cy + 9 * dpr);
-  // the clock around the rim
+  // the clock around the rim (every hour once zoomed in)
   ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.font = `${(9 * dpr / Math.sqrt(z)).toFixed(1)}px Roboto, system-ui, sans-serif`;
   const rt = g.R - (g.R - g.r1) / 2;
-  [['12', 0, -1], ['18', 1, 0], ['0', 0, 1], ['6', -1, 0]].forEach(([t, x, y]) => ctx.fillText(t, g.cx + x * rt, g.cy + y * rt));
+  if (z > 1.5) {
+    for (let hr = 0; hr < 24; hr++) {
+      const a = Math.PI / 2 + (hr / 24) * 2 * Math.PI;
+      ctx.fillText(String(hr), g.cx + rt * Math.cos(a), g.cy + rt * Math.sin(a));
+    }
+  } else {
+    [['12', 0, -1], ['18', 1, 0], ['0', 0, 1], ['6', -1, 0]].forEach(([t, x, y]) => ctx.fillText(t, g.cx + x * rt, g.cy + y * rt));
+  }
+  // Zoomed in: each groove's date, along the line from the middle of the record to the middle of the view.
+  if (z > 1.5) {
+    const toView = Math.hypot(v.vx - g.cx, v.vy - g.cy) > g.r0 ? Math.atan2(v.vy - g.cy, v.vx - g.cx) : -Math.PI * 0.75;
+    const every = Math.max(1, Math.ceil((13 * dpr) / (g.step * z)));
+    const s0 = new Date(rec.start);
+    // Along each groove (across the line), kept the right way up.
+    const along = toView + Math.PI / 2, flip = Math.cos(along) < 0;
+    ctx.font = `${(9 * dpr / z).toFixed(2)}px 'DM Mono', monospace`;
+    ctx.fillStyle = 'rgba(255,255,255,.62)';
+    for (let d = 0; d < rec.days; d += every) {
+      const r = g.r0 + (d + 0.5) * g.step;
+      const x = g.cx + r * Math.cos(toView), y = g.cy + r * Math.sin(toView);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(along + (flip ? Math.PI : 0));
+      ctx.fillText(new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + d).toLocaleDateString([], { day: 'numeric', month: 'short' }), 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 /** Tap on a record: the nearest play, its artist lit up across the disc. */
@@ -2172,10 +2432,11 @@ function onRecordTap(c, e) {
   const rec = st.rec;
   const box = c.getBoundingClientRect();
   const k = c.width / box.width;
-  const px = (e.clientX - box.left) * k, py = (e.clientY - box.top) * k;
+  const v = recordView(st, c.width);
+  const [px, py] = v.toWorld((e.clientX - box.left) * k, (e.clientY - box.top) * k);
   const g = recordGeometry(c, rec);
-  if (Math.hypot(px - g.cx, py - g.cy) < g.r0) { if (st.spot >= 0) setSpot(id, st.spot); return; }
-  let best = -1, bestD = 22 * k;
+  if (Math.hypot(px - g.cx, py - g.cy) < g.r0) { st.sel = -1; if (st.spot >= 0) setSpot(id, st.spot); else drawRecord(c); return; }
+  let best = -1, bestD = (22 * k) / v.z;
   for (let i = 0; i < rec.d.length; i++) {
     const [x, y] = recordPos(g, rec, i);
     const d = Math.hypot(x - px, y - py);
@@ -2183,6 +2444,7 @@ function onRecordTap(c, e) {
   }
   if (best < 0) return;
   st.spot = -1;
+  st.sel = best;
   setSpot(id, rec.a[best]);
   // Days on the calendar from the first groove's midnight (not 24-hour steps, which a DST change shifts).
   const s0 = new Date(rec.start);
@@ -2194,6 +2456,68 @@ function onRecordTap(c, e) {
       <button class="artist-link" data-artist="${esc(name)}">${esc(name)}</button> (${plural(rec.plays[rec.a[best]], 'play')}, lit up). Tap the label to show everyone.`;
   }
 }
+
+/**
+ * Pinching a record zooms it, dragging moves it once zoomed (at its whole size the page scrolls as
+ * usual), and a double tap zooms in on that spot, or back out.
+ */
+const recGesture = { pts: new Map(), c: null, pinch: null, drag: null, moved: false, lastTap: null, quietUntil: 0 };
+function recPointer(e) {
+  const g = recGesture;
+  const canvasPx = (c, x, y) => { const b = c.getBoundingClientRect(), k = c.width / b.width; return [(x - b.left) * k, (y - b.top) * k]; };
+  if (e.type === 'pointerdown') {
+    const c = e.target.closest && e.target.closest('canvas[data-record]');
+    if (!c) return;
+    const st = RECS[c.dataset.record];
+    if (!st) return;
+    if (g.c !== c) { g.pts.clear(); g.c = c; }
+    g.pts.set(e.pointerId, [e.clientX, e.clientY]);
+    g.moved = false;
+    if (g.pts.size === 2) {
+      const [[ax, ay], [bx, by]] = [...g.pts.values()];
+      g.pinch = { d: Math.hypot(ax - bx, ay - by), z: st.z || 1 };
+      g.drag = null;
+    } else if (g.pts.size === 1) {
+      g.drag = { x: e.clientX, y: e.clientY, view: recordView(st, c.width) };
+    }
+    return;
+  }
+  if (!g.c || !g.pts.has(e.pointerId)) return;
+  const c = g.c, id = c.dataset.record, st = RECS[id];
+  if (!st) return;
+  if (e.type === 'pointermove') {
+    g.pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (g.pts.size === 2 && g.pinch) {
+      const [[ax, ay], [bx, by]] = [...g.pts.values()];
+      const [mx, my] = canvasPx(c, (ax + bx) / 2, (ay + by) / 2);
+      zoomRecord(id, g.pinch.z * (Math.hypot(ax - bx, ay - by) / g.pinch.d), mx, my);
+      g.moved = true;
+    } else if (g.pts.size === 1 && g.drag && (st.z || 1) > 1) {
+      const k = c.width / c.getBoundingClientRect().width;
+      const dx = (e.clientX - g.drag.x) * k, dy = (e.clientY - g.drag.y) * k;
+      if (Math.hypot(dx, dy) > 6 * k) g.moved = true;
+      if (g.moved) {
+        panRecord(st, c.width, g.drag.view.vx - dx / g.drag.view.z, g.drag.view.vy - dy / g.drag.view.z);
+        drawRecord(c);
+      }
+    }
+    return;
+  }
+  // up or cancel
+  g.pts.delete(e.pointerId);
+  if (g.moved) { g.quietUntil = Date.now() + 350; if (!g.pts.size) g.pinch = null; return; }
+  if (e.type !== 'pointerup' || g.pts.size) return;
+  const now = Date.now(), last = g.lastTap;
+  if (last && now - last.t < 320 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30) {
+    const [fx, fy] = canvasPx(c, e.clientX, e.clientY);
+    zoomRecord(id, (st.z || 1) > 1.5 ? 1 : 3, fx, fy);
+    g.lastTap = null;
+    g.quietUntil = now + 350;
+  } else {
+    g.lastTap = { t: now, x: e.clientX, y: e.clientY };
+  }
+}
+['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach((t) => document.addEventListener(t, recPointer, { passive: true }));
 
 /** Finding an artist on the record: suggestions as you type. */
 function onArtistSearch(input) {
@@ -2407,6 +2731,8 @@ function keepHolo(body, html) {
 
 /** Turns a sleeve over; the tilt holds still while it turns, so the phone only has to move the two faces. */
 function turnSleeve(el) {
+  try { localStorage.setItem('turnHint', '9'); } catch (_) { /* preview without storage */ }
+  el.classList.remove('nudge');
   el.classList.add('turning');
   el.classList.toggle('flipped');
   clearTimeout(el._turn);
@@ -2514,6 +2840,8 @@ function hslLuminance(h, s, l) {
  * on a canvas once (softened and made more colorful there), then simply stretched over the page,
  * which blurs it for free. No filter runs while the page scrolls or the sleeve tilts.
  */
+/** The small softened pictures made so far, by address: a page seen before gets its background at once. */
+const BACKDROPS = new Map();
 function setBackdrop(el, url) {
   const page = el && el.closest('.page');
   if (!page) return;
@@ -2529,11 +2857,21 @@ function setBackdrop(el, url) {
   page.classList.add('has-backdrop');
   if (bd.dataset.url === url) return;
   bd.dataset.url = url;
-  bd.classList.remove('ready');
+  bd.classList.remove('ready', 'known');
+  const cv = bd.firstChild;
+  const ctx = cv.getContext('2d');
+  // The page held another record's picture: it goes now, not after the new one has loaded.
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const show = (pic, known) => {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(pic, 0, 0);
+    bd.classList.toggle('known', known);
+    bd.classList.add('ready');
+  };
+  if (BACKDROPS.has(url)) { show(BACKDROPS.get(url), true); return; }
   const img = new Image();
   img.onload = () => {
     if (bd.dataset.url !== url) return;
-    const cv = bd.firstChild;
     const small = document.createElement('canvas');
     small.width = cv.width;
     small.height = cv.height;
@@ -2543,11 +2881,15 @@ function setBackdrop(el, url) {
     // The upper middle of the cover, stretched to the page's shape.
     const side = Math.min(img.width, img.height);
     sx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, small.width, small.height);
-    const ctx = cv.getContext('2d');
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    ctx.filter = 'blur(3px)';
-    ctx.drawImage(small, 0, 0);
-    bd.classList.add('ready');
+    const soft = document.createElement('canvas');
+    soft.width = cv.width;
+    soft.height = cv.height;
+    const fx = soft.getContext('2d');
+    fx.filter = 'blur(3px)';
+    fx.drawImage(small, 0, 0);
+    if (BACKDROPS.size > 80) BACKDROPS.delete(BACKDROPS.keys().next().value);
+    BACKDROPS.set(url, soft);
+    show(soft, false);
   };
   img.src = url;
 }
@@ -2721,7 +3063,7 @@ window.onDiscography = (d) => {
 const isNew = (date) => !!date && Date.now() - Date.parse(date) < 60 * 864e5;
 function discoCard(x, artist) {
   return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-cover="${esc(x.cover)}" data-dz="${x.id}">
-    <span class="dcover">${coverHtml(x.cover, x.title, artist)}${x.owned ? '<i class="sticker mini" aria-label="On your shelf">★</i>' : ''}${isNew(x.date) ? '<i class="new">New</i>' : ''}</span>
+    <span class="dcover">${coverHtml(x.cover, x.title, artist)}${x.owned ? '<i class="owned-mark" aria-label="On your shelf"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11"/><circle class="g" cx="12" cy="12" r="7.6"/><circle class="l" cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg></i>' : ''}${isNew(x.date) ? '<i class="new">New</i>' : ''}</span>
     <b>${esc(x.title)}</b><small>${x.year || ''}${x.editions > 1 ? `, ${x.editions} editions` : ''}</small>
     <small class="meta">${x.plays ? plural(x.plays, 'play') : 'not heard yet'}</small></button>`;
 }
@@ -3116,9 +3458,9 @@ function renderAlbum() {
   const cover = info.cover || a.cover;
   const shelfId = info.owned || shelfIdOf(a.artist, a.title);
   let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
-    ${shelfId ? '<span class="flip-hint">Tap the sleeve to turn it over</span>' : ''}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
+    ${badgeLine(shelfId)}
     ${listenRow('albums', a.artist, a.title)}
     ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
     ${shelfId ? `<div class="stats"><button class="chip link" data-rec="${shelfId}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
@@ -4141,6 +4483,7 @@ const BLOCKS = {
   streaks: { name: 'Streaks', html: (s) => streakViz(s.streaks, s) },
   pulse: { name: 'Phases', html: (s) => (thin(s) ? '' : pulseViz(s.pulse)) },
   newArtists: { name: 'New artists', html: (s) => newArtistsViz(s.newArtists) },
+  habits: { name: 'Habits', kinds: ['month', 'year', '12m', 'all'], html: (s) => (thin(s) ? '' : habitsViz(s.habits)) },
   genres: { name: 'Genre drift', html: (s) => (thin(s) ? '' : genreViz(s.genres)) },
   decades: { name: 'Decades', html: (s) => decadesViz(s.decades) },
   obsessions: { name: 'Obsessions', html: (s) => obsessionsViz(s.obsessions, s.loops) },
@@ -4157,7 +4500,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'top'],
-  span: ['story', 'numbers', 'tidy', 'highlights', 'week', 'record', 'timeline', 'river', 'days', 'clock', 'streaks', 'pulse', 'newArtists', 'genres', 'decades', 'obsessions', 'rarely', 'wishlist', 'top'],
+  span: ['story', 'numbers', 'tidy', 'highlights', 'week', 'record', 'timeline', 'river', 'days', 'clock', 'streaks', 'pulse', 'habits', 'newArtists', 'genres', 'decades', 'obsessions', 'rarely', 'wishlist', 'top'],
 };
 const statsGroup = (s) => (s && s.range && s.range.kind === 'day' ? 'day' : 'span');
 /** The page's order and hidden blocks, as arranged (kept with the other UI settings, so backups carry it). */
@@ -4844,8 +5187,15 @@ function build() {
     if (e.target.closest('[data-dclear]')) { setStatsDecade(0); return; }
     const sd = e.target.closest('[data-setdecade]');
     if (sd) { setStatsDecade(+sd.dataset.setdecade === statsDecade ? 0 : +sd.dataset.setdecade); return; }
+    if (e.target.closest('[data-newlist]')) { openNewArtists(); return; }
+    const rz = e.target.closest('[data-rzoom]');
+    if (rz) {
+      const st = RECS[rz.dataset.rec];
+      if (st) zoomRecord(rz.dataset.rec, rz.dataset.rzoom === 'in' ? (st.z || 1) * 1.8 : rz.dataset.rzoom === 'out' ? (st.z || 1) / 1.8 : 1);
+      return;
+    }
     const canvas = e.target.closest('canvas[data-record]');
-    if (canvas) { onRecordTap(canvas, e); return; }
+    if (canvas) { if (Date.now() > recGesture.quietUntil) onRecordTap(canvas, e); return; }
     const ar = e.target.closest('[data-artist]');
     if (ar) { openArtist(ar.dataset.artist); return; }
     const go = e.target.closest('[data-go]');

@@ -98,7 +98,7 @@
 :root[data-look="soft"] .page > .backdrop { position: absolute; bottom: auto; height: 640px; }
 :root[data-look="soft"] .page > .backdrop canvas { height: 88%; }
 :root[data-look="soft"] .page > .backdrop::after { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 62%, transparent), var(--soft) 78%); }
-:root[data-look="soft"] .page.has-backdrop :is(.hero h1, .spin-hero h1, .page-hero h1, .hero .meta, .page-hero .meta, .flip-hint, .hint) { text-shadow: none; }
+:root[data-look="soft"] .page.has-backdrop :is(.hero h1, .spin-hero h1, .page-hero h1, .hero .meta, .page-hero .meta, .hint) { text-shadow: none; }
 :root[data-look="soft"] .chip:not(:where(.on, .mode, .static)), :root[data-look="soft"] .btn.tonal, :root[data-look="soft"] .icon-btn.small.on, :root[data-look="soft"] :is(.seg, .views) > .pill {
   background: var(--soft); color: var(--md-on-surface); box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }
 :root[data-look="soft"] .chip.on, :root[data-look="soft"] .chip:not(.static):active, :root[data-look="soft"] .btn.tonal:active {

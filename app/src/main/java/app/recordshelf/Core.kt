@@ -571,6 +571,10 @@ object Core {
                 val photos = s?.exploreNeedingPhotos().orEmpty()
                 if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
             }
+            "badges" -> statsExec.execute {
+                val j = if (prefs.historyDone) currentStats()?.shelfBadges() else null
+                push("onBadges") { j ?: JSONObject() }
+            }
             "backupExport" -> {
                 backupUi = msg.optJSONObject("ui") ?: JSONObject()
                 ui?.pickBackup(true, "heavy-rotation-backup-${java.time.LocalDate.now()}.zip")

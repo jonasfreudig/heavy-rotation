@@ -498,6 +498,26 @@ const Mock = (() => {
     const naTop = Array.from({ length: b40.count }, () => []);
     order.forEach((a) => { const f = L.first[a]; if (f >= r.from * 1000 && f < r.to * 1000) { const k = Math.min(b40.count - 1, b40.index(f)); naCounts[k]++; if (naTop[k].length < 3) naTop[k].push(L.artists[a]); } });
     const startIdx = b40.index(L.start);
+    // Habits: the 16 most played, a tick per bin they show up in (see Stats.habits).
+    const b160 = binsFor(r, 160);
+    const hc = order.slice(0, 16).map(() => new Array(b160.count).fill(0));
+    const hm = order.slice(0, 16).map(() => ({}));
+    const anyBin = new Array(b160.count).fill(false);
+    for (let i = i0; i < i1; i++) {
+      const k = local[L.a[i]], bi = Math.min(b160.count - 1, b160.index(L.ts[i]));
+      anyBin[bi] = true;
+      if (k < 16) { hc[k][bi]++; const d = new Date(L.ts[i]), mk = d.getFullYear() * 12 + d.getMonth(); hm[k][mk] = (hm[k][mk] || 0) + 1; }
+    }
+    const habits = {
+      unit: b160.unit, starts: b160.starts, active: anyBin.filter(Boolean).length, empty: anyBin.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0),
+      rows: hc.map((c, k) => {
+        const tot = c.reduce((x, y) => x + y, 0), [pm, pn] = Object.entries(hm[k]).sort((x, y) => y[1] - x[1])[0] || ['0', 0];
+        return { name: L.artists[order[k]], ink: k < 8 ? k : -1, counts: c, present: c.filter((v) => v > 0).length, peakShare: tot ? pn / tot : 0, peakMonth: +new Date(Math.floor(pm / 12), pm % 12, 1), plays: tot };
+      }).sort((x, y) => y.present - x.present),
+    };
+    // New artists, who they are (see Stats.newArtists).
+    const freshAll = order.filter((a) => L.first[a] >= r.from * 1000 && L.first[a] < r.to * 1000 && L.first[a] >= L.start + 14 * DAY);
+    const found = freshAll.slice(0, 60).map((a) => ({ name: L.artists[a], first: L.first[a], plays: Math.round(ac[a] * 1.4), here: ac[a], from: L.artists[(a * 7 + 3) % L.artists.length], photo: '' }));
     const tc = counts(i0, i1, (L2, i) => L2.t[i]);
     const topT = ranked(tc).slice(0, 10);
     const trackArtist = {};
@@ -508,7 +528,9 @@ const Mock = (() => {
       timeline: { unit: b60.unit, starts: b60.starts, counts: tlc, avg: Math.round((tlc.reduce((x, y) => x + y, 0) / tlc.length) * 10) / 10 },
       river: { unit: b40.unit, starts: b40.starts, artists: order.slice(0, 8).map((a) => L.artists[a]), series: rs, other },
       pulse: { unit: b60.unit, starts: b60.starts, bins: b60.count, rows: pulseRows },
-      newArtists: { unit: b40.unit, buckets: naCounts.map((c, k) => ({ start: b40.starts[k], count: c, historyStart: k === startIdx && sm.historyStartsHere, top: naTop[k] })) },
+      newArtists: { unit: b40.unit, buckets: naCounts.map((c, k) => ({ start: b40.starts[k], count: c, historyStart: k === startIdx && sm.historyStartsHere, top: naTop[k] })),
+        found, count: freshAll.length, kept: freshAll.filter((a) => ac[a] * 1.4 >= 10).length },
+      habits,
       genres: { names: GENRES, keys: GENRES.map((x) => (x === 'Other' ? 'other' : x.toLowerCase().replace(/-/g, ' '))), unit: b16.unit, coverage: { discogs: 0.34, lastfm: 0.59, none: 0.07 },
         periods: gc.map((c, k) => { const tot = c.reduce((x, y) => x + y, 0); return { start: b16.starts[k], total: tot, shares: c.map((v) => (tot ? Math.round((v / tot) * 1000) / 1000 : 0)) }; }) },
       clock,
@@ -1242,6 +1264,19 @@ const Mock = (() => {
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'badges': {
+          // A few of each, as the history would give them.
+          const ids = coll.map((r) => r.id);
+          const b = {};
+          if (ids[0]) b[ids[0]] = { k: 'heavy', n: 34 };
+          if (ids[1]) b[ids[1]] = { k: 'new', at: Date.now() - 4 * DAY };
+          if (ids[2]) b[ids[2]] = { k: 'worn', n: 811, rank: 1 };
+          if (ids[4]) b[ids[4]] = { k: 'lost', n: 214, at: Date.UTC(2025, 2, 14) };
+          if (ids[6]) b[ids[6]] = { k: 'sealed', at: Date.UTC(2023, 8, 2) };
+          if (ids[9]) b[ids[9]] = { k: 'worn', n: 455, rank: 3 };
+          later(200, () => onBadges(b));
+          break;
+        }
         case 'genre': later(300, () => onGenre({ ...fakeGenre(m.key), req: m.req })); break;
         case 'atlas': later(500, () => onAtlas(fakeAtlas())); break;
         case 'backupExport': later(700, () => onBackup({ scrobbles: history().ts.length })); break;

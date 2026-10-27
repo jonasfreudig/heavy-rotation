@@ -46,9 +46,21 @@ class Stats(
     companion object {
         const val TOP_GENRES = 6
         const val TOP_INKS = 8
+
+        /** A new artist you "kept": played this often since. */
+        const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
         const val WISH_MIN_PLAYS = 8
         const val WISH_MIN_TRACKS = 4
+
+        // Badges on the shelf: heavy rotation (the last two weeks), new arrivals, lost favorites and worn in.
+        const val BADGE_HEAVY_DAYS = 14L
+        const val BADGE_HEAVY_MIN = 12
+        const val BADGE_NEW_DAYS = 30L
+        const val BADGE_FAV_MIN = 30
+        const val BADGE_WORN_TOP = 3
+        const val BADGE_LOST_TOP = 10
+        const val BADGE_LOST_DAYS = 182L
 
         /** Explore: quiet for this long counts as lost. */
         const val LOST_DAYS = 180L
@@ -236,6 +248,7 @@ class Stats(
             .put("clock", JSONArray(clock(i0, i1).toList()))
             .put("streaks", streaks(r, i0, i1))
             .put("pulse", pulse(r, i0, i1))
+            .put("habits", habits(r, i0, i1))
             .put("newArtists", newArtists(r, i0, i1))
             .put("genres", genreDrift(r, i0, i1))
             .put("decades", decades(i0, i1))
@@ -525,7 +538,51 @@ class Stats(
                     .put("top", JSONArray(members[k].sortedByDescending { plays[it] }.take(3).map { h.artistNames[it] })),
             )
         }
+        // Who they are: the period's new artists, the ones you kept playing first, with how you found them.
+        val (_, from) = origins
+        val here = IntArray(h.artistNames.size)
+        for (i in i0 until i1) here[h.artist[i]]++
+        // Not the ones from the first weeks of the history: everything is "new" there.
+        val fresh = firstTs.indices.filter { firstTs[it] in r.from until r.to && firstTs[it] >= historyStart + Atlas.START_GRACE }
+        val found = fresh.sortedWith(compareByDescending<Int> { plays[it] }.thenBy { firstTs[it] }).take(60).map { a ->
+            JSONObject().put("name", h.artistNames[a]).put("first", firstTs[a] * 1000).put("plays", plays[a]).put("here", here[a])
+                .put("from", if (from[a] >= 0) h.artistNames[from[a]] else "").put("photo", artistPhoto(h.artistNames[a]))
+        }
         return JSONObject().put("unit", b.unit.id).put("buckets", buckets)
+            .put("found", JSONArray(found)).put("count", fresh.size).put("kept", fresh.count { plays[it] >= KEPT_PLAYS })
+    }
+
+    /**
+     * Habits: for the period's most played artists, the bins (weeks over a year or more, days over
+     * a month) they were played in and how often, and how much of their plays their busiest month
+     * holds. A steady habit shows up most weeks; a wave crowds into one month. Rows in the record's
+     * order, so the first [TOP_INKS] keep their colors.
+     */
+    fun habits(r: Range, i0: Int, i1: Int, max: Int = 16): JSONObject {
+        val out = JSONObject().put("rows", JSONArray())
+        if (i1 <= i0) return out
+        val b = binsFor(r, 160)
+        val top = artistOrder(i0, i1).take(max)
+        val slot = HashMap<Int, Int>().also { s -> top.forEachIndexed { k, a -> s[a] = k } }
+        val counts = Array(top.size) { IntArray(b.count) }
+        val months = Array(top.size) { HashMap<Int, Int>() }
+        val any = BooleanArray(b.count)
+        for (i in i0 until i1) {
+            val k = b.index(date(h.ts[i])).coerceIn(0, b.count - 1)
+            any[k] = true
+            val s = slot[h.artist[i]] ?: continue
+            counts[s][k]++
+            months[s].merge(monthKey(h.ts[i]), 1, Int::plus)
+        }
+        val rows = top.indices.map { s ->
+            val total = counts[s].sum()
+            val peak = months[s].maxBy { it.value }
+            JSONObject().put("name", h.artistNames[top[s]]).put("ink", if (s < TOP_INKS) s else -1)
+                .put("counts", JSONArray(counts[s].toList())).put("present", counts[s].count { it > 0 })
+                .put("peakShare", peak.value.toDouble() / total).put("peakMonth", monthStart(peak.key)).put("plays", total)
+        }.sortedByDescending { it.getInt("present") }
+        return out.put("unit", b.unit.id).put("starts", b.startsJson()).put("rows", JSONArray(rows))
+            .put("active", any.count { it }).put("empty", JSONArray(any.indices.filter { !any[it] }))
     }
 
     // ---- genres ----
@@ -1020,7 +1077,8 @@ class Stats(
 
     /** The river: plays per bin of the [TOP_INKS] most played artists (same order and colors as the record) and everyone else. */
     fun river(r: Range, i0: Int, i1: Int): JSONObject {
-        val b = binsFor(r, 40)
+        // Fine enough for the stream to flow (weeks over a year or two).
+        val b = binsFor(r, 90)
         val order = artistOrder(i0, i1).take(TOP_INKS)
         val slot = HashMap<Int, Int>().also { s -> order.forEachIndexed { k, a -> s[a] = k } }
         val series = Array(order.size) { IntArray(b.count) }
@@ -1130,6 +1188,46 @@ class Stats(
             .put("neverPlayed", rows.count { it.last == 0L })
     }
 
+    /**
+     * One badge per record on your shelf (by release id), the strongest that fits: your heavy
+     * rotation (the most played of the last two weeks), a new arrival (added this month), a lost
+     * favorite (one of your most played, quiet for half a year), worn in (your three most played)
+     * or still sealed (never played).
+     */
+    fun shelfBadges(): JSONObject {
+        val plays = IntArray(h.albumTitles.size)
+        val recent = IntArray(h.albumTitles.size)
+        val last = LongArray(h.albumTitles.size)
+        val since = nowSec - BADGE_HEAVY_DAYS * DAY_SEC
+        for (i in 0 until h.size) {
+            val al = h.album[i]
+            if (al < 0) continue
+            plays[al]++
+            last[al] = h.ts[i]
+            if (h.ts[i] >= since) recent[al]++
+        }
+        val records = collection.distinctBy { it.releaseId }.map { it to findAlbum(it.artist, it.title) }
+        val albums = records.map { it.second }.filter { it >= 0 }.distinct()
+        val heavy = albums.filter { recent[it] >= BADGE_HEAVY_MIN }.maxByOrNull { recent[it] }
+        val top = albums.filter { plays[it] >= BADGE_FAV_MIN }.sortedByDescending { plays[it] }
+        val lost = top.take(BADGE_LOST_TOP).filter { nowSec - last[it] >= BADGE_LOST_DAYS * DAY_SEC }.toSet()
+        val worn = top.take(BADGE_WORN_TOP).filter { it !in lost }
+        val newSince = (nowSec - BADGE_NEW_DAYS * DAY_SEC) * 1000
+        val out = JSONObject()
+        for ((c, al) in records) {
+            val b = when {
+                al >= 0 && al == heavy -> JSONObject().put("k", "heavy").put("n", recent[al])
+                c.addedMs >= newSince -> JSONObject().put("k", "new").put("at", c.addedMs)
+                al in lost -> JSONObject().put("k", "lost").put("n", plays[al]).put("at", last[al] * 1000)
+                al in worn -> JSONObject().put("k", "worn").put("n", plays[al]).put("rank", top.indexOf(al) + 1)
+                al < 0 -> JSONObject().put("k", "sealed").put("at", c.addedMs)
+                else -> null
+            }
+            if (b != null) out.put(c.releaseId.toString(), b)
+        }
+        return out
+    }
+
     /** Albums you play a lot (whole albums: several different tracks) but don't own. */
     fun wishlist(i0: Int, i1: Int, max: Int = 12): JSONArray {
         val plays = IntArray(h.albumTitles.size)
@@ -1195,7 +1293,9 @@ class Stats(
         val r = range(id)
         val ap = IntArray(h.artistNames.size)
         for (i in h.lowerBound(r.from) until h.lowerBound(r.to)) ap[h.artist[i]]++
-        return withoutPhoto(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { h.artistNames[it] })
+        // The period's best new finds too: they show with their faces.
+        val fresh = firstTs.indices.filter { firstTs[it] in r.from until r.to }.sortedByDescending { artistLife.plays[it] }.take(8)
+        return withoutPhoto((ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max) + fresh).map { h.artistNames[it] })
     }
 
     /** Monday-based week number of a time. */

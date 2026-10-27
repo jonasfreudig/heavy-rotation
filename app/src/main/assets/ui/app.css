@@ -236,6 +236,23 @@ input[type=datetime-local] { color-scheme: inherit; }
 .rec b { font: 500 13px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec small { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec small.meta { color: var(--md-primary); }
+/* Badges: a small round mark on the cover's corner, one per record; the same mark on its page, spelled out. */
+.rec { position: relative; }
+.rbadge { --bc: #e2632c; position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
+  background: var(--bc); color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .3), 0 0 0 1.5px rgba(255, 255, 255, .75); pointer-events: none; }
+.rbadge svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.b-heavy { --bc: #e2632c; } .b-new { --bc: #14916a; } .b-lost { --bc: #5b6b8c; } .b-worn { --bc: #d39410; }
+.b-sealed { --bc: #b59a6a; } .rbadge.b-sealed { background: #f3e8d2; color: #3a2f25; }
+.grid.big .rbadge { top: 9px; right: 9px; width: 32px; height: 32px; }
+.grid.big .rbadge svg { width: 19px; height: 19px; }
+.grid.list .rbadge { top: 4px; left: 62px; right: auto; width: 22px; height: 22px; }
+.grid.list .rbadge svg { width: 14px; height: 14px; }
+.rbadge-line { display: flex; justify-content: center; margin-top: 10px; }
+.rbadge-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 13px 4px 4px; border-radius: 16px; font: 400 13px/18px var(--font); color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--bc) 18%, transparent); }
+.rbadge-pill b { font-weight: 600; }
+.rbadge-pill .rbadge { position: static; flex: none; width: 24px; height: 24px; margin-right: 2px; box-shadow: none; }
+.rbadge-pill .rbadge svg { width: 15px; height: 15px; }
 .rec:active .cover { transform: scale(.97); }
 
 .cover {
@@ -479,6 +496,14 @@ input[type=datetime-local] { color-scheme: inherit; }
 /* the record: every play on one disc */
 .rec-wrap { position: relative; }
 .rec-wrap canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: pan-y; cursor: crosshair; }
+/* Zoomed in, a drag moves the record rather than the page. */
+.rec-wrap.zoomed canvas { touch-action: none; cursor: grab; }
+.rec-zoom { position: absolute; right: 6px; top: 6px; display: grid; gap: 6px; }
+.rec-zoom .icon-btn { width: 34px; height: 34px; border-radius: 12px; background: rgba(255, 255, 255, .14); color: #fff; font: 600 17px var(--font); box-shadow: none; }
+.rec-zoom .rz-reset { font-size: 12px; }
+.rec-wrap:not(.zoomed) .rz-reset { display: none; }
+.rec-hint { position: absolute; left: 10px; bottom: 8px; font: 400 10px 'DM Mono', monospace; color: rgba(255, 255, 255, .55); pointer-events: none; }
+.rec-wrap.zoomed .rec-hint { display: none; }
 .spot { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
 .spot .chip { height: 28px; padding: 0 6px 0 12px; font-size: 13px; }
 .spot .chip .i { width: 16px; height: 16px; margin: 0; }
@@ -816,9 +841,11 @@ input[type=datetime-local] { color-scheme: inherit; }
 .xcards.small .xcard .cover { width: 104px; height: 104px; }
 .dcard .dcover { position: relative; display: block; }
 .dcard.unheard .cover { opacity: .55; filter: saturate(.6); }
-.dcard .sticker.mini { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
-  font: normal 700 13px/1 var(--font); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
-  background: conic-gradient(#ff7ac8, #ffd76e, #76f0a8, #6ec8ff, #b47cff, #ff7ac8); box-shadow: 0 2px 6px rgba(0, 0, 0, .35), inset 0 0 0 2px rgba(255, 255, 255, .55); }
+/* On your shelf: a small record, not a star. */
+.dcard .owned-mark { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 6px rgba(0, 0, 0, .4), 0 0 0 1.5px rgba(255, 255, 255, .7); }
+.owned-mark svg { display: block; width: 100%; height: 100%; fill: #17151b; }
+.owned-mark .g { fill: none; stroke: rgba(255, 255, 255, .2); stroke-width: .8; }
+.owned-mark .l { fill: #f6eee0; }
 .dcard .new { position: absolute; left: 6px; bottom: 6px; padding: 1px 7px; border-radius: 8px; font: 700 10px/16px var(--font); font-style: normal;
   letter-spacing: .06em; text-transform: uppercase; background: var(--tint); color: var(--md-surface); }
 .rank .r.unheard .t b { color: var(--md-on-surface-variant); }

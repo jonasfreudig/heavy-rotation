@@ -105,7 +105,10 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .sleeve-back .sb-notes { position: absolute; right: 12px; bottom: 26px; transform: rotate(-8deg); font: 500 italic 13px/1.2 var(--display); color: #b3261e;
   border: 1.5px solid #b3261e; border-radius: 6px; padding: 3px 7px; opacity: .85; font-variation-settings: 'SOFT' 100, 'WONK' 1;
   background: color-mix(in srgb, #efe8da 70%, transparent); }
-.flip-hint { display: block; margin: 8px auto 0; font: 400 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--md-on-surface-variant); text-align: center; }
+/* The first few times: the sleeve starts to turn and settles back, once, after the record has slid out. */
+.holo.nudge .h3d { animation: sleeveNudge 1.1s cubic-bezier(.4, 0, .3, 1) 1.5s; }
+@keyframes sleeveNudge { 40% { rotate: y -28deg; } 72% { rotate: y 6deg; } }
+@media (prefers-reduced-motion: reduce) { .holo.nudge .h3d { animation: none; } }
 
 /* ---- Now spinning on a turntable: the platter turns, the tonearm travels through the side ---- */
 .tt { --arm: 0deg; padding: 6px 0 2px; }
@@ -303,8 +306,11 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 /* ---- pages over their cover: the picture blurred behind everything (cards and chips: looks.css) ---- */
 .page > .backdrop { display: none; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .page.has-backdrop > .backdrop { display: block; }
-.page > .backdrop canvas { position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; opacity: 0; transition: opacity .45s; }
-.page > .backdrop.ready canvas { opacity: 1; }
+/* A layer of its own (stretched the same way always: switching layers changed its blur mid-swipe);
+   it goes at once and fades in, so the page never shows the last record's picture fading out. */
+.page > .backdrop canvas { position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; opacity: 0; will-change: transform; }
+.page > .backdrop.ready canvas { opacity: 1; transition: opacity .45s; }
+.page > .backdrop.ready.known canvas { transition: none; }
 /* A veil of the page color over the whole picture, a little denser towards the bottom: text reads on any cover. */
 .page > .backdrop::after { content: ''; position: absolute; inset: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 50%, transparent) 0%, color-mix(in srgb, var(--md-surface) 56%, transparent) 50%, color-mix(in srgb, var(--md-surface) 68%, transparent) 100%); }
@@ -312,8 +318,8 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .page.has-backdrop > .page-body, .page.has-backdrop > div:not(.backdrop) { position: relative; z-index: 1; }
 .page.has-backdrop > .appbar { --bar-bg: color-mix(in srgb, var(--md-surface) 78%, transparent); }
 .page.has-backdrop .page-hero .glow { display: none; }
-.page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .flip-hint, .page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta, .page.has-backdrop .hint { text-shadow: 0 0 10px var(--md-surface), 0 0 3px var(--md-surface); }
-.page.has-backdrop .hero .meta, .page.has-backdrop .flip-hint, .page.has-backdrop .page-hero .meta { color: var(--md-on-surface); }
+.page.has-backdrop .hero h1, .page.has-backdrop .spin-hero h1, .page.has-backdrop .page-hero h1, .page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta, .page.has-backdrop .hint { text-shadow: 0 0 10px var(--md-surface), 0 0 3px var(--md-surface); }
+.page.has-backdrop .hero .meta, .page.has-backdrop .page-hero .meta { color: var(--md-on-surface); }
 
 /* ---- bars: a top bar that scrolls with the page and comes back over it, a floating bottom bar ---- */
 .appbar { position: relative; background: transparent; }
@@ -590,3 +596,39 @@ html.locked .page { overflow: hidden; }
 .page > .credit { margin: 0 16px 24px; }
 .credit button, .inline-link { padding: 6px 8px; background: none; border: 0; color: var(--md-on-surface-variant); font: 500 12px/16px var(--font); text-decoration: underline; text-underline-offset: 3px; }
 .inline-link { padding: 0; font: inherit; }
+
+/* ---- the river's names and breaks ---- */
+.river .rv-name { font: 600 10.5px var(--font); fill: #fff; stroke: rgba(20, 14, 28, .5); stroke-width: 2.6px; paint-order: stroke; pointer-events: none; }
+.river .rv-gap { font: 400 9.5px 'DM Mono', monospace; fill: var(--md-on-surface-variant); pointer-events: none; }
+
+/* ---- habits: a row of weekly ticks per artist ---- */
+.hb { display: block; width: 100%; height: auto; overflow: visible; }
+.hb text { font: 400 9.5px 'DM Mono', monospace; fill: var(--md-on-surface-variant); }
+.hb .hb-name { font: 400 11px var(--font); cursor: pointer; }
+.hb .hb-name.top { font-weight: 600; fill: var(--md-on-surface); }
+.hb .hb-n { fill: var(--md-on-surface); font-size: 10px; }
+.hb .hb-p { font-size: 10px; }
+.hb .hb-head { font-size: 8.5px; }
+.hb .hb-off { fill: color-mix(in srgb, var(--md-on-surface) 6%, transparent); }
+
+/* ---- new artists: the big number, their faces, the whole list ---- */
+.na-big { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 10px; }
+.na-big > b { font: 600 38px/40px Fraunces, serif; }
+.na-big span { color: var(--md-on-surface-variant); font-size: 13px; }
+.na-big span b { color: var(--md-on-surface); }
+.na-h { margin: 16px 0 6px; font: 600 15px Fraunces, serif; }
+.na-row { display: flex; gap: 12px; overflow-x: auto; margin: 0 -16px 10px; padding: 4px 16px 8px; scrollbar-width: none; }
+.na-find { flex: none; width: 84px; text-align: center; background: none; border: 0; padding: 0; color: inherit; }
+.na-find b { display: block; font-size: 12.5px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 6px; }
+.na-find small { display: block; font: 400 10.5px/14px 'DM Mono', monospace; color: var(--md-on-surface-variant); }
+.na-face { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; overflow: hidden; background: var(--md-surface-container-high); }
+.na-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.na-face.none { background: linear-gradient(140deg, hsl(var(--h) 45% 52%), hsl(var(--h) 40% 26%)); color: #fff; font: 600 26px Fraunces, serif; }
+.na-list { display: grid; margin: 4px 0 8px; }
+.na-item { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 8px 0; background: none; border: 0; border-top: 1px solid var(--md-outline-variant); color: inherit; text-align: left; }
+.na-item:first-child { border-top: 0; }
+.na-item .na-face { width: 44px; height: 44px; font-size: 17px; }
+.na-item b { font-size: 14px; }
+.na-item small { display: block; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; }
+.na-item .v { text-align: right; font: 500 13px 'DM Mono', monospace; }
+.na-item .v small { font-size: 10px; }
