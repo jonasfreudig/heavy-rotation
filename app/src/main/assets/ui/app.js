@@ -643,8 +643,9 @@ window.onBackCancel = () => {
  * in, then the record slides out. If [to] shows a sharper picture, the copy fades it in on the
  * way, and lands only once it is there.
  */
-function flyCover(from, to, ms) {
-  const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+function flyCover(from, to, ms, shiftX = 0) {
+  const a = from.getBoundingClientRect(), t = to.getBoundingClientRect();
+  const b = { left: t.left + shiftX, top: t.top, width: t.width, height: t.height };
   if (!a.width || !b.width) return;
   const c = from.cloneNode(true);
   c.classList.add('fly');
@@ -716,7 +717,9 @@ function flyBack() {
   if (!home || !hero) return false;
   const r = home.getBoundingClientRect();
   if (!r.width || r.bottom < 0 || r.top > innerHeight) return false;
-  flyCover(hero, home, 380);
+  // After a back swipe the shelf is still sliding home from the left: aim where it ends up.
+  const t = getComputedStyle($('#main')).transform;
+  flyCover(hero, home, 380, t && t !== 'none' ? -new DOMMatrix(t).m41 : 0);
   return true;
 }
 /**
@@ -2350,23 +2353,54 @@ function fillSleeveBacks() {
 }
 
 /**
+ * Puts [html] into [el] changing only what differs: elements that stay keep their state, and
+ * pictures already on screen aren't loaded and decoded again. (Rebuilding a whole page each time
+ * a cover, a photo or a count arrived made its pictures blink.) Children are matched by position,
+ * tag and id or data-key; [keep](old, fresh) may claim an element and leave it as it is.
+ */
+function morph(el, html, keep) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  morphKids(el, t.content, keep);
+}
+const sameKind = (a, b) => a.nodeType === b.nodeType && a.nodeName === b.nodeName
+  && (a.nodeType !== 1 || (a.id === b.id && a.getAttribute('data-key') === b.getAttribute('data-key')));
+function morphKids(a, b, keep) {
+  let x = a.firstChild, y = b.firstChild;
+  while (y) {
+    const next = y.nextSibling;
+    if (!x) a.appendChild(y);
+    else if (sameKind(x, y)) { morphNode(x, y, keep); x = x.nextSibling; }
+    else { const after = x.nextSibling; a.replaceChild(y, x); x = after; }
+    y = next;
+  }
+  while (x) { const after = x.nextSibling; x.remove(); x = after; }
+}
+function morphNode(x, y, keep) {
+  if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
+  if (keep && keep(x, y)) return;
+  for (const { name } of [...x.attributes]) if (!y.hasAttribute(name)) x.removeAttribute(name);
+  for (const { name, value } of y.attributes) if (x.getAttribute(name) !== value) x.setAttribute(name, value);
+  morphKids(x, y, keep);
+}
+
+/**
  * Re-rendering a page keeps its moving sleeve (turned over or not, record out) when it shows the
  * same record; a better picture arriving is swapped into it instead of building a new one.
  */
-function keepHolo(body, html) {
-  const old = body.querySelector('[data-holo]');
-  body.innerHTML = html;
-  const fresh = body.querySelector('[data-holo]');
-  if (old && fresh && old.dataset.key === fresh.dataset.key) {
-    if (old.dataset.cover !== fresh.dataset.cover) {
-      const oc = old.querySelector('.sleeve .cover'), nc = fresh.querySelector('.sleeve .cover');
-      if (oc && nc) oc.replaceWith(nc);
-      const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
-      if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
-      old.dataset.cover = fresh.dataset.cover;
-    }
-    fresh.replaceWith(old);
+function keepSleeve(old, fresh) {
+  if (!old.hasAttribute('data-holo') || old.dataset.key !== fresh.dataset.key) return false;
+  if (old.dataset.cover !== fresh.dataset.cover) {
+    const oc = old.querySelector('.sleeve .cover'), nc = fresh.querySelector('.sleeve .cover');
+    if (oc && nc) oc.replaceWith(nc);
+    const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
+    if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
+    old.dataset.cover = fresh.dataset.cover;
   }
+  return true;
+}
+function keepHolo(body, html) {
+  morph(body, html, keepSleeve);
   fillSleeveBacks();
   Tilt.refresh();
 }
@@ -2999,7 +3033,7 @@ function renderGenre() {
     h += `<div class="viz"><h2>On your shelf</h2><span class="sub">${plural(shelfRecs.length, 'record')} with ${esc(g.label)} on Discogs</span>
       <div class="xcards">${shelfRecs.map((r) => `<button class="xcard" data-rec="${r.id}">${coverHtml(r.cover || r.thumb, r.title, r.artist)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${r.year || ''}</small></button>`).join('')}</div></div>`;
   }
-  $('#genreBody').innerHTML = h;
+  morph($('#genreBody'), h);
   tint($('#genreBody'), '', g.label + g.label);
 }
 
@@ -3714,7 +3748,7 @@ function renderVs() {
       }).join('')}</div></div>`;
   }
   h += `<p class="hint center">Counts from Last.fm, all time, for everyone (you included), looked up again once a month. The average listener is all plays divided by all listeners; a few heavy listeners pull that up, so most people played less.</p>`;
-  body.innerHTML = h;
+  morph(body, h);
   tint(body, '', 'You vs everyone');
 }
 
@@ -3783,7 +3817,7 @@ function renderExplore() {
       otd.map((y) => `<div class="otd"><div class="yr"><b>${y.year}</b><small>${plural(y.plays, 'play')} · ${y.artists.map(esc).join(', ')}</small></div>
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
-  body.innerHTML = h;
+  morph(body, h);
   renderVsCard();
   if (!VS) send({ t: 'vs' });
 }
@@ -4012,7 +4046,7 @@ function renderTidy() {
   } else {
     h += `<p class="hint">Nothing hidden yet. You can also hide an artist from their page (${icon('eye-off', 'i inl')} at the top), or a single track from the artist's top tracks.</p>`;
   }
-  body.innerHTML = h;
+  morph(body, h);
 }
 
 /** Hide, show again or keep one track or artist; the stats come back without (or with) it. */
@@ -4172,7 +4206,7 @@ function renderStats() {
     return;
   }
   const lay = statsLayout(statsGroup(s));
-  body.innerHTML = lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k)).map((id) => BLOCKS[id].html(s) || '').join('') + arrange;
+  morph(body, lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k)).map((id) => BLOCKS[id].html(s) || '').join('') + arrange);
   drawRecords();
 }
 

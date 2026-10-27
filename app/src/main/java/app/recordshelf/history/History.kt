@@ -61,18 +61,24 @@ class History private constructor(
         private val albumKeys = ArrayList<String>()
         private var sorted = true
 
+        // Names normalized once per spelling: a long history repeats the same few thousand names
+        // tens of thousands of times, and normalizing (accents, punctuation) is the slow part.
+        private val norms = HashMap<String, String>()
+        private val albumKeyOf = HashMap<String, String>()
+        private fun norm(s: String) = norms.getOrPut(s) { Text.norm(s) }
+
         /** Adds one scrobble; oldest first is fastest, but any order works. */
         fun add(t: Long, artistName: String, title: String, albumTitle: String) {
             if (ts.size > 0 && t < ts[ts.size - 1]) sorted = false
-            val aKey = Text.norm(artistName)
+            val aKey = norm(artistName)
             val a = artistIds.getOrPut(aKey) { artistNames += artistName; artistNames.size - 1 }
             artistNames[a] = artistName
-            val tKey = aKey + "\u0000" + Text.norm(title)
+            val tKey = aKey + "\u0000" + norm(title)
             val tr = trackIds.getOrPut(tKey) { trackTitles += title; trackArtist.add(a); trackTitles.size - 1 }
             trackTitles[tr] = title
             var al = -1
             if (albumTitle.isNotBlank()) {
-                val k = Text.albumKey(artistName, albumTitle)
+                val k = albumKeyOf.getOrPut(artistName + "\u0000" + albumTitle) { Text.albumKey(artistName, albumTitle) }
                 al = albumIds.getOrPut(k) { albumTitles += albumTitle; albumArtist.add(a); albumKeys += k; albumTitles.size - 1 }
                 albumTitles[al] = albumTitle
             }

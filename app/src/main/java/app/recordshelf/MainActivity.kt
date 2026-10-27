@@ -89,6 +89,9 @@ class MainActivity : AppCompatActivity(), Core.Ui {
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+            // Covers and photos never change at their address: a copy kept from before is used even
+            // when its cache time is up, so pages don't wait on (or blink for) pictures already seen.
+            settings.cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     pageReady = true

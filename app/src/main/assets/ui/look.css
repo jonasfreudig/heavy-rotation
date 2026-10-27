@@ -448,6 +448,10 @@ body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none
 .sheet.closing .sheet-body { pointer-events: none; }
 html.locked, html.locked body, html.locked-root, html.locked-root body { overflow: hidden; }
 html.locked .page { overflow: hidden; }
+/* Pages keep a layer of their own: made only when a page started to leave, it showed up blank for
+   a frame or two while the phone drew it. (Opacity, not transform: that would carry the page's
+   fixed backdrop off with its scrolling.) */
+.page:not([hidden]), .search-page:not([hidden]) { will-change: opacity; }
 /* Under a page being swiped back: what it reveals starts dimmed and lightens as the page goes. */
 .back-shade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 
