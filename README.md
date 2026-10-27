@@ -122,8 +122,22 @@ per 20,000 scrobbles. You can use other apps meanwhile; a notification shows the
 import is interrupted it continues where it stopped the next time you open the app. Afterwards
 only new scrobbles are fetched, at most every 30 minutes when you open the app.
 
-The period is the page's title: step back and forth with **‹ ›**, and pick **Week**, **Month**,
-**Year** or **All** under it.
+The period is the page's title: step back and forth with **‹ ›**, and pick **Day**, **Week**,
+**Month**, **Year** or **All** under it. A period that is still running is compared with the same
+stretch of the one before ("vs this time last week").
+
+**Day** is made for a handful of songs rather than thousands: the time you listened (and how
+that compares with your usual for that weekday by the same time of day, over the last 8 weeks),
+your day on a 24-hour strip with its listening sessions (a new one after half an hour without
+music, with the album or the turntable when a session was one record), the first and latest song,
+what you had on repeat, artists and songs new that day, the same date in other years (tap one to
+see that day), your streak and how much came off vinyl.
+
+A **week** shows its seven days, the week before in outline, and each day on a 24-hour strip. Charts
+of change over the period (the river, phases, genre drift) appear once it has four days with music.
+
+**Arrange this page** at the bottom reorders the blocks (drag the handles) and hides the ones you
+don't want; the Day tab has its own order. The layout goes into backups with the other settings.
 The charts adapt: a week or a month is shown per day, a year per week or month, all time per
 month, quarter or year. What the tab shows for the chosen period:
 
@@ -335,7 +349,8 @@ shelf** (a line at the top, with the progress) or **In the corner** (the record 
 the search button, from every tab). Tap it for Now spinning, or, for the phone, Now playing: the
 song's exact position (drag to seek), play/pause and skip, what the app plays next (with the
 playlist's or mix's name) when it shares its queue, and the whole album with the song in it and
-how much of the album is left (tracklists from Deezer). Apps that work with Android Auto usually
+how much of the album is left (tracklists from Deezer). Tap the app's name to open it on its own
+player screen. Apps that work with Android Auto usually
 share their queue; the chart button at the top opens the song's stats.
 
 Record, album, song and artist pages and Now spinning take their cover or photo: shrunk to a few

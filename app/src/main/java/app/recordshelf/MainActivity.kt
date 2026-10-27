@@ -2,6 +2,7 @@ package app.recordshelf
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.ActivityOptions
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -151,6 +152,33 @@ class MainActivity : AppCompatActivity(), Core.Ui {
         Core.detachUi(this)
         super.onStop()
         updateTiltSensor()
+    }
+
+    /**
+     * The music app [pkg], on the screen its player notification opens (its now-playing screen in
+     * most apps), else on its start screen.
+     */
+    private fun openPhoneApp(pkg: String) {
+        val pi = PhoneListener.instance?.sessionActivity(pkg)
+        if (pi != null) {
+            try {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    // Since Android 14 an app sending another app's intent says it may start an activity.
+                    val opts = ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    pi.send(this, 0, null, null, null, null, opts.toBundle())
+                } else {
+                    pi.send()
+                }
+                return
+            } catch (_: Exception) {
+            }
+        }
+        packageManager.getLaunchIntentForPackage(pkg)?.let {
+            try {
+                startActivity(it)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     // ---- back ----
@@ -400,6 +428,7 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 updateTiltSensor()
             }
             "canBack" -> setCanGoBack(msg.optBoolean("v"))
+            "openPhoneApp" -> openPhoneApp(msg.optString("pkg"))
             "startSpin" -> {
                 if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

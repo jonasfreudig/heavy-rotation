@@ -692,6 +692,7 @@ function sheetDrag() {
   const body = $('#sheetBody'), scrim = $('#scrim');
   let y0 = 0, t0 = 0, dy = 0, id = null, dragging = false, dragged = false;
   body.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.ar-grip, .ar-sw')) return;
     if (!e.target.closest('.sheet-grab') && !(body.classList.contains('fits') && body.scrollTop <= 0)) return;
     id = e.pointerId; y0 = e.clientY; t0 = e.timeStamp; dy = 0; dragging = false;
   });
@@ -969,7 +970,7 @@ function renderNow() {
   const ctl = (act, ic, label, ok, cls = '') => `<button class="icon-btn np-ctl ${cls}" data-np="${act}" aria-label="${label}"${ok ? '' : ' disabled'}>${icon(ic)}</button>`;
   const hasMedia = n.media != null;
   let h = `<div class="hero now-hero"><div id="nowHolo">${holoCover(n.cover || '', n.album || n.title, n.artist, { key: `now|${n.artist}|${n.album || n.title}` })}</div>
-    <div class="np-app">${icon('phone', 'i small')}${esc(n.app)} · ${playing ? 'playing' : 'paused'}</div>
+    <button class="np-app" data-npapp aria-label="Open ${esc(n.app)}">${icon('phone', 'i small')}${esc(n.app)} · ${playing ? 'playing' : 'paused'}${icon('open', 'i small')}</button>
     <h1>${esc(n.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(n.artist)}">${esc(n.artist)}</button>${n.album ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(n.artist, n.album)}>${esc(n.album)}</button>` : ''}</div>
     <div class="np-progress"><input type="range" id="npSeek" min="0" max="${dur}" step="1000" value="0"${m.canSeek ? '' : ' disabled'} aria-label="Position in the song">
@@ -1614,6 +1615,10 @@ function periodLabel(ms, unit, short) {
 
 /** The name of a stats period ({kind, from in seconds}). */
 function periodName(r) {
+  if (r.kind === 'day') {
+    const d = new Date(r.from * 1000);
+    return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+  }
   const d = new Date(r.from * 1000);
   switch (r.kind) {
     case 'week': {
@@ -1627,14 +1632,17 @@ function periodName(r) {
     default: return 'All time';
   }
 }
-const periodWord = (kind) => ({ week: 'week', month: 'month', year: 'year', '12m': 'year' }[kind] || 'time');
+const periodWord = (kind) => ({ day: 'day', week: 'week', month: 'month', year: 'year', '12m': 'year' }[kind] || 'time');
 const ofThe = (kind, what) => (kind === 'all' ? `${what} of all time` : `${what} of the ${periodWord(kind)}`);
-const lastWord = (kind) => ({ week: 'last week', month: 'last month', year: 'last year', '12m': 'the year before' }[kind] || 'before');
+const lastWord = (kind) => ({ day: 'yesterday', week: 'last week', month: 'last month', year: 'last year', '12m': 'the year before' }[kind] || 'before');
+/** What a running period is compared with: the same stretch of the one before ("this time last week"). */
+const vsWord = (r) => (r.running && r.kind !== '12m' ? `this time ${lastWord(r.kind)}` : lastWord(r.kind));
 
 const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 /** The id of the [kind] period that contains [ms] (see Stats.range in Kotlin). */
 function periodId(kind, ms) {
   const d = new Date(ms);
+  if (kind === 'day') return 'd' + isoDate(d);
   if (kind === 'week') return 'w' + isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)));
   if (kind === 'month') return `m${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   if (kind === 'year') return 'y' + d.getFullYear();
@@ -1693,10 +1701,11 @@ function renderPeriod(s) {
   renderGenreRow();
 }
 
-function deltaHtml(cur, prev, kind) {
+function deltaHtml(cur, prev, kind, running) {
   if (prev == null || !(prev > 0)) return '';
   const p = Math.round(((cur - prev) * 100) / prev);
-  return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(lastWord(kind))}</span>`;
+  const vs = running ? vsWord({ kind, running }) : lastWord(kind);
+  return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(vs)}</span>`;
 }
 const tile = (label, value, sub, delta, ic) => `<div class="tile"><span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}</div>`;
 
@@ -1716,9 +1725,9 @@ function storyCardHtml(s) {
 }
 
 /** One observation in words, with its icon. */
-function insightText(x, kind) {
+function insightText(x, kind, running) {
   switch (x.kind) {
-    case 'volume': return [x.pct >= 0 ? 'trend-up' : 'down-trend', `You listened <b>${Math.abs(x.pct)}% ${x.pct >= 0 ? 'more' : 'less'}</b> than ${lastWord(kind)}: ${num(x.count)} plays against ${num(x.prev)}.`];
+    case 'volume': return [x.pct >= 0 ? 'trend-up' : 'down-trend', `You listened <b>${Math.abs(x.pct)}% ${x.pct >= 0 ? 'more' : 'less'}</b> than ${running ? `at this point ${lastWord(kind)}` : lastWord(kind)}: ${num(x.count)} plays against ${num(x.prev)}.`];
     case 'stillTop': return ['star', `<b>${esc(x.artist)}</b> stays on top: your number one ${lastWord(kind)} as well.`];
     case 'topArtist': return ['heart', `<b>${esc(x.artist)}</b> made up ${pct(x.share)} of everything you played.`];
     case 'song': return ['repeat', `${ofThe(kind, 'Song')}: <b>${esc(x.track)}</b> by ${esc(x.artist)}, ${plural(x.plays, 'play')}.`];
@@ -1737,7 +1746,7 @@ const INSIGHT_ORDER = ['comeback', 'discovery', 'volume', 'stillTop', 'peak', 'n
 
 function highlightsViz(s) {
   const list = (s.insights || []).slice().sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
-    .map((x) => insightText(x, s.range.kind)).filter(Boolean);
+    .map((x) => insightText(x, s.range.kind, s.range.running)).filter(Boolean);
   if (!list.length) return '';
   return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl"><span class="hl-ic">${icon(ic)}</span><span>${text}</span></div>`).join('')}</div>`;
 }
@@ -3892,34 +3901,268 @@ function topViz(top) {
     ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}</div>` : ''}</div>`;
 }
 
+function numbersHtml(s) {
+  const sm = s.summary, pv = sm.prev || {}, k = s.range.kind, run = s.range.running;
+  return `<div class="tiles">
+      ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k, run), 'music')}
+      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k, run), 'schedule')}
+      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k, run), 'heart')}
+      ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k, run), 'explore')}
+    </div>`;
+}
+/** Charts that draw change over the period need a few days of music first. */
+const thin = (s) => s.summary.days < 4;
+
+/**
+ * Every block of the Stats tab: its name (in Arrange), the periods it is for (all but the day,
+ * unless said), and how it draws itself from the stats [s] ('' when it has nothing to show).
+ */
+const SPAN = ['week', 'month', 'year', '12m', 'all'];
+const BLOCKS = {
+  story: { name: 'The story', html: (s) => storyCardHtml(s) },
+  numbers: { name: 'Numbers', html: numbersHtml },
+  tidy: { name: 'Tidy-up note', html: (s) => tidyBanner(s.tidy) },
+  highlights: { name: 'Highlights', kinds: ['day', ...SPAN], html: highlightsViz },
+  week: { name: 'Your week', kinds: ['week'], html: (s) => weekViz(s) },
+  record: {
+    name: 'Your record',
+    html: (s) => {
+      if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: periodName(s.range) };
+      return recordViz(s.record, 'stats', 'Your record');
+    },
+  },
+  timeline: { name: 'Listening over time', html: (s) => (s.range.kind === 'week' ? '' : timelineViz(s.timeline)) },
+  river: { name: 'The river', html: (s) => (thin(s) ? '' : riverViz(s.river)) },
+  days: { name: 'Your days', kinds: ['week'], html: (s) => daysViz(s) },
+  clock: { name: 'When you listen', html: (s) => (s.range.kind === 'week' ? '' : clockViz(s.clock, 'stats')) },
+  streaks: { name: 'Streaks', html: (s) => streakViz(s.streaks, s) },
+  pulse: { name: 'Phases', html: (s) => (thin(s) ? '' : pulseViz(s.pulse)) },
+  newArtists: { name: 'New artists', html: (s) => newArtistsViz(s.newArtists) },
+  genres: { name: 'Genre drift', html: (s) => (thin(s) ? '' : genreViz(s.genres)) },
+  decades: { name: 'Decades', html: (s) => decadesViz(s.decades) },
+  obsessions: { name: 'Obsessions', html: (s) => obsessionsViz(s.obsessions, s.loops) },
+  rarely: { name: 'Rarely played records', html: (s) => rarelyViz(s.rarely) },
+  wishlist: { name: 'Wishlist ideas', html: (s) => wishlistViz(s.wishlist) },
+  top: { name: 'Top 10', kinds: ['day', ...SPAN], html: (s) => topViz(s.top) },
+  today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
+  dayline: { name: 'Your day', kinds: ['day'], html: (s) => daylineViz(s) },
+  firstLatest: { name: 'First and latest', kinds: ['day'], html: (s) => firstLatestViz(s) },
+  repeats: { name: 'On repeat', kinds: ['day'], html: (s) => repeatsViz(s) },
+  newToday: { name: 'New today', kinds: ['day'], html: (s) => newTodayViz(s) },
+  onThisDay: { name: 'On this day', kinds: ['day'], html: (s) => onThisDayViz(s) },
+  dayFacts: { name: 'Streak and vinyl', kinds: ['day'], html: (s) => dayFactsViz(s) },
+};
+const DEFAULT_ORDER = {
+  day: ['today', 'dayline', 'firstLatest', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'top'],
+  span: ['story', 'numbers', 'tidy', 'highlights', 'week', 'record', 'timeline', 'river', 'days', 'clock', 'streaks', 'pulse', 'newArtists', 'genres', 'decades', 'obsessions', 'rarely', 'wishlist', 'top'],
+};
+const statsGroup = (s) => (s && s.range && s.range.kind === 'day' ? 'day' : 'span');
+/** The page's order and hidden blocks, as arranged (kept with the other UI settings, so backups carry it). */
+function statsLayout(group) {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('statsLayout') || '{}')[group] || {}; } catch (_) { /* preview without storage */ }
+  const def = DEFAULT_ORDER[group];
+  const order = (saved.order || []).filter((k) => def.includes(k));
+  // Blocks added in a later version go after the block they follow by default.
+  def.forEach((k, i) => {
+    if (order.includes(k)) return;
+    const before = def.slice(0, i).reverse().find((x) => order.includes(x));
+    order.splice(before ? order.indexOf(before) + 1 : 0, 0, k);
+  });
+  return { order, hidden: new Set((saved.hidden || []).filter((k) => def.includes(k))) };
+}
+function saveLayout(group, order, hidden) {
+  try {
+    const all = JSON.parse(localStorage.getItem('statsLayout') || '{}');
+    if (order) all[group] = { order, hidden: [...hidden] };
+    else delete all[group];
+    localStorage.setItem('statsLayout', JSON.stringify(all));
+  } catch (_) { /* preview without storage */ }
+}
+
 function renderStats() {
   const s = STATS;
   const body = $('#statsBody');
   renderPeriod(s);
   if (!s || s.empty) { body.innerHTML = ''; return; }
   statsRange = s.range.id;
-  const sm = s.summary;
-  const pv = sm.prev || {};
   const k = s.range.kind;
-  if (!sm.scrobbles) {
-    body.innerHTML = `<div class="empty">${icon('album', 'i big')}<p>No plays in ${esc(periodName(s.range))}.</p></div>`;
+  const arrange = `<button class="btn text arrange-btn" id="arrangeBtn">${icon('tune')}Arrange this page</button>`;
+  if (!s.summary.scrobbles) {
+    const other = k === 'day' ? onThisDayViz(s) : '';
+    body.innerHTML = `<div class="empty">${icon('album', 'i big')}<p>${k === 'day' && s.range.running ? 'Nothing played yet today.' : `No plays in ${esc(periodName(s.range))}.`}</p></div>${other}`;
     return;
   }
-  let h = storyCardHtml(s);
-  h += `<div class="tiles">
-      ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k), 'music')}
-      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k), 'schedule')}
-      ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k), 'heart')}
-      ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k), 'explore')}
-    </div>`;
-  h += tidyBanner(s.tidy);
-  h += highlightsViz(s);
-  if (!RECS.stats || RECS.stats.rec !== s.record) RECS.stats = { rec: s.record, spot: -1, label: periodName(s.range) };
-  h += recordViz(s.record, 'stats', 'Your record') + timelineViz(s.timeline) + riverViz(s.river) + clockViz(s.clock, 'stats')
-    + streakViz(s.streaks, s) + pulseViz(s.pulse) + newArtistsViz(s.newArtists) + genreViz(s.genres) + decadesViz(s.decades) + obsessionsViz(s.obsessions, s.loops)
-    + rarelyViz(s.rarely) + wishlistViz(s.wishlist) + topViz(s.top);
-  body.innerHTML = h;
+  const lay = statsLayout(statsGroup(s));
+  body.innerHTML = lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k)).map((id) => BLOCKS[id].html(s) || '').join('') + arrange;
   drawRecords();
+}
+
+// ---- the week as seven days, and each day on a 24-hour strip ----
+
+const DOW_LETTER = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+/** Plays as lines on a 24-hour strip ([hours, color] pairs; color 1–5 the top artists, 0 everyone else), with a "now" mark. */
+function stripHtml(plays, nowH, small) {
+  const ticks = plays.map(([hr, c]) => `<i style="left:${Math.min(99.6, (hr / 24) * 100).toFixed(2)}%;background:${c ? `var(--a${c})` : 'color-mix(in srgb, var(--md-on-surface) 35%, transparent)'}"></i>`).join('');
+  return `<div class="dstrip${small ? ' small' : ''}">${ticks}${nowH != null ? `<b class="now" style="left:${((nowH / 24) * 100).toFixed(2)}%"></b>` : ''}</div>`;
+}
+const hoursAxis = (cls = '') => `<div class="hours ${cls}"><i>0</i><i>6</i><i>12</i><i>18</i><i>24</i></div>`;
+const legendHtml = (names) => (names.length ? `<div class="dlegend">${names.map((n, i) => `<button data-artist="${esc(n)}"><i style="background:var(--a${i + 1})"></i>${esc(n)}</button>`).join('')}</div>` : '');
+const nowHours = (s) => (s.range.running ? (Date.now() / 1000 - s.range.from) / 3600 : null);
+
+function weekViz(s) {
+  const w = s.week;
+  if (!w) return '';
+  const max = Math.max(1, ...w.days.map((v) => v || 0), ...w.last);
+  const cols = w.days.map((v, i) => `<div class="d${i === w.today ? ' today' : ''}${v == null ? ' ahead' : ''}" data-col="wk" data-i="${i}">
+    <div class="cl"><i class="last" style="height:${((w.last[i] / max) * 100).toFixed(1)}%"></i>${v ? `<i class="v" style="height:${((v / max) * 100).toFixed(1)}%"></i>` : ''}</div><span>${DOW_LETTER[i]}</span></div>`).join('');
+  const t = w.today;
+  const def = t >= 0 ? `Today so far: <b>${plural(w.days[t] || 0, 'play')}</b> · last ${DOW_LONG[t].replace(/s$/, '')}: ${w.last[t]} in all` : weekText(w, w.days.indexOf(Math.max(...w.days.map((v) => v || 0))));
+  return `<div class="viz"><h2>Your week</h2><span class="sub">Plays per day; the week before in outline</span><div class="wk">${cols}</div><div class="readout" id="ro-wk">${def}</div></div>`;
+}
+const weekText = (w, i) => `${DOW_LONG[i].replace(/s$/, '')}: <b>${plural(w.days[i] || 0, 'play')}</b> · a week earlier: ${w.last[i]}`;
+
+function daysViz(s) {
+  const w = s.week;
+  if (!w) return '';
+  const rows = w.strips.map((p, i) => `<div class="row${w.days[i] == null ? ' ahead' : ''}"><span>${DOW[i]}</span>${stripHtml(p, i === w.today ? nowHours({ range: { running: true, from: s.range.from + i * 86400 } }) : null, true)}</div>`).join('');
+  return `<div class="viz"><h2>Your days</h2><span class="sub">When you listened, day by day</span><div class="ddays">${rows}<div class="row"><span></span>${hoursAxis()}</div></div>${legendHtml(w.artists || [])}</div>`;
+}
+
+// ---- the Day tab: built for a handful of songs rather than thousands ----
+
+const minutesLabel = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${pad(Math.round(m % 60))}` : `${Math.round(m)} min`);
+const weekdayOf = (s) => new Date(s.range.from * 1000).toLocaleDateString([], { weekday: 'long' });
+function todayViz(s) {
+  const d = s.day || {}, sm = s.summary;
+  const min = sm.scrobbles * 3.5;
+  const big = min >= 60 ? `<b>${Math.floor(min / 60)} h ${pad(Math.round(min % 60))}</b>` : `<b>${Math.round(min)}</b><span>min</span>`;
+  let usual = '';
+  if (d.usual) {
+    const um = d.usual.plays * 3.5;
+    const scale = Math.max(min, um, 1) * 1.15;
+    const word = !s.range.running ? `A usual ${weekdayOf(s)}: <b>${minutesLabel(um)}</b>`
+      : `${min > um * 1.1 ? 'More than' : min < um * 0.9 ? 'Less than' : 'About'} your usual ${weekdayOf(s)} by now (<b>${minutesLabel(um)}</b>)`;
+    usual = `<div class="dusual"><div class="track"><i class="you" style="width:${((min / scale) * 100).toFixed(1)}%"></i><i class="usual" style="left:${((um / scale) * 100).toFixed(1)}%"></i></div><small>${word}</small></div>`;
+  }
+  return `<div class="viz dtoday"><div class="k">${s.range.running ? 'Today so far' : esc(periodName(s.range))}</div><div class="big">${big}</div>
+    <div class="facts"><span><b>${num(sm.scrobbles)}</b> plays</span><span><b>${num(sm.artists)}</b> ${sm.artists === 1 ? 'artist' : 'artists'}</span><span><b>${(d.sessions || []).length}</b> ${(d.sessions || []).length === 1 ? 'session' : 'sessions'}</span></div>${usual}</div>`;
+}
+function sessionWords(x) {
+  if (x.vinyl * 2 >= x.count && x.album) return [`${esc(x.album)}`, `${icon('album', 'i small')}on the turntable`];
+  if (x.album) return [`${esc(x.album)}`, `${esc(x.albumArtist)}`];
+  return [x.artistShare >= 0.5 ? `mostly ${esc(x.artist)}` : `${esc(x.artist)} and more`, ''];
+}
+function daylineViz(s) {
+  const d = s.day;
+  if (!d) return '';
+  const now = nowHours(s);
+  const ss = d.sessions.map((x, i) => {
+    const live = s.range.running && i === d.sessions.length - 1 && Date.now() / 1000 - x.to < 30 * 60;
+    const [what, how] = sessionWords(x);
+    return `<div class="s"${x.album ? ` ${albumAttrs(x.albumArtist, x.album)}` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
+      <span class="w"><b>${plural(x.count, 'song')}</b> · ${what}${how ? `<small>${how}</small>` : ''}</span><i class="sw" style="background:${x.color ? `var(--a${x.color})` : 'var(--md-outline)'}"></i></div>`;
+  }).join('');
+  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session: music without a long break</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
+    <div class="dsessions">${ss}</div></div>`;
+}
+function firstLatestViz(s) {
+  const d = s.day;
+  if (!d || !d.first) return '';
+  const card = (k, p) => `<button class="viz" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}><div class="k">${k}</div>${coverHtml(p.cover, p.album || p.title, p.artist, 'small')}<b>${esc(p.title)}</b><small>${esc(p.artist)} · ${fmtTime(p.ts * 1000)}</small></button>`;
+  const same = d.first.ts === d.latest.ts;
+  return `<div class="dpair${same ? ' one' : ''}">${card('First', d.first)}${same ? '' : card(s.range.running ? 'Latest' : 'Last', d.latest)}</div>`;
+}
+function repeatsViz(s) {
+  const d = s.day;
+  if (!d) return '';
+  const rows = (d.repeats || []).map((p) => `<button class="r with-cover" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}>${coverHtml(p.cover, p.album || p.title, p.artist, 'tiny')}<span class="t"><b>${esc(p.title)}</b><small>${esc(p.artist)}</small></span><span class="v">${p.plays}×</span></button>`);
+  const artists = (d.topArtists || []).filter((a) => a.plays >= 3).map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'song')}</small></span><span class="v">${a.plays}</span></button>`);
+  if (!rows.length && !artists.length) return '';
+  return `<div class="viz"><h2>On repeat</h2><div class="rank">${rows.join('')}${artists.slice(0, Math.max(1, 3 - rows.length)).join('')}</div></div>`;
+}
+function newTodayViz(s) {
+  const d = s.day;
+  if (!d || (!(d.newArtists || []).length && !d.newSongs)) return '';
+  return `<div class="viz"><h2>New ${s.range.running ? 'today' : 'that day'}</h2><span class="sub">First time ever</span><div class="chips">${(d.newArtists || []).map((n) => `<button class="chip" data-artist="${esc(n)}">${icon('people', 'i small')}${esc(n)}</button>`).join('')}
+    ${d.newSongs ? `<span class="chip static">${icon('music', 'i small')}${plural(d.newSongs, 'new song')}</span>` : ''}</div></div>`;
+}
+function onThisDayViz(s) {
+  const d = s.day;
+  if (!d || !(d.onThisDay || []).length) return '';
+  const date = new Date(s.range.from * 1000).toLocaleDateString([], { day: 'numeric', month: 'long' });
+  return `<div class="viz"><h2>On this day</h2><span class="sub">${esc(date)}, other years</span><div class="rank">${d.onThisDay.map((y) =>
+    `<button class="r with-cover" data-day="${esc(y.id)}">${coverHtml(y.cover, y.album || y.artist, y.albumArtist || y.artist, 'tiny')}<span class="t"><b>${esc(y.album || y.artist)}</b><small>${esc(y.album ? y.albumArtist : '')}${y.album ? ' · ' : ''}${y.year} · ${plural(y.plays, 'play')} that day</small></span>${icon('chevron-right')}</button>`).join('')}</div></div>`;
+}
+function dayFactsViz(s) {
+  const st = s.streaks || {}, d = s.day || {};
+  return `<div class="tiles">${s.range.running ? tile('Streak', st.current ? `Day ${st.current}` : '–', st.current ? `since ${dateLabel(st.currentFrom)}` : 'starts with music today', '', 'fire') : ''}
+    ${tile('Vinyl', d.vinyl ? plural(d.vinyl, 'track') : 'none', d.vinyl ? `of ${plural(s.summary.scrobbles, 'play')}` : 'all streamed', '', 'album')}</div>`;
+}
+
+// ---- Arrange: the order of the blocks, and which show ----
+
+function openArrange() {
+  const group = statsGroup(STATS);
+  const lay = statsLayout(group);
+  const kinds = group === 'day' ? ['day'] : SPAN;
+  const row = (id) => `<div class="ar-row${lay.hidden.has(id) ? ' off' : ''}" data-ar="${id}"><span class="ar-grip" aria-label="Move ${esc(BLOCKS[id].name)}">${icon('drag')}</span>
+    <span class="ar-name">${esc(BLOCKS[id].name)}${BLOCKS[id].kinds && !BLOCKS[id].kinds.includes('day') && BLOCKS[id].kinds.length === 1 ? `<small>${esc(BLOCKS[id].kinds[0])}s only</small>` : ''}</span>
+    <label class="ar-sw"><input type="checkbox"${lay.hidden.has(id) ? '' : ' checked'} aria-label="Show ${esc(BLOCKS[id].name)}"><i class="switch"></i></label></div>`;
+  openSheet(`<div class="sheet-title">Arrange ${group === 'day' ? 'the Day tab' : 'Stats'}</div>
+    <p class="body">Drag the handles to reorder, switch blocks off to hide them. ${group === 'day' ? 'Weeks, months and years have their own order.' : 'For weeks, months, years and all time; the Day tab has its own.'}</p>
+    <div class="ar-list">${lay.order.filter((id) => (BLOCKS[id].kinds || SPAN).some((x) => kinds.includes(x))).map(row).join('')}</div>
+    <div class="sheet-actions"><button class="btn text" id="arReset">Reset</button><button class="btn filled" id="arDone">Done</button></div>`);
+  const list = $('#sheetContent .ar-list');
+  const save = () => {
+    const ids = $$('.ar-row', list).map((r) => r.dataset.ar);
+    const hidden = new Set($$('.ar-row', list).filter((r) => !r.querySelector('input').checked).map((r) => r.dataset.ar));
+    // Blocks of the other kind keep their places in the saved order.
+    const full = lay.order.filter((id) => !ids.includes(id));
+    saveLayout(group, [...ids, ...full], hidden);
+  };
+  list.addEventListener('change', (e) => { e.target.closest('.ar-row').classList.toggle('off', !e.target.checked); save(); });
+  arrangeDrag(list, save);
+  $('#sheetContent').onclick = (e) => {
+    if (e.target.closest('#arDone')) { closeSheet(); renderStats(); }
+    if (e.target.closest('#arReset')) { saveLayout(group, null); openArrange(); }
+  };
+}
+/** Rows follow the finger by their handle and trade places with a neighbour once past its middle. */
+function arrangeDrag(list, done) {
+  let row = null, y0 = 0;
+  list.addEventListener('pointerdown', (e) => {
+    const g = e.target.closest('.ar-grip');
+    if (!g) return;
+    row = g.closest('.ar-row');
+    y0 = e.clientY;
+    row.classList.add('lift');
+    g.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!row) return;
+    const dy = e.clientY - y0;
+    row.style.transform = `translateY(${dy}px)`;
+    const mid = row.offsetTop + row.offsetHeight / 2 + dy;
+    const next = row.nextElementSibling, prev = row.previousElementSibling;
+    const swap = next && mid > next.offsetTop + next.offsetHeight / 2 ? () => list.insertBefore(next, row)
+      : prev && mid < prev.offsetTop + prev.offsetHeight / 2 ? () => list.insertBefore(row, prev) : null;
+    if (!swap) return;
+    const top = row.offsetTop;
+    swap();
+    y0 += row.offsetTop - top;
+    row.style.transform = `translateY(${e.clientY - y0}px)`;
+  });
+  const end = () => {
+    if (!row) return;
+    row.style.transform = '';
+    row.classList.remove('lift');
+    row = null;
+    done();
+  };
+  list.addEventListener('pointerup', end);
+  list.addEventListener('pointercancel', end);
 }
 
 /** Tap (or drag across) a heat cell, a column, a ridge or the river: its numbers show in the line under the chart. */
@@ -3956,6 +4199,7 @@ function onVizPointer(e, data) {
   const i = +col.dataset.i;
   if (col.dataset.col === 'na') $('#ro-na').innerHTML = newArtistsText(data.newArtists.buckets[i], data.newArtists.unit);
   else if (col.dataset.col === 'g') $('#ro-g').innerHTML = genreText(data.genres, i);
+  else if (col.dataset.col === 'wk') $('#ro-wk').innerHTML = weekText(data.week, i);
   else if (col.dataset.col === 'tl') $('#ro-tl').innerHTML = `${esc(periodLabel(data.timeline.starts[i], data.timeline.unit))}: <b>${plural(data.timeline.counts[i], 'play')}</b>`;
   else if (col.dataset.col === 'am') {
     const d = new Date(data.monthsFrom);
@@ -4397,6 +4641,7 @@ function build() {
   };
   $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
   $('#nowBody').addEventListener('click', (e) => {
+    if (e.target.closest('[data-npapp]')) { const n = (ST.phone || {}).now; if (n) send({ t: 'openPhoneApp', pkg: n.pkg }); return; }
     const b = e.target.closest('[data-np]');
     if (b) { npControl(b.dataset.np); return; }
     const q = e.target.closest('[data-npq]');
@@ -4448,6 +4693,9 @@ function build() {
   statsBody.onclick = (e) => {
     const sc = e.target.closest('[data-story]');
     if (sc) { openStory(sc.dataset.story); return; }
+    if (e.target.closest('#arrangeBtn')) { openArrange(); return; }
+    const day = e.target.closest('[data-day]');
+    if (day) { requestStats(day.dataset.day); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const ink = e.target.closest('[data-ink]');
     if (ink) { setSpot(ink.dataset.ink, +ink.dataset.k); return; }
     const pick = e.target.closest('[data-pick]');

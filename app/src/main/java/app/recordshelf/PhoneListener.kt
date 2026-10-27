@@ -125,6 +125,10 @@ class PhoneListener : NotificationListenerService() {
         }
     }
 
+    /** What tapping the app's player notification opens (usually its now-playing screen); null if the app names none. */
+    fun sessionActivity(pkg: String): android.app.PendingIntent? =
+        (active[pkg] ?: sessions.values.firstOrNull { it.c.packageName == pkg }?.c)?.sessionActivity
+
     private fun dropAll() {
         active.clear()
         Phone.clearMedia()

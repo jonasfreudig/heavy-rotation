@@ -81,6 +81,9 @@ class Stats(
 
         /** Scrobbles carry no length; "hours" assume an average track. */
         const val MINUTES_PER_PLAY = 3.5
+
+        /** A listening session ends after half an hour without a play. */
+        private const val SESSION_GAP = 30 * 60L
         private const val DAY_SEC = 86_400L
     }
 
@@ -118,6 +121,7 @@ class Stats(
                 id == "12m" -> span("12m", "12m", "Last 12 months", today.minusYears(1).plusDays(1), today.plusDays(1))
                 id.startsWith("y") -> id.substring(1).toInt().let { y -> span("year", "y$y", "$y", LocalDate.of(y, 1, 1), LocalDate.of(y + 1, 1, 1)) }
                 id.startsWith("m") -> YearMonth.parse(id.substring(1)).let { m -> span("month", "m$m", "$m", m.atDay(1), m.plusMonths(1).atDay(1)) }
+                id.startsWith("d") -> LocalDate.parse(id.substring(1)).let { d -> span("day", "d$d", "$d", d, d.plusDays(1)) }
                 id.startsWith("w") -> LocalDate.parse(id.substring(1)).let { d ->
                     val mon = d.minusDays(d.dayOfWeek.value - 1L)
                     span("week", "w$mon", "Week of $mon", mon, mon.plusDays(7))
@@ -133,6 +137,7 @@ class Stats(
     fun neighbor(r: Range, step: Int): Range? {
         val start = date(r.from)
         val id = when (r.kind) {
+            "day" -> "d" + start.plusDays(step.toLong())
             "week" -> "w" + start.plusWeeks(step.toLong())
             "month" -> "m" + YearMonth.from(start).plusMonths(step.toLong())
             "year" -> "y" + (start.year + step)
@@ -152,7 +157,7 @@ class Stats(
         return if (r.to > nowSec) p.copy(to = minOf(p.to, p.from + (r.to - r.from))) else p
     }
 
-    private fun rangeJson(r: Range) = JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label)
+    private fun rangeJson(r: Range) = JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("running", r.to > nowSec)
         .put("from", r.from).put("to", r.to).put("prev", neighbor(r, -1)?.id ?: JSONObject.NULL)
         .put("next", neighbor(r, 1)?.id ?: JSONObject.NULL).put("historyStart", historyStart)
 
@@ -197,6 +202,7 @@ class Stats(
         val from = date(maxOf(r.from, historyStart))
         val to = date(maxOf(minOf(r.to - 1, nowSec), maxOf(r.from, historyStart)))
         val span = when (r.kind) {
+            "day" -> 1L
             "week" -> 7L
             "month" -> 31L
             "year", "12m" -> 366L
@@ -238,6 +244,146 @@ class Stats(
             .put("rarely", rarelyPlayed(i0, i1))
             .put("wishlist", wishlist(i0, i1))
             .put("top", top(i0, i1, 10))
+            .also { o ->
+                if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
+                if (r.kind == "week") o.put("week", weekDays(r))
+            }
+    }
+
+    // ---- one day (the Day tab) and the days of a week ----
+
+    /** First play of each song, over the whole history. */
+    private val trackFirst: LongArray by lazy {
+        LongArray(h.trackTitles.size) { -1 }.also { f -> for (i in 0 until h.size) if (f[h.track[i]] < 0) f[h.track[i]] = h.ts[i] }
+    }
+
+    /** The [max] most played artists among plays [i0]..[i1]: their index → color 1.. (0 for everyone else). */
+    private fun colors(i0: Int, i1: Int, max: Int = 5): Map<Int, Int> {
+        val n = HashMap<Int, Int>()
+        for (i in i0 until i1) n.merge(h.artist[i], 1, Int::plus)
+        return n.entries.sortedByDescending { it.value }.take(max).withIndex().associate { (k, e) -> e.key to k + 1 }
+    }
+
+    /** Plays [i0]..[i1] as [hours since [start], color] pairs, for a 24-hour strip. */
+    private fun strip(start: Long, i0: Int, i1: Int, colors: Map<Int, Int>) =
+        JSONArray((i0 until i1).map { i -> JSONArray().put(Math.round((h.ts[i] - start) / 36.0) / 100.0).put(colors[h.artist[i]] ?: 0) })
+
+    private fun playJson(i: Int) = JSONObject().put("title", h.trackTitles[h.track[i]]).put("artist", h.artistNames[h.artist[i]])
+        .put("album", if (h.album[i] >= 0) h.albumTitles[h.album[i]] else "").put("cover", if (h.album[i] >= 0) cover(h.album[i]) else "")
+        .put("ts", h.ts[i])
+
+    /**
+     * The Day tab: the plays on a 24-hour strip, the listening sessions (a new one after half an
+     * hour without a play), first and latest song, what repeated, what was new, the same date in
+     * other years, vinyl, and the usual for this weekday up to the same time of day (last 8 weeks).
+     */
+    fun dayDetails(r: Range, i0: Int, i1: Int): JSONObject {
+        val c = colors(i0, i1)
+        val o = JSONObject().put("artists", JSONArray(c.entries.sortedBy { it.value }.map { h.artistNames[it.key] }))
+            .put("plays", strip(r.from, i0, i1, c))
+        val sessions = JSONArray()
+        var s0 = i0
+        while (s0 < i1) {
+            var e = s0
+            while (e + 1 < i1 && h.ts[e + 1] - h.ts[e] <= SESSION_GAP) e++
+            val n = e - s0 + 1
+            val sa = HashMap<Int, Int>()
+            val sl = HashMap<Int, Int>()
+            for (i in s0..e) {
+                sa.merge(h.artist[i], 1, Int::plus)
+                if (h.album[i] >= 0) sl.merge(h.album[i], 1, Int::plus)
+            }
+            val a = sa.maxBy { it.value }
+            val al = sl.maxByOrNull { it.value }?.takeIf { it.value * 2 >= n }
+            val end = h.ts[e] + (MINUTES_PER_PLAY * 60).toLong()
+            sessions.put(
+                JSONObject().put("from", h.ts[s0]).put("to", end).put("count", n).put("color", c[a.key] ?: 0)
+                    .put("artist", h.artistNames[a.key]).put("artistShare", a.value.toDouble() / n)
+                    .put("album", al?.let { h.albumTitles[it.key] } ?: "").put("albumArtist", al?.let { h.artistNames[h.albumArtist[it.key]] } ?: "")
+                    .put("vinyl", vinyl.count { it.ts in h.ts[s0] - 60..end }),
+            )
+            s0 = e + 1
+        }
+        o.put("sessions", sessions).put("vinyl", vinyl.count { it.ts in r.from until r.to })
+        if (i1 > i0) o.put("first", playJson(i0)).put("latest", playJson(i1 - 1))
+        // What repeated: songs, then the artists that carried the day.
+        val tp = HashMap<Int, Int>()
+        val lastOf = HashMap<Int, Int>()
+        val ap = HashMap<Int, Int>()
+        for (i in i0 until i1) {
+            tp.merge(h.track[i], 1, Int::plus)
+            lastOf[h.track[i]] = i
+            ap.merge(h.artist[i], 1, Int::plus)
+        }
+        o.put("repeats", JSONArray(tp.entries.filter { it.value >= 2 }.sortedByDescending { it.value }.take(5).map { (t, k) -> playJson(lastOf.getValue(t)).put("plays", k) }))
+        o.put("topArtists", JSONArray(ap.entries.sortedByDescending { it.value }.take(3).map { (a, k) -> JSONObject().put("name", h.artistNames[a]).put("plays", k).put("photo", artistPhoto(h.artistNames[a])) }))
+        // New today: artists and songs heard for the first time ever.
+        o.put("newArtists", JSONArray(ap.keys.filter { firstTs[it] in r.from until r.to }.sortedByDescending { ap[it] }.take(8).map { h.artistNames[it] }))
+            .put("newSongs", tp.keys.count { trackFirst[it] in r.from until r.to })
+        // The same date in earlier years.
+        val d = date(r.from)
+        val years = JSONArray()
+        var y = d.year - 1
+        val firstYear = date(historyStart).year
+        while (y >= firstYear && years.length() < 4) {
+            if (!(d.monthValue == 2 && d.dayOfMonth == 29 && !java.time.Year.isLeap(y.toLong()))) {
+                val dd = d.withYear(y)
+                val j0 = h.lowerBound(dd.atStartOfDay(zone).toEpochSecond())
+                val j1 = h.lowerBound(dd.plusDays(1).atStartOfDay(zone).toEpochSecond())
+                if (j1 > j0) {
+                    val la = HashMap<Int, Int>()
+                    val aa = HashMap<Int, Int>()
+                    for (i in j0 until j1) {
+                        if (h.album[i] >= 0) la.merge(h.album[i], 1, Int::plus)
+                        aa.merge(h.artist[i], 1, Int::plus)
+                    }
+                    val al = la.maxByOrNull { it.value }
+                    val ar = aa.maxBy { it.value }
+                    years.put(
+                        JSONObject().put("year", y).put("id", "d$dd").put("plays", j1 - j0).put("artist", h.artistNames[ar.key])
+                            .put("album", al?.let { h.albumTitles[it.key] } ?: "").put("albumArtist", al?.let { h.artistNames[h.albumArtist[it.key]] } ?: "")
+                            .put("albumPlays", al?.value ?: 0).put("cover", al?.let { cover(it.key) } ?: ""),
+                    )
+                }
+            }
+            y--
+        }
+        o.put("onThisDay", years)
+        // The usual for this weekday, up to the same time of day.
+        val upto = minOf(r.to, nowSec + 1) - r.from
+        var weeks = 0
+        var plays = 0
+        for (k in 1..8) {
+            val a = d.minusWeeks(k.toLong()).atStartOfDay(zone).toEpochSecond()
+            if (a + DAY_SEC <= historyStart) break
+            plays += h.lowerBound(a + upto) - h.lowerBound(a)
+            weeks++
+        }
+        if (weeks > 0) o.put("usual", JSONObject().put("plays", Math.round(plays * 10.0 / weeks) / 10.0).put("weeks", weeks))
+        return o
+    }
+
+    /** The days of week [r]: plays per day, the same days a week earlier, and each day's plays on a 24-hour strip. */
+    fun weekDays(r: Range): JSONObject {
+        val mon = date(r.from)
+        val c = colors(h.lowerBound(r.from), h.lowerBound(r.to))
+        val days = JSONArray()
+        val last = JSONArray()
+        val strips = JSONArray()
+        for (k in 0..6) {
+            val a = mon.plusDays(k.toLong()).atStartOfDay(zone).toEpochSecond()
+            val b = mon.plusDays(k + 1L).atStartOfDay(zone).toEpochSecond()
+            val la = mon.plusDays(k - 7L).atStartOfDay(zone).toEpochSecond()
+            val lb = mon.plusDays(k - 6L).atStartOfDay(zone).toEpochSecond()
+            val j0 = h.lowerBound(a)
+            val j1 = h.lowerBound(b)
+            days.put(if (a > nowSec) JSONObject.NULL else j1 - j0)
+            last.put(h.lowerBound(lb) - h.lowerBound(la))
+            strips.put(strip(a, j0, j1, c))
+        }
+        return JSONObject().put("days", days).put("last", last).put("strips", strips)
+            .put("artists", JSONArray(c.entries.sortedBy { it.value }.map { h.artistNames[it.key] }))
+            .put("today", if (nowSec in r.from until r.to) date(nowSec).toEpochDay() - mon.toEpochDay() else -1)
     }
 
     fun summary(r: Range, i0: Int, i1: Int): JSONObject {

@@ -271,9 +271,10 @@ const Mock = (() => {
   /** A period without its neighbours (see Stats.range). */
   function baseRange(id) {
     const now = new Date();
-    const mk = (kind, rid, a, b) => ({ id: rid, kind, label: rid, from: a / 1000, to: Math.min(b, Date.now() + 1000) / 1000 });
+    const mk = (kind, rid, a, b) => ({ id: rid, kind, label: rid, from: a / 1000, to: Math.min(b, Date.now() + 1000) / 1000, running: b > Date.now() });
     if (id === 'all') return { id, kind: 'all', label: 'All time', from: 0, to: Date.now() / 1000 + 1 };
     if (/^y\d+$/.test(id)) { const y = +id.slice(1); return mk('year', id, +new Date(y, 0, 1), +new Date(y + 1, 0, 1)); }
+    if (/^d\d+-\d+-\d+$/.test(id)) { const [y, m, d] = id.slice(1).split('-').map(Number); return mk('day', id, +new Date(y, m - 1, d), +new Date(y, m - 1, d + 1)); }
     if (/^m\d+-\d+$/.test(id)) { const [y, m] = id.slice(1).split('-').map(Number); return mk('month', id, +new Date(y, m - 1, 1), +new Date(y, m, 1)); }
     if (/^w\d+-\d+-\d+$/.test(id)) {
       const [y, m, d] = id.slice(1).split('-').map(Number);
@@ -287,6 +288,7 @@ const Mock = (() => {
     const r = baseRange(id);
     const step = (k) => {
       const d = new Date(r.from * 1000);
+      if (r.kind === 'day') return 'd' + isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + k));
       if (r.kind === 'week') return 'w' + isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * k));
       if (r.kind === 'month') { const x = new Date(d.getFullYear(), d.getMonth() + k, 1); return `m${x.getFullYear()}-${pad(x.getMonth() + 1)}`; }
       if (r.kind === 'year') return 'y' + (d.getFullYear() + k);
@@ -373,7 +375,86 @@ const Mock = (() => {
     return { current, currentFrom, longest: best, longestFrom: best ? dayMs(bestStart) : 0, longestTo: best ? dayMs(bestEnd) : 0, artists };
   }
 
+  /** The day's and the week's own parts, from the made-up history (see Stats.dayDetails and weekDays). */
   function fakeStats(id) {
+    const s = fakeStatsBase(id);
+    if (s.range && s.range.kind === 'day') s.day = fakeDay(s.range);
+    if (s.range && s.range.kind === 'week') s.week = fakeWeek(s.range);
+    return s;
+  }
+  function fakeColors(i0, i1) {
+    const L = history(), n = {};
+    for (let i = i0; i < i1; i++) n[L.a[i]] = (n[L.a[i]] || 0) + 1;
+    const c = {};
+    Object.keys(n).sort((x, y) => n[y] - n[x]).slice(0, 5).forEach((a, k) => { c[a] = k + 1; });
+    return c;
+  }
+  const fakeStrip = (start, i0, i1, c) => { const L = history(); const out = []; for (let i = i0; i < i1; i++) out.push([Math.round((L.ts[i] - start) / 36e3) / 100, c[L.a[i]] || 0]); return out; };
+  function fakeDay(r) {
+    const L = history();
+    const from = r.from * 1000, to = r.to * 1000;
+    const i0 = lowerBound(L.ts, from), i1 = lowerBound(L.ts, to);
+    const c = fakeColors(i0, i1);
+    const play = (i) => ({ title: L.titles[L.t[i]], artist: L.artists[L.a[i]], album: '', cover: '', ts: Math.floor(L.ts[i] / 1000) });
+    const sessions = [];
+    for (let a = i0; a < i1;) {
+      let e = a;
+      while (e + 1 < i1 && L.ts[e + 1] - L.ts[e] <= 30 * 60e3) e++;
+      const n = {};
+      for (let i = a; i <= e; i++) n[L.a[i]] = (n[L.a[i]] || 0) + 1;
+      const top = Object.keys(n).sort((x, y) => n[y] - n[x])[0];
+      sessions.push({ from: Math.floor(L.ts[a] / 1000), to: Math.floor(L.ts[e] / 1000) + 210, count: e - a + 1, color: c[top] || 0, artist: L.artists[top], artistShare: n[top] / (e - a + 1), album: '', albumArtist: '', vinyl: 0 });
+      a = e + 1;
+    }
+    const tp = {}, last = {}, ap = {};
+    for (let i = i0; i < i1; i++) { tp[L.t[i]] = (tp[L.t[i]] || 0) + 1; last[L.t[i]] = i; ap[L.a[i]] = (ap[L.a[i]] || 0) + 1; }
+    const seen = new Set();
+    for (let i = 0; i < i0; i++) seen.add(L.t[i]);
+    const d = new Date(from);
+    const onThisDay = [];
+    for (let y = d.getFullYear() - 1; y >= new Date(L.start).getFullYear() && onThisDay.length < 3; y--) {
+      const a = +new Date(y, d.getMonth(), d.getDate()), b = +new Date(y, d.getMonth(), d.getDate() + 1);
+      const j0 = lowerBound(L.ts, a), j1 = lowerBound(L.ts, b);
+      if (j1 <= j0) continue;
+      const n = {};
+      for (let i = j0; i < j1; i++) n[L.a[i]] = (n[L.a[i]] || 0) + 1;
+      const top = Object.keys(n).sort((x, z) => n[z] - n[x])[0];
+      onThisDay.push({ year: y, id: 'd' + isoDate(new Date(a)), plays: j1 - j0, artist: L.artists[top], album: '', albumArtist: '', albumPlays: 0, cover: '' });
+    }
+    const upto = Math.min(to, Date.now() + 1000) - from;
+    let plays = 0, weeks = 0;
+    for (let k = 1; k <= 8; k++) {
+      const a = +new Date(d.getFullYear(), d.getMonth(), d.getDate() - 7 * k);
+      if (a + DAY <= L.start) break;
+      plays += lowerBound(L.ts, a + upto) - lowerBound(L.ts, a);
+      weeks++;
+    }
+    return {
+      artists: Object.keys(c).sort((x, y) => c[x] - c[y]).map((a) => L.artists[a]), plays: fakeStrip(from, i0, i1, c), sessions, vinyl: 0,
+      first: i1 > i0 ? play(i0) : null, latest: i1 > i0 ? play(i1 - 1) : null,
+      repeats: Object.keys(tp).filter((t) => tp[t] >= 2).sort((x, y) => tp[y] - tp[x]).slice(0, 5).map((t) => ({ ...play(last[t]), plays: tp[t] })),
+      topArtists: Object.keys(ap).sort((x, y) => ap[y] - ap[x]).slice(0, 3).map((a) => ({ name: L.artists[a], plays: ap[a], photo: '' })),
+      newArtists: Object.keys(ap).filter((a) => L.first[a] >= from && L.first[a] < to).map((a) => L.artists[a]),
+      newSongs: Object.keys(tp).filter((t) => !seen.has(+t)).length,
+      onThisDay, usual: weeks ? { plays: Math.round((plays * 10) / weeks) / 10, weeks } : null,
+    };
+  }
+  function fakeWeek(r) {
+    const L = history();
+    const mon = new Date(r.from * 1000);
+    const at = (k) => +new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + k);
+    const c = fakeColors(lowerBound(L.ts, r.from * 1000), lowerBound(L.ts, r.to * 1000));
+    const days = [], last = [], strips = [];
+    for (let k = 0; k < 7; k++) {
+      const j0 = lowerBound(L.ts, at(k)), j1 = lowerBound(L.ts, at(k + 1));
+      days.push(at(k) > Date.now() ? null : j1 - j0);
+      last.push(lowerBound(L.ts, at(k - 6)) - lowerBound(L.ts, at(k - 7)));
+      strips.push(fakeStrip(at(k), j0, j1, c));
+    }
+    const today = Date.now() >= at(0) && Date.now() < at(7) ? Math.floor((Date.now() - at(0)) / DAY) : -1;
+    return { days, last, strips, artists: Object.keys(c).sort((x, y) => c[x] - c[y]).map((a) => L.artists[a]), today };
+  }
+  function fakeStatsBase(id) {
     const L = history();
     const r = mockRange(id);
     const sm = summaryOf(r);
@@ -1146,6 +1227,7 @@ const Mock = (() => {
           phoneTick();
           break;
         }
+        case 'openPhoneApp': toast('(preview) TIDAL would open on its now playing screen'); break;
         case 'nowAlbum': later(300, () => onNowAlbum({ ...fakeNowAlbum(m.album), q: m.q })); break;
         case 'tilt': break;
         case 'palette': {
