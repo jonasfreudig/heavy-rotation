@@ -854,8 +854,6 @@ input[type=datetime-local] { color-scheme: inherit; }
 #genreRow { gap: 8px; }
 
 /* Shelf views: big covers, or a list with the details */
-.count-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 4px; }
-.count-row .count { margin: 0 4px; }
 .views { display: flex; gap: 2px; }
 .views .icon-btn.small { width: 36px; height: 36px; color: var(--md-on-surface-variant); }
 .views .icon-btn.small.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
@@ -980,7 +978,6 @@ button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padd
 .uni-wrap.carded .uni-hint { display: none; }
 
 /* The shelf's now-playing card for a phone app */
-.spin-card.phone { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 
 /* Settings: a second way in, folded away */
 details.more { margin-top: 14px; }

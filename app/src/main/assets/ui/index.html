@@ -11,7 +11,7 @@
 <body>
 
 <header class="appbar" id="appbar">
-  <div class="appbar-title" id="appbarTitle">Shelf</div>
+  <div class="appbar-title"><span id="appbarTitle">Shelf</span><small class="title-count" id="shelfCount"></small></div>
   <span class="grow"></span>
   <button class="icon-btn" id="syncBtn" aria-label="Sync collection" hidden><svg class="i"><use href="#i-sync"/></svg></button>
   <button class="icon-btn" id="settingsBtn" aria-label="Settings"><svg class="i"><use href="#i-settings"/></svg></button>
@@ -25,15 +25,14 @@
     <div id="setupCards"></div>
     <div id="spinSlot"></div>
     <div id="shelfTools">
-      <label class="search">
-        <svg class="i"><use href="#i-search"/></svg>
-        <input type="search" id="search" placeholder="Search your records" autocomplete="off" spellcheck="false">
-        <button class="icon-btn" id="searchClear" aria-label="Clear search" hidden><svg class="i"><use href="#i-close"/></svg></button>
-      </label>
-      <div class="chip-row" id="sortChips"></div>
-      <div class="chip-row" id="filterChips"></div>
+      <div class="shelf-line">
+        <button class="sort-btn" id="sortBtn"></button>
+        <span class="grow"></span>
+        <button class="icon-btn filter-btn" id="filterBtn" aria-label="Filter by decade or genre"><svg class="i"><use href="#i-tune"/></svg></button>
+        <div class="views" id="shelfViews"></div>
+      </div>
+      <div class="chip-row" id="filterChips" hidden></div>
       <div id="shelfSummary"></div>
-      <div class="count-row"><div class="count" id="shelfCount"></div><div class="views" id="shelfViews"></div></div>
     </div>
     <div class="grid" id="grid"></div>
     <div class="empty" id="shelfEmpty" hidden></div>
@@ -43,18 +42,18 @@
   <section class="tab" id="tab-stats">
     <div id="statsHead"></div>
     <div class="period" id="periodPick" hidden>
-      <div class="seg small" id="periodKind">
-        <button data-k="week"><svg class="i check"><use href="#i-check"/></svg>Week</button>
-        <button data-k="month"><svg class="i check"><use href="#i-check"/></svg>Month</button>
-        <button data-k="year"><svg class="i check"><use href="#i-check"/></svg>Year</button>
-        <button data-k="all"><svg class="i check"><use href="#i-check"/></svg>All</button>
-      </div>
       <div class="pnav">
         <button class="icon-btn" id="pPrev" aria-label="Previous period"><svg class="i"><use href="#i-chevron-left"/></svg></button>
         <b id="pLabel"></b>
         <button class="icon-btn" id="pNext" aria-label="Next period"><svg class="i"><use href="#i-chevron-right"/></svg></button>
       </div>
-      <div class="chip-row" id="genreRow"></div>
+      <div class="ptabs-row">
+        <div class="ptabs" id="periodKind">
+          <button data-k="week">Week</button><button data-k="month">Month</button><button data-k="year">Year</button><button data-k="all">All</button>
+        </div>
+        <button class="icon-btn filter-btn" id="statsFilter" aria-label="Stats for one genre or decade"><svg class="i"><use href="#i-tune"/></svg></button>
+      </div>
+      <div class="chip-row" id="genreRow" hidden></div>
     </div>
     <div id="statsBody"></div>
   </section>
@@ -183,146 +182,105 @@
     <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
     <div class="appbar-title">Settings</div>
   </header>
-  <div class="page-body">
-    <div class="section-head" id="lfSection"><h2>Last.fm</h2><span class="sub">where your scrobbles go</span></div>
-    <div class="card">
-      <div class="status-line" id="lfStatus"></div>
-      <div id="lfQuick" hidden>
-        <p class="body">Tap Connect, then <b>Yes, allow access</b> on the Last.fm page in your browser, and come back here.</p>
-        <button class="btn filled wide" id="lfQuickBtn">Connect Last.fm</button>
-        <button class="btn text small" id="lfOwnKey">Use your own API key instead</button>
-      </div>
-      <div id="lfSetup">
-        <ol class="steps">
-          <li>Create a free API account on Last.fm. Any application name and description will do; leave <b>Callback URL</b> empty.
-            <button class="btn text small link" data-url="https://www.last.fm/api/account/create"><svg class="i"><use href="#i-open"/></svg>Open the Last.fm API page</button></li>
-          <li>Copy the <b>API key</b> and the <b>Shared secret</b> it shows into these two fields.</li>
-          <li>Tap Connect, then <b>Yes, allow access</b> in the browser, and come back here.</li>
-        </ol>
-        <label class="field"><span>API key</span><input type="text" id="lfKey" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <label class="field"><span>Shared secret</span><input type="password" id="lfSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <button class="btn filled wide" id="lfSave">Save and connect</button>
-      </div>
-      <div id="lfWaiting" hidden>
-        <p class="body">Allow access on the Last.fm page in your browser, then come back here.</p>
-        <div class="btn-row">
-          <button class="btn filled" id="lfCheck">I've allowed it</button>
-          <button class="btn outlined" id="lfReopen">Open again</button>
+  <div class="page-body settings">
+    <h2 class="group-head">Accounts</h2>
+    <details class="card acct" id="lfSection">
+      <summary><span class="acct-head"><b>Last.fm</b><span class="sub">where your scrobbles go</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="lfStatus"></span></summary>
+      <div class="acct-body">
+        <div id="lfQuick" hidden>
+          <p class="body">Tap Connect, then <b>Yes, allow access</b> on the Last.fm page in your browser, and come back here.</p>
+          <button class="btn filled wide" id="lfQuickBtn">Connect Last.fm</button>
+          <button class="btn text small" id="lfOwnKey">Use your own API key instead</button>
         </div>
-      </div>
-      <div id="lfConnected" hidden>
-        <div class="btn-row">
-          <button class="btn outlined" id="lfDisconnect">Disconnect</button>
-          <button class="btn text" id="lfChangeKey">Use another API key</button>
-        </div>
-      </div>
-      <div id="lfReconnect" hidden>
-        <p class="body">Last.fm asks you to allow access again. Your waiting scrobbles are kept.</p>
-        <button class="btn filled wide" id="lfReconnectBtn">Reconnect</button>
-      </div>
-      <p class="error" id="lfError" hidden></p>
-    </div>
-
-    <div class="section-head" id="phSection"><h2>Phone scrobbling</h2><span class="sub">instead of Pano Scrobbler</span></div>
-    <div class="card">
-      <div class="status-line" id="phStatus"></div>
-      <div class="seg" id="phMode">
-        <button data-v="off"><svg class="i check"><use href="#i-check"/></svg>Off</button>
-        <button data-v="shadow"><svg class="i check"><use href="#i-check"/></svg>Shadow</button>
-        <button data-v="on"><svg class="i check"><use href="#i-check"/></svg>On</button>
-      </div>
-      <p class="hint" id="phHint"></p>
-      <div id="phAccess" hidden>
-        <p class="body top">Android calls the permission <b>notification access</b>. Record Shelf uses it only to see what music apps are playing; it doesn't read your notifications.</p>
-        <button class="btn filled wide" id="phAccessBtn">Allow notification access</button>
-        <p class="hint">Switch greyed out with "Restricted setting"? Open App info, tap ⋮ at the top right, choose <b>Allow restricted settings</b>, then try again.</p>
-        <button class="btn text small link" id="phAppInfo"><svg class="i"><use href="#i-open"/></svg>Open App info</button>
-      </div>
-      <div class="warnline bad" id="phPano" hidden><svg class="i"><use href="#i-warning"/></svg><span>Pano Scrobbler is still installed. Turn off its scrobbling or uninstall it, or every track is scrobbled twice. <button class="btn text small" id="phPanoInfo">Pano's app info</button></span></div>
-      <div id="phAppsWrap">
-        <div class="row-label"><span>Apps</span></div>
-        <div id="phApps"></div>
-        <p class="hint">Apps show up here once they play something. Only apps switched on are scrobbled.</p>
-      </div>
-      <button class="btn text small link" id="phBattery"><svg class="i"><use href="#i-open"/></svg>Battery settings</button>
-    </div>
-
-    <div class="section-head" id="dgSection"><h2>Discogs</h2><span class="sub">your record collection</span></div>
-    <div class="card">
-      <div class="status-line" id="dgStatus"></div>
-      <div id="dgSetup">
-        <p class="body">Your Discogs username is enough if your collection is public on Discogs (your privacy settings there).</p>
-        <label class="field"><span>Discogs username</span><input type="text" id="dgUser" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <button class="btn filled wide" id="dgUserSave">Connect</button>
-        <details class="more">
-          <summary>Private collection? Connect with a token</summary>
+        <div id="lfSetup">
           <ol class="steps">
-            <li>On Discogs, open <b>Settings → Developers</b> and tap <b>Generate new token</b>.
-              <button class="btn text small link" data-url="https://www.discogs.com/settings/developers"><svg class="i"><use href="#i-open"/></svg>Open Discogs developer settings</button></li>
-            <li>Copy the token and paste it here. It gives this app read access to your collection.</li>
+            <li>Create a free API account on Last.fm. Any application name and description will do; leave <b>Callback URL</b> empty.
+              <button class="btn text small link" data-url="https://www.last.fm/api/account/create"><svg class="i"><use href="#i-open"/></svg>Open the Last.fm API page</button></li>
+            <li>Copy the <b>API key</b> and the <b>Shared secret</b> it shows into these two fields.</li>
+            <li>Tap Connect, then <b>Yes, allow access</b> in the browser, and come back here.</li>
           </ol>
-          <label class="field"><span>Personal access token</span><input type="password" id="dgToken" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-          <button class="btn tonal wide" id="dgSave">Connect with the token</button>
-        </details>
-      </div>
-      <div id="dgConnected" hidden>
-        <div class="lin inline" id="dgProgress" hidden><i></i></div>
-        <div class="btn-row">
-          <button class="btn tonal" id="dgSync"><svg class="i"><use href="#i-sync"/></svg>Sync now</button>
-          <button class="btn outlined" id="dgDisconnect">Disconnect</button>
+          <label class="field"><span>API key</span><input type="text" id="lfKey" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <label class="field"><span>Shared secret</span><input type="password" id="lfSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <button class="btn filled wide" id="lfSave">Save and connect</button>
         </div>
-      </div>
-      <p class="error" id="dgError" hidden></p>
-    </div>
-
-    <div class="section-head"><h2>Scrobbling</h2></div>
-    <div class="card">
-      <div class="row-label"><span>Length of tracks nobody knows</span></div>
-      <div class="chips" id="defLen"></div>
-      <p class="hint">Used when Discogs, MusicBrainz and Last.fm all lack a track's length. Such tracks show as ≈3:30 on the record page.</p>
-    </div>
-
-    <div class="section-head" id="stSection"><h2>Stats</h2><span class="sub">your Last.fm history</span></div>
-    <div class="card">
-      <p class="body" id="tidyStatus">Videos, app sounds and other non-music scrobbles can be hidden from your stats. Nothing changes on Last.fm.</p>
-      <button class="btn tonal" data-tidy><svg class="i"><use href="#i-clean"/></svg>Tidy up stats</button>
-    </div>
-
-    <div class="section-head"><h2>Listen on</h2><span class="sub">buttons on song, album and artist pages</span></div>
-    <div class="card">
-      <div class="chips" id="svcChips"></div>
-      <p class="hint">Each button searches the service for that song, album or artist. Spotify opens in its app; the others open their web page, which their app may take over.</p>
-    </div>
-
-    <div class="section-head" id="tdSection"><h2>TIDAL</h2><span class="sub">exact links and playlists</span></div>
-    <div class="card">
-      <div class="status-line" id="tdStatus"></div>
-      <div id="tdSetup">
-        <ol class="steps">
-          <li>Open the TIDAL developer dashboard and log in with your TIDAL account. Accept the guidelines the first time.
-            <button class="btn text small link" data-url="https://developer.tidal.com/dashboard"><svg class="i"><use href="#i-open"/></svg>Open the TIDAL dashboard</button></li>
-          <li>Create an app; any name will do, for example "Record Shelf".</li>
-          <li>In the app's settings, add this <b>redirect URI</b> and switch on the scope <b>playlists.write</b>:
-            <span class="code-row"><code id="tdRedirect">recordshelf://tidal</code><button class="btn text small" id="tdCopy"><svg class="i"><use href="#i-copy"/></svg>Copy</button></span></li>
-          <li>Copy the app's <b>Client ID</b> and <b>Client Secret</b> into these fields.</li>
-        </ol>
-        <label class="field"><span>Client ID</span><input type="text" id="tdId" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <label class="field"><span>Client Secret</span><input type="password" id="tdSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-        <button class="btn filled wide" id="tdSave">Save</button>
-      </div>
-      <div id="tdConnected" hidden>
-        <p class="body">The TIDAL buttons now open the exact song, album or artist. To create playlists in your TIDAL, sign in once.</p>
-        <div class="btn-row">
-          <button class="btn filled" id="tdLogin">Sign in to TIDAL</button>
-          <button class="btn outlined" id="tdSignOut">Sign out</button>
-          <button class="btn text" id="tdChange">Use your own TIDAL app</button>
-          <button class="btn text" id="tdForget">Disconnect</button>
+        <div id="lfWaiting" hidden>
+          <p class="body">Allow access on the Last.fm page in your browser, then come back here.</p>
+          <div class="btn-row">
+            <button class="btn filled" id="lfCheck">I've allowed it</button>
+            <button class="btn outlined" id="lfReopen">Open again</button>
+          </div>
         </div>
+        <div id="lfConnected" hidden>
+          <div class="btn-row">
+            <button class="btn outlined" id="lfDisconnect">Disconnect</button>
+            <button class="btn text" id="lfChangeKey">Use another API key</button>
+          </div>
+        </div>
+        <div id="lfReconnect" hidden>
+          <p class="body">Last.fm asks you to allow access again. Your waiting scrobbles are kept.</p>
+          <button class="btn filled wide" id="lfReconnectBtn">Reconnect</button>
+        </div>
+        <p class="error" id="lfError" hidden></p>
       </div>
-      <p class="error" id="tdError" hidden></p>
-    </div>
+    </details>
+    <details class="card acct" id="dgSection">
+      <summary><span class="acct-head"><b>Discogs</b><span class="sub">your record collection</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="dgStatus"></span></summary>
+      <div class="acct-body">
+        <div id="dgSetup">
+          <p class="body">Your Discogs username is enough if your collection is public on Discogs (your privacy settings there).</p>
+          <label class="field"><span>Discogs username</span><input type="text" id="dgUser" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <button class="btn filled wide" id="dgUserSave">Connect</button>
+          <details class="more">
+            <summary>Private collection? Connect with a token</summary>
+            <ol class="steps">
+              <li>On Discogs, open <b>Settings → Developers</b> and tap <b>Generate new token</b>.
+                <button class="btn text small link" data-url="https://www.discogs.com/settings/developers"><svg class="i"><use href="#i-open"/></svg>Open Discogs developer settings</button></li>
+              <li>Copy the token and paste it here. It gives this app read access to your collection.</li>
+            </ol>
+            <label class="field"><span>Personal access token</span><input type="password" id="dgToken" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+            <button class="btn tonal wide" id="dgSave">Connect with the token</button>
+          </details>
+        </div>
+        <div id="dgConnected" hidden>
+          <div class="lin inline" id="dgProgress" hidden><i></i></div>
+          <div class="btn-row">
+            <button class="btn tonal" id="dgSync"><svg class="i"><use href="#i-sync"/></svg>Sync now</button>
+            <button class="btn outlined" id="dgDisconnect">Disconnect</button>
+          </div>
+        </div>
+        <p class="error" id="dgError" hidden></p>
+      </div>
+    </details>
+    <details class="card acct" id="tdSection">
+      <summary><span class="acct-head"><b>TIDAL</b><span class="sub">exact links and playlists</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="tdStatus"></span></summary>
+      <div class="acct-body">
+        <div id="tdSetup">
+          <ol class="steps">
+            <li>Open the TIDAL developer dashboard and log in with your TIDAL account. Accept the guidelines the first time.
+              <button class="btn text small link" data-url="https://developer.tidal.com/dashboard"><svg class="i"><use href="#i-open"/></svg>Open the TIDAL dashboard</button></li>
+            <li>Create an app; any name will do, for example "Record Shelf".</li>
+            <li>In the app's settings, add this <b>redirect URI</b> and switch on the scope <b>playlists.write</b>:
+              <span class="code-row"><code id="tdRedirect">recordshelf://tidal</code><button class="btn text small" id="tdCopy"><svg class="i"><use href="#i-copy"/></svg>Copy</button></span></li>
+            <li>Copy the app's <b>Client ID</b> and <b>Client Secret</b> into these fields.</li>
+          </ol>
+          <label class="field"><span>Client ID</span><input type="text" id="tdId" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <label class="field"><span>Client Secret</span><input type="password" id="tdSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <button class="btn filled wide" id="tdSave">Save</button>
+        </div>
+        <div id="tdConnected" hidden>
+          <p class="body">The TIDAL buttons now open the exact song, album or artist. To create playlists in your TIDAL, sign in once.</p>
+          <div class="btn-row">
+            <button class="btn filled" id="tdLogin">Sign in to TIDAL</button>
+            <button class="btn outlined" id="tdSignOut">Sign out</button>
+            <button class="btn text" id="tdChange">Use your own TIDAL app</button>
+            <button class="btn text" id="tdForget">Disconnect</button>
+          </div>
+        </div>
+        <p class="error" id="tdError" hidden></p>
+      </div>
+    </details>
 
-    <div class="section-head"><h2>Look</h2></div>
+    <h2 class="group-head">Look</h2>
     <div class="card">
       <div class="row-label"><span>Theme</span></div>
       <div class="seg" id="themeSeg">
@@ -333,10 +291,16 @@
       <p class="hint">Colors always follow your wallpaper (Material You).</p>
       <div class="row-label"><span>Style</span></div>
       <div class="seg" id="lookSeg">
-        <button data-v="glass"><svg class="i check"><use href="#i-check"/></svg>Soft glass</button>
         <button data-v="soft"><svg class="i check"><use href="#i-check"/></svg>Tinted soft</button>
+        <button data-v="glass"><svg class="i check"><use href="#i-check"/></svg>Soft glass</button>
       </div>
-      <p class="hint">Soft glass: the cover blurred behind the whole page, frosted buttons over it. Tinted soft: calm raised shapes in the cover's color, the cover only glowing at the top.</p>
+      <p class="hint">Tinted soft: calm raised shapes in the cover's color, the cover only glowing at the top. Soft glass: the cover blurred behind the whole page, frosted buttons over it.</p>
+      <div class="row-label"><span>Now playing</span></div>
+      <div class="seg" id="nowSeg">
+        <button data-v="line"><svg class="i check"><use href="#i-check"/></svg>On the shelf</button>
+        <button data-v="corner"><svg class="i check"><use href="#i-check"/></svg>In the corner</button>
+      </div>
+      <p class="hint">What plays, on the turntable or the phone: as a line at the top of the shelf, or as a record peeking out above the search button.</p>
       <div class="row-label"><span>Background color</span></div>
       <div class="seg" id="ambSeg">
         <button data-v="records"><svg class="i check"><use href="#i-check"/></svg>Your records</button>
@@ -347,8 +311,52 @@
       <label class="switch-row"><span>Moving covers<small>Album covers tilt and shine as you move the phone</small></span><input type="checkbox" id="tiltSw"><i class="switch"></i></label>
     </div>
 
-    <div class="section-head" id="bkSection"><h2>Backup</h2><span class="sub">to a new phone, or into a new version</span></div>
+    <h2 class="group-head">Scrobbling</h2>
+    <details class="card acct" id="phSection">
+      <summary><span class="acct-head"><b>Phone scrobbling</b><span class="sub">instead of Pano Scrobbler</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="phStatus"></span></summary>
+      <div class="acct-body">
+        <div class="seg" id="phMode">
+          <button data-v="off"><svg class="i check"><use href="#i-check"/></svg>Off</button>
+          <button data-v="shadow"><svg class="i check"><use href="#i-check"/></svg>Shadow</button>
+          <button data-v="on"><svg class="i check"><use href="#i-check"/></svg>On</button>
+        </div>
+        <p class="hint" id="phHint"></p>
+        <div id="phAccess" hidden>
+          <p class="body top">Android calls the permission <b>notification access</b>. Record Shelf uses it only to see what music apps are playing; it doesn't read your notifications.</p>
+          <button class="btn filled wide" id="phAccessBtn">Allow notification access</button>
+          <p class="hint">Switch greyed out with "Restricted setting"? Open App info, tap ⋮ at the top right, choose <b>Allow restricted settings</b>, then try again.</p>
+          <button class="btn text small link" id="phAppInfo"><svg class="i"><use href="#i-open"/></svg>Open App info</button>
+        </div>
+        <div class="warnline bad" id="phPano" hidden><svg class="i"><use href="#i-warning"/></svg><span>Pano Scrobbler is still installed. Turn off its scrobbling or uninstall it, or every track is scrobbled twice. <button class="btn text small" id="phPanoInfo">Pano's app info</button></span></div>
+        <div id="phAppsWrap">
+          <div class="row-label"><span>Apps</span></div>
+          <div id="phApps"></div>
+          <p class="hint">Apps show up here once they play something. Only apps switched on are scrobbled.</p>
+        </div>
+        <button class="btn text small link" id="phBattery"><svg class="i"><use href="#i-open"/></svg>Battery settings</button>
+      </div>
+    </details>
     <div class="card">
+      <div class="row-label"><span>Length of tracks nobody knows</span></div>
+      <div class="chips" id="defLen"></div>
+      <p class="hint">Used when Discogs, MusicBrainz and Last.fm all lack a track's length. Such tracks show as ≈3:30 on the record page.</p>
+    </div>
+
+    <h2 class="group-head">Stats and listening</h2>
+    <div class="card">
+      <div class="row-label"><span>Listen on</span></div>
+      <div class="chips" id="svcChips"></div>
+      <p class="hint">Each button searches the service for that song, album or artist. Spotify opens in its app; the others open their web page, which their app may take over.</p>
+    </div>
+    <div class="card" id="stSection">
+      <div class="row-label"><span>Tidy up</span></div>
+      <p class="body" id="tidyStatus">Videos, app sounds and other non-music scrobbles can be hidden from your stats. Nothing changes on Last.fm.</p>
+      <button class="btn tonal" data-tidy><svg class="i"><use href="#i-clean"/></svg>Tidy up stats</button>
+    </div>
+
+    <h2 class="group-head">Your data</h2>
+    <div class="card" id="bkSection">
+      <div class="row-label"><span>Backup</span><span class="sub">to a new phone, or into a new version</span></div>
       <p class="body">One file with your history, hide list, activity, collection, tracklists, caches and settings. Keys, tokens and logins stay out of it: connect again after restoring.</p>
       <div class="btn-row"><button class="btn tonal" id="bkExport"><svg class="i"><use href="#i-download"/></svg>Export backup</button><button class="btn outlined" id="bkImport">Restore…</button></div>
       <p class="hint" id="bkStatus" hidden></p>
@@ -366,6 +374,18 @@
   <button data-tab="explore"><span class="ind"><svg class="i"><use href="#i-explore"/></svg></span><span>Explore</span></button>
   <button data-tab="activity"><span class="ind"><svg class="i"><use href="#i-history"/></svg><i class="badge" id="actBadge" hidden></i></span><span>Activity</span></button>
 </nav>
+<button class="search-fab" id="searchFab" aria-label="Search"><svg class="i"><use href="#i-search"/></svg></button>
+<button class="np-peek" id="npPeek" hidden></button>
+
+<!-- Search: results over the tabs, the field at the bottom -->
+<div class="search-page" id="searchPage" hidden><div class="search-body" id="searchBody"></div></div>
+<div class="search-dock" id="searchDock" hidden>
+  <label class="search">
+    <svg class="i"><use href="#i-search"/></svg>
+    <input type="search" id="gSearch" placeholder="Records, artists, albums, songs" autocomplete="off" spellcheck="false" enterkeyhint="search">
+    <button class="icon-btn" id="gSearchClose" aria-label="Close search"><svg class="i"><use href="#i-close"/></svg></button>
+  </label>
+</div>
 
 <!-- Bottom sheet; its content is built per use -->
 <div class="sheet" id="sheet" hidden>
@@ -384,6 +404,8 @@
   <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></symbol>
+  <symbol id="i-tune" viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></symbol>

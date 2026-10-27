@@ -31,7 +31,7 @@
 .artist-hero h1.fit { font-family: var(--display); font-weight: 800; text-transform: none; font-style: italic; letter-spacing: -.025em; font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; }
 .tile b, .sum-nums b { font-family: var(--display); font-weight: 600; letter-spacing: -.02em; font-variation-settings: 'SOFT' 40, 'opsz' 72; }
 .tile b { font-size: 33px; }
-#pLabel { font-family: var(--display); font-weight: 650; font-size: 21px; font-variation-settings: 'SOFT' 60, 'opsz' 48; }
+#pLabel { font-family: var(--display); font-weight: 600; font-size: 32px; line-height: 38px; letter-spacing: -.01em; font-variation-settings: 'SOFT' 50, 'opsz' 72; }
 .story-card h2, .story .t { font-family: var(--display); font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; }
 .tile .tl, .count, .side, .k, .story-card .k, .hero .meta, .rec small, .xcard small, .rank .n, .rank .v, .rank .t small, .track .pos, .track .dur, .xl, .chip .n, .dur { font-family: var(--mono); }
 .tile .tl { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
@@ -345,3 +345,87 @@ body.bar-away .lin:not(.inline) { top: var(--inset-top); }
 .xp-tile b { font: 650 16px/20px var(--display, var(--font)); letter-spacing: -.01em; }
 .xp-tile small { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
 .xp-dig { width: 100%; justify-content: center; margin: 10px 0 6px; }
+
+/* ---- the shelf's top: the count by the title, one line for sort, filter and views ---- */
+.title-count { margin-left: 12px; font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--md-on-surface-variant); vertical-align: .4em; }
+.shelf-line { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; }
+.sort-btn { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 0 4px 0 2px; white-space: nowrap; font: 600 15px/20px var(--font); color: var(--md-on-surface); }
+.sort-btn .i { width: 22px; height: 22px; color: var(--md-on-surface-variant); }
+.filter-btn { position: relative; width: 40px; height: 40px; color: var(--md-on-surface); }
+.filter-btn .i { width: 21px; height: 21px; }
+.filter-btn.on::after { content: ''; position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--md-primary); }
+.views { border-radius: 20px; padding: 2px; }
+.views .icon-btn.small { width: 36px; height: 32px; border-radius: 16px; }
+#filterChips { margin-top: 0; }
+.sort-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.sort-grid .chip { justify-content: center; height: 40px; }
+
+/* ---- now playing: a sleeve with the record half out of it ---- */
+.np-art { position: relative; display: block; flex: none; width: 78px; height: 78px; margin-right: 32px; }
+.np-art .cover { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border-radius: 8px; z-index: 1; }
+.np-disc { position: absolute; left: 36px; top: 2px; width: 74px; height: 74px; border-radius: 50%;
+  background: radial-gradient(circle, transparent 0 31%, rgba(255, 255, 255, .06) 31.5% 32.5%, transparent 33%), repeating-radial-gradient(circle, #141414 0 1.5px, #202020 1.5px 3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
+.np-disc i { position: absolute; inset: 32%; border-radius: 50%; overflow: hidden; background: hsl(var(--h, 260) 45% 45%); }
+.np-disc i img { width: 100%; height: 100%; object-fit: cover; }
+.np-disc i::after { content: ''; position: absolute; left: 45%; top: 45%; width: 10%; height: 10%; border-radius: 50%; background: #111; }
+.playing .np-disc { animation: spin33 3.6s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .playing .np-disc { animation: none; } }
+.np-line { display: flex; align-items: center; gap: 16px; width: 100%; margin: 4px 0 2px; padding: 6px 0; text-align: left; color: var(--md-on-surface); }
+.np-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.np-txt small { font: 500 10.5px/16px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-txt b { font: 600 19px/24px var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-txt > span { font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-bar { position: relative; display: block; height: 6px; margin-top: 8px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--md-on-surface) 10%, transparent); }
+.np-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: var(--md-primary); transition: width 1s linear; }
+/* The record in the corner: above the search circle, tilted, tucked away a little more while you scroll down. */
+.np-peek { position: fixed; right: 10px; bottom: calc(var(--inset-bottom) + 54px); z-index: 5; width: 100px; height: 100px; transform: rotate(-8deg);
+  transition: transform .3s cubic-bezier(.2, .7, .2, 1); }
+.np-peek .np-art { width: 100px; height: 100px; margin: 0; }
+.np-peek .np-disc { left: -22px; top: -40px; width: 94px; height: 94px; }
+body.bar-away .np-peek { transform: translateY(46px) rotate(-8deg); }
+
+/* ---- the search circle beside the tabs; search opens into a field at the bottom ---- */
+.navbar { right: calc(14px + 64px + 10px); max-width: none; margin: 0; }
+.search-fab { position: fixed; right: 14px; bottom: calc(var(--inset-bottom) + 10px); z-index: 6; width: 64px; height: 64px; border-radius: 32px;
+  display: grid; place-items: center; color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--md-surface-container-highest) 92%, transparent); box-shadow: 0 12px 32px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .18); }
+.search-fab .i { width: 26px; height: 26px; }
+.search-page { position: fixed; inset: 0; z-index: 8; overflow-y: auto; overscroll-behavior: contain; background: var(--md-surface);
+  padding: calc(var(--inset-top) + 8px) 16px calc(max(var(--inset-bottom), var(--ime)) + 110px); animation: pageIn .2s ease-out; }
+.search-dock { position: fixed; left: 14px; right: 14px; bottom: calc(max(var(--inset-bottom), var(--ime)) + 10px); z-index: 9; }
+.search-dock .search { margin: 0; height: 62px; border-radius: 31px; padding: 0 6px 0 20px; box-shadow: 0 12px 32px rgba(0, 0, 0, .28); }
+.search-dock .search input { color: var(--md-on-surface); }
+body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none; }
+.search-hint { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 18vh 24px 0; text-align: center; color: var(--md-on-surface-variant); }
+.search-hint .i.big { width: 44px; height: 44px; opacity: .5; }
+.search-hint p { margin: 0; font-size: 15px; line-height: 22px; }
+.search-body .section-head:first-child { margin-top: 8px; }
+.search-body .grid { margin-top: 8px; }
+.search-body .rank .r > .i { width: 20px; height: 20px; color: var(--md-on-surface-variant); }
+.search-wait { text-align: center; margin-top: 18px; }
+
+/* ---- Settings: a few groups; accounts fold away once set up ---- */
+.settings .group-head { margin: 28px 6px 0; font: 500 11.5px/16px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.settings .group-head:first-child { margin-top: 6px; }
+.settings .row-label { margin: 20px 0 0; font: 600 15px/20px var(--font); }
+.settings .card > .row-label:first-child { margin-top: 0; }
+.settings .card > .switch-row { margin-top: 18px; }
+.settings .row-label .sub { margin-left: 8px; font-weight: 400; font-size: 12px; color: var(--md-on-surface-variant); }
+.acct > summary { display: flex; flex-direction: column; gap: 8px; list-style: none; cursor: pointer; }
+.acct > summary::-webkit-details-marker { display: none; }
+.acct-head { display: flex; align-items: baseline; gap: 10px; }
+.acct-head b { font: 600 18px/24px var(--display); letter-spacing: -.005em; }
+.acct-head .sub { flex: 1; min-width: 0; font-size: 12px; color: var(--md-on-surface-variant); }
+.acct-head .chev { width: 22px; height: 22px; align-self: center; color: var(--md-on-surface-variant); transition: transform .2s; }
+.acct[open] .acct-head .chev { transform: rotate(90deg); }
+.acct-body { margin-top: 14px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
+
+/* ---- Stats: the period is the title; Week, Month, Year, All as tabs; one filter button ---- */
+.period .pnav { margin: 4px -8px 0; }
+.ptabs-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ptabs { flex: 1; display: flex; gap: 2px; margin-left: -10px; }
+.ptabs button { position: relative; padding: 8px 12px 12px; font: 500 15px/20px var(--font); color: var(--md-on-surface-variant); }
+.ptabs button.on { color: var(--md-on-surface); font-weight: 650; }
+.ptabs button.on::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--tint-text, var(--md-primary)); }
+#genreRow { justify-content: flex-start; }

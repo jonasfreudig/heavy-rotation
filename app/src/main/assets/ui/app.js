@@ -28,7 +28,7 @@ let tab = 'shelf';
 const pageStack = [];
 let recordId = 0;
 let showKeyForm = false;
-const shelf = { q: '', sort: 'added', rev: false, decade: 0, genre: '', view: 'grid' };
+const shelf = { sort: 'added', rev: false, decade: 0, genre: '', view: 'grid' };
 /** The shelf as a grid of covers, a grid of big covers, or a list with the details. */
 const SHELF_VIEWS = [['grid', 'apps', 'Grid'], ['big', 'big-grid', 'Big covers'], ['list', 'view-list', 'List']];
 
@@ -280,8 +280,8 @@ window.onBack = () => {
   if (!$('#story').hidden) { closeStory(); return true; }
   if (!$('#sheet').hidden) { closeSheet(); return true; }
   if (pageStack.length) { closePage(); return true; }
+  if (searching()) { closeSearch(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
-  if (shelf.q) { $('#search').value = ''; shelf.q = ''; renderShelf(); return true; }
   return false;
 };
 
@@ -292,6 +292,7 @@ function showTab(name) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
   $('#appbarTitle').textContent = { shelf: 'Shelf', stats: 'Stats', explore: 'Explore', activity: 'Activity' }[name];
+  $('#shelfCount').hidden = name !== 'shelf';
   window.scrollTo(0, 0);
   renderState();
   if (name === 'stats') requestStats();
@@ -389,6 +390,10 @@ function deliver(pageId, req, current, apply) {
 function openSettings(section) {
   openPage('settingsPage');
   renderSettings();
+  // Accounts fold away once they're set up; one that needs something, or was asked for, opens.
+  const l = ST.lastfm || {}, d = ST.discogs || {}, p = ST.phone || {};
+  const done = { lfSection: !!l.connected && !l.needsAuth, dgSection: !!d.connected, tdSection: true, phSection: (p.mode || 'off') === 'off' || !!p.access };
+  $$('#settingsPage details.acct').forEach((el) => { el.open = el.id === section || !done[el.id]; });
   if (section) setTimeout(() => { const s = $('#' + section); if (s) $('#settingsPage').scrollTop = s.offsetTop - 72; }, 30);
 }
 
@@ -455,17 +460,43 @@ function renderSetup() {
 }
 
 let spinCardSig = '';
+/** Settings → Look → Now playing: 'line' (a line at the top of the shelf) or 'corner' (a record peeking out above the search). */
+function nowStyle() {
+  try { return localStorage.getItem('nowStyle') === 'corner' ? 'corner' : 'line'; } catch (_) { return 'line'; }
+}
+/** The sleeve with the record half out of it, the cover on both (the label of the record too). */
+function npArt(cover, title, artist) {
+  return `<span class="np-art"><span class="np-disc" style="--h:${hue((title || '') + (artist || ''))}"><i>${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</i></span>${coverHtml(cover, title, artist, 'np-sleeve')}</span>`;
+}
+/**
+ * What plays now, the record spinning or else the phone's music app: as a line on the shelf, or
+ * as a record peeking out above the search circle. [it] has cover, title, artist, label and the
+ * ids its line keeps up to date (see tickUi and tickPhone); [attrs] make a tap open its page.
+ */
+function showNow(it, sig) {
+  const slot = $('#spinSlot'), peek = $('#npPeek');
+  const corner = nowStyle() === 'corner';
+  if (!it) { spinCardSig = ''; slot.innerHTML = ''; peek.hidden = true; peek.innerHTML = ''; return; }
+  sig += corner ? '|c' : '|l';
+  if (sig === spinCardSig) return;
+  spinCardSig = sig;
+  const art = npArt(it.cover, it.album || it.title, it.artist);
+  if (corner) {
+    slot.innerHTML = '';
+    peek.outerHTML = `<button class="np-peek${it.playing ? ' playing' : ''}" id="npPeek" ${it.attrs} aria-label="${esc(`${it.title} — ${it.artist}`)}">${art}</button>`;
+    $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
+  } else {
+    peek.hidden = true;
+    peek.innerHTML = '';
+    slot.innerHTML = `<button class="np-line${it.playing ? ' playing' : ''}" ${it.attrs}>${art}
+      <span class="np-txt"><small ${it.labelId ? `id="${it.labelId}"` : ''}>${esc(it.label || '')}</small><b ${it.titleId ? `id="${it.titleId}"` : ''}>${esc(it.title || '')}</b>
+      <span>${esc(it.artist)}${it.album ? ` — ${esc(it.album)}` : ''}</span><i class="np-bar"><i id="${it.barId}"></i></i></span></button>`;
+  }
+}
 function renderSpinCard() {
   const sp = ST.spin;
-  const slot = $('#spinSlot');
-  if (!sp) { renderPhoneNow(slot); return; }
-  const sig = sp.id + '|' + sp.cover;
-  if (sig !== spinCardSig) {
-    spinCardSig = sig;
-    slot.innerHTML = `<button class="spin-card" id="spinCard">${coverHtml(sp.cover, sp.album, sp.artist, 'small')}
-      <div class="txt"><small id="scLabel"></small><b id="scTitle"></b><span>${esc(sp.artist)} — ${esc(sp.album)}</span></div>
-      <span class="eq plain"><i></i><i></i><i></i></span><div class="bar"><i id="scBar"></i></div></button>`;
-  }
+  if (!sp) { renderPhoneNow(); return; }
+  showNow({ cover: sp.cover, title: sp.album, album: sp.album, artist: sp.artist, playing: true, attrs: 'id="spinCard"', labelId: 'scLabel', titleId: 'scTitle', barId: 'scBar' }, sp.id + '|' + sp.cover);
   tickUi();
 }
 
@@ -473,15 +504,11 @@ function renderSpinCard() {
  * With no record spinning, the same card shows what a music app on the phone plays (TIDAL and
  * the like), with its cover; a tap opens the song's page.
  */
-function renderPhoneNow(slot) {
+function renderPhoneNow() {
   const n = (ST.phone || {}).now;
-  if (!n || !n.title) { spinCardSig = ''; slot.innerHTML = ''; return; }
-  const sig = ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|');
-  if (sig === spinCardSig) return;
-  spinCardSig = sig;
-  slot.innerHTML = `<button class="spin-card phone" ${trackAttrs(n.artist, n.title, { album: n.album, cover: n.cover })}>${coverHtml(n.cover, n.album || n.title, n.artist, 'small')}
-    <div class="txt"><small>${n.playing ? 'Now playing' : 'Paused'} · ${esc(n.app)}</small><b>${esc(n.title)}</b><span>${esc(n.artist)}${n.album ? ` — ${esc(n.album)}` : ''}</span></div>
-    ${n.playing ? '<span class="eq plain"><i></i><i></i><i></i></span>' : '<span></span>'}<div class="bar"><i id="phNowBar"></i></div></button>`;
+  if (!n || !n.title) { showNow(null); return; }
+  showNow({ cover: n.cover, title: n.title, album: n.album, artist: n.artist, playing: n.playing, label: `${n.playing ? 'Now playing' : 'Paused'} · ${n.app}`,
+    attrs: trackAttrs(n.artist, n.title, { album: n.album, cover: n.cover }), barId: 'phNowBar' }, ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|'));
   tickPhone();
 }
 
@@ -516,24 +543,22 @@ function tickUi() {
 // ---------- shelf ----------
 
 function sorted() {
-  const q = norm(shelf.q.trim());
   const s = SORTS.find((x) => x.id === shelf.sort) || SORTS[0];
-  const list = (q ? COLL.filter((r) => q.split(/\s+/).every((w) => r._s.includes(w))) : COLL.slice()).filter((r) => shelfFilterOk(r));
+  const list = COLL.filter((r) => shelfFilterOk(r));
   list.sort(s.cmp);
   if (shelf.rev) list.reverse();
   return list;
 }
 
 function renderShelf() {
-  $('#sortChips').innerHTML = SORTS.map((s) => {
-    const on = shelf.sort === s.id;
-    return `<button class="chip ${on ? 'on' : ''}" data-sort="${s.id}">${on ? icon('flip') : ''}${s.labels[on && shelf.rev ? 1 : 0]}</button>`;
-  }).join('');
+  const srt = SORTS.find((x) => x.id === shelf.sort) || SORTS[0];
+  $('#sortBtn').innerHTML = `${esc(srt.labels[shelf.rev ? 1 : 0])}${icon('drop')}`;
+  $('#filterBtn').classList.toggle('on', shelfFiltered());
   const list = sorted();
   shownCount = list.length;
   const spinId = ST.spin && ST.spin.releaseId;
   $('#shelfTools').hidden = !COLL.length;
-  $('#shelfCount').textContent = shelf.q.trim() || shelfFiltered() ? `${list.length} of ${plural(COLL.length, 'record')}` : plural(COLL.length, 'record');
+  $('#shelfCount').textContent = !COLL.length ? '' : shelfFiltered() ? `${list.length} of ${plural(COLL.length, 'record')}` : plural(COLL.length, 'record');
   renderFilterChips();
   $('#shelfSummary').innerHTML = shelfSummaryHtml(list);
   $('#shelfViews').innerHTML = SHELF_VIEWS.map(([v, ic, label]) => `<button class="icon-btn small${shelf.view === v ? ' on' : ''}" data-view="${v}" aria-label="${label}">${icon(ic)}</button>`).join('');
@@ -561,9 +586,70 @@ function renderShelfEmpty() {
   let h = '';
   if (!COLL.length && d.connected && d.syncing) h = `${icon('album', 'i big')}<p>Loading your collection…${d.done ? `<br>${plural(d.done, 'record')} so far` : ''}</p>`;
   else if (!COLL.length && d.connected) h = `${icon('album', 'i big')}<p>No records yet.<br>Add some to your Discogs collection, then sync.</p><button class="btn tonal" id="emptySync">${icon('sync')}Sync now</button>`;
-  else if (COLL.length && !shownCount && shelf.q.trim()) h = `<p>No records match “${esc(shelf.q.trim())}”</p>`;
   e.innerHTML = h;
   e.hidden = !h;
+}
+
+// ---------- search: what you own first, then everything you played ----------
+
+let SEARCH = { q: '', res: null };
+let searchTimer = 0;
+const searching = () => !$('#searchPage').hidden;
+function openSearch() {
+  $('#searchPage').hidden = false;
+  $('#searchDock').hidden = false;
+  document.body.classList.add('searching');
+  renderSearch();
+  $('#gSearch').focus();
+}
+function closeSearch() {
+  $('#searchPage').hidden = true;
+  $('#searchDock').hidden = true;
+  document.body.classList.remove('searching');
+  $('#gSearch').value = '';
+  $('#gSearch').blur();
+  SEARCH = { q: '', res: null };
+}
+function onSearchInput(e) {
+  SEARCH.q = e.target.value;
+  renderSearch();
+  clearTimeout(searchTimer);
+  const q = SEARCH.q.trim();
+  if (q) searchTimer = setTimeout(() => send({ t: 'search', q: SEARCH.q }), 160);
+}
+window.onSearch = (r) => {
+  if (r.q !== SEARCH.q) return;
+  SEARCH.res = r;
+  renderSearch();
+};
+/** Records on the shelf whose title, artist, label, year or styles hold every word of [q]. */
+function shelfMatches(q) {
+  const words = norm(q.trim()).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return COLL.filter((r) => words.every((w) => r._s.includes(w))).sort((a, b) => coll.compare(a._artist, b._artist) || (a.year || 9999) - (b.year || 9999));
+}
+function renderSearch() {
+  const q = SEARCH.q.trim();
+  const body = $('#searchBody');
+  if (!q) {
+    body.innerHTML = `<div class="search-hint">${icon('search', 'i big')}<p>Your records first, then every artist, album and song you've played.</p></div>`;
+    return;
+  }
+  const r = SEARCH.res && SEARCH.res.q === SEARCH.q ? SEARCH.res : null;
+  const owned = shelfMatches(q);
+  const sec = (title, n, html) => n ? `<div class="section-head"><h2>${title}</h2><span class="sub">${n}</span></div>${html}` : '';
+  const shown = owned.slice(0, 9);
+  const shelfHtml = sec('On your shelf', owned.length, `<div class="grid">${shown.map((x) => `<button class="rec" data-id="${x.id}">${coverHtml(x.cover || x.thumb, x.title, x.artist)}<b>${esc(x.title)}</b><small>${esc(x.artist)}</small></button>`).join('')}</div>
+    ${owned.length > shown.length ? `<p class="hint">and ${plural(owned.length - shown.length, 'more record')}: add a word to narrow it down</p>` : ''}`);
+  // Albums you own are already on the shelf above.
+  const artists = (r && r.artists) || [], albums = ((r && r.albums) || []).filter((a) => !a.owned), tracks = (r && r.tracks) || [];
+  const artistsHtml = sec('Artists', artists.length, `<div class="rank">${artists.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
+  const albumsHtml = sec('Albums', albums.length, `<div class="rank">${albums.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)}${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)} · ${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
+  const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${compact(t.plays)}</span></button>`).join('')}</div>`);
+  // On the shelf your records come first; elsewhere what you played does.
+  const parts = tab === 'shelf' ? [shelfHtml, artistsHtml, albumsHtml, tracksHtml] : [artistsHtml, albumsHtml, tracksHtml, shelfHtml];
+  const none = !owned.length && r && !artists.length && !albums.length && !tracks.length;
+  body.innerHTML = parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`) + (none ? `<div class="search-hint"><p>Nothing matches “${esc(q)}”.</p></div>` : '');
 }
 
 // ---------- record page ----------
@@ -1581,9 +1667,9 @@ const missingNote = () => ((ST.history || {}).count > 0
 function ambientMode() {
   try { return localStorage.getItem('ambient') || 'records'; } catch (_) { return 'records'; }
 }
-/** Settings → Look → Style: 'glass' (the cover behind frosted controls) or 'soft' (raised shapes in the cover's color); see looks.css. */
+/** Settings → Look → Style: 'soft' (raised shapes in the cover's color) or 'glass' (the cover behind frosted controls); see looks.css. */
 function lookMode() {
-  try { return localStorage.getItem('look') === 'soft' ? 'soft' : 'glass'; } catch (_) { return 'glass'; }
+  try { return localStorage.getItem('look') === 'glass' ? 'glass' : 'soft'; } catch (_) { return 'soft'; }
 }
 document.documentElement.dataset.look = lookMode();
 let ambientUrl = '';
@@ -2044,13 +2130,41 @@ function shelfFilterOk(r, skip) {
 const shelfFiltered = () => !!(shelf.decade || shelf.genre);
 
 function renderFilterChips() {
-  const dec = shelf.decade
-    ? `<button class="chip on" data-fclear="decade">${shelf.decade}s${icon('close', 'i small')}</button>`
-    : `<button class="chip" data-fpick="decade">${icon('calendar', 'i small')}Decade</button>`;
-  const gen = shelf.genre
-    ? `<button class="chip on" data-fclear="genre">${esc(shelf.genre.slice(2))}${icon('close', 'i small')}</button>`
-    : `<button class="chip" data-fpick="genre">${icon('album', 'i small')}Genre or style</button>`;
+  const dec = shelf.decade ? `<button class="chip on" data-fclear="decade">${shelf.decade}s${icon('close', 'i small')}</button>` : '';
+  const gen = shelf.genre ? `<button class="chip on" data-fclear="genre">${esc(shelf.genre.slice(2))}${icon('close', 'i small')}</button>` : '';
   $('#filterChips').innerHTML = dec + gen;
+  $('#filterChips').hidden = !shelfFiltered();
+}
+
+/** Sort: every order and its reverse, one tap each. */
+function openSortSheet() {
+  openSheet(`<div class="sheet-title">Sort</div><div class="sort-grid">${SORTS.map((s) => s.labels.map((l, k) => {
+    const on = shelf.sort === s.id && shelf.rev === !!k;
+    return `<button class="chip${on ? ' on' : ''}" data-sort="${s.id}" data-rev="${k}">${on ? icon('check', 'i small') : ''}${esc(l)}</button>`;
+  }).join('')).join('')}</div>`);
+  $('#sheetContent').onclick = (e) => {
+    const b = e.target.closest('[data-sort]');
+    if (!b) return;
+    shelf.sort = b.dataset.sort;
+    shelf.rev = b.dataset.rev === '1';
+    closeSheet();
+    renderShelf();
+    try { localStorage.setItem('shelfSort', JSON.stringify({ sort: shelf.sort, rev: shelf.rev })); } catch (_) { /* preview without storage */ }
+  };
+}
+/** Filter: by decade or by genre and style (the pickers are openFilterSheet). */
+function openFilterChoice() {
+  openSheet(`<div class="sheet-title">Filter</div><div class="btn-row">
+    <button class="btn tonal" data-fpick="decade">${icon('calendar')}${shelf.decade ? `${shelf.decade}s` : 'Decade'}</button>
+    <button class="btn tonal" data-fpick="genre">${icon('album')}${shelf.genre ? esc(shelf.genre.slice(2)) : 'Genre or style'}</button></div>
+    ${shelfFiltered() ? `<button class="btn text" id="fClearAll">${icon('close')}Show all records</button>` : ''}`);
+  $('#sheetContent').onclick = (e) => {
+    if (!e.target.closest('#fClearAll')) return;
+    shelf.decade = 0;
+    shelf.genre = '';
+    closeSheet();
+    renderShelf();
+  };
 }
 
 /** The sheet to pick a decade, or a genre and its styles, with how many records each has (within the other filter). */
@@ -2110,16 +2224,21 @@ let statsDecade = 0;
 /** "in Post Punk", "from the 1970s", "in Post Punk from the 1970s", or "" without filters. */
 const filterWords = (genre, decade) => [genre ? `in ${genreLabel(genre)}` : '', decade ? `from the ${decade}s` : ''].filter(Boolean).join(' ');
 const genreLabel = (key) => ((STATS && STATS.genreOptions) || []).find((o) => o.key === key)?.label || key.replace(/\b\w/g, (c) => c.toUpperCase());
+/** The genre and decade the stats are narrowed to, each with its ✕; the filter button picks them. */
 function renderGenreRow() {
   const row = $('#genreRow');
   if (!row) return;
-  const g = statsGenre
-    ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>`
-    : `<button class="chip" data-gpick>${icon('album', 'i small')}All genres${icon('down', 'i small')}</button>`;
-  const d = statsDecade
-    ? `<button class="chip on" data-dclear>${icon('calendar', 'i small')}${statsDecade}s${icon('close', 'i small')}</button>`
-    : `<button class="chip" data-dpick>${icon('calendar', 'i small')}All decades${icon('down', 'i small')}</button>`;
+  const g = statsGenre ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>` : '';
+  const d = statsDecade ? `<button class="chip on" data-dclear>${icon('calendar', 'i small')}${statsDecade}s${icon('close', 'i small')}</button>` : '';
   row.innerHTML = g + d;
+  row.hidden = !(g || d);
+  $('#statsFilter').classList.toggle('on', !!(g || d));
+}
+function openStatsFilter() {
+  openSheet(`<div class="sheet-title">Stats for…</div><div class="btn-row">
+    <button class="btn tonal" data-gpick>${icon('album')}${statsGenre ? esc(genreLabel(statsGenre)) : 'One genre'}</button>
+    <button class="btn tonal" data-dpick>${icon('calendar')}${statsDecade ? `${statsDecade}s` : 'One decade'}</button></div>`);
+  $('#sheetContent').onclick = null;
 }
 
 /** The sheet to pick a decade of release, with how many plays each has and how much of the history has a known year. */
@@ -3722,6 +3841,7 @@ function renderSettings() {
   $('#defLen').innerHTML = DEF_LENGTHS.map((s) => `<button class="chip ${s === def ? 'on' : ''}" data-sec="${s}">${s === def ? icon('check') : ''}${fmtDur(s)}</button>`).join('');
   $$('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (ST.prefs.theme || 'system')));
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
+  $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
   try { $('#tiltSw').checked = localStorage.getItem('tilt') !== 'off'; } catch (_) { $('#tiltSw').checked = true; }
   $('#version').textContent = ST.version ? `Record Shelf ${ST.version}` : '';
   renderPhoneSettings();
@@ -3779,22 +3899,18 @@ function build() {
   });
   $('#scrim').onclick = closeSheet;
 
-  let searchTimer = 0;
-  $('#search').addEventListener('input', (e) => {
-    shelf.q = e.target.value;
-    $('#searchClear').hidden = !shelf.q;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(renderShelf, 120);
-  });
-  $('#searchClear').onclick = () => { $('#search').value = ''; shelf.q = ''; $('#searchClear').hidden = true; renderShelf(); };
-  $('#sortChips').onclick = (e) => {
-    const b = e.target.closest('[data-sort]');
-    if (!b) return;
-    if (shelf.sort === b.dataset.sort) shelf.rev = !shelf.rev;
-    else { shelf.sort = b.dataset.sort; shelf.rev = false; }
-    renderShelf();
-    try { localStorage.setItem('shelfSort', JSON.stringify({ sort: shelf.sort, rev: shelf.rev })); } catch (_) { /* preview without storage */ }
+  $('#sortBtn').onclick = openSortSheet;
+  $('#filterBtn').onclick = openFilterChoice;
+  $('#searchFab').onclick = openSearch;
+  $('#gSearchClose').onclick = (e) => { e.preventDefault(); closeSearch(); };
+  $('#gSearch').addEventListener('input', onSearchInput);
+  $('#gSearch').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+  $('#searchBody').onclick = (e) => {
+    $('#gSearch').blur();
+    const r = e.target.closest('.rec[data-id]');
+    if (r) openRecord(+r.dataset.id);
   };
+  $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
   $('#grid').onclick = (e) => { const b = e.target.closest('.rec'); if (b) openRecord(+b.dataset.id); };
   $('#shelfEmpty').onclick = (e) => { if (e.target.closest('#emptySync')) send({ t: 'sync' }); };
   $('#spinSlot').onclick = (e) => { if (e.target.closest('#spinCard')) { openPage('spinPage'); renderSpin(true); } };
@@ -3826,6 +3942,7 @@ function build() {
     const anchor = Math.min(STATS.range.to * 1000 - 1, Date.now());
     requestStats(periodId(b.dataset.k, Math.max(anchor, STATS.range.from * 1000)));
   };
+  $('#statsFilter').onclick = openStatsFilter;
   $('#pPrev').onclick = () => { if (STATS && STATS.range.prev) requestStats(STATS.range.prev); };
   $('#pNext').onclick = () => { if (STATS && STATS.range.next) requestStats(STATS.range.next); };
   const statsBody = $('#statsBody');
@@ -4032,6 +4149,13 @@ function build() {
   $('#dgDisconnect').onclick = () => confirmSheet('Disconnect Discogs?', 'Your shelf will be empty until you connect again. Your scrobbles are not affected.', 'Disconnect', () => send({ t: 'discogsDisconnect' }));
   $('#defLen').onclick = (e) => { const b = e.target.closest('[data-sec]'); if (b) send({ t: 'setDefaultTrack', sec: +b.dataset.sec }); };
   $('#themeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) send({ t: 'setTheme', v: b.dataset.v }); };
+  $('#nowSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('nowStyle', b.dataset.v); } catch (_) { /* preview without storage */ }
+    renderSpinCard();
+    renderSettings();
+  };
   $('#lookSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;

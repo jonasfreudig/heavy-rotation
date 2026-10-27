@@ -122,7 +122,8 @@ per 20,000 scrobbles. You can use other apps meanwhile; a notification shows the
 import is interrupted it continues where it stopped the next time you open the app. Afterwards
 only new scrobbles are fetched, at most every 30 minutes when you open the app.
 
-Pick **Week**, **Month**, **Year** or **All** at the top, and step back and forth with **‹ ›**.
+The period is the page's title: step back and forth with **‹ ›**, and pick **Week**, **Month**,
+**Year** or **All** under it.
 The charts adapt: a week or a month is shown per day, a year per week or month, all time per
 month, quarter or year. What the tab shows for the chosen period:
 
@@ -177,6 +178,13 @@ play.
 Song, album, artist and record pages have **Listen on** buttons that search TIDAL and Spotify
 for them. Pick the services under Settings → Listen on (YouTube Music, Apple Music and Deezer too).
 Spotify opens in its app; TIDAL opens its search page, which lists the match first.
+
+#### Search
+
+The round button next to the tabs searches everything: your records (by title, artist, label, year
+or style), and every artist, album and song in your listening history, most played first. On the
+shelf your records come first; on the other tabs what you played does. Every word you type has to
+match somewhere, so "fire strokes" finds Room on Fire.
 
 Song, album and artist pages take their colors from the cover or the artist's photo: a glow
 behind the header, and charts in that color. Each has a **listening barcode** (one line per week
@@ -287,7 +295,7 @@ lit up on your record, top tracks and albums, and the records of theirs on your 
 
 A scrobbler that listened to every app may have sent things that aren't music: "HBO Max", a game
 trailer from YouTube, a short clip that played on loop. When the history has such scrobbles, a
-banner on the Stats tab opens **Tidy up stats** (also under Settings → Stats). It lists:
+banner on the Stats tab opens **Tidy up stats** (also under Settings → Stats and listening). It lists:
 
 - **Look like videos or apps**: tracks without an album that are named like an app, have a
   video-style title (trailer, episode, "Title | Channel"), have the artist's name as their title,
@@ -315,18 +323,25 @@ grain lies over everything. Behind the top of the app glows the color of the rec
 of the last one you played; pick **Your records**, **Wallpaper** (your Material You colors) or
 **Off** in Settings → Look → Background color.
 
-The shelf has three views (the buttons next to the record count): the grid of covers, big covers
-two to a row with year and plays, and a list with year, label, format, two styles and plays.
+The shelf's count sits next to its title. One line under it has the order (tap it for the others:
+recently or first added, artist A–Z or Z–A, year, plays), the filter button, and three views: the
+grid of covers, big covers two to a row with year and plays, and a list with year, label, format,
+two styles and plays.
+
+What plays right now, on the turntable or in a music app on the phone, shows as a sleeve with the
+record half out of it, turning while it plays. Settings → Look → Now playing puts it **On the
+shelf** (a line at the top, with the progress) or **In the corner** (the record peeking out above
+the search button, from every tab). Tap it for Now spinning, or the song's page.
 
 Record, album, song and artist pages and Now spinning take their cover or photo: shrunk to a few
 pixels once and stretched (that is the blur, so nothing is recomputed while scrolling), under a
 veil of the page color so the text stays readable. Settings → Look → Style picks how:
 
+- **Tinted soft** (the default): soft UI. The page takes a calm shade of the cover's color, buttons
+  and cards are raised from it with light and shade (pressed ones sink in), and the cover only glows
+  behind the top of the page.
 - **Soft glass**: the blurred cover lies behind the whole page, and buttons and cards float over it
   frosted, with a soft shadow and a lit edge.
-- **Tinted soft**: soft UI. The page takes a calm shade of the cover's color, buttons and cards are
-  raised from it with light and shade (pressed ones sink in), and the cover only glows behind the
-  top of the page.
 
 Both give each page one solid button and its links in the cover's color. Top bars blend into the page, step aside
 while you scroll down and come back when you scroll up; the tabs sit in a floating bar at the
@@ -369,14 +384,15 @@ Tap a record, then **Scrobble** (or **Scrobble** next to a side, or tap a single
 
 ### Filtering the shelf
 
-Under the sort chips, **Decade** and **Genre or style** narrow the shelf (Discogs genres like Rock,
-or styles like Post-Punk), each with how many records it has. A summary card then shows the
+The filter button next to the order narrows the shelf by **Decade** or **Genre or style** (Discogs
+genres like Rock, or styles like Post-Punk), each with how many records it has; the filters in use
+show under the line, each with its ✕. A summary card then shows the
 selection: records, artists, Last.fm plays, never played, the most played, and how it splits by
 decade or style. For a genre, **Your … listening** opens the Stats tab for that genre.
 
-On the Stats tab, **All genres** picks one genre: everything there and in the story then counts
+On the Stats tab, the filter button next to Week · Month · Year · All picks **One genre**: everything there and in the story then counts
 only the plays whose main genre is that one (the same genre the genre charts count them under).
-**All decades** does the same for when the music came out, and the two combine ("Post Punk from
+**One decade** does the same for when the music came out, and the two combine ("Post Punk from
 the 1970s"). The **Decades** chart shows the period by decade of release; tap a decade to filter.
 
 Release years come from Deezer, an artist's discography at a time: the year a title first came

@@ -238,6 +238,21 @@ const Mock = (() => {
     LOG = { ts: rows.map((x) => x[0]), a: rows.map((x) => x[1]), t: rows.map((x) => x[2]), titles, artists, first, start: rows.length ? rows[0][0] : start };
     return LOG;
   }
+  /** Artists and songs from the made-up history, albums from the shelf, as Stats.search answers. */
+  function fakeSearch(q) {
+    const words = norm(q.trim()).split(/\s+/).filter(Boolean);
+    const hit = (s) => words.length && words.every((w) => norm(s).includes(w));
+    const L = history();
+    const ap = {}, tp = {}, ta = {};
+    L.a.forEach((a, i) => { ap[a] = (ap[a] || 0) + 1; tp[L.t[i]] = (tp[L.t[i]] || 0) + 1; ta[L.t[i]] = a; });
+    const artists = Object.keys(ap).filter((a) => hit(L.artists[a])).sort((x, y) => ap[y] - ap[x]).slice(0, 6)
+      .map((a) => ({ name: L.artists[a], plays: ap[a], photo: '' }));
+    const tracks = Object.keys(tp).filter((t) => hit(`${L.titles[t]} ${L.artists[ta[t]]}`)).sort((x, y) => tp[y] - tp[x]).slice(0, 6)
+      .map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], plays: tp[t] }));
+    const albums = COLL.filter((r) => hit(`${r.title} ${r.artist}`)).slice(0, 6)
+      .map((r) => ({ title: r.title, artist: r.artist, plays: r.plays || 0, cover: r.cover || r.thumb || '', owned: true }));
+    return { q, artists, albums, tracks };
+  }
   const lowerBound = (arr, v) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; } return lo; };
   const dayIdx = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60e3) / DAY);
   const dayMs = (d) => { const x = new Date(d * DAY); return +new Date(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
@@ -1107,6 +1122,7 @@ const Mock = (() => {
           break;
         case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
         case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), req: m.req })); break;
+        case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'tilt': break;
         case 'palette': {
           // Made-up colors from the address, as if read from the picture.

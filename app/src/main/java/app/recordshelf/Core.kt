@@ -476,6 +476,10 @@ object Core {
                     }
                 }
             }
+            "search" -> {
+                val q = msg.optString("q")
+                statsExec.execute { push("onSearch") { currentStats()?.search(q) ?: JSONObject().put("q", q) } }
+            }
             "explore" -> statsExec.execute {
                 val s = currentStats()
                 push("onExplore") { s?.explore() ?: JSONObject().put("empty", true) }

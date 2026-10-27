@@ -1070,6 +1070,49 @@ class Stats(
             .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
     }
 
+    // ---- search ----
+
+    private class Plays(val artist: IntArray, val track: IntArray, val album: IntArray)
+    /** All-time plays per artist, song and album, worked out on the first search. */
+    private val allPlays: Plays by lazy {
+        val ap = IntArray(h.artistNames.size)
+        val tp = IntArray(h.trackTitles.size)
+        val lp = IntArray(h.albumTitles.size)
+        for (i in 0 until h.size) {
+            ap[h.artist[i]]++
+            tp[h.track[i]]++
+            if (h.album[i] >= 0) lp[h.album[i]]++
+        }
+        Plays(ap, tp, lp)
+    }
+    private val artistNorms by lazy { Array(h.artistNames.size) { Text.norm(h.artistNames[it]) } }
+    private val trackNorms by lazy { Array(h.trackTitles.size) { Text.norm(h.trackTitles[it]) } }
+    private val albumNorms by lazy { Array(h.albumTitles.size) { Text.norm(h.albumTitles[it]) } }
+
+    /**
+     * Artists, albums and songs from the whole history that match [query]: each of its words has
+     * to appear in the name (for albums and songs, in the title or the artist). Names with a word
+     * starting like the query come first, then the most played; [max] of each.
+     */
+    fun search(query: String, max: Int = 6): JSONObject {
+        val q = Text.norm(query)
+        val out = JSONObject().put("q", query)
+        if (q.isEmpty()) return out.put("artists", JSONArray()).put("albums", JSONArray()).put("tracks", JSONArray())
+        val words = q.split(' ')
+        val p = allPlays
+        fun best(n: Int, plays: IntArray, name: (Int) -> String, hay: (Int) -> String): List<Int> =
+            (0 until n).filter { plays[it] > 0 && words.all { w -> hay(it).contains(w) } }
+                .sortedWith(compareBy({ if (" ${name(it)}".contains(" $q")) 0 else 1 }, { -plays[it] }))
+                .take(max)
+        val artists = best(h.artistNames.size, p.artist, { artistNorms[it] }, { artistNorms[it] })
+        val albums = best(h.albumTitles.size, p.album, { albumNorms[it] }, { albumNorms[it] + " " + artistNorms[h.albumArtist[it]] })
+        val tracks = best(h.trackTitles.size, p.track, { trackNorms[it] }, { trackNorms[it] + " " + artistNorms[h.trackArtist[it]] })
+        return out
+            .put("artists", JSONArray(artists.map { JSONObject().put("name", h.artistNames[it]).put("plays", p.artist[it]).put("photo", artistPhoto(h.artistNames[it])) }))
+            .put("albums", JSONArray(albums.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", p.album[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
+            .put("tracks", JSONArray(tracks.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", p.track[it]) }))
+    }
+
     // ---- insights and personality ----
 
     /**
