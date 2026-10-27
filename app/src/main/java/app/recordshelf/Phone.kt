@@ -142,6 +142,12 @@ object Phone {
 
     fun clearMedia() = synchronized(media) { media.clear() }
 
+    /** The app's session ended: its controls and position went with it. */
+    fun dropMedia(pkg: String) {
+        val had = synchronized(media) { media.remove(pkg) != null }
+        if (had && pkg == nowPkg) Core.pushState()
+    }
+
     private fun nowJson(): Any {
         val n = now ?: return JSONObject.NULL
         val m = synchronized(media) { media[n.optString("pkg")]?.toString() } ?: return n

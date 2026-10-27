@@ -5,13 +5,14 @@ import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import app.recordshelf.lastfm.RecentTrack
+import app.recordshelf.scrobble.Listen
 
 /**
  * The Last.fm history on the phone (SQLite), plus two small caches for the stats: artists'
  * genre tags and album cover URLs. A scrobble is identified by time, artist and track, so
  * importing the same page twice changes nothing.
  */
-class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), BackupDb {
+class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), BackupDb {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -20,9 +21,18 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Ba
         )
         db.execSQL("CREATE TABLE artist_tags (artist TEXT PRIMARY KEY, tags TEXT NOT NULL, fetched INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE album_images (album TEXT PRIMARY KEY, url TEXT NOT NULL, fetched INTEGER NOT NULL)")
+        createVinyl(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createVinyl(db)
+    }
+
+    /** Every record play scrobbled from this app; the activity log only keeps the latest. */
+    private fun createVinyl(db: SQLiteDatabase) = db.execSQL(
+        "CREATE TABLE vinyl (ts INTEGER NOT NULL, artist TEXT NOT NULL, track TEXT NOT NULL, " +
+            "album TEXT NOT NULL DEFAULT '', PRIMARY KEY (ts, artist, track)) WITHOUT ROWID",
+    )
 
     override fun insert(rows: List<RecentTrack>): Int {
         val db = writableDatabase
@@ -51,10 +61,55 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 1), Ba
 
     override fun oldest() = DatabaseUtils.longForQuery(readableDatabase, "SELECT IFNULL(MIN(ts), 0) FROM scrobbles", null)
 
+    override fun countBetween(from: Long, to: Long) =
+        DatabaseUtils.longForQuery(readableDatabase, "SELECT COUNT(*) FROM scrobbles WHERE ts BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).toInt()
+
     override fun forEach(fn: (Long, String, String, String) -> Unit) {
-        readableDatabase.rawQuery("SELECT ts, artist, track, album FROM scrobbles ORDER BY ts", null).use { c ->
-            while (c.moveToNext()) fn(c.getLong(0), c.getString(1), c.getString(2), c.getString(3))
+        // In one transaction: the rows are read a window at a time, each a new query, and an import
+        // adding older scrobbles in between would shift them (some read twice). This way it waits.
+        val db = readableDatabase
+        db.beginTransactionNonExclusive()
+        try {
+            db.rawQuery("SELECT ts, artist, track, album FROM scrobbles ORDER BY ts", null).use { c ->
+                while (c.moveToNext()) fn(c.getLong(0), c.getString(1), c.getString(2), c.getString(3))
+            }
+        } finally {
+            db.endTransaction()
         }
+    }
+
+    override fun vinyl(): List<Listen> {
+        val out = ArrayList<Listen>()
+        readableDatabase.rawQuery("SELECT ts, artist, track, album FROM vinyl ORDER BY ts", null).use { c ->
+            while (c.moveToNext()) out += Listen(c.getString(1), c.getString(2), c.getLong(0), c.getString(3))
+        }
+        return out
+    }
+
+    fun vinylCount() = DatabaseUtils.queryNumEntries(readableDatabase, "vinyl").toInt()
+
+    override fun addVinyl(rows: List<Listen>) {
+        if (rows.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val st = db.compileStatement("INSERT OR IGNORE INTO vinyl (ts, artist, track, album) VALUES (?, ?, ?, ?)")
+            for (r in rows) {
+                st.bindLong(1, r.ts)
+                st.bindString(2, r.artist)
+                st.bindString(3, r.title)
+                st.bindString(4, r.album)
+                st.executeUpdateDelete()
+                st.clearBindings()
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    override fun clearVinyl() {
+        writableDatabase.execSQL("DELETE FROM vinyl")
     }
 
     override fun clear() {

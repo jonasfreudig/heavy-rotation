@@ -125,16 +125,17 @@ class ImportService : Service() {
         @Volatile
         private var running = false
 
-        fun start(ctx: Context) {
-            try {
-                ctx.startForegroundService(Intent(ctx, ImportService::class.java))
-            } catch (_: Exception) {
-                // Not allowed from the background: the import still runs, just without the guard.
-            }
+        /** Whether it started; from the background Android may not allow it, and the import runs without (and without its notification). */
+        fun start(ctx: Context): Boolean = try {
+            ctx.startForegroundService(Intent(ctx, ImportService::class.java))
+            true
+        } catch (_: Exception) {
+            false
         }
 
         fun stop(ctx: Context) {
             if (running) ctx.stopService(Intent(ctx, ImportService::class.java))
+            ctx.getSystemService(NotificationManager::class.java).cancel(ID)
         }
 
         fun progress(ctx: Context, done: Int, total: Int) {

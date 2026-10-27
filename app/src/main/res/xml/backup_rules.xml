@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and older: back up everything except the API keys and tokens. -->
+<!-- Android 11 and older: back up everything except the API keys and tokens, and the Last.fm
+     history (Android's cap is 25 MB, a long history alone can pass it; the app imports it again). -->
 <full-backup-content>
     <exclude domain="sharedpref" path="secrets.xml" />
+    <exclude domain="database" path="history.db" />
 </full-backup-content>

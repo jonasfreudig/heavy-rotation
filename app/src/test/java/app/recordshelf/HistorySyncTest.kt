@@ -8,7 +8,9 @@ import app.recordshelf.lastfm.RecentPage
 import app.recordshelf.lastfm.RecentTrack
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import java.io.IOException
 
 class HistorySyncTest {
     /** Last.fm's user.getRecentTracks over a fixed history; the range ends can be inclusive or exclusive. */
@@ -75,6 +77,72 @@ class HistorySyncTest {
         assertEquals(50, added)
         assertEquals(1050, store.count())
         assertEquals(1, lfm.calls)
+    }
+
+    @Test
+    fun aShortPageMidHistoryDoesntEndTheImport() {
+        // Last.fm now and then sends fewer than asked for, with more still to come.
+        val lfm = FakeLastfm(history(), inclusive = false)
+        val store = MemoryStore()
+        HistorySync({ f, t -> lfm.fetch(f, t).let { p -> if (lfm.calls == 1) RecentPage(p.tracks.take(150), p.pages, p.total) else p } }, store) { }
+            .walk(0, base + 10_000_000)
+        assertEquals(1000, store.count())
+    }
+
+    private class State : HistorySync.RefreshState {
+        override var syncedTo = 0L
+        override var from = 0L
+        override var to = 0L
+        override var cursor = 0L
+    }
+
+    @Test
+    fun refreshFindsScrobblesThatCameLate() {
+        val lfm = FakeLastfm(history(), inclusive = true)
+        val store = MemoryStore()
+        val sync = HistorySync(lfm::fetch, store) { }
+        sync.walk(0, base + 10_000_000)
+        val st = State()
+        val now = base + 1000 * 180L
+        lfm.calls = 0
+        assertEquals(0, sync.refresh(st, now, 14 * 86_400L))
+        assertEquals("nothing new: one count", 1, lfm.calls)
+        // A record logged afterwards for yesterday evening: older than the newest scrobble stored.
+        lfm.all = lfm.all + RecentTrack("Late", "Vinyl", "", now - 86_400)
+        assertEquals(1, sync.refresh(st, now + 600, 14 * 86_400L))
+        assertEquals(1001, store.count())
+        assertEquals(0L, st.cursor)
+    }
+
+    @Test
+    fun anInterruptedRefreshLeavesNoGap() {
+        val lfm = FakeLastfm(history(), inclusive = false)
+        val store = MemoryStore()
+        val sync = HistorySync(lfm::fetch, store) { }
+        sync.walk(0, base + 10_000_000)
+        val st = State()
+        val back = base + 1000 * 180L
+        sync.refresh(st, back, 3600)
+        // Three weeks away, a thousand plays; the connection drops after the first page.
+        lfm.all = lfm.all + (1..1000).map { RecentTrack("Away", "Song $it", "", back + it * 1800L) }
+        var calls = 0
+        val flaky = HistorySync({ f, t -> if (++calls == 3) throw IOException("offline") else lfm.fetch(f, t) }, store) { }
+        try {
+            flaky.refresh(st, back + 21 * 86_400L, 3600)
+            fail("offline")
+        } catch (_: IOException) {
+        }
+        assertTrue("the walk is under way", st.cursor > 0)
+        sync.refresh(st, back + 21 * 86_400L + 60, 3600)
+        assertEquals("the older part of the three weeks too", 2000, store.count())
+        assertEquals(0L, st.cursor)
+    }
+
+    @Test
+    fun countsAStretch() {
+        val store = MemoryStore()
+        store.insert(history())
+        assertEquals(10, store.countBetween(base, base + 9 * 180))
     }
 
     @Test

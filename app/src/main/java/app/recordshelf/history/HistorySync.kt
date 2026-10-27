@@ -16,6 +16,13 @@ interface HistoryStore {
     /** Every scrobble, oldest first. */
     fun forEach(fn: (ts: Long, artist: String, track: String, album: String) -> Unit)
     fun clear()
+
+    /** How many scrobbles are stored from [from] to [to] (Unix seconds, both included). */
+    fun countBetween(from: Long, to: Long): Int {
+        var n = 0
+        forEach { ts, _, _, _ -> if (ts in from..to) n++ }
+        return n
+    }
 }
 
 class MemoryStore : HistoryStore {
@@ -58,6 +65,43 @@ class HistorySync(
 ) {
     class Progress(val fetched: Int, val total: Int, val next: Long)
 
+    /** Where the refresh of a finished import stands, kept between runs. */
+    interface RefreshState {
+        /** Everything up to this time (Unix seconds) is stored; 0 when not known yet. */
+        var syncedTo: Long
+
+        /** A walk under way: its stretch, and where it goes on from (0: none). */
+        var from: Long
+        var to: Long
+        var cursor: Long
+    }
+
+    /**
+     * Brings a finished import up to [now]. Last.fm takes scrobbles up to [late] seconds late (a
+     * phone that was offline, a record logged afterwards), so that much before the last refresh
+     * is counted again each time ([count]: how many Last.fm has in a stretch), and walked again
+     * when Last.fm has more there than the store. A walk cut short goes on from where it stopped
+     * the next time, so no stretch is left out. Returns how many scrobbles were new.
+     */
+    fun refresh(st: RefreshState, now: Long, late: Long, count: (from: Long, to: Long) -> Int = { f, t -> fetch(f, t).total }): Int {
+        if (st.cursor <= 0) {
+            val to = now + 60
+            val from = maxOf(1L, (st.syncedTo.takeIf { it > 0 } ?: store.newest()) - late)
+            if (count(from, to) <= store.countBetween(from, to)) {
+                st.syncedTo = to
+                return 0
+            }
+            st.from = from
+            st.to = to
+            st.cursor = to
+        }
+        val to = st.to
+        return walk(st.from, st.cursor) { p ->
+            st.cursor = p.next
+            if (p.next == 0L) st.syncedTo = to
+        }
+    }
+
     /**
      * Fetches the scrobbles from [from] (0: since the very first) up to [cursor], going back
      * in time. After each page [onPage] gets the progress and the cursor to resume from
@@ -79,7 +123,9 @@ class HistorySync(
             added += store.insert(page.tracks)
             fetched += page.tracks.size
             val oldest = page.tracks.minOf { it.ts }
-            val last = page.tracks.size < pageSize || page.pages <= 1 || (from > 0 && oldest <= from)
+            // A short page alone doesn't end it (Last.fm has sent those mid-history); one more ask
+            // then comes back empty.
+            val last = page.pages <= 1 || (from > 0 && oldest <= from)
             // Ask again from just above the oldest time, so scrobbles sharing that second aren't
             // lost if "to" is exclusive; step past it if that made no progress.
             val next = if (oldest < prevOldest) oldest + 1 else oldest - 1

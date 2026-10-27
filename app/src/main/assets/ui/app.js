@@ -56,6 +56,8 @@ function el(tag, cls, html) {
 }
 const icon = (name, cls = 'i') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/** A picture's address for url('…') in a style attribute: quotes, brackets and the like can't end it early. */
+const cssUrl = (u) => esc(String(u == null ? '' : u).replace(/['"()\\\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')));
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
 const pad = (n) => String(n).padStart(2, '0');
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -65,7 +67,11 @@ function fmtDur(sec) {
   const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
   return h ? `${h}:${pad(m)}:${pad(x)}` : `${m}:${pad(x)}`;
 }
-const fmtLong = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round(sec / 60) % 60} min` : `${Math.max(1, Math.round(sec / 60))} min`);
+/** "1 h 5 min", "12 min": rounded to the minute first, so 7190 s is 2 h 0 min rather than 1 h 0 min. */
+function fmtLong(sec) {
+  const m = Math.round(sec / 60);
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.max(1, m)} min`;
+}
 const fmtTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const startOfDay = (ms) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
 function dayLabel(ms) {
@@ -99,10 +105,13 @@ function hue(str) {
 /** Cover image over a colored tile with the first letter, which shows while loading or when there is no image. */
 function coverHtml(url, title, artist, cls = '', playing = false) {
   const ini = esc(String(title || '?').trim().charAt(0).toUpperCase());
-  const img = url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : '';
+  const img = url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : '';
   const eq = playing ? '<span class="eq"><i></i><i></i><i></i></span>' : '';
   return `<div class="cover ${cls}" style="--h:${hue((title || '') + (artist || ''))}"><span>${ini}</span>${img}${eq}</div>`;
 }
+// A cover that doesn't load goes, leaving the tile with the letter. One listener for all of them (the
+// page's CSP allows no inline handlers); error doesn't bubble, so it listens on the way down.
+document.addEventListener('error', (e) => { if (e.target.matches && e.target.matches('.cover > img')) e.target.remove(); }, true);
 
 /**
  * A big cover that tilts with the phone (see Tilt). Records on your shelf ([opts.owned]) are the
@@ -112,7 +121,7 @@ function coverHtml(url, title, artist, cls = '', playing = false) {
 function holoCover(url, title, artist, opts = {}) {
   const owned = !!opts.owned;
   const withDisc = owned && opts.disc !== false;
-  const lbl = url ? `background-image:url('${esc(url)}')` : '';
+  const lbl = url ? `background-image:url('${cssUrl(url)}')` : '';
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const sheen = owned ? '<i class="sheen"></i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
@@ -278,13 +287,28 @@ function spinNow(sp, now = Date.now()) {
 
 // ---------- native callbacks ----------
 
+/**
+ * A new theme makes Android start the screen again, page and all: Settings, where it was picked,
+ * comes back with it (when that happened just now).
+ */
+let reopenSettings = false;
+try {
+  reopenSettings = Date.now() - Number(localStorage.getItem('reopenSettings')) < 10000;
+  localStorage.removeItem('reopenSettings');
+} catch (_) { /* preview without storage */ }
 window.onState = (s) => {
-  const hadSpin = !!(ST.spin);
+  const hadSpin = ST.spin ? ST.spin.id : null;
   ST = s;
   renderState();
   applyAmbient();
   vsStateTick();
-  if (!hadSpin && s.spin && pendingSpinOpen) { pendingSpinOpen = false; openPage('spinPage'); renderSpin(true); }
+  // The spin just asked for has started: from nothing, or in place of the record that was spinning.
+  if (s.spin && s.spin.id !== hadSpin && pendingSpinOpen) { pendingSpinOpen = false; openPage('spinPage'); renderSpin(true); }
+  if (reopenSettings) {
+    reopenSettings = false;
+    openSettings();
+    $('#themeSeg').scrollIntoView({ block: 'center' });
+  }
 };
 window.onCollection = (c) => {
   COLL = c.map((r) => Object.assign(r, {
@@ -348,7 +372,12 @@ window.onInsets = (i) => {
   root.setProperty('--ime', `${i.ime || 0}px`);
 };
 window.onBack = () => {
+  const fx = backFx;
+  backSettle(fx, true);
   backFx = null;
+  // Something opened during the swipe, and back closes that instead: the layer the finger moved goes back.
+  const t = fx && backTarget();
+  if (fx && (!t || t.el !== fx.el)) backSpring(fx.el);
   if (!$('#story').hidden) { closeStory(); return true; }
   if (sheetOpen()) { closeSheet(); return true; }
   if (pageStack.length) { closePage(); return true; }
@@ -424,7 +453,7 @@ function animateOut(el, how, done) {
 }
 function openPage(id, how) {
   const p = $('#' + id);
-  if (p._closing) { p._closing.cancel(); p._closing = null; p.hidden = true; p.style.transform = ''; p.style.borderRadius = ''; }
+  if (p._closing) { p._closing.cancel(); p._closing = null; p.hidden = true; p.inert = false; p.style.transform = ''; p.style.borderRadius = ''; }
   if (p.hidden) {
     p.hidden = false;
     pageStack.push(id);
@@ -491,7 +520,9 @@ function closePage() {
     p.animate([{ opacity: 0.4, transform: 'translateX(-24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
   } else if (i < 0) {
     const flew = id === 'recordPage' && flyBack();
-    const a = animateOut(p, flew ? 'fade' : 'slide', () => { if (p._closing === a) { p.hidden = true; p._closing = null; } });
+    // On its way out it takes no taps: they belong to the page coming back under it.
+    p.inert = true;
+    const a = animateOut(p, flew ? 'fade' : 'slide', () => { if (p._closing === a) { p.hidden = true; p.inert = false; p._closing = null; } });
     p._closing = a;
   }
   if (id === 'settingsPage') showKeyForm = false;
@@ -515,37 +546,90 @@ function syncBack() {
   document.documentElement.classList.toggle('locked-root', searching());
 }
 /**
- * Android 14+ back swipe: the layer it would close follows the finger (a page shrinks toward the
- * swipe, a sheet sinks), then either closes from there (onBack) or springs back.
+ * Android 14+ back swipe, the way a stack goes back: from whichever edge it starts, the page it would
+ * close slides right with the finger (Android's progress is about the share of the screen the finger
+ * has crossed), and what back leads to comes in from the left under a lifting shade. Then the page
+ * either leaves from there (onBack) or springs back. A sheet sinks instead.
  */
 let backFx = null;
+const backShade = document.createElement('div');
+backShade.className = 'back-shade';
+/** The tabs' screen: its top bar and the tab under it (the navbar stays put, like the system's). */
+const homeLayers = () => [$('#appbar'), $('#main')];
+const BACK_SHADE = 0.3, BACK_UNDER = 0.22;
 function backTarget() {
-  if (!$('#story').hidden) return { el: $('#story'), kind: 'page' };
+  const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
+  if (!$('#story').hidden) return { el: $('#story'), kind: 'page', under: top ? [top] : homeLayers() };
   if (sheetOpen()) return { el: $('#sheetBody'), kind: 'sheet' };
-  if (pageStack.length) return { el: $('#' + pageStack[pageStack.length - 1]), kind: 'page' };
-  if (searching()) return { el: $('#searchPage'), kind: 'page' };
+  if (top) {
+    const prev = pageStack.length > 1 ? $('#' + pageStack[pageStack.length - 2]) : null;
+    // The same kind of page right under it is this very element, which back fills with the earlier
+    // record or artist: nothing to reveal, so it only shrinks a little.
+    if (prev === top) return { el: top, kind: 'inplace' };
+    return { el: top, kind: 'page', under: prev ? [prev] : homeLayers() };
+  }
+  if (searching()) return { el: $('#searchPage'), kind: 'page', under: homeLayers() };
   return null;
 }
 window.onBackStart = () => {
+  if (flight && flight.playState === 'running') flight.cancel();
   backFx = backTarget();
-  if (backFx) backFx.el.style.transition = 'none';
-};
-window.onBackProgress = (p, edge) => {
   if (!backFx) return;
-  const el = backFx.el, k = Math.min(1, Math.max(0, p));
+  backFx.el.style.transition = 'none';
+  if (!backFx.under) return;
+  // The shade sits right under the page: same layer, just before it.
+  const z = getComputedStyle(backFx.el).zIndex;
+  backShade.style.zIndex = z === 'auto' ? '' : z;
+  backShade.style.transition = 'none';
+  backFx.el.before(backShade);
+  backFx.el.style.boxShadow = '-10px 0 32px rgba(0, 0, 0, .24)';
+  backFx.under.forEach((u) => { u.style.transition = 'none'; });
+  window.onBackProgress(0);
+};
+window.onBackProgress = (p) => {
+  if (!backFx) return;
+  const el = backFx.el, k = Math.min(1, Math.max(0, p)), w = window.innerWidth;
   if (backFx.kind === 'sheet') { el.style.transform = `translateY(${(k * 80).toFixed(1)}px)`; return; }
-  const dir = edge === 1 ? -1 : 1;
-  el.style.transform = `translateX(${(dir * k * 24).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
-  el.style.borderRadius = `${Math.round(k * 32)}px`;
+  if (backFx.kind === 'inplace') {
+    el.style.transform = `translateX(${(k * w * 0.12).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
+    el.style.borderRadius = `${Math.round(Math.min(1, k * 4) * 28)}px`;
+    return;
+  }
+  el.style.transform = `translateX(${(k * w * 0.85).toFixed(1)}px) scale(${(1 - k * 0.06).toFixed(3)})`;
+  el.style.borderRadius = `${Math.round(Math.min(1, k * 4) * 28)}px`;
+  backFx.under.forEach((u) => { u.style.transform = `translateX(${(-(1 - k) * w * BACK_UNDER).toFixed(1)}px)`; });
+  backShade.style.opacity = ((1 - k) * BACK_SHADE).toFixed(3);
 };
-window.onBackCancel = () => {
-  if (!backFx) return;
-  const el = backFx.el;
-  backFx = null;
+/** After the swipe: what was under the page settles home (it was chosen) or back under it (cancelled). */
+function backSettle(fx, chosen) {
+  if (!fx || !fx.under) return;
+  const ms = chosen ? 260 : 300, w = window.innerWidth;
+  fx.under.forEach((u) => {
+    u.style.transition = `transform ${ms}ms cubic-bezier(.2, 0, 0, 1)`;
+    u.style.transform = chosen ? '' : `translateX(${(-w * BACK_UNDER).toFixed(1)}px)`;
+  });
+  backShade.style.transition = `opacity ${ms}ms`;
+  backShade.style.opacity = chosen ? '0' : String(BACK_SHADE);
+  setTimeout(() => {
+    if (!backFx || backFx.el !== fx.el) fx.el.style.boxShadow = '';
+    if (backFx) return; // a new swipe has started and owns the rest now
+    fx.under.forEach((u) => { u.style.transition = ''; u.style.transform = ''; });
+    backShade.remove();
+  }, ms + 30);
+}
+/** A layer the swipe moved springs back to its place. */
+function backSpring(el) {
   el.style.transition = 'transform .3s cubic-bezier(.2, 0, 0, 1), border-radius .3s';
   el.style.transform = '';
   el.style.borderRadius = '';
   setTimeout(() => { if (!el.style.transform) el.style.transition = ''; }, 320);
+}
+window.onBackCancel = () => {
+  if (!backFx) return;
+  const fx = backFx;
+  backFx = null;
+  backSpring(fx.el);
+  backSettle(fx, false);
 };
 
 /**
@@ -608,11 +692,14 @@ function flyCover(from, to, ms) {
   };
   anim.onfinish = land;
   anim.oncancel = end;
+  flight = anim;
   setTimeout(end, ms + 900);
   // Scrolling meanwhile moves where it would land: then it lands at once.
   const scroller = to.closest('.page') || window;
   scroller.addEventListener('scroll', () => anim.cancel(), { once: true, passive: true });
 }
+/** The cover flight under way, if any: a back swipe lands it at once, so no copy floats over the moving page. */
+let flight = null;
 /** Where the record page's cover came from, so Back can fly it home. */
 let flyHome = null;
 const heroCover = () => $('#recHolo .sleeve .cover') || $('#recHolo .cover');
@@ -628,8 +715,12 @@ function flyBack() {
   flyCover(hero, home, 380);
   return true;
 }
-/** An answer for a page that may have been covered meanwhile: [apply] it to whichever state asked ([req]). */
-let REQ = 0;
+/**
+ * An answer for a page that may have been covered meanwhile: [apply] it to whichever state asked ([req]).
+ * The ids start from the clock, so an answer still on its way to the page before a reload can't match
+ * a new request; under 10^9, as the app reads them as Ints.
+ */
+let REQ = Date.now() % 1e9;
 function deliver(pageId, req, current, apply) {
   if (current && current.req === req) return apply(current, true);
   pageStack.forEach((pid, i) => {
@@ -639,13 +730,24 @@ function deliver(pageId, req, current, apply) {
   return current;
 }
 function openSettings(section) {
+  const showing = isOpen('settingsPage');
   openPage('settingsPage');
   renderSettings();
   // Accounts fold away once they're set up; one that needs something, or was asked for, opens.
   const l = ST.lastfm || {}, d = ST.discogs || {}, p = ST.phone || {};
   const done = { lfSection: !!l.connected && !l.needsAuth, dgSection: !!d.connected, tdSection: true, phSection: (p.mode || 'off') === 'off' || !!p.access };
-  $$('#settingsPage details.acct').forEach((el) => { el.open = el.id === section || !done[el.id]; });
-  if (section) setTimeout(() => { const s = $('#' + section); if (s) $('#settingsPage').scrollTop = s.offsetTop - 72; }, 30);
+  let moved = false;
+  $$('#settingsPage details.acct').forEach((el) => {
+    const open = el.id === section || !done[el.id];
+    if (open !== el.open) moved = true;
+    el.open = open;
+  });
+  if (!section) return;
+  // On a page that was showing, folds slide open and shut (look.css) and move the section along: scroll once
+  // they're done. That transition is on ::details-content, which getAnimations and transitionend don't see.
+  const fold = $('#settingsPage details.acct');
+  const ms = showing && moved ? Math.max(...getComputedStyle(fold, '::details-content').transitionDuration.split(',').map((x) => parseFloat(x) * 1000 || 0)) : 0;
+  setTimeout(() => { const s = $('#' + section); if (s) $('#settingsPage').scrollTop = s.offsetTop - 72; }, ms + 30);
 }
 
 let sheetGen = 0;
@@ -1011,13 +1113,17 @@ function tickNow() {
   const m = n.media || {};
   const dur = m.dur || n.dur || 0;
   const pos = nowPos(n);
-  if (!seek.matches(':active')) {
+  const dragging = seek.matches(':active');
+  if (!dragging) {
     seek.max = dur;
     seek.value = pos;
   }
-  seek.style.setProperty('--p', dur ? `${((+seek.value / dur) * 100).toFixed(2)}%` : '0%');
-  $('#npEl').textContent = fmtDur(+seek.value / 1000);
-  $('#npLeft').textContent = dur ? `−${fmtDur((dur - +seek.value) / 1000)}` : '';
+  // Without a length there is nothing to seek along, and the slider (max 0) would hold the time at 0:00.
+  seek.hidden = !dur;
+  const at = dragging ? +seek.value : pos;
+  seek.style.setProperty('--p', dur ? `${((at / dur) * 100).toFixed(2)}%` : '0%');
+  $('#npEl').textContent = fmtDur(at / 1000);
+  $('#npLeft').textContent = dur ? `−${fmtDur((dur - at) / 1000)}` : '';
   const al = NOWALB.data, left = $('#npAlbumLeft');
   if (left && al && al.tracks) {
     const i = nowAlbumIndex(al.tracks, n.title);
@@ -1051,6 +1157,7 @@ const searching = () => document.body.classList.contains('searching');
 let searchOut = null;
 function openSearch() {
   if (searchOut) { searchOut.cancel(); searchOut = null; }
+  $('#searchPage').inert = $('#searchDock').inert = false;
   $('#searchPage').hidden = false;
   $('#searchDock').hidden = false;
   document.body.classList.add('searching');
@@ -1064,11 +1171,14 @@ function closeSearch() {
   document.body.classList.remove('searching');
   $('#gSearch').blur();
   dock.animate([{ clipPath: 'inset(0 0 0 0 round 31px)', opacity: 1 }, { clipPath: 'inset(0 0 0 calc(100% - 62px) round 31px)', opacity: 0 }], { duration: 220, easing: EASE_IN });
+  // Fading out, the results and the field take no taps; the tab under them does.
+  page.inert = dock.inert = true;
   const a = animateOut(page, 'fade', () => {
     if (searchOut !== a) return;
     searchOut = null;
     page.hidden = true;
     dock.hidden = true;
+    page.inert = dock.inert = false;
     $('#gSearch').value = '';
     SEARCH = { q: '', res: null };
   });
@@ -1187,7 +1297,7 @@ function renderRecord() {
     }
     const srcs = [...new Set(rel.tracks.map((t) => t.src).filter(Boolean))].map((s) => SRC_NAMES[s] || s);
     const unknown = rel.tracks.filter((t) => !(t.dur > 0)).length;
-    h += `<div class="note">${srcs.length ? `Track lengths from ${srcs.join(' and ')}.` : 'No source knows the track lengths.'}
+    h += `<div class="note">${srcs.length ? `Track lengths from ${esc(srcs.join(' and '))}.` : 'No source knows the track lengths.'}
       ${unknown ? ` ${unknown === rel.tracks.length ? 'All' : unknown} unknown, counted as ≈${fmtDur(ST.prefs.defaultTrackSec)} each (change in Settings).` : ''}
       ${unknown ? `<br><button class="btn text small" id="refreshLen">${icon('sync')}Look up lengths again</button>` : ''}</div>`;
   }
@@ -1593,7 +1703,8 @@ const num = (n) => Number(n || 0).toLocaleString();
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 function compact(n) {
   n = Number(n || 0);
-  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  // The unit is picked after rounding: 999,600 is 1M, not 1000K.
+  if (Math.round(n / 1e3) >= 1e3) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1e4) return Math.round(n / 1e3) + 'K';
   if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
@@ -1648,9 +1759,21 @@ function periodId(kind, ms) {
   if (kind === 'year') return 'y' + d.getFullYear();
   return 'all';
 }
+/** The id of the period [k] steps from period [id] (see Stats.neighbor), or null past now or before [historyStart] (s). */
+function stepPeriod(id, k, historyStart) {
+  const m = /^([dwmy])(\d+)(?:-(\d+))?(?:-(\d+))?$/.exec(id || '');
+  if (!m) return null;
+  const y = +m[2], mo = (+m[3] || 1) - 1, d = +m[4] || 1;
+  const at = (j) => (m[1] === 'd' ? new Date(y, mo, d + j) : m[1] === 'w' ? new Date(y, mo, d + 7 * j) : m[1] === 'm' ? new Date(y, mo + j, 1) : new Date(y + j, 0, 1));
+  const from = at(k), to = at(k + 1);
+  if (+from > Date.now() || (historyStart && +to <= historyStart * 1000)) return null;
+  return periodId({ d: 'day', w: 'week', m: 'month', y: 'year' }[m[1]], +from);
+}
 
+/** The period last asked for: ‹ and › step on from it, as STATS only changes once the answer is in. */
+let statsAsked = '';
 function requestStats(id) {
-  if (id) statsRange = id;
+  if (id) statsRange = statsAsked = id;
   if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade }); return; }
   $('#statsBody').classList.add('stale');
   send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade });
@@ -1717,7 +1840,7 @@ function storyCardHtml(s) {
   const c = al.cover && TINTS[al.cover];
   const h1 = c ? hexHsl(c.vibrant)[0] : hue(name + ' story');
   return `<button class="story-card" data-story="${esc(s.range.id)}" style="--s1:${h1.toFixed(0)};--s2:${((h1 + 55) % 360).toFixed(0)}">
-    <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${esc(al.cover)}')` : ''}"></i></div>
+    <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${cssUrl(al.cover)}')` : ''}"></i></div>
     <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</div>
     <h2>${esc(name)}, on record</h2>
     <p>Your top artist, ${ofThe(s.range.kind, 'song')}, listening personality and more.</p>
@@ -2041,7 +2164,9 @@ function onRecordTap(c, e) {
   if (best < 0) return;
   st.spot = -1;
   setSpot(id, rec.a[best]);
-  const when = new Date(rec.start + rec.d[best] * 864e5);
+  // Days on the calendar from the first groove's midnight (not 24-hour steps, which a DST change shifts).
+  const s0 = new Date(rec.start);
+  const when = new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + rec.d[best]);
   const name = rec.artists[rec.a[best]];
   const ro = $('#ro-rec-' + id);
   if (ro) {
@@ -2266,7 +2391,7 @@ function sleeveBackInner(base, rel, plays) {
 
 /** Now spinning as a turntable: the record on the platter with its cover as the label. */
 function turntableHtml(sp) {
-  const label = sp.cover ? `style="background-image:url('${esc(sp.cover)}')"` : '';
+  const label = sp.cover ? `style="background-image:url('${cssUrl(sp.cover)}')"` : '';
   return `<div class="tt" data-key="${esc(sp.id)}" style="--h:${hue(sp.album + sp.artist)}"><div class="tt-plinth">
     <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-disc"><div class="tt-label" ${label}>${sp.cover ? '' : esc(sp.album)}</div></div><i class="tt-spindle"></i></div>
     <i class="tt-counter"></i><div class="tt-arm"><i class="tube"></i><i class="head"></i></div><i class="tt-pivot"></i>
@@ -2315,8 +2440,23 @@ function tintStyle(colors, seedHue) {
   } else return '';
   const sat = s < 0.12 ? 0 : Math.round(Math.min(0.78, Math.max(0.4, s)) * 100);
   const gsat = gs < 0.12 ? 0 : Math.round(Math.min(0.55, Math.max(0.25, gs)) * 100);
-  return `--tint-d:hsl(${h.toFixed(0)} ${sat}% ${sat ? 70 : 78}%);--tint-l:hsl(${h.toFixed(0)} ${sat}% ${sat ? 38 : 32}%);`
+  // The light step carries white text (filled buttons): yellows, greens and cyans are bright at 38%,
+  // so they go darker until white on them reaches 4.5:1 (luminance .183, a little less for rounding).
+  const hd = +h.toFixed(0);
+  let ll = sat ? 38 : 32;
+  while (ll > 20 && hslLuminance(hd, sat, ll) > 0.175) ll--;
+  return `--tint-d:hsl(${hd} ${sat}% ${sat ? 70 : 78}%);--tint-l:hsl(${hd} ${sat}% ${ll}%);`
     + `--glow-d:hsl(${gh.toFixed(0)} ${gsat}% 24%);--glow-l:hsl(${gh.toFixed(0)} ${gsat}% 86%)`;
+}
+/** WCAG relative luminance of hsl([h], [s]%, [l]%). */
+function hslLuminance(h, s, l) {
+  const a = (s / 100) * Math.min(l, 100 - l) / 100;
+  const ch = (n) => {
+    const k = (n + h / 30) % 12;
+    const v = l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(0) + 0.7152 * ch(8) + 0.0722 * ch(4);
 }
 /**
  * The page behind [el] takes the picture at [url] as its background: shrunk to a few dozen pixels
@@ -3423,8 +3563,11 @@ function originHtml(a) {
 
 let VS = null;
 let vsBusy = false;
-/** "23×", "1.4×", "0.6×": your plays over the average listener's. */
-const fmtX = (r) => `${r >= 10 ? Math.round(r) : r >= 1 ? r.toFixed(1).replace(/\.0$/, '') : r.toFixed(1)}×`;
+/** "23×", "1.4×", "0.6×", "<0.1×": your plays over the average listener's (rounded first, so 9.97 is 10×). Plain text. */
+function fmtX(r) {
+  const t = Math.round(r * 10) / 10;
+  return t < 0.1 ? '<0.1×' : `${t >= 10 ? Math.round(r) : t}×`;
+}
 /** "1 in 230" for a share of everyone's plays. */
 const oneIn = (share) => `1 in ${num(Math.max(1, Math.round(1 / Math.max(share, 1e-9))))}`;
 const VS_TIERS = [['Household names', '1M+ listeners'], ['Well known', '250K–1M'], ['Known in their scene', '50K–250K'], ['Cult', '10K–50K'], ['Underground', 'under 10K']];
@@ -3467,10 +3610,19 @@ window.onVs = (v) => {
   if (isOpen('vsPage')) renderVs();
   renderVsCard();
 };
-/** While the counts are being looked up, the page shows how far; when that ends it asks again. */
+let vsRetry = 0;
+/**
+ * While the counts are being looked up, the page shows how far; when that ends it asks again. A lookup
+ * that got nowhere (Last.fm down) ends at once, and asking right away would start the next: a minute later.
+ */
 function vsStateTick() {
-  const busy = !!(ST.history || {}).globalsBusy;
-  if (vsBusy && !busy && (isOpen('vsPage') || VS)) send({ t: 'vs' });
+  const hs = ST.history || {};
+  const busy = !!hs.globalsBusy;
+  if (vsBusy && !busy && (isOpen('vsPage') || VS)) {
+    clearTimeout(vsRetry);
+    if (hs.globalsDone > 0) send({ t: 'vs' });
+    else vsRetry = setTimeout(() => { if (isOpen('vsPage')) send({ t: 'vs' }); }, 60e3);
+  }
   vsBusy = busy;
   if (isOpen('vsPage') && busy) renderVs();
 }
@@ -3512,7 +3664,7 @@ function renderVs() {
   const fans = v.fans || [];
   if (fans.length) {
     h += `<div class="viz"><h2>A bigger fan than most</h2><span class="sub">Your plays against the average listener's (the tick)</span>
-      <div class="rank vs-rank">${fans.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>you ${num(a.mine)} · average ${num(Math.round(a.avg))}</small></span><span class="v x">${fmtX(a.ratio)}</span>${vsBar(a.mine, a.avg)}</button>`).join('')}</div></div>`;
+      <div class="rank vs-rank">${fans.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>you ${num(a.mine)} · average ${num(Math.round(a.avg))}</small></span><span class="v x">${esc(fmtX(a.ratio))}</span>${vsBar(a.mine, a.avg)}</button>`).join('')}</div></div>`;
   }
   // Your share of everyone's plays
   const shares = v.shares || [];
@@ -3530,7 +3682,7 @@ function renderVs() {
   const songs = v.songs || [];
   if (songs.length) {
     h += `<div class="viz"><h2>Songs you play more than anyone</h2><span class="sub">Against the average listener of each song</span>
-      <div class="rank vs-rank">${songs.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)} · you ${num(t.mine)} · average ${num(Math.round(t.avg))}</small></span><span class="v x">${fmtX(t.ratio)}</span>${vsBar(t.mine, t.avg)}</button>`).join('')}</div></div>`;
+      <div class="rank vs-rank">${songs.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)} · you ${num(t.mine)} · average ${num(Math.round(t.avg))}</small></span><span class="v x">${esc(fmtX(t.ratio))}</span>${vsBar(t.mine, t.avg)}</button>`).join('')}</div></div>`;
   }
   // Your favorite song by each top artist against everyone's
   const taste = v.taste || [];
@@ -3855,7 +4007,7 @@ function tidyAction(el) {
   if (row) row.classList.add('gone');
   if (t !== 'keep') {
     $('#statsBody').classList.add('stale');
-    if (isOpen('artistPage') && ARTIST && ARTIST.name) send({ t: 'artist', name: ARTIST.name, range: statsRange });
+    if (isOpen('artistPage') && ARTIST && ARTIST.name) send({ t: 'artist', name: ARTIST.name, range: statsRange, req: ARTIST.req });
   }
   const what = it.kind === 'artist' ? it.artist : `“${it.title}”`;
   toast(t === 'hide' ? `${what} is hidden from your stats` : t === 'unhide' ? `${what} is back in your stats` : `${what} stays in your stats`);
@@ -3962,22 +4114,27 @@ function statsLayout(group) {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('statsLayout') || '{}')[group] || {}; } catch (_) { /* preview without storage */ }
   const def = DEFAULT_ORDER[group];
-  const order = (saved.order || []).filter((k) => def.includes(k));
+  // Whatever is stored (a hand-edited or damaged backup too): known blocks, each once.
+  const known = (v) => (Array.isArray(v) ? [...new Set(v)].filter((k) => def.includes(k)) : []);
+  const order = known(saved.order);
   // Blocks added in a later version go after the block they follow by default.
   def.forEach((k, i) => {
     if (order.includes(k)) return;
     const before = def.slice(0, i).reverse().find((x) => order.includes(x));
     order.splice(before ? order.indexOf(before) + 1 : 0, 0, k);
   });
-  return { order, hidden: new Set((saved.hidden || []).filter((k) => def.includes(k))) };
+  return { order, hidden: new Set(known(saved.hidden)) };
 }
 function saveLayout(group, order, hidden) {
+  // A damaged entry is started over, or nothing could ever be saved again.
+  let all = {};
   try {
-    const all = JSON.parse(localStorage.getItem('statsLayout') || '{}');
-    if (order) all[group] = { order, hidden: [...hidden] };
-    else delete all[group];
-    localStorage.setItem('statsLayout', JSON.stringify(all));
-  } catch (_) { /* preview without storage */ }
+    const v = JSON.parse(localStorage.getItem('statsLayout') || '{}');
+    if (v && typeof v === 'object' && !Array.isArray(v)) all = v;
+  } catch (_) { /* damaged, or a preview without storage */ }
+  if (order) all[group] = { order, hidden: [...hidden] };
+  else delete all[group];
+  try { localStorage.setItem('statsLayout', JSON.stringify(all)); } catch (_) { /* preview without storage */ }
 }
 
 function renderStats() {
@@ -4008,7 +4165,9 @@ function stripHtml(plays, nowH, small) {
 }
 const hoursAxis = (cls = '') => `<div class="hours ${cls}"><i>0</i><i>6</i><i>12</i><i>18</i><i>24</i></div>`;
 const legendHtml = (names) => (names.length ? `<div class="dlegend">${names.map((n, i) => `<button data-artist="${esc(n)}"><i style="background:var(--a${i + 1})"></i>${esc(n)}</button>`).join('')}</div>` : '');
-const nowHours = (s) => (s.range.running ? (Date.now() / 1000 - s.range.from) / 3600 : null);
+/** Where now is on today's strip: hours on the clock since midnight, as the strips count them (on a DST day too). */
+const clockHours = () => { const d = new Date(); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; };
+const nowHours = (s) => (s.range.running ? clockHours() : null);
 
 function weekViz(s) {
   const w = s.week;
@@ -4025,18 +4184,19 @@ const weekText = (w, i) => `${DOW_LONG[i].replace(/s$/, '')}: <b>${plural(w.days
 function daysViz(s) {
   const w = s.week;
   if (!w) return '';
-  const rows = w.strips.map((p, i) => `<div class="row${w.days[i] == null ? ' ahead' : ''}"><span>${DOW[i]}</span>${stripHtml(p, i === w.today ? nowHours({ range: { running: true, from: s.range.from + i * 86400 } }) : null, true)}</div>`).join('');
+  const rows = w.strips.map((p, i) => `<div class="row${w.days[i] == null ? ' ahead' : ''}"><span>${DOW[i]}</span>${stripHtml(p, i === w.today ? clockHours() : null, true)}</div>`).join('');
   return `<div class="viz"><h2>Your days</h2><span class="sub">When you listened, day by day</span><div class="ddays">${rows}<div class="row"><span></span>${hoursAxis()}</div></div>${legendHtml(w.artists || [])}</div>`;
 }
 
 // ---- the Day tab: built for a handful of songs rather than thousands ----
 
-const minutesLabel = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${pad(Math.round(m % 60))}` : `${Math.round(m)} min`);
+/** "1 h 05", "40 min": rounded to the minute before it's split, so 119.7 is 2 h 00 and not 1 h 60. */
+const minutesLabel = (m) => { const r = Math.round(m); return r >= 60 ? `${Math.floor(r / 60)} h ${pad(r % 60)}` : `${r} min`; };
 const weekdayOf = (s) => new Date(s.range.from * 1000).toLocaleDateString([], { weekday: 'long' });
 function todayViz(s) {
   const d = s.day || {}, sm = s.summary;
-  const min = sm.scrobbles * 3.5;
-  const big = min >= 60 ? `<b>${Math.floor(min / 60)} h ${pad(Math.round(min % 60))}</b>` : `<b>${Math.round(min)}</b><span>min</span>`;
+  const min = sm.scrobbles * 3.5, mr = Math.round(min);
+  const big = mr >= 60 ? `<b>${Math.floor(mr / 60)} h ${pad(mr % 60)}</b>` : `<b>${mr}</b><span>min</span>`;
   let usual = '';
   if (d.usual) {
     const um = d.usual.plays * 3.5;
@@ -4120,13 +4280,20 @@ function openArrange() {
     // Blocks of the other kind keep their places in the saved order.
     const full = lay.order.filter((id) => !ids.includes(id));
     saveLayout(group, [...ids, ...full], hidden);
+    arrangeRedraw();
   };
   list.addEventListener('change', (e) => { e.target.closest('.ar-row').classList.toggle('off', !e.target.checked); save(); });
   arrangeDrag(list, save);
   $('#sheetContent').onclick = (e) => {
-    if (e.target.closest('#arDone')) { closeSheet(); renderStats(); }
-    if (e.target.closest('#arReset')) { saveLayout(group, null); openArrange(); }
+    if (e.target.closest('#arDone')) { clearTimeout(arrangeTimer); closeSheet(); renderStats(); }
+    if (e.target.closest('#arReset')) { saveLayout(group, null); openArrange(); arrangeRedraw(); }
   };
+}
+/** The page behind Arrange follows each change a moment later, as the sheet can also close by a swipe, Back or the scrim. */
+let arrangeTimer = 0;
+function arrangeRedraw() {
+  clearTimeout(arrangeTimer);
+  arrangeTimer = setTimeout(renderStats, 400);
 }
 /** Rows follow the finger by their handle and trade places with a neighbour once past its middle. */
 function arrangeDrag(list, done) {
@@ -4167,7 +4334,9 @@ function arrangeDrag(list, done) {
 
 /** Tap (or drag across) a heat cell, a column, a ridge or the river: its numbers show in the line under the chart. */
 function onVizPointer(e, data) {
-  const cell = e.target.closest('[data-heat]');
+  // A finger stays captured by what it first touched, so e.target never moves along: what's under it now.
+  const t = document.elementFromPoint(e.clientX, e.clientY) || e.target;
+  const cell = t.closest('[data-heat]');
   if (cell) {
     const ro = $('#ro-' + cell.dataset.heat);
     $$('.heat i.sel').forEach((x) => x.classList.remove('sel'));
@@ -4176,7 +4345,7 @@ function onVizPointer(e, data) {
     if (ro) ro.innerHTML = `<b>${plural(+cell.dataset.v, 'play')}</b> · ${DOW[d]}, ${pad(hr)}:00–${pad(hr + 1)}:00`;
     return;
   }
-  const rvHit = e.target.closest('[data-rv]');
+  const rvHit = t.closest('[data-rv]');
   if (rvHit && data && data.river) {
     const b = +rvHit.dataset.rv;
     const B = data.river.starts.length;
@@ -4185,14 +4354,14 @@ function onVizPointer(e, data) {
     $('#ro-rv').innerHTML = riverText(data.river, b);
     return;
   }
-  const ridge = e.target.closest('[data-ridge]');
-  if (ridge && data && data.pulse && !e.target.closest('[data-artist]')) {
+  const ridge = t.closest('[data-ridge]');
+  if (ridge && data && data.pulse && !t.closest('[data-artist]')) {
     $$('.ridges .row.sel').forEach((x) => x.classList.remove('sel'));
     ridge.classList.add('sel');
     $('#ro-pulse').innerHTML = pulseText(data.pulse, +ridge.dataset.ridge);
     return;
   }
-  const col = e.target.closest('[data-col]');
+  const col = t.closest('[data-col]');
   if (!col || !data) return;
   col.parentElement.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
   col.classList.add('sel');
@@ -4208,10 +4377,11 @@ function onVizPointer(e, data) {
   } else if (col.dataset.col === 'ah') col.closest('.viz').querySelector('.readout').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
   else if (col.dataset.col === 'aw') {
     const g = +col.dataset.g || 1;
-    const from = data.weeksFrom + i * g * 7 * 864e5;
+    // Calendar days from the first week's Monday, so a DST change doesn't move the dates.
+    const w0 = new Date(data.weeksFrom);
+    const day = (k) => new Date(w0.getFullYear(), w0.getMonth(), w0.getDate() + k).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
     const n = (data.weeks || []).slice(i * g, i * g + g).reduce((a, b) => a + b, 0);
-    const day = (ms) => new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
-    col.closest('.viz').querySelector('.readout').innerHTML = `${g === 1 ? `Week of ${esc(day(from))}` : `${esc(day(from))} – ${esc(day(from + (g * 7 - 1) * 864e5))}`}: <b>${plural(n, 'play')}</b>`;
+    col.closest('.viz').querySelector('.readout').innerHTML = `${g === 1 ? `Week of ${esc(day(i * 7))}` : `${esc(day(i * g * 7))} – ${esc(day((i + 1) * g * 7 - 1))}`}: <b>${plural(n, 'play')}</b>`;
   }
 }
 
@@ -4340,7 +4510,7 @@ function storyClock(hours, gh) {
 
 /** A 7" single spinning at 45: the song's cover as the label, the big hole in the middle. */
 function singleHtml(cover, seed) {
-  const label = cover ? `background-image:url('${esc(cover)}')` : '';
+  const label = cover ? `background-image:url('${cssUrl(cover)}')` : '';
   return `<div class="single in" style="--h:${hue(seed)}"><div class="sv"><i class="lab" style="${label}">${cover ? '' : '<b>45</b>'}</i><i class="hole"></i></div></div>`;
 }
 
@@ -4351,7 +4521,7 @@ function buildSlides(s) {
   const sm = s.summary;
   if (!sm.scrobbles) return [{ cls: 'deep', dur: 5, html: `<div class="t m in">No plays in ${esc(name)}.</div>` }];
   const album = (s.albums || [])[0];
-  const disc = (cover, hueKey) => `<div class="spinner-disc bg" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${esc(cover)}')` : ''}"></i></div>`;
+  const disc = (cover, hueKey) => `<div class="spinner-disc bg" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${cssUrl(cover)}')` : ''}"></i></div>`;
   // Intro: a record rising from the bottom of the screen
   out.push({ cls: 'deep intro', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">Record Shelf · ${s.range.kind === 'all' ? 'your whole history' : `your ${per}`}</div>
     <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(name)}</div><p class="p in" ${dly(0.35)}>on record.</p>
@@ -4382,7 +4552,7 @@ function buildSlides(s) {
   const a0 = (s.artists || [])[0];
   if (a0) {
     const bg = a0.cover
-      ? `<div class="duo bg"><i class="img" style="background-image:url('${esc(a0.cover)}')"></i><i class="lo"></i><i class="hi"></i><i class="fade"></i></div>`
+      ? `<div class="duo bg"><i class="img" style="background-image:url('${cssUrl(a0.cover)}')"></i><i class="lo"></i><i class="hi"></i><i class="fade"></i></div>`
       : `<div class="duo bg none"><b>${esc(String(a0.name).trim().charAt(0).toUpperCase())}</b><i class="fade"></i></div>`;
     out.push({ cls: 'deep photo', html: `${bg}<div class="k in">Your top artist</div>
       <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(a0.name)}</div><p class="p mono in" ${dly(0.35)}>${plural(a0.plays, 'play')} · ${pct(a0.share)} of everything · on ${plural(a0.days, 'day')}</p>` });
@@ -4482,8 +4652,9 @@ function buildSlides(s) {
 
 // ---------- settings ----------
 
+/** A status dot, a [title] (markup) and a [sub] line (plain text: it can carry a song's title from another app). */
 function statusLine(dot, title, sub) {
-  return `<span class="dot ${dot}"></span><span class="grow">${title}${sub ? `<small>${sub}</small>` : ''}</span>`;
+  return `<span class="dot ${dot}"></span><span class="grow">${title}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
 }
 
 function renderServices() {
@@ -4496,7 +4667,7 @@ function renderTidalSettings() {
   let st;
   if (t.busy) st = statusLine('busy', 'Talking to TIDAL…', '');
   else if (t.loggedIn) st = statusLine('ok', 'Connected and signed in', 'Exact links, and playlists straight into TIDAL');
-  else if (t.hasApp) st = statusLine('ok', 'Exact links are on', t.builtIn ? 'Sign in to make playlists' : `Client ID ${esc(t.clientHint || '')} · sign in to make playlists`);
+  else if (t.hasApp) st = statusLine('ok', 'Exact links are on', t.builtIn ? 'Sign in to make playlists' : `Client ID ${t.clientHint || ''} · sign in to make playlists`);
   else st = statusLine('', 'Not set up', 'The TIDAL buttons open a search instead');
   $('#tdStatus').innerHTML = st;
   $('#tdSetup').hidden = !!t.hasApp && !showTidalForm;
@@ -4521,9 +4692,9 @@ function renderSettings() {
       : 'Videos, app sounds and other non-music scrobbles can be hidden from your stats. Nothing changes on Last.fm.';
   const mode = showKeyForm || !l.hasKey ? 'setup' : l.connected ? 'connected' : l.waiting ? 'waiting' : l.needsAuth ? 'reconnect' : 'setup';
   const lfStatus = {
-    connected: statusLine('ok', `Connected as <b>${esc(l.user)}</b>`, l.keyHint ? `API key ${esc(l.keyHint)}` : ''),
+    connected: statusLine('ok', `Connected as <b>${esc(l.user)}</b>`, l.keyHint ? `API key ${l.keyHint}` : ''),
     waiting: statusLine('busy', 'Waiting for your approval', 'in the browser'),
-    reconnect: statusLine('', 'Access expired', l.user ? `was ${esc(l.user)}` : ''),
+    reconnect: statusLine('', 'Access expired', l.user ? `was ${l.user}` : ''),
     setup: statusLine(l.connected ? 'ok' : '', l.connected ? `Connected as <b>${esc(l.user)}</b>` : 'Not connected', l.connected ? 'Enter a new key to switch' : 'Scrobbles wait on this phone until you connect'),
   }[mode];
   $('#lfStatus').innerHTML = lfStatus;
@@ -4685,8 +4856,15 @@ function build() {
     requestStats(periodId(b.dataset.k, Math.max(anchor, STATS.range.from * 1000)));
   };
   $('#statsFilter').onclick = openStatsFilter;
-  $('#pPrev').onclick = () => { if (STATS && STATS.range.prev) requestStats(STATS.range.prev); };
-  $('#pNext').onclick = () => { if (STATS && STATS.range.next) requestStats(STATS.range.next); };
+  const stepStats = (k) => {
+    if (!STATS || STATS.empty) return;
+    // Taps quicker than the answers: each goes on from the period asked for last, not the one on screen.
+    const pending = statsAsked && statsAsked !== STATS.range.id;
+    const id = pending ? stepPeriod(statsAsked, k, STATS.range.historyStart) : k < 0 ? STATS.range.prev : STATS.range.next;
+    if (id) requestStats(id);
+  };
+  $('#pPrev').onclick = () => stepStats(-1);
+  $('#pNext').onclick = () => stepStats(1);
   const statsBody = $('#statsBody');
   statsBody.addEventListener('pointerdown', (e) => onVizPointer(e, STATS));
   statsBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });
@@ -4896,7 +5074,12 @@ function build() {
   $('#dgSync').onclick = () => send({ t: 'sync' });
   $('#dgDisconnect').onclick = () => confirmSheet('Disconnect Discogs?', 'Your shelf will be empty until you connect again. Your scrobbles are not affected.', 'Disconnect', () => send({ t: 'discogsDisconnect' }));
   $('#defLen').onclick = (e) => { const b = e.target.closest('[data-sec]'); if (b) send({ t: 'setDefaultTrack', sec: +b.dataset.sec }); };
-  $('#themeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) send({ t: 'setTheme', v: b.dataset.v }); };
+  $('#themeSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('reopenSettings', String(Date.now())); } catch (_) { /* preview without storage */ }
+    send({ t: 'setTheme', v: b.dataset.v });
+  };
   $('#nowSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;

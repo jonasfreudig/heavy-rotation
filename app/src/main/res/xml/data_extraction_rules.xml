@@ -3,6 +3,8 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="secrets.xml" />
+        <!-- The Last.fm history: Android's cap is 25 MB, a long history alone can pass it; the app imports it again. -->
+        <exclude domain="database" path="history.db" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="secrets.xml" />

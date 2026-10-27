@@ -89,6 +89,27 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getLong("historyLastSync", 0)
         set(v) = app.edit().putLong("historyLastSync", v).apply()
 
+    /** Everything Last.fm had up to this time (Unix seconds) is stored; 0 when not known yet. */
+    var historySyncedTo: Long
+        get() = app.getLong("historySyncedTo", 0)
+        set(v) = app.edit().putLong("historySyncedTo", v).apply()
+
+    /** A refresh under way: the stretch it walks ([refreshFrom]..[refreshTo]) and where it goes on from (0: none). */
+    var refreshCursor: Long
+        get() = app.getLong("refreshCursor", 0)
+        set(v) = app.edit().putLong("refreshCursor", v).apply()
+    var refreshFrom: Long
+        get() = app.getLong("refreshFrom", 0)
+        set(v) = app.edit().putLong("refreshFrom", v).apply()
+    var refreshTo: Long
+        get() = app.getLong("refreshTo", 0)
+        set(v) = app.edit().putLong("refreshTo", v).apply()
+
+    /** The user paused the import: it waits for them, not for the app to come back to the front. */
+    var importPaused: Boolean
+        get() = app.getBoolean("importPaused", false)
+        set(v) = app.edit().putBoolean("importPaused", v).apply()
+
     /** Whether the user entered their own Last.fm key; otherwise the app's own (if the build has one) is used. */
     private val ownLastfm get() = s(sec, "lastfmKey").isNotEmpty()
 

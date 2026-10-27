@@ -44,9 +44,15 @@ class ScrobbleQueue(private val file: JsonFile) {
     private val items = ArrayList<QueuedScrobble>()
 
     init {
+        val text = file.read()
         try {
-            file.read()?.let { JSONArray(it).objects().forEach { o -> items += QueuedScrobble.fromJson(o) } }
+            text?.let { JSONArray(it).objects().forEach { o -> items += QueuedScrobble.fromJson(o) } }
         } catch (_: Exception) {
+            // Unreadable: kept aside as queue.json.bad (scrobbles in it can still be rescued), not overwritten.
+            try {
+                java.io.File(file.file.path + ".bad").writeText(text.orEmpty())
+            } catch (_: Exception) {
+            }
         }
     }
 

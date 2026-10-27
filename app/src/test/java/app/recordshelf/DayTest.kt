@@ -80,6 +80,17 @@ class DayTest {
     }
 
     @Test
+    fun theStripKeepsTheClocksHoursOnADstDay() {
+        // Clocks went forward at 2:00 on March 29th in Berlin: a play at 20:00 there is 19 hours after midnight.
+        val berlin = ZoneId.of("Europe/Berlin")
+        val b = History.Builder()
+        b.add(LocalDateTime.of(2026, 3, 29, 20, 0).atZone(berlin).toEpochSecond(), "Air", "Playground Love", "The Virgin Suicides")
+        val s = Stats(b.build(), berlin, LocalDateTime.of(2026, 3, 30, 12, 0).atZone(berlin).toEpochSecond())
+        val plays = s.compute(s.range("d2026-03-29")).getJSONObject("day").getJSONArray("plays")
+        assertEquals(20.0, plays.getJSONArray(0).getDouble(0), 1e-9)
+    }
+
+    @Test
     fun theDaysOfAWeek() {
         val s = stats()
         val w = s.compute(s.range("w2026-10-26")).getJSONObject("week")

@@ -559,7 +559,7 @@ input[type=datetime-local] { color-scheme: inherit; }
 .river text { font: 400 10px var(--font); fill: var(--md-on-surface-variant); }
 
 /* ---- the story: full-screen cards, Wrapped style ---- */
-.story { position: fixed; inset: 0; z-index: 40; background: #000; overflow: hidden; touch-action: none; user-select: none; }
+.story { position: fixed; inset: 0; z-index: 1200; background: #000; overflow: hidden; touch-action: none; user-select: none; }
 .story .bars { position: absolute; top: calc(var(--inset-top) + 10px); left: 12px; right: 12px; display: flex; gap: 4px; z-index: 3; }
 .story .bars i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .35); overflow: hidden; }
 .story .bars i b { display: block; height: 100%; width: 0; background: #fff; }
@@ -640,7 +640,8 @@ input[type=datetime-local] { color-scheme: inherit; }
 .tab.active { display: block; }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
 
-.sheet { position: fixed; inset: 0; z-index: 20; }
+/* Overlays sit far above the pages, which stack from z 11 up (openPage): sheet 1000, snackbar 1100, story 1200, grain 1500, flying cover 2000. */
+.sheet { position: fixed; inset: 0; z-index: 1000; }
 .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .32); }
 .sheet-body {
   position: absolute; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; max-height: calc(90vh - var(--inset-top)); overflow-y: auto;
@@ -670,7 +671,7 @@ input[type=datetime-local] { color-scheme: inherit; }
 @keyframes up { from { transform: translateY(60px); opacity: 0; } }
 
 .snackbar {
-  position: fixed; left: 16px; right: 16px; bottom: calc(var(--nav-h) + var(--inset-bottom) + 12px); z-index: 30; max-width: 560px; margin: 0 auto;
+  position: fixed; left: 16px; right: 16px; bottom: calc(var(--nav-h) + var(--inset-bottom) + 12px); z-index: 1100; max-width: 560px; margin: 0 auto;
   background: var(--md-inverse-surface); color: var(--md-inverse-on-surface); padding: 14px 16px; border-radius: 4px; font-size: 14px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, .3); opacity: 0; transform: translateY(16px); transition: opacity .2s, transform .2s; pointer-events: none;
 }
@@ -722,7 +723,7 @@ input[type=datetime-local] { color-scheme: inherit; }
 .pl-head { display: flex; gap: 16px; align-items: center; margin: 12px 4px 16px; }
 .pl-icon { flex: none; width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; background: var(--md-primary-container); color: var(--md-on-primary-container); }
 .pl-icon .i { width: 32px; height: 32px; }
-.pl-head h1 { margin: 0; font: 700 24px/30px var(--font); }
+.pl-head h1 { margin: 0; font: 700 24px/30px var(--font); overflow-wrap: anywhere; }
 .pl-head p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; line-height: 18px; }
 #playlistBody > .btn-row { margin: 0 0 12px; }
 .card.how .steps { margin-top: 8px; }

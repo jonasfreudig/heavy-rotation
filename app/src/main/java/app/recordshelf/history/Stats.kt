@@ -264,9 +264,9 @@ class Stats(
         return n.entries.sortedByDescending { it.value }.take(max).withIndex().associate { (k, e) -> e.key to k + 1 }
     }
 
-    /** Plays [i0]..[i1] as [hours since [start], color] pairs, for a 24-hour strip. */
+    /** Plays [i0]..[i1] as [hour of the day, color] pairs, for a 24-hour strip ([start]: that day's midnight; the clock's hours on a DST day too). */
     private fun strip(start: Long, i0: Int, i1: Int, colors: Map<Int, Int>) =
-        JSONArray((i0 until i1).map { i -> JSONArray().put(Math.round((h.ts[i] - start) / 36.0) / 100.0).put(colors[h.artist[i]] ?: 0) })
+        JSONArray((i0 until i1).map { i -> JSONArray().put(Math.round((local(h.ts[i]) - local(start)) / 36.0) / 100.0).put(colors[h.artist[i]] ?: 0) })
 
     private fun playJson(i: Int) = JSONObject().put("title", h.trackTitles[h.track[i]]).put("artist", h.artistNames[h.artist[i]])
         .put("album", if (h.album[i] >= 0) h.albumTitles[h.album[i]] else "").put("cover", if (h.album[i] >= 0) cover(h.album[i]) else "")
@@ -589,7 +589,7 @@ class Stats(
 
     /** Release year per album (0: unknown): Deezer's earliest edition or the record on your shelf, whichever is earlier. */
     private val albumYear: IntArray by lazy {
-        IntArray(h.albumTitles.size) { al -> Years.earliest(albumYears[h.albumKeys[al]] ?: 0, ownedKeys[h.albumKeys[al]]?.year ?: 0) }
+        IntArray(h.albumTitles.size) { al -> Years.earliest(albumYears[h.albumKeys[al]] ?: 0, owned(al)?.year ?: 0) }
     }
 
     private fun yearOf(i: Int) = h.album[i].let { if (it < 0) 0 else albumYear[it] }
@@ -709,7 +709,8 @@ class Stats(
         val l = artistLife
         val trans = Atlas.transitions(h)
         val m0 = monthKey(h.ts[0])
-        val nm = monthKey(nowSec) - m0 + 1
+        // To the last play, should one be dated after now (a phone clock set wrong once).
+        val nm = maxOf(monthKey(nowSec), monthKey(h.ts[h.size - 1])) - m0 + 1
         // The universe
         val stars = h.artistNames.indices.filter { l.plays[it] >= Atlas.STAR_MIN }.sortedByDescending { l.plays[it] }.take(Atlas.STARS).toIntArray()
         val index = HashMap<Int, Int>()
@@ -1115,7 +1116,7 @@ class Stats(
         }
         class Row(val c: CollectionItem, val plays: Int, val last: Long)
         val rows = collection.distinctBy { it.releaseId }.map { c ->
-            val al = albumIndex[Text.albumKey(c.artist, c.title)]
+            val al = findAlbum(c.artist, c.title).takeIf { it >= 0 }
             Row(c, if (al != null) plays[al] else 0, if (al != null) last[al] else 0)
         }
         val a = JSONArray()
@@ -1144,7 +1145,7 @@ class Stats(
         }
         val a = JSONArray()
         plays.indices
-            .filter { plays[it] >= WISH_MIN_PLAYS && distinct[it] >= WISH_MIN_TRACKS && h.albumKeys[it] !in ownedKeys }
+            .filter { plays[it] >= WISH_MIN_PLAYS && distinct[it] >= WISH_MIN_TRACKS && owned(it) == null }
             .sortedByDescending { plays[it] }
             .take(max)
             .forEach { al ->
@@ -1173,7 +1174,15 @@ class Stats(
         return (fromTop + fromWish).distinctBy { it.third }
     }
 
-    private fun cover(al: Int) = ownedKeys[h.albumKeys[al]]?.let { it.cover.ifEmpty { it.thumb } } ?: albumImages[h.albumKeys[al]] ?: ""
+    /** Your records by the album in the history they are, found the way [findAlbum] finds them. */
+    private val ownedByAlbum: Map<Int, CollectionItem> by lazy {
+        HashMap<Int, CollectionItem>().also { m -> collection.forEach { c -> findAlbum(c.artist, c.title).takeIf { it >= 0 }?.let { m.putIfAbsent(it, c) } } }
+    }
+
+    /** The record of yours album [al] is: same artist and title, the main artist's (a duo's record), or a compilation's. */
+    private fun owned(al: Int): CollectionItem? = ownedKeys[h.albumKeys[al]] ?: ownedByAlbum[al]
+
+    private fun cover(al: Int) = owned(al)?.let { it.cover.ifEmpty { it.thumb } } ?: albumImages[h.albumKeys[al]] ?: ""
 
     /** The artist's photo (Deezer), "" until it was looked up or if there is none. */
     fun artistPhoto(name: String) = albumImages[photoKey(name)].orEmpty()
@@ -1213,7 +1222,7 @@ class Stats(
         return JSONObject()
             .put("artists", JSONArray(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("photo", artistPhoto(h.artistNames[it])) }))
             .put("tracks", JSONArray(tp.indices.filter { tp[it] > 0 }.sortedByDescending { tp[it] }.take(max).map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]) }))
-            .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
+            .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
     }
 
     // ---- search ----
@@ -1255,7 +1264,7 @@ class Stats(
         val tracks = best(h.trackTitles.size, p.track, { trackNorms[it] }, { trackNorms[it] + " " + artistNorms[h.trackArtist[it]] })
         return out
             .put("artists", JSONArray(artists.map { JSONObject().put("name", h.artistNames[it]).put("plays", p.artist[it]).put("photo", artistPhoto(h.artistNames[it])) }))
-            .put("albums", JSONArray(albums.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", p.album[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
+            .put("albums", JSONArray(albums.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", p.album[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
             .put("tracks", JSONArray(tracks.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", p.track[it]) }))
     }
 
@@ -1442,7 +1451,7 @@ class Stats(
             .put("streak", best).put("streakEnd", dayStart(bestEnd) * 1000)
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[a]).put("rank", rank))
             .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(10).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
-            .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", h.albumKeys[it.key] in ownedKeys) }))
+            .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
         // How you found them, back as far as the history goes, and who they led you to.
@@ -1490,7 +1499,23 @@ class Stats(
     fun albumPlaysOf(artist: String, title: String): Int = findAlbum(artist, title).let { if (it < 0) 0 else albumPlays[it] }
 
     private fun findAlbum(artist: String, title: String): Int =
-        albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)] ?: -1
+        albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)]
+            ?: (if (Text.norm(artist).startsWith("various")) albumByTitle[Text.normLoose(title)] else null) ?: -1
+
+    /** Albums by title alone, for titles only one album has: how a compilation (Discogs' "Various") finds its plays. */
+    private val albumByTitle: Map<String, Int> by lazy {
+        val m = HashMap<String, Int>()
+        val twice = HashSet<String>()
+        h.albumTitles.forEachIndexed { al, t ->
+            val k = Text.normLoose(t)
+            if (k.isEmpty() || k in twice) return@forEachIndexed
+            if (m.put(k, al) != null) {
+                m.remove(k)
+                twice += k
+            }
+        }
+        m
+    }
 
     private fun monthKey(t: Long) = date(t).let { it.year * 12 + it.monthValue - 1 }
     private fun monthStart(mk: Int) = ms(LocalDate.of(mk / 12, mk % 12 + 1, 1))
@@ -1574,7 +1599,7 @@ class Stats(
     }
 
     private fun albumJson(al: Int): JSONObject = JSONObject().put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
-        .put("cover", cover(al)).put("key", h.albumKeys[al]).put("owned", ownedKeys[h.albumKeys[al]]?.releaseId ?: 0)
+        .put("cover", cover(al)).put("key", h.albumKeys[al]).put("owned", owned(al)?.releaseId ?: 0)
 
     /** One album: its life in plays, rank, and which of its tracks you play. */
     fun album(artist: String, title: String, r: Range): JSONObject? {
@@ -1862,7 +1887,7 @@ class Stats(
             .put("vs", topA.firstOrNull()?.let { a -> globals.artist(h.artistNames[a])?.let { vsJson(artistLife.plays[a], it).put("name", h.artistNames[a]).put("photo", artistPhoto(h.artistNames[a])) } } ?: JSONObject.NULL)
             .put("tracks", JSONArray(topT.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]).put("cover", trackAlbum[it].let { al -> if (al >= 0) cover(al) else "" }) }))
             .put("songBestDay", if (songBest != null) JSONObject().put("day", dayStart(songBest.key) * 1000).put("count", songBest.value) else JSONObject.NULL)
-            .put("albums", JSONArray(topL.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", h.albumKeys[it] in ownedKeys) }))
+            .put("albums", JSONArray(topL.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
             .put("hours", JSONArray(byHour.toList()))
             .put("goldenHour", (0 until 24).maxByOrNull { byHour[it] }!!)
             .put("busiestDay", if (busiest != null) JSONObject().put("day", dayStart(busiest.key) * 1000).put("count", busiest.value) else JSONObject.NULL)

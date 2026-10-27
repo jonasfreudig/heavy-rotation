@@ -113,9 +113,11 @@ class History private constructor(
             val main = HashMap<String, String>()
             val b = Builder()
             var skipped = 0
+            // Nothing hidden (the usual case): no need to look each play up.
+            val any = hidden.artists.isNotEmpty() || hidden.tracks.isNotEmpty()
             store.forEach { t, a, tr, al ->
                 val m = main.getOrPut(a) { Artists.main(a, solo) }
-                if (hidden.hides(m, tr) || hidden.hides(a, tr)) skipped++ else b.add(t, m, tr, al)
+                if (any && (hidden.hides(m, tr) || hidden.hides(a, tr))) skipped++ else b.add(t, m, tr, al)
             }
             return b.build().also { it.hiddenPlays = skipped }
         }

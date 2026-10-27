@@ -8,13 +8,15 @@ object Text {
     private val brackets = Regex("\\s*[(\\[][^)\\]]*[)\\]]")
     private val nonAlnum = Regex("[^\\p{L}\\p{N}]+")
     private val spaces = Regex("\\s+")
+    private val quotes = Regex("['‘’ʼ`]")
 
     /** Lowercase, no accents, one kind of quote, "&" as "and", punctuation as single spaces. */
     fun norm(s: String): String {
         val n = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFKD).replace(marks, "")
             .replace("&", " and ")
-            .replace(Regex("['‘’ʼ`]"), "")
-        return n.replace(nonAlnum, " ").trim().replace(spaces, " ")
+            .replace(quotes, "")
+        // Names made only of symbols ("!!!", "+/-") keep themselves, or they would all be one artist.
+        return n.replace(nonAlnum, " ").trim().replace(spaces, " ").ifEmpty { s.lowercase().trim() }
     }
 
     /** Like [norm], but drops "(Remastered 2011)", "[Live]" and " - 2004 Remaster" style additions. */

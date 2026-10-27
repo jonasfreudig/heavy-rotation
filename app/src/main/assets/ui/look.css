@@ -27,7 +27,8 @@
 .page .appbar-title { font-size: 22px; }
 .viz h2, .section-head h2, .sheet-title, .card-title, .dig-card h2, .pl-head h1 { font-family: var(--display); font-weight: 640; letter-spacing: -.01em; font-variation-settings: 'SOFT' 50, 'opsz' 36; }
 .viz h2 { font-size: 20px; }
-.hero h1, .spin-hero h1, .page-hero h1, .genre-hero h1 { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.08; letter-spacing: -.02em; font-variation-settings: 'SOFT' 80, 'WONK' 1, 'opsz' 96; }
+/* Page titles: one very long word breaks rather than running off the screen. */
+.hero h1, .spin-hero h1, .page-hero h1, .genre-hero h1 { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.08; letter-spacing: -.02em; font-variation-settings: 'SOFT' 80, 'WONK' 1, 'opsz' 96; overflow-wrap: anywhere; }
 .artist-hero h1.fit { font-family: var(--display); font-weight: 800; text-transform: none; font-style: italic; letter-spacing: -.025em; font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; }
 .tile b, .sum-nums b { font-family: var(--display); font-weight: 600; letter-spacing: -.02em; font-variation-settings: 'SOFT' 40, 'opsz' 72; }
 .tile b { font-size: 33px; }
@@ -40,7 +41,7 @@
 .count { letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
 
 /* ---- grain: a faint print texture over everything (white specks on dark, dark on light); plain, no blending, so it costs nothing per frame ---- */
-body::after { content: ''; position: fixed; inset: 0; z-index: 100; pointer-events: none; opacity: .05; will-change: transform;
+body::after { content: ''; position: fixed; inset: 0; z-index: 1500; pointer-events: none; opacity: .05; will-change: transform;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"); }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) body::after { opacity: .06;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .2  0 0 0 0 .2  0 0 0 0 .2  0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"); } }
@@ -445,12 +446,15 @@ body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none
 .sheet-grab { display: grid; place-items: center; height: 44px; margin: 0 -20px 6px; touch-action: none; }
 .sheet-grab .handle-bar { margin: 0; }
 .sheet-body.fits, .scrim { touch-action: none; }
-.sheet.closing { pointer-events: none; }
+/* A closing sheet ignores taps, but its scrim keeps catching them until it's gone: none reach the page under it. */
+.sheet.closing .sheet-body { pointer-events: none; }
 html.locked, html.locked body, html.locked-root, html.locked-root body { overflow: hidden; }
 html.locked .page { overflow: hidden; }
+/* Under a page being swiped back: what it reveals starts dimmed and lightens as the page goes. */
+.back-shade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 
 /* ---- a record's cover flying between the shelf and its page ---- */
-.cover.fly { position: fixed; z-index: 200; margin: 0; aspect-ratio: auto; transform-origin: 0 0; pointer-events: none; will-change: transform; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
+.cover.fly { position: fixed; z-index: 2000; margin: 0; aspect-ratio: auto; transform-origin: 0 0; pointer-events: none; will-change: transform; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
 .cover.fly img.hi { opacity: 0; transition: opacity .25s; }
 .cover.fly img.hi.ok { opacity: 1; }
 /* While a cover flies to (or from) a sleeve, the sleeve and its record wait; then the foil fades in and the record slides out. */

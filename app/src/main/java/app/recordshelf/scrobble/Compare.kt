@@ -9,7 +9,8 @@ import kotlin.math.abs
 
 /** A scrobble reduced to what the comparison needs. [ts] is Unix seconds. */
 data class Listen(val artist: String, val title: String, val ts: Long, val album: String = "") {
-    val key get() = Text.norm(artist) + "\u0000" + Text.norm(title)
+    /** Worked out once: comparisons ask for it over and over. */
+    val key = Text.norm(artist) + "\u0000" + Text.norm(title)
 
     fun toJson(): JSONObject = JSONObject().put("artist", artist).put("title", title).put("ts", ts).put("album", album)
 

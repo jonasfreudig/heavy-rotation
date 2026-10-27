@@ -1,6 +1,7 @@
 package app.recordshelf
 
 import app.recordshelf.lastfm.RecentTrack
+import app.recordshelf.scrobble.Listen
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +36,10 @@ class BackupTest {
         override fun saveTags(artistKey: String, tags: List<String>) { this.tags[artistKey] = tags }
         override fun images(): Map<String, String> = images
         override fun saveImage(albumKey: String, url: String) { images[albumKey] = url }
+        val vinyl = ArrayList<Listen>()
+        override fun vinyl(): List<Listen> = vinyl.toList()
+        override fun addVinyl(rows: List<Listen>) { vinyl += rows }
+        override fun clearVinyl() = vinyl.clear()
     }
 
     private fun source(): Pair<FakeDb, File> {
@@ -47,6 +52,7 @@ class BackupTest {
         db.saveTags("idles", listOf("post punk"))
         db.saveTags("nobody", emptyList())
         db.saveImage("air|moon safari", "https://img/air.jpg")
+        db.addVinyl(listOf(Listen("Air", "La Femme d'Argent", 1_700_000_200, "Moon Safari")))
         val dir = tmp.newFolder("from")
         File(dir, "hidden.json").writeText("""{"tracks":["dubz"]}""")
         File(dir, "queue.json").writeText("[1,2,3]")
@@ -71,6 +77,7 @@ class BackupTest {
         assertEquals(3, n)
         val db = FakeDb()
         db.insert(listOf(RecentTrack("Old", "Stuff", "", 1)))
+        db.addVinyl(listOf(Listen("Old", "Record", 1)))
         val dir = tmp.newFolder("to")
         File(dir, "queue.json").writeText("[9]")
         val r = Backup.read(ByteArrayInputStream(bytes), dir, db)
@@ -80,6 +87,7 @@ class BackupTest {
         assertEquals(listOf("post punk"), db.tags["idles"])
         assertEquals("looked up, nothing found: kept so it isn't asked again", emptyList<String>(), db.tags["nobody"])
         assertEquals("https://img/air.jpg", db.images["air|moon safari"])
+        assertEquals("the record plays come along", listOf("La Femme d'Argent"), db.vinyl.map { it.title })
         assertEquals("""{"tracks":["dubz"]}""", File(dir, "hidden.json").readText())
         assertEquals("""{"id":42}""", File(dir, "releases/42.json").readText())
         assertEquals("the queue still to send stays as it was", "[9]", File(dir, "queue.json").readText())
@@ -93,6 +101,34 @@ class BackupTest {
         assertEquals("l", p.getJSONObject("historyCursor").getString("t"))
         assertEquals("i", p.getJSONObject("defaultTrackSec").getString("t"))
         assertEquals(true, p.getJSONObject("historyDone").getBoolean("v"))
+    }
+
+    @Test
+    fun aDamagedFileIsTurnedAwayBeforeAnythingChanges() {
+        val (bytes, _) = backup()
+        Backup.check(ByteArrayInputStream(bytes))
+        for (cut in listOf(bytes.size / 4, bytes.size / 3, bytes.size / 2)) {
+            try {
+                Backup.check(ByteArrayInputStream(bytes.copyOf(cut)))
+                fail("cut at $cut of ${bytes.size}")
+            } catch (e: IOException) {
+                assertTrue(e.message!!.contains("incomplete"))
+            }
+        }
+        // Whole entries, but fewer scrobbles than it says (cut where one entry ended), and no settings.
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { z ->
+            z.putNextEntry(ZipEntry("backup.json"))
+            z.write("""{"format":1,"app":"Record Shelf","scrobbles":5}""".toByteArray())
+            z.putNextEntry(ZipEntry("history/scrobbles.tsv"))
+            z.write("1\tA\tB\t\n2\tA\tC\t\n".toByteArray())
+        }
+        try {
+            Backup.check(ByteArrayInputStream(out.toByteArray()))
+            fail("short")
+        } catch (e: IOException) {
+            assertTrue(e.message!!.contains("Nothing was changed"))
+        }
     }
 
     @Test

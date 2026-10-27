@@ -373,8 +373,8 @@ home; sheets rise from the bottom and can be dragged down; search grows out of i
 Android's back swipe shows where it goes: from Android 14 the page (or sheet, or search) follows
 your finger and closes on release, or springs back if you change your mind; on the shelf, with
 nothing left to close, back is Android's own, with its preview of leaving the app where the phone
-shows one (Android 15 does by default). The app icon is a record with a tonearm shaped like a music note
-resting on it; on Android 13 and later it can follow your wallpaper colors (themed icons).
+shows one (Android 15 does by default). The app icon is a walnut box shelf of records, some standing and the
+rest leaning back onto them; on Android 13 and later it can follow your wallpaper colors (themed icons).
 
 On a record page, or the album or song page of a record you own, tap the sleeve to turn it over (the record rolls back into the sleeve first, and rolls out again after you turn it back): the back has the tracklist by side, the label
 and format, a barcode, and your plays stamped on it. Now spinning shows the record on a turntable:

@@ -188,7 +188,10 @@ class PhoneListener : NotificationListenerService() {
                 c.unregisterCallback(this)
             } catch (_: Exception) {
             }
-            if (active[c.packageName] === c) active.remove(c.packageName)
+            if (active[c.packageName] === c) {
+                active.remove(c.packageName)
+                Phone.dropMedia(c.packageName)
+            }
             t.tracker.onState(PlayState.PAUSED, -1, mono(), wall())
             t.reschedule()
         }
@@ -280,7 +283,9 @@ class PhoneListener : NotificationListenerService() {
     /** Where playback is now; the session reports it as of its last update. -1 if unknown. */
     private fun position(s: PlaybackState): Long {
         if (s.position < 0) return -1
-        if (s.state != PlaybackState.STATE_PLAYING || s.lastPositionUpdateTime <= 0) return s.position
+        if (s.state != PlaybackState.STATE_PLAYING) return s.position
+        // Playing with no time to the position: 0 then means "not said", not "from the start" (or a resume would count as a replay).
+        if (s.lastPositionUpdateTime <= 0) return if (s.position > 0) s.position else -1
         val dt = SystemClock.elapsedRealtime() - s.lastPositionUpdateTime
         return s.position + (dt * s.playbackSpeed).toLong()
     }

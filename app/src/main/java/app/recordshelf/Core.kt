@@ -75,6 +75,9 @@ object Core {
     }
 
     private const val HOUR = 3_600_000L
+
+    /** Last.fm takes scrobbles up to two weeks late (a phone that was offline, a record logged afterwards). */
+    private const val LATE_SEC = 14 * 24 * 3600L
     private const val HIDDEN_FILE = "hidden.json"
     private const val DISCO_FILE = "discographies.json"
     private const val YEARS_FILE = "album_years.json"
@@ -94,9 +97,36 @@ object Core {
     private lateinit var queue: ScrobbleQueue
     private lateinit var activity: ActivityLog
     private val main = Handler(Looper.getMainLooper())
-    private val syncExec = Executors.newSingleThreadExecutor()
-    private val lookupExec = Executors.newSingleThreadExecutor()
-    private val scrobExec = Executors.newSingleThreadExecutor()
+
+    /**
+     * One background thread for one kind of work. A task that throws (a full disk, an answer that
+     * makes no sense) ends there: it doesn't take the app down, and phone scrobbling with it.
+     */
+    private fun serial(): java.util.concurrent.Executor {
+        val e = Executors.newSingleThreadExecutor()
+        return java.util.concurrent.Executor { r ->
+            e.execute {
+                try {
+                    r.run()
+                } catch (t: Throwable) {
+                    failed(t)
+                }
+            }
+        }
+    }
+
+    @Volatile private var lastFailure = 0L
+
+    /** Said at most once a minute, so a full disk doesn't bring a toast with every scrobble. */
+    private fun failed(t: Throwable) {
+        val now = System.currentTimeMillis()
+        if (now - lastFailure < 60_000) return
+        lastFailure = now
+        toast("Something went wrong in the background (${t.message ?: t.javaClass.simpleName})")
+    }
+    private val syncExec = serial()
+    private val lookupExec = serial()
+    private val scrobExec = serial()
 
     @Volatile
     private var ready = false
@@ -138,16 +168,31 @@ object Core {
 
     // ---- history and stats ----
     /** Network work for the history: import, sync, tags, covers. */
-    private val historyExec = Executors.newSingleThreadExecutor()
+    private val historyExec = serial()
 
     /** Computing stats, so a long import doesn't hold them up. */
-    private val statsExec = Executors.newSingleThreadExecutor()
+    private val statsExec = serial()
     private val db by lazy { HistoryDb(ctx) }
 
     @Volatile private var history: History? = null
 
     /** Built from [history] with the current collection, tags and covers; null when any of those changed. */
     @Volatile private var stats: Stats? = null
+
+    /** Counts changes to what the stats are built from: a build that started before one isn't kept. */
+    @Volatile private var statsGen = 0
+
+    /** The day [stats] were built on: "today", this week and the running periods move on at midnight. */
+    @Volatile private var statsDay = 0L
+
+    /** Counts the page's requests for the stats; one overtaken by a newer one is skipped. */
+    @Volatile private var statsAsks = 0
+
+    /** A stats update came while the app was in the background; it is worked out when the page is back. */
+    @Volatile private var statsMissed = false
+
+    /** Whether every record play scrobbled from here is in the history database yet (see [vinylListens]). */
+    @Volatile private var vinylSeeded = false
     @Volatile private var statsRange = ""
     @Volatile private var histCount = -1
     @Volatile private var importing = false
@@ -166,7 +211,7 @@ object Core {
     private val deezer = DeezerClient()
 
     /** Deezer lookups for pages (discographies, tracklists), apart from the history work. */
-    private val webExec = Executors.newSingleThreadExecutor()
+    private val webExec = serial()
 
     /** The Stats tab shows one genre's music when set (a genre key; "" for everything), and/or one decade's (e.g. 1970; 0 for all). */
     @Volatile private var statsGenre = ""
@@ -202,6 +247,12 @@ object Core {
     @Volatile private var globalsDone = 0
     @Volatile private var globalsTotal = 0
     @Volatile private var globalsTried = 0L
+
+    /** Counts lookups in a row that failed (offline, Last.fm busy): each waits longer before the next try. */
+    @Volatile private var globalsFails = 0
+
+    /** Whether the counts may be looked up now: not running, and a minute after the last try (doubling after each failure, up to 6 hours). */
+    private fun globalsDue() = !globalsBusy && System.currentTimeMillis() - globalsTried > minOf(6 * HOUR, 60_000L shl minOf(globalsFails, 9))
 
     private fun globalsSnapshot(): Globals = synchronized(globalsStore) { Globals(HashMap(globalsStore.first), HashMap(globalsStore.second)) }
 
@@ -245,8 +296,10 @@ object Core {
                 }
                 Thread.sleep(250) // Last.fm asks for at most 5 requests a second
             }
+            globalsFails = 0
         } catch (_: Exception) {
-            // Offline or Last.fm busy: the rest next time.
+            // Offline or Last.fm busy: the rest next time, a while later.
+            globalsFails++
         } finally {
             saveGlobals()
             globalsBusy = false
@@ -315,7 +368,7 @@ object Core {
         return out
     }
 
-    private val paletteExec = Executors.newSingleThreadExecutor()
+    private val paletteExec = serial()
 
     /** Colors per picture URL, kept across starts (covers don't change). */
     private val palettes: MutableMap<String, JSONObject> by lazy {
@@ -329,7 +382,7 @@ object Core {
     }
 
     // ---- TIDAL: exact links and playlists with the user's own TIDAL app ----
-    private val tidalExec = Executors.newSingleThreadExecutor()
+    private val tidalExec = serial()
     private val tidal by lazy { Tidal(prefs, file("tidal_links.json"), { java.util.Locale.getDefault().country.ifEmpty { "US" } }) }
     @Volatile private var tidalBusy = false
     @Volatile private var tidalError = ""
@@ -366,6 +419,13 @@ object Core {
             ready = true
             historyExec.execute {
                 histCount = db.count()
+                // Settings back without their history (Android's cloud backup leaves the database out): import again.
+                if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
+                    prefs.historyDone = false
+                    prefs.historyCursor = 0
+                    prefs.refreshCursor = 0
+                    prefs.historySyncedTo = 0
+                }
                 pushState()
             }
         }
@@ -373,6 +433,13 @@ object Core {
 
     fun attachUi(u: Ui) {
         ui = u
+        // What came while the app was in the background: the latest of each, then the stats if they changed.
+        val back = synchronized(missed) { LinkedHashMap(missed).also { missed.clear() } }
+        for ((fn, s) in back) main.post { ui?.push(fn, s) }
+        if (statsMissed) {
+            statsMissed = false
+            statsExec.execute { statsInner() }
+        }
     }
 
     fun detachUi(u: Ui) {
@@ -399,7 +466,7 @@ object Core {
             syncExec.execute { refreshPlaysInner() }
         }
         // An import that was interrupted continues; a finished one picks up new scrobbles now and then.
-        if (prefs.historyCursor > 0 && !importing) historyExec.execute { importInner() }
+        if (prefs.historyCursor > 0 && !importing && !prefs.importPaused) historyExec.execute { importInner() }
         else if (prefs.historyDone && System.currentTimeMillis() - prefs.historyLastSync > HOUR / 2) historyExec.execute { refreshHistoryInner() }
     }
 
@@ -422,15 +489,25 @@ object Core {
                 pushState()
             }
             "comparePano" -> syncExec.execute { compareInner() }
-            "historyImport" -> historyExec.execute { importInner() }
-            "historyCancel" -> cancelImport = true
+            "historyImport" -> {
+                prefs.importPaused = false
+                historyExec.execute { importInner() }
+            }
+            "historyCancel" -> {
+                // Paused stays paused, also when the app comes back to the front.
+                cancelImport = true
+                prefs.importPaused = true
+            }
             "historyReset" -> historyExec.execute {
                 db.clear()
                 prefs.historyCursor = 0
                 prefs.historyDone = false
+                prefs.refreshCursor = 0
+                prefs.historySyncedTo = 0
+                prefs.importPaused = false
                 prefs.historyLastSync = 0
                 history = null
-                stats = null
+                dropStats()
                 histCount = 0
                 pushState()
                 push("onStats") { JSONObject().put("empty", true) }
@@ -440,7 +517,9 @@ object Core {
                 statsRange = msg.optString("range").ifEmpty { statsRange }
                 if (msg.has("genre")) statsGenre = msg.optString("genre")
                 if (msg.has("decade")) statsDecade = msg.optInt("decade")
-                statsExec.execute { statsInner() }
+                // Stepping through periods quickly: only the last one asked for is worked out.
+                val ask = ++statsAsks
+                statsExec.execute { if (ask == statsAsks) statsInner() }
             }
             "artist" -> {
                 val name = msg.optString("name")
@@ -502,7 +581,7 @@ object Core {
                 val j = s?.vs() ?: JSONObject().put("empty", true)
                 push("onVs") { j.put("lastfm", lastfm() != null) }
                 if (s != null) {
-                    if (!globalsBusy) historyExec.execute { globalsInner() }
+                    if (globalsDue()) historyExec.execute { globalsInner() }
                     val photos = s.vsNeedingPhotos(j)
                     if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
                 }
@@ -909,7 +988,7 @@ object Core {
             pushState()
         }
         collection = list
-        stats = null
+        dropStats()
         file("collection.json").write(CollectionItem.listToJson(list).toString())
         prefs.lastSync = System.currentTimeMillis()
         pushCollection()
@@ -1094,10 +1173,8 @@ object Core {
         val due = s.takeDue(now)
         enqueue(s, due)
         val cur = s.currentIndex(now)
-        if (cur >= 0 && cur != s.nowPlaying) {
-            s.nowPlaying = cur
-            sendNowPlaying(s.items[cur], now)
-        }
+        val announce = cur >= 0 && cur != s.nowPlaying
+        if (announce) s.nowPlaying = cur
         if (s.isOver(now)) {
             endSpin()
             SpinNotifier.finished(ctx, s)
@@ -1107,6 +1184,8 @@ object Core {
             SpinReceiver.schedule(ctx, s.nextEventMs(now))
             SpinNotifier.show(ctx, s, now)
         }
+        // The network last: the next alarm is set even when Last.fm is slow to answer.
+        if (announce) sendNowPlaying(s.items[cur], now)
         if (due.isNotEmpty()) flushInner()
         pushState()
         if (due.isNotEmpty()) pushActivity()
@@ -1144,7 +1223,10 @@ object Core {
             pushState()
             return null
         }
-        val r = queue.flush({ batch -> c.scrobble(sk, batch) }) { q, status, m -> activity.update(q.id, status, m) }
+        val r = queue.flush({ batch -> c.scrobble(sk, batch) }) { q, status, m ->
+            activity.update(q.id, status, m)
+            if (status == "sent" && q.src == "vinyl") db.addVinyl(listOf(Listen(q.s.artist, q.s.track, q.s.timestamp, q.s.album)))
+        }
         activity.save()
         flushError = r.error.orEmpty()
         if (r.needsAuth) {
@@ -1253,6 +1335,8 @@ object Core {
             return
         }
         if (importing) return
+        // Already done (a second import that was waiting in line): only a reset starts it over.
+        if (prefs.historyDone && prefs.historyCursor == 0L) return
         importing = true
         cancelImport = false
         histError = ""
@@ -1260,6 +1344,7 @@ object Core {
         histDone = base
         histTotal = 0
         pushState()
+        var tried = false
         var guarded = false
         try {
             val cursor = prefs.historyCursor.takeIf { it > 0 } ?: (System.currentTimeMillis() / 1000 + 60)
@@ -1269,9 +1354,9 @@ object Core {
                 histDone = base + p.fetched
                 histTotal = base + maxOf(p.total, p.fetched)
                 // Only a long import needs the foreground service (and its notification).
-                if (!guarded && p.next != 0L && p.total > 2000) {
-                    guarded = true
-                    ImportService.start(ctx)
+                if (!tried && p.next != 0L && p.total > 2000) {
+                    tried = true
+                    guarded = ImportService.start(ctx)
                 }
                 if (guarded) ImportService.progress(ctx, histDone, histTotal)
                 pushState()
@@ -1294,41 +1379,84 @@ object Core {
 
     fun isImporting() = importing
 
-    /** Fetches scrobbles newer than the newest one stored, then rebuilds the stats. On [historyExec]. */
+    /** Where the refresh stands ([HistorySync.refresh]), kept in the settings. */
+    private val refreshState by lazy {
+        object : HistorySync.RefreshState {
+            override var syncedTo: Long
+                get() = prefs.historySyncedTo
+                set(v) { prefs.historySyncedTo = v }
+            override var from: Long
+                get() = prefs.refreshFrom
+                set(v) { prefs.refreshFrom = v }
+            override var to: Long
+                get() = prefs.refreshTo
+                set(v) { prefs.refreshTo = v }
+            override var cursor: Long
+                get() = prefs.refreshCursor
+                set(v) { prefs.refreshCursor = v }
+        }
+    }
+
+    /** Fetches the scrobbles since the history was last known to be whole (see [HistorySync.refresh]), then rebuilds the stats. On [historyExec]. */
     private fun refreshHistoryInner(force: Boolean = false) {
         val c = lastfm()
         val user = prefs.lastfmUser
         if (c == null || user.isEmpty() || !prefs.historyDone) return
         histSyncing = true
         pushState()
-        var added = 0
+        val before = db.count()
         try {
-            val newest = db.newest()
-            if (newest > 0) added = historySync(c, user).walk(newest, System.currentTimeMillis() / 1000 + 60)
+            historySync(c, user).refresh(refreshState, System.currentTimeMillis() / 1000, LATE_SEC) { f, t -> c.recentTracks(user, f, t, 1, limit = 1).total }
             prefs.historyLastSync = System.currentTimeMillis()
             histError = ""
         } catch (_: Exception) {
-            // Stats work from what is stored; the next visit tries again.
+            // Stats work from what is stored; the next visit goes on from here.
         } finally {
             histSyncing = false
             histCount = db.count()
             pushState()
         }
-        if (added > 0 || force || history == null) {
+        // What came in counts, also when the walk was cut short.
+        if (histCount > before || force || history == null) {
             history = History.from(db, hidden())
-            stats = null
+            dropStats()
             statsExec.execute { statsInner() }
             fetchTagsInner(c)
         }
     }
 
-    /** The stats for the current history, built on first use. */
+    private fun dropStats() {
+        statsGen++
+        stats = null
+    }
+
+    /** The stats for the current history, built on first use (and again on a new day). */
     private fun currentStats(): Stats? {
-        stats?.let { return it }
-        val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null
-        val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot())
-            .also { stats = it }
+        val today = java.time.LocalDate.now().toEpochDay()
+        stats?.takeIf { statsDay == today }?.let { return it }
+        // Kept only if nothing changed meanwhile: else a slow build would put older stats over newer ones.
+        val gen = statsGen
+        val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { if (statsGen == gen) history = it } else return null
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot())
+            .also {
+                if (statsGen == gen) {
+                    stats = it
+                    statsDay = today
+                }
+            }
+    }
+
+    /**
+     * Every record play scrobbled from here, for the stats. Kept in the history database, apart
+     * from the activity log (which only keeps the latest 2,500 of everything); filled from the log
+     * the first time.
+     */
+    private fun vinylListens(): List<Listen> {
+        if (!vinylSeeded) {
+            vinylSeeded = true
+            if (db.vinylCount() == 0) db.addVinyl(activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" })
+        }
+        return db.vinyl()
     }
 
     /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre] and/or [statsDecade]. */
@@ -1342,8 +1470,9 @@ object Core {
         val h = history ?: return base
         val inGenre = if (g.isEmpty()) null else base.inGenre(g)
         val inDecade = if (d == 0) null else base.inDecade(d)
-        val vinyl = activity.listens { it.optString("src") == "vinyl" && it.optString("status") == "sent" }
         val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
+        // Only the record plays among the scrobbles shown (at the same second as one of them).
+        val vinyl = vinylListens().filter { v -> sub.lowerBound(v.ts).let { it < sub.size && sub.ts[it] == v.ts } }
         return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot())
             .also {
                 filteredStats = it
@@ -1384,7 +1513,7 @@ object Core {
         } finally {
             saveYears()
             yearsBusy = false
-            stats = null
+            dropStats()
             pushState()
             statsExec.execute { statsInner() }
         }
@@ -1427,7 +1556,10 @@ object Core {
 
     /** Computes and pushes the stats for [statsRange]. On [statsExec]. */
     private fun statsInner() {
-        if (ui == null) return
+        if (ui == null) {
+            statsMissed = true
+            return
+        }
         val s = currentStats()
         if (s == null) {
             push("onStats") { JSONObject().put("empty", true) }
@@ -1442,7 +1574,7 @@ object Core {
         // Release years for the decade filter, looked up now and then as the history grows.
         if (!yearsBusy && System.currentTimeMillis() - yearsTried > 6 * HOUR) historyExec.execute { yearsInner() }
         // Everyone's counts on Last.fm, for the comparisons, likewise.
-        if (!globalsBusy && System.currentTimeMillis() - globalsTried > 6 * HOUR) historyExec.execute { globalsInner() }
+        if (globalsDue() && System.currentTimeMillis() - globalsTried > 6 * HOUR) historyExec.execute { globalsInner() }
         val missing = s.albumsNeedingImages(id)
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
         val photos = s.artistsNeedingPhotos(id)
@@ -1481,7 +1613,7 @@ object Core {
     private fun rebuildHistory() {
         if (db.count() == 0) return
         history = History.from(db, hidden())
-        stats = null
+        dropStats()
         push("onTidy") { tidy() ?: JSONObject().put("empty", true) }
         statsInner()
     }
@@ -1531,7 +1663,7 @@ object Core {
             // Network trouble: the rest is fetched next time.
         } finally {
             tagsTotal = 0
-            stats = null
+            dropStats()
             pushState()
             statsExec.execute { statsInner() }
         }
@@ -1603,8 +1735,17 @@ object Core {
 
     // ---- pushing to the page ----
 
+    /** Replies that came while no page was there (the app in the background): the latest of each, for [attachUi]. */
+    private val missed = LinkedHashMap<String, String>()
+
+    /** Those the page gets again anyway when it is back ([pushAll]), or that only matter at the moment. */
+    private val NOT_KEPT = setOf("onState", "onCollection", "onActivity", "onCompare", "onToast", "onPalette")
+
     private inline fun push(fn: String, build: () -> Any) {
-        if (ui == null) return
+        if (ui == null) {
+            if (fn !in NOT_KEPT) build().toString().let { s -> synchronized(missed) { missed[fn] = s } }
+            return
+        }
         val s = build().toString()
         main.post { ui?.push(fn, s) }
     }
@@ -1676,14 +1817,32 @@ object Core {
      */
     fun restoreFrom(uri: android.net.Uri) = historyExec.execute {
         try {
-            JsonFile.frozen = true
+            // Read through first: a file cut short is turned away before anything here changes.
+            ctx.contentResolver.openInputStream(uri)?.use { Backup.check(it) } ?: throw IOException("Couldn't open the file.")
+            // The queue and the spinning record aren't in a backup: they go on being saved.
+            JsonFile.frozen = { it.name !in Backup.SKIP }
             val r = ctx.contentResolver.openInputStream(uri)?.use { Backup.read(it, files, db) } ?: throw IOException("Couldn't open the file.")
             prefs.restorePlain(r.prefs)
             push("onRestored") { JSONObject().put("scrobbles", r.scrobbles).put("files", r.files).put("ui", r.ui) }
+            // The page restarts the app once it has put its own settings back; without a page, or if
+            // it doesn't, the app restarts by itself.
+            main.postDelayed({ restart() }, if (ui == null) 0L else 5000L)
         } catch (e: Exception) {
-            JsonFile.frozen = false
+            JsonFile.frozen = { false }
             push("onBackup") { JSONObject().put("error", "Couldn't restore: ${e.message ?: e.javaClass.simpleName}") }
         }
+    }
+
+    /** Starts the app afresh (after a restore), so only what was restored is in memory. */
+    private fun restart() {
+        try {
+            ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.let {
+                ctx.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            }
+        } catch (_: Exception) {
+            // From the background Android may not allow it; the next start is a fresh one anyway.
+        }
+        Runtime.getRuntime().exit(0)
     }
 
     /** Tracklists of albums phone apps played (by album key), the last 30. */

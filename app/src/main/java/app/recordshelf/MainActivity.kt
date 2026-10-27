@@ -21,6 +21,8 @@ import android.util.TypedValue
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.window.BackEvent
 import android.window.OnBackAnimationCallback
@@ -86,9 +88,26 @@ class MainActivity : AppCompatActivity(), Core.Ui {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
+            settings.allowContentAccess = false
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     pageReady = true
+                }
+
+                // The app's page never goes anywhere else; a web link opens in the browser.
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val url = request?.url?.toString().orEmpty()
+                    if (url.startsWith("file:///android_asset/ui/")) return false
+                    openUrl(url)
+                    return true
+                }
+
+                // The page's process went (killed for memory, or crashed): start this screen again, not the whole app.
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                    view?.destroy()
+                    recreate()
+                    return true
                 }
             }
             webChromeClient = WebChromeClient()
@@ -112,7 +131,8 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 override fun handleOnBackPressed() = goBack()
             })
         }
-        handleIntent(intent)
+        // Brought back from Recents (or after Android ended the app), the intent is the old one: a TIDAL login link or a notification tap already handled.
+        if (savedInstanceState == null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) handleIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -135,6 +155,8 @@ class MainActivity : AppCompatActivity(), Core.Ui {
 
     override fun onStart() {
         super.onStart()
+        web.onResume()
+        web.resumeTimers()
         Core.attachUi(this)
         if (pageReady) {
             pushTheme()
@@ -150,6 +172,9 @@ class MainActivity : AppCompatActivity(), Core.Ui {
 
     override fun onStop() {
         Core.detachUi(this)
+        // Hidden, the page rests: its once-a-second clock and animations stop until the app is back.
+        web.onPause()
+        web.pauseTimers()
         super.onStop()
         updateTiltSensor()
     }
