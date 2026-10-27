@@ -114,10 +114,11 @@ function holoCover(url, title, artist, opts = {}) {
   const withDisc = owned && opts.disc !== false;
   const lbl = url ? `background-image:url('${esc(url)}')` : '';
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
-  const foil = owned ? '<i class="sheen"></i><i class="sticker" aria-label="On your shelf">★</i>' : '';
+  const sheen = owned ? '<i class="sheen"></i>' : '';
+  const sticker = owned ? '<i class="sticker" aria-label="On your shelf">★</i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
   return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
-    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}${foil}<i class="glare"></i></div>${back}</div></div>`;
+    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<span class="fx">${sheen}<i class="glare"></i></span>${sticker}</div>${back}</div></div>`;
 }
 
 /**
@@ -146,6 +147,7 @@ const Tilt = {
   },
   step(now) {
     if (!this.on) return;
+    if (this.hold) { this.raf = requestAnimationFrame((t) => this.step(t)); return; }
     let tx = this.tx, ty = this.ty;
     if (this.px != null) { tx = this.px; ty = this.py; } else if (!this.seen) {
       const s = (now - this.t0) / 1000;
@@ -229,12 +231,9 @@ const Pill = {
           if (t.parentElement && t.parentElement.matches(Pill.BOX)) boxes.add(t.parentElement);
           continue;
         }
-        if (t.matches(Pill.BOX)) boxes.add(t);
-        m.addedNodes.forEach((n) => {
-          if (n.nodeType !== 1 || n.classList.contains('pill')) return;
-          if (n.matches(Pill.BOX)) boxes.add(n);
-          else n.querySelectorAll(Pill.BOX).forEach((x) => boxes.add(x));
-        });
+        if (t.matches(Pill.BOX)) { boxes.add(t); continue; }
+        // One look through the changed part (a whole shelf grid is a single query).
+        if (m.addedNodes.length) t.querySelectorAll(Pill.BOX).forEach((x) => boxes.add(x));
       }
       boxes.forEach(Pill.sync);
     }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
@@ -338,7 +337,12 @@ window.onTheme = (th) => {
   for (const k in th.c) root.style.setProperty('--md-' + k, th.c[k]);
   drawRecords();
 };
+let insetsSet = '';
 window.onInsets = (i) => {
+  // Like the glow's colors, these sit on the root: an unchanged report is skipped.
+  const key = [i.top, i.bottom, i.ime].join('|');
+  if (key === insetsSet) return;
+  insetsSet = key;
   const root = document.documentElement.style;
   root.setProperty('--inset-top', `${i.top || 0}px`);
   root.setProperty('--inset-bottom', `${i.bottom || 0}px`);
@@ -545,27 +549,67 @@ window.onBackCancel = () => {
   setTimeout(() => { if (!el.style.transform) el.style.transition = ''; }, 320);
 };
 
-/** A copy of cover [from] flies onto cover [to], both hidden meanwhile, the way a shared element moves between pages. */
+/**
+ * A copy of cover [from] flies onto cover [to], the way a shared element moves between pages.
+ * Only its transform animates, so the compositor runs it even while the new page is being built.
+ * A sleeve at either end waits (hidden, its record in) and takes over at the end: its foil fades
+ * in, then the record slides out. If [to] shows a sharper picture, the copy fades it in on the
+ * way, and lands only once it is there.
+ */
 function flyCover(from, to, ms) {
   const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
   if (!a.width || !b.width) return;
   const c = from.cloneNode(true);
   c.classList.add('fly');
   c.removeAttribute('style');
-  c.style.cssText = `left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;--h:${from.style.getPropertyValue('--h')}`;
+  const r = parseFloat(getComputedStyle(to).borderTopLeftRadius) || 12;
+  c.style.cssText = `left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;border-radius:${r}px;--h:${from.style.getPropertyValue('--h')}`;
+  const toImg = to.querySelector('img'), fromImg = from.querySelector('img');
+  if (toImg && toImg.src && (!fromImg || fromImg.src !== toImg.src)) {
+    const hi = new Image();
+    hi.className = 'hi';
+    hi.alt = '';
+    hi.onload = () => hi.classList.add('ok');
+    hi.src = toImg.src;
+    c.append(hi);
+  }
   document.body.append(c);
-  from.style.visibility = 'hidden';
-  to.style.visibility = 'hidden';
-  const s = a.width / b.width;
-  const rFrom = parseFloat(getComputedStyle(from).borderTopLeftRadius) || 12, rTo = parseFloat(getComputedStyle(to).borderTopLeftRadius) || 20;
+  const holos = [from, to].map((el) => el.closest('.holo')).filter(Boolean);
+  holos.forEach((h) => { h.classList.add('landing'); h.classList.remove('landed'); });
+  if (!from.closest('.holo')) from.style.visibility = 'hidden';
+  if (!to.closest('.holo')) to.style.visibility = 'hidden';
+  Tilt.hold = true;
   const anim = c.animate([
-    { transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${s})`, borderRadius: `${rFrom / s}px` },
-    { transform: 'none', borderRadius: `${rTo}px` },
+    { transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width})` },
+    { transform: 'none' },
   ], { duration: ms, easing: EASE_OUT });
-  const end = () => { from.style.visibility = ''; to.style.visibility = ''; c.remove(); };
-  anim.onfinish = end;
+  let over = false;
+  const end = () => {
+    if (over) return;
+    over = true;
+    Tilt.hold = false;
+    from.style.visibility = '';
+    to.style.visibility = '';
+    holos.forEach((h) => {
+      h.classList.remove('landing');
+      h.classList.add('landed');
+      setTimeout(() => h.classList.remove('landed'), 600);
+    });
+    // The copy steps aside a moment later, so the picture under it is drawn by then.
+    c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, delay: 40, fill: 'forwards' }).onfinish = () => c.remove();
+    setTimeout(() => c.remove(), 400);
+  };
+  // Lands when the flight is over and [to]'s picture is ready (or after a short wait for it).
+  const ready = () => !toImg || (toImg.complete && toImg.naturalWidth > 0);
+  const land = () => {
+    if (ready()) { end(); return; }
+    toImg.addEventListener('load', end, { once: true });
+    toImg.addEventListener('error', end, { once: true });
+    setTimeout(end, 500);
+  };
+  anim.onfinish = land;
   anim.oncancel = end;
-  setTimeout(end, ms + 250);
+  setTimeout(end, ms + 900);
 }
 /** Where the record page's cover came from, so Back can fly it home. */
 let flyHome = null;
@@ -839,7 +883,8 @@ function renderShelf() {
   $('#shelfViews').innerHTML = SHELF_VIEWS.map(([v, ic, label]) => `<button class="icon-btn small${shelf.view === v ? ' on' : ''}" data-view="${v}" aria-label="${label}">${icon(ic)}</button>`).join('');
   $('#grid').className = `grid ${shelf.view}`;
   const look = [shelf.view, shelf.sort, shelf.rev, shelf.decade, shelf.genre].join('|');
-  if (shelfLook && look !== shelfLook) requestAnimationFrame(() => settle($('#grid')));
+  // A very long shelf just changes: fading thousands of covers at once would stutter.
+  if (shelfLook && look !== shelfLook && list.length <= 300) requestAnimationFrame(() => settle($('#grid')));
   shelfLook = look;
   $('#grid').innerHTML = list.map((r) => {
     const cover = coverHtml(shelf.view === 'list' ? r.thumb || r.cover : r.cover || r.thumb, r.title, r.artist, '', r.id === spinId);
@@ -1968,17 +2013,20 @@ function lookMode() {
 }
 document.documentElement.dataset.look = lookMode();
 let ambientUrl = '';
-function applyAmbient() {
+let ambientSet = '';
+/** The mode and the glow's colors go on the root, so each write restyles the whole page: only when they change. */
+function setAmbient(mode, colors) {
+  const key = mode + '|' + colors.join('|');
+  if (key === ambientSet) return;
+  ambientSet = key;
   const root = document.documentElement;
-  const mode = ambientMode();
   root.dataset.ambient = mode;
-  if (mode === 'off') return;
-  if (mode === 'wallpaper') {
-    root.style.setProperty('--amb1', 'var(--md-primary)');
-    root.style.setProperty('--amb2', 'var(--md-tertiary)');
-    root.style.setProperty('--amb3', 'var(--md-secondary)');
-    return;
-  }
+  colors.forEach((c, i) => root.style.setProperty(`--amb${i + 1}`, c));
+}
+function applyAmbient() {
+  const mode = ambientMode();
+  if (mode === 'off') { setAmbient(mode, []); return; }
+  if (mode === 'wallpaper') { setAmbient(mode, ['var(--md-primary)', 'var(--md-tertiary)', 'var(--md-secondary)']); return; }
   const sp = ST.spin;
   const pn = sp ? null : (ST.phone || {}).now;
   const now = pn && pn.title && pn.playing ? pn : null;
@@ -1995,9 +2043,7 @@ function applyAmbient() {
     [h1, h2, sat] = [v[0], d[0], Math.max(v[1], d[1])];
   } else [h1, h2, sat] = [hue(src.seed), (hue(src.seed) + 48) % 360, 0.6];
   const k = sat < 0.12 ? 0 : 1; // black-and-white covers glow gray
-  root.style.setProperty('--amb1', `hsl(${h1.toFixed(0)} ${70 * k}% 46%)`);
-  root.style.setProperty('--amb2', `hsl(${h2.toFixed(0)} ${60 * k}% 40%)`);
-  root.style.setProperty('--amb3', `hsl(${((h1 + 320) % 360).toFixed(0)} ${55 * k}% 36%)`);
+  setAmbient(mode, [`hsl(${h1.toFixed(0)} ${70 * k}% 46%)`, `hsl(${h2.toFixed(0)} ${60 * k}% 40%)`, `hsl(${((h1 + 320) % 360).toFixed(0)} ${55 * k}% 36%)`]);
 }
 
 /** Your record of an album (any edition, "Deluxe" or not), found on the shelf by artist and title; 0 if you don't own it. */

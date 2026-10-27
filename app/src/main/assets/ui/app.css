@@ -445,21 +445,29 @@ input[type=datetime-local] { color-scheme: inherit; }
 .holo.with-disc { margin-left: calc((100% - var(--w) * 1.3) / 2); }
 .holo .h3d { position: relative; transform-style: preserve-3d; transform: rotateX(calc(var(--ty) * -11deg)) rotateY(calc(var(--tx) * 13deg)); will-change: transform; }
 .holo .sleeve { position: relative; border-radius: 20px; transform: translateZ(22px); }
-.holo .sleeve .cover.big { width: 100%; margin: 0; border-radius: 20px;
-  box-shadow: calc(var(--tx) * -16px) calc(16px + var(--ty) * 12px) 34px rgba(0, 0, 0, .36), 0 2px 6px rgba(0, 0, 0, .2); }
-.holo .glare, .holo .sheen { position: absolute; inset: 0; border-radius: 20px; pointer-events: none; }
-.holo .glare { mix-blend-mode: soft-light; opacity: calc(.45 + var(--m) * .45);
-  background: radial-gradient(farthest-corner circle at calc(50% + var(--tx) * 55%) calc(35% + var(--ty) * 55%), rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 58%); }
-.holo .sheen { mix-blend-mode: color-dodge; opacity: calc(.06 + var(--m) * .34); background-size: 260% 260%;
-  background-position: calc(50% + var(--tx) * 45%) calc(50% + var(--ty) * 45%);
-  background-image: repeating-linear-gradient(118deg, hsla(330, 90%, 70%, .0) 0%, hsla(330, 90%, 70%, .55) 5%, hsla(45, 95%, 65%, .5) 10%, hsla(150, 80%, 60%, .5) 15%, hsla(200, 90%, 65%, .55) 20%, hsla(270, 85%, 70%, .5) 25%, hsla(330, 90%, 70%, 0) 30%); }
+/*
+ * The tilt only moves things that were drawn once (transforms and opacity), so nothing is painted
+ * again while the phone moves: the long shadow is a layer of its own, the glare and the foil are
+ * oversized layers that slide behind the sleeve's rounded clip, shines and the sticker turn.
+ */
+.holo .sleeve .cover.big { width: 100%; margin: 0; border-radius: 20px; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); }
+.holo:not(.framed) .sleeve::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 20px; pointer-events: none;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .36); transform: translate(calc(var(--tx) * -16px), calc(var(--ty) * 12px)); will-change: transform; }
+.holo .fx { position: absolute; inset: 0; border-radius: 20px; overflow: hidden; pointer-events: none; }
+.holo .glare, .holo .sheen { position: absolute; pointer-events: none; will-change: transform, opacity; }
+.holo .glare { inset: -60%; mix-blend-mode: soft-light; opacity: calc(.45 + var(--m) * .45);
+  background: radial-gradient(circle closest-side, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 44%);
+  transform: translate(calc(var(--tx) * 25%), calc(-6.8% + var(--ty) * 25%)); }
+.holo .sheen { inset: -80%; mix-blend-mode: color-dodge; opacity: calc(.06 + var(--m) * .34);
+  background-image: repeating-linear-gradient(118deg, hsla(330, 90%, 70%, .0) 0%, hsla(330, 90%, 70%, .55) 5%, hsla(45, 95%, 65%, .5) 10%, hsla(150, 80%, 60%, .5) 15%, hsla(200, 90%, 65%, .55) 20%, hsla(270, 85%, 70%, .5) 25%, hsla(330, 90%, 70%, 0) 30%);
+  transform: translate(calc(var(--tx) * -27.7%), calc(var(--ty) * -27.7%)); }
 .holo .disc { position: absolute; top: 4%; left: 38%; width: 92%; aspect-ratio: 1; transform: translateZ(-26px); animation: discOut .7s cubic-bezier(.2, .7, .2, 1) .15s both; }
-@keyframes discOut { from { left: 4%; } }
+@keyframes discOut { from { translate: -37% 0; } }
 .holo .vinyl { position: absolute; inset: 0; border-radius: 50%;
   box-shadow: 0 10px 26px rgba(0, 0, 0, .45), inset 0 0 0 1.5px rgba(255, 255, 255, .16), inset 0 0 0 5px #0d0d0f;
   background: repeating-radial-gradient(circle, #17171a 0 1.2px, #2a2a2f 1.2px 2.6px); }
-.holo .disc::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-  background: conic-gradient(from calc(30deg + var(--tx) * 40deg), rgba(255, 255, 255, 0), rgba(255, 255, 255, .22) 8%, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, .16) 58%, rgba(255, 255, 255, 0) 68%); }
+.holo .disc::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; transform: rotate(calc(var(--tx) * 40deg)); will-change: transform;
+  background: conic-gradient(from 30deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .22) 8%, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, .16) 58%, rgba(255, 255, 255, 0) 68%); }
 .holo .vinyl .lbl { position: absolute; inset: 33%; border-radius: 50%; background: hsl(var(--h, 260) 40% 45%) center / cover no-repeat; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }
 .holo .vinyl .lbl::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9%; height: 9%; margin: -4.5% 0 0 -4.5%; border-radius: 50%; background: #0c0c0e; }
 .holo.spinning .vinyl { animation: spin33 1.8s linear infinite; }
@@ -467,10 +475,11 @@ input[type=datetime-local] { color-scheme: inherit; }
 @media (prefers-reduced-motion: reduce) { .holo .disc { animation: none; } .holo.spinning .vinyl { animation: none; } }
 /* Not on your shelf: the light moves, no foil. On your shelf: a foil star in the corner. */
 .holo.plain .glare { opacity: calc(.28 + var(--m) * .3); }
-.holo .sticker { position: absolute; right: 10px; top: 10px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+.holo .sticker { position: absolute; right: 10px; top: 10px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
   font: normal 700 16px/1 var(--font); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .45); transform: translateZ(10px); pointer-events: none;
-  background: conic-gradient(from calc(var(--tx) * 120deg + var(--ty) * 60deg), #ff7ac8, #ffd76e, #76f0a8, #6ec8ff, #b47cff, #ff7ac8);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .35), inset 0 0 0 2px rgba(255, 255, 255, .55); }
+.holo .sticker::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 50%; will-change: transform;
+  background: conic-gradient(#ff7ac8, #ffd76e, #76f0a8, #6ec8ff, #b47cff, #ff7ac8); transform: rotate(calc(var(--tx) * 120deg + var(--ty) * 60deg)); }
 .chip.link { cursor: pointer; }
 .chip.link .i { width: 14px; height: 14px; margin: 0 -4px 0 0; }
 .artist-link { color: var(--md-primary); font: 400 16px/24px var(--font); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
@@ -797,9 +806,9 @@ input[type=datetime-local] { color-scheme: inherit; }
 .artist-hero .holo { --w: 136px; margin: 0; flex: none; }
 .holo.framed .sleeve { padding: 6px; border-radius: 18px;
   background: linear-gradient(150deg, color-mix(in srgb, var(--tint) 45%, #fff), color-mix(in srgb, var(--tint) 35%, #15151a));
-  box-shadow: calc(var(--tx) * -12px) calc(12px + var(--ty) * 10px) 26px rgba(0, 0, 0, .4); }
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .4); }
 .holo.framed .sleeve .cover.big { border-radius: 13px; box-shadow: none; }
-.holo.framed .glare { border-radius: 18px; }
+.holo.framed .fx { border-radius: 18px; }
 .artist-hero .ah-text { flex: 1; min-width: 0; }
 .artist-hero .k { display: block; font: 500 11px/16px var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--md-on-surface-variant); }
 .artist-hero h1.fit { margin: 2px 0 6px; font-family: "sans-serif-condensed", "Roboto Condensed", "Arial Narrow", var(--font); font-stretch: condensed;

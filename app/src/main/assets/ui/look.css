@@ -450,7 +450,14 @@ html.locked, html.locked body, html.locked-root, html.locked-root body { overflo
 html.locked .page { overflow: hidden; }
 
 /* ---- a record's cover flying between the shelf and its page ---- */
-.cover.fly { position: fixed; z-index: 200; margin: 0; aspect-ratio: auto; transform-origin: 0 0; pointer-events: none; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
+.cover.fly { position: fixed; z-index: 200; margin: 0; aspect-ratio: auto; transform-origin: 0 0; pointer-events: none; will-change: transform; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
+.cover.fly img.hi { opacity: 0; transition: opacity .25s; }
+.cover.fly img.hi.ok { opacity: 1; }
+/* While a cover flies to (or from) a sleeve, the sleeve and its record wait; then the foil fades in and the record slides out. */
+.holo.landing .sleeve, .holo.landing .disc { visibility: hidden; }
+.holo.landing .disc { animation-play-state: paused; }
+.holo.landed .fx, .holo.landed .sticker, .holo.landed .sleeve::before { animation: fxIn .5s ease-out both; }
+@keyframes fxIn { from { opacity: 0; } }
 
 /* ---- search grows out of its circle; now playing slides in, the record out of its sleeve ---- */
 .search-dock:not([hidden]) { animation: dockIn .36s cubic-bezier(.2, 0, 0, 1); }
