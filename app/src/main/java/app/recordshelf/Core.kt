@@ -537,6 +537,21 @@ object Core {
                     push("onDiscography") { j.put("name", name).put("req", req) }
                 }
             }
+            "phoneControl" -> PhoneListener.instance?.control(msg.optString("pkg"), msg.optString("action"), msg.optLong("arg"))
+            "nowAlbum" -> {
+                // The tracklist of the album a phone app plays, for its Now playing page (kept for the session).
+                val artist = msg.optString("artist")
+                val album = msg.optString("album")
+                val key = Text.albumKey(artist, album)
+                webExec.execute {
+                    val j = nowAlbums[key] ?: try {
+                        (deezer.findAlbum(artist, album)?.toJson() ?: JSONObject().put("missing", true)).also { nowAlbums[key] = it }
+                    } catch (_: Exception) {
+                        JSONObject().put("error", true)
+                    }
+                    push("onNowAlbum") { JSONObject(j.toString()).put("q", msg.optString("q")) }
+                }
+            }
             "dzAlbum" -> {
                 val id = msg.optLong("id")
                 val req = msg.optInt("req")
@@ -1670,6 +1685,11 @@ object Core {
             push("onBackup") { JSONObject().put("error", "Couldn't restore: ${e.message ?: e.javaClass.simpleName}") }
         }
     }
+
+    /** Tracklists of albums phone apps played (by album key), the last 30. */
+    private val nowAlbums: MutableMap<String, JSONObject> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, JSONObject>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, JSONObject>?) = size > 30
+    })
 
     /** The album key and cover of what a phone app is playing, once found ("" while looking or when there is none). */
     @Volatile private var nowCover = "" to ""

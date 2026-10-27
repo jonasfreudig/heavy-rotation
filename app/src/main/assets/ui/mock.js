@@ -108,7 +108,7 @@ const Mock = (() => {
     ['Khruangbin', 'Como Me Quieres', 'Con Todo El Mundo', 160],
     ['Beach House', 'Myth', 'Bloom', 258],
   ];
-  let phoneIdx = 0, phoneListened = 0, phoneScrobbled = false;
+  let phoneIdx = 0, phoneListened = 0, phoneScrobbled = false, phonePlaying = true;
   let coll = [];
   const releases = {};
   let act = [];
@@ -167,7 +167,7 @@ const Mock = (() => {
     const P = S.phone;
     if (P.mode === 'off' || !P.access) { if (P.now) { P.now = null; pushState(); } return; }
     let [artist, title, album, dur] = PHONE_TRACKS[phoneIdx];
-    phoneListened += 1000;
+    if (phonePlaying) phoneListened += 1000;
     if (phoneListened >= dur * 1000) {
       phoneIdx = (phoneIdx + 1) % PHONE_TRACKS.length;
       phoneListened = 0;
@@ -182,7 +182,10 @@ const Mock = (() => {
       act.push({ id: 'p' + seq++, artist, track: title, album, ts: Math.floor((Date.now() - phoneListened) / 1000), src: 'phone', app: 'TIDAL', cover: '', status: P.mode === 'shadow' ? 'shadow' : 'sent', msg: '', at: Date.now() });
       pushAct();
     }
-    P.now = { pkg: 'com.aspiro.tidal', app: 'TIDAL', artist, title, album, dur: dur * 1000, listened: phoneListened, at: Date.now(), playing: true, threshold, scrobbled: phoneScrobbled, eligible: true, on: true };
+    const media = { pos: phoneListened, posAt: Date.now(), speed: 1, playing: phonePlaying, dur: dur * 1000, canPlay: true, canNext: true, canPrev: true, canSeek: true, canQueue: true,
+      active: phoneIdx, queueTitle: 'My Daily Discovery', queueSize: PHONE_TRACKS.length, queue: PHONE_TRACKS.map(([a, t], i) => ({ id: i, title: t, artist: a })) };
+    changed = changed || !P.now || P.now.playing !== phonePlaying;
+    P.now = { pkg: 'com.aspiro.tidal', app: 'TIDAL', artist, title, album, dur: dur * 1000, listened: phoneListened, at: Date.now(), playing: phonePlaying, threshold, scrobbled: phoneScrobbled, eligible: true, on: true, media };
     if (changed) pushState();
   }
 
@@ -238,6 +241,14 @@ const Mock = (() => {
     LOG = { ts: rows.map((x) => x[0]), a: rows.map((x) => x[1]), t: rows.map((x) => x[2]), titles, artists, first, start: rows.length ? rows[0][0] : start };
     return LOG;
   }
+  /** A made-up tracklist for the album the fake TIDAL plays. */
+  function fakeNowAlbum(album) {
+    const titles = album === 'Con Todo El Mundo' ? ['Como Me Quieres', 'Lady and Man', 'Maria También', 'August 10', 'Evan Finds the Third Room', 'Shades of Man', 'Friday Morning', 'Rules', 'Hymn', 'A Hymn (Reprise)']
+      : album === 'Bloom' ? ['Myth', 'Wild', 'Lazuli', 'Other People', 'The Hours', 'Troublemaker', 'New Year', 'Wishes', 'On the Sea', 'Irene']
+        : [];
+    return titles.length ? { title: album, tracks: titles.map((t, i) => ({ title: t, sec: 150 + ((i * 47) % 140) })) } : { missing: true };
+  }
+
   /** Artists and songs from the made-up history, albums from the shelf, as Stats.search answers. */
   function fakeSearch(q) {
     const words = norm(q.trim()).split(/\s+/).filter(Boolean);
@@ -1123,6 +1134,19 @@ const Mock = (() => {
         case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
         case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), req: m.req })); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
+        case 'phoneControl': {
+          if (m.action === 'play' || m.action === 'pause') phonePlaying = m.action === 'play';
+          if (m.action === 'next' || m.action === 'prev' || m.action === 'queue') {
+            phoneIdx = m.action === 'queue' ? m.arg : (phoneIdx + (m.action === 'next' ? 1 : PHONE_TRACKS.length - 1)) % PHONE_TRACKS.length;
+            phoneListened = 0;
+            phoneScrobbled = false;
+          }
+          if (m.action === 'seek') phoneListened = m.arg;
+          if (S.phone.now) S.phone.now.title = '';
+          phoneTick();
+          break;
+        }
+        case 'nowAlbum': later(300, () => onNowAlbum({ ...fakeNowAlbum(m.album), q: m.q })); break;
         case 'tilt': break;
         case 'palette': {
           // Made-up colors from the address, as if read from the picture.

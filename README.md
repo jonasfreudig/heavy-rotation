@@ -332,7 +332,11 @@ two styles and plays.
 What plays right now, on the turntable or in a music app on the phone, shows as a sleeve with the
 record half out of it, turning while it plays. Settings → Look → Now playing puts it **On the
 shelf** (a line at the top, with the progress) or **In the corner** (the record peeking out above
-the search button, from every tab). Tap it for Now spinning, or the song's page.
+the search button, from every tab). Tap it for Now spinning, or, for the phone, Now playing: the
+song's exact position (drag to seek), play/pause and skip, what the app plays next (with the
+playlist's or mix's name) when it shares its queue, and the whole album with the song in it and
+how much of the album is left (tracklists from Deezer). Apps that work with Android Auto usually
+share their queue; the chart button at the top opens the song's stats.
 
 Record, album, song and artist pages and Now spinning take their cover or photo: shrunk to a few
 pixels once and stretched (that is the blur, so nothing is recomputed while scrolling), under a
@@ -366,7 +370,7 @@ outer groove toward the label as the side goes on.
 
 Big covers tilt and catch the light as you move the phone. Records on your shelf are the
 collector's edition, wherever they show up (record page, Now spinning, album and song pages, the
-story): holo foil, a foil star in the corner, and the record sliding out of its sleeve, which spins
+story): holo foil and the record sliding out of its sleeve, which spins
 while a side plays. Albums you don't own just tilt. Artist photos sit in a frame that tilts too.
 The motion sensor only runs while such a page is open. Switch it off in Settings → Look →
 Moving covers. The "plays on Last.fm" chip on a record page opens your Last.fm library for that

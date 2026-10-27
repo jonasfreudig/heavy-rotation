@@ -120,6 +120,34 @@ object Phone {
         Core.pushState()
     }
 
+    /** Per app, what its media session says (see PhoneListener.mediaJson); shown with "now" for that app. */
+    private val media = HashMap<String, JSONObject>()
+
+    fun media(pkg: String, m: JSONObject) {
+        val changed = synchronized(media) {
+            val old = media[pkg]
+            media[pkg] = m
+            old == null || differs(old, m)
+        }
+        if (changed && pkg == nowPkg) Core.pushState()
+    }
+
+    /** Whether [b] says more than that time passed since [a]: another state or queue, or a jump in position. */
+    internal fun differs(a: JSONObject, b: JSONObject): Boolean {
+        fun rest(o: JSONObject) = JSONObject(o.toString()).apply { remove("pos"); remove("posAt") }.toString()
+        if (rest(a) != rest(b)) return true
+        val passed = if (a.optBoolean("playing")) ((b.optLong("posAt") - a.optLong("posAt")) * a.optDouble("speed", 1.0)).toLong() else 0L
+        return kotlin.math.abs(a.optLong("pos") + passed - b.optLong("pos")) > 1500
+    }
+
+    fun clearMedia() = synchronized(media) { media.clear() }
+
+    private fun nowJson(): Any {
+        val n = now ?: return JSONObject.NULL
+        val m = synchronized(media) { media[n.optString("pkg")]?.toString() } ?: return n
+        return JSONObject(n.toString()).put("media", JSONObject(m))
+    }
+
     fun stateJson(): JSONObject {
         val a = apps()
         val list = JSONArray()
@@ -127,7 +155,7 @@ object Phone {
             .sortedWith(compareByDescending<Pair<String, JSONObject>> { it.second.optBoolean("on") }.thenByDescending { it.second.optLong("seen") })
             .forEach { (pkg, o) -> list.put(JSONObject(o.toString()).put("pkg", pkg)) }
         return JSONObject().put("mode", mode()).put("access", access || connected).put("connected", connected)
-            .put("pano", pano).put("apps", list).put("now", now ?: JSONObject.NULL)
+            .put("pano", pano).put("apps", list).put("now", nowJson())
             .put("since", Core.prefs.shadowSince)
     }
 }

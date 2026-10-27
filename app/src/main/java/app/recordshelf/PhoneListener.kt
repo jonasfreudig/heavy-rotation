@@ -14,6 +14,8 @@ import app.recordshelf.scrobble.Play
 import app.recordshelf.scrobble.PlayState
 import app.recordshelf.scrobble.PlayTracker
 import app.recordshelf.scrobble.TrackMeta
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Watches what music apps play, through their media sessions (the same source as the
@@ -42,6 +44,9 @@ class PhoneListener : NotificationListenerService() {
      * make a new one on resume. Keeping the tracker means the listen simply continues.
      */
     private val trackers = HashMap<String, Tracked>()
+
+    /** Per app, the session that last told something: the one the Now playing page reads and controls. */
+    private val active = HashMap<String, MediaController>()
     private val onSessions = MediaSessionManager.OnActiveSessionsChangedListener { update(it) }
 
     override fun onListenerConnected() {
@@ -103,7 +108,26 @@ class PhoneListener : NotificationListenerService() {
         for (c in list) if (c.sessionToken !in sessions) sessions[c.sessionToken] = Session(c).also { it.begin() }
     }
 
+    /**
+     * Play, pause, skip, seek ([arg] ms) or jump to a queue item ([arg] its id) in app [pkg], as
+     * asked on the Now playing page. Apps ignore what they don't support.
+     */
+    fun control(pkg: String, action: String, arg: Long) = main.post {
+        val c = active[pkg] ?: sessions.values.firstOrNull { it.c.packageName == pkg }?.c ?: return@post
+        val t = c.transportControls
+        when (action) {
+            "play" -> t.play()
+            "pause" -> t.pause()
+            "next" -> t.skipToNext()
+            "prev" -> t.skipToPrevious()
+            "seek" -> t.seekTo(arg)
+            "queue" -> t.skipToQueueItem(arg)
+        }
+    }
+
     private fun dropAll() {
+        active.clear()
+        Phone.clearMedia()
         sessions.values.forEach { it.end() }
         sessions.clear()
         trackers.values.forEach { it.close() }
@@ -145,6 +169,13 @@ class PhoneListener : NotificationListenerService() {
             t.tracker.onMetadata(meta(c.metadata), mono(), wall())
             c.playbackState?.let { t.tracker.onState(state(it), position(it), mono(), wall()) }
             t.reschedule()
+            media()
+        }
+
+        /** The app's own account of its playback goes to the Now playing page. */
+        fun media() {
+            active[c.packageName] = c
+            Phone.media(c.packageName, mediaJson(c))
         }
 
         /** The session went away: for the listen that is a pause, until the app plays again. */
@@ -153,6 +184,7 @@ class PhoneListener : NotificationListenerService() {
                 c.unregisterCallback(this)
             } catch (_: Exception) {
             }
+            if (active[c.packageName] === c) active.remove(c.packageName)
             t.tracker.onState(PlayState.PAUSED, -1, mono(), wall())
             t.reschedule()
         }
@@ -160,13 +192,19 @@ class PhoneListener : NotificationListenerService() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
             t.tracker.onMetadata(meta(metadata), mono(), wall())
             t.reschedule()
+            media()
         }
 
         override fun onPlaybackStateChanged(s: PlaybackState?) {
             if (s == null) return
             t.tracker.onState(state(s), position(s), mono(), wall())
             t.reschedule()
+            media()
         }
+
+        override fun onQueueChanged(queue: MutableList<MediaSession.QueueItem>?) = media()
+
+        override fun onQueueTitleChanged(title: CharSequence?) = media()
 
         override fun onSessionDestroyed() {
             end()
@@ -192,6 +230,47 @@ class PhoneListener : NotificationListenerService() {
         PlaybackState.STATE_STOPPED, PlaybackState.STATE_NONE, PlaybackState.STATE_ERROR -> PlayState.STOPPED
         // Paused, buffering, connecting, skipping, seeking: not listening right now.
         else -> PlayState.PAUSED
+    }
+
+    /**
+     * What the app itself says about its playback: the exact position (as of [posAt]), what it lets
+     * us do, and its queue (the songs around the current one, up to 40) with its title, such as a
+     * playlist's name. Apps that work with Android Auto usually share a queue; others don't.
+     */
+    private fun mediaJson(c: MediaController): JSONObject {
+        val o = JSONObject()
+        val s = c.playbackState
+        if (s != null) {
+            val a = s.actions
+            fun can(bit: Long) = (a and bit) != 0L
+            o.put("pos", position(s)).put("posAt", wall()).put("speed", s.playbackSpeed.toDouble())
+                .put("playing", s.state == PlaybackState.STATE_PLAYING)
+                .put("canPlay", can(PlaybackState.ACTION_PLAY_PAUSE) || can(PlaybackState.ACTION_PLAY) || can(PlaybackState.ACTION_PAUSE))
+                .put("canNext", can(PlaybackState.ACTION_SKIP_TO_NEXT)).put("canPrev", can(PlaybackState.ACTION_SKIP_TO_PREVIOUS))
+                .put("canSeek", can(PlaybackState.ACTION_SEEK_TO)).put("canQueue", can(PlaybackState.ACTION_SKIP_TO_QUEUE_ITEM))
+                .put("active", s.activeQueueItemId)
+        }
+        c.metadata?.let { m ->
+            o.put("dur", m.getLong(MediaMetadata.METADATA_KEY_DURATION))
+            m.getLong(MediaMetadata.METADATA_KEY_TRACK_NUMBER).takeIf { it > 0 }?.let { o.put("trackNo", it) }
+        }
+        c.queueTitle?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { o.put("queueTitle", it) }
+        val q = try {
+            c.queue
+        } catch (_: Exception) {
+            null
+        }
+        if (!q.isNullOrEmpty()) {
+            val at = q.indexOfFirst { it.queueId == s?.activeQueueItemId }
+            val from = if (at >= 0) maxOf(0, at - 3) else 0
+            val items = JSONArray()
+            for (i in from until minOf(q.size, from + 40)) {
+                val d = q[i].description
+                items.put(JSONObject().put("id", q[i].queueId).put("title", d.title?.toString().orEmpty()).put("artist", d.subtitle?.toString().orEmpty()))
+            }
+            o.put("queue", items).put("queueSize", q.size)
+        }
+        return o
     }
 
     /** Where playback is now; the session reports it as of its last update. -1 if unknown. */

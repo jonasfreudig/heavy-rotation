@@ -65,7 +65,7 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 /* ---- the back of the sleeve: records on the shelf turn over to their tracklist ---- */
 .holo .sleeve { transition: transform .6s cubic-bezier(.3, .7, .2, 1); backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }
 /* Turned over, the front's light effects stop drawing; a record that slid out stays out on redraws. */
-.holo.flipped .glare, .holo.flipped .sheen, .holo.flipped .sticker { visibility: hidden; transition: visibility 0s .62s; }
+.holo.flipped .glare, .holo.flipped .sheen { visibility: hidden; transition: visibility 0s .62s; }
 .holo.settled .disc { animation: none; }
 .holo .sleeve-back { position: absolute; left: 0; top: 0; width: var(--w); aspect-ratio: 1; border-radius: 20px; overflow: hidden;
   transform: translateZ(22px) rotateY(-180deg); backface-visibility: hidden; -webkit-backface-visibility: hidden; transition: transform .6s cubic-bezier(.3, .7, .2, 1);
@@ -456,7 +456,7 @@ html.locked .page { overflow: hidden; }
 /* While a cover flies to (or from) a sleeve, the sleeve and its record wait; then the foil fades in and the record slides out. */
 .holo.landing .sleeve, .holo.landing .disc { visibility: hidden; }
 .holo.landing .disc { animation-play-state: paused; }
-.holo.landed .fx, .holo.landed .sticker, .holo.landed .sleeve::before { animation: fxIn .5s ease-out both; }
+.holo.landed .fx { animation: fxIn .5s ease-out both; }
 @keyframes fxIn { from { opacity: 0; } }
 
 /* ---- search grows out of its circle; now playing slides in, the record out of its sleeve ---- */
@@ -485,3 +485,23 @@ html.locked .page { overflow: hidden; }
 /* The story opens out of the page. */
 .story:not([hidden]) { animation: storyIn .32s cubic-bezier(.2, 0, 0, 1); }
 @keyframes storyIn { from { opacity: 0; transform: scale(.94); } }
+
+/* ---- Now playing on the phone ---- */
+.now-hero { padding-top: 4px; }
+.np-app { display: inline-flex; align-items: center; gap: 6px; margin-top: 20px; font: 500 11px/16px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.np-app .i { width: 16px; height: 16px; }
+.now-hero h1 { margin-top: 4px; }
+.np-progress { margin: 18px 6px 0; }
+#npSeek { display: block; width: 100%; height: 22px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; outline: none; }
+#npSeek::-webkit-slider-runnable-track { height: 6px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--tint-text, var(--md-primary)) var(--p, 0%), color-mix(in srgb, var(--md-on-surface) 12%, transparent) var(--p, 0%)); }
+#npSeek::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: var(--tint-text, var(--md-primary)); box-shadow: 0 1px 5px rgba(0, 0, 0, .3); }
+#npSeek:disabled::-webkit-slider-thumb { visibility: hidden; }
+.np-progress .times { display: flex; justify-content: space-between; margin-top: 4px; font: 500 12px/16px var(--mono); color: var(--md-on-surface-variant); }
+.np-ctls { display: flex; align-items: center; justify-content: center; gap: 26px; margin: 8px 0 4px; }
+.np-ctl { width: 54px; height: 54px; color: var(--md-on-surface); }
+.np-ctl .i { width: 32px; height: 32px; }
+.np-ctl.big { width: 74px; height: 74px; border-radius: 37px; background: var(--tint, var(--md-primary)); color: var(--on-tint, var(--md-on-primary)); }
+.np-ctl.big .i { width: 40px; height: 40px; }
+.np-ctl:disabled { opacity: .28; }
+.np-queue .track .pos { text-align: center; }

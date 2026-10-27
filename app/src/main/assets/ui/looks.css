@@ -136,6 +136,8 @@
 :root[data-look="soft"] .np-art .cover { box-shadow: 5px 6px 14px var(--sh-d), -3px -3px 10px var(--sh-l), inset 0 0 0 1px rgb(255 255 255 / .2); }
 :root[data-look="soft"] .np-bar { background: var(--soft); box-shadow: inset 1px 1px 3px var(--sh-d), inset -1px -1px 3px var(--sh-l); }
 :root[data-look] .np-bar i { background: var(--tint-text); }
+:root[data-look="soft"] .np-ctl.big { box-shadow: 5px 5px 14px var(--sh-d), -4px -4px 10px var(--sh-l); }
+:root[data-look="glass"] .np-ctl.big { box-shadow: 0 10px 22px color-mix(in srgb, var(--tint) 40%, transparent), inset 1px 1px 0 rgb(255 255 255 / .3); }
 
 /* Lists and cards inside a card stay flat. */
 :root[data-look] :is(.viz, .card, .tile) :is(.list, .rank, .card) { background: none; box-shadow: none; }

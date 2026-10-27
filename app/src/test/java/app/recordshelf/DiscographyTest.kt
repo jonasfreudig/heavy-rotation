@@ -83,6 +83,34 @@ class DiscographyTest {
         }
     }
 
+    @Test
+    fun albumOfWhatPlays() {
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                when {
+                    r.path == "/search/album" -> Res(
+                        200,
+                        // A namesake by another artist first; the music app's "(Deluxe Edition)" doesn't matter.
+                        """{"data":[{"id":5,"title":"Romance","artist":{"name":"Camila Cabello"}},{"id":9,"title":"Romance","artist":{"name":"Fontaines D.C."}}]}""",
+                    )
+                    r.path == "/album/9" -> Res(
+                        200,
+                        """{"id":9,"title":"Romance","artist":{"name":"Fontaines D.C."},"tracks":{"data":[{"title":"Romance","duration":242},{"title":"Starburster","duration":213}]}}""",
+                    )
+                    else -> Res(404, "")
+                }
+            }
+            val d = DeezerClient(server.base)
+            val a = d.findAlbum("Fontaines D.C.", "Romance (Deluxe Edition)")
+            assertEquals(9L, a?.id)
+            assertEquals(listOf("Romance", "Starburster"), a?.tracks?.map { it.first })
+            assertEquals(null, d.findAlbum("Fontaines D.C.", "Skinty Fia"))
+        } finally {
+            server.stop()
+        }
+    }
+
     private fun at(y: Int, m: Int, d: Int) = LocalDateTime.of(y, m, d, 12, 0).toEpochSecond(ZoneOffset.UTC)
 
     @Test

@@ -81,6 +81,24 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
         return out
     }
 
+    /**
+     * The album called [title] by [artist], as a music app names it ("(Deluxe)" and the like don't
+     * matter), with its tracklist; null if Deezer has none.
+     */
+    fun findAlbum(artist: String, title: String): DzAlbum? {
+        val want = Text.normLoose(title)
+        val who = Text.norm(artist).removePrefix("the ")
+        fun pick(query: String): Long? {
+            val data = get("/search/album?q=${q(query)}&limit=25").optJSONArray("data") ?: return null
+            return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
+                val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
+                Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
+            }?.optLong("id")
+        }
+        val id = pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title") ?: return null
+        return album(id)
+    }
+
     /** One album with its tracklist, label and genres. */
     fun album(id: Long): DzAlbum {
         val a = get("/album/$id")

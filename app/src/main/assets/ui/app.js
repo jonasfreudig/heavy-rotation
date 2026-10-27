@@ -106,7 +106,7 @@ function coverHtml(url, title, artist, cls = '', playing = false) {
 
 /**
  * A big cover that tilts with the phone (see Tilt). Records on your shelf ([opts.owned]) are the
- * collector's edition: holo foil, a foil sticker and the record sliding out of the sleeve. Every
+ * collector's edition: holo foil and the record sliding out of the sleeve. Every
  * other cover tilts and catches the light, nothing more.
  */
 function holoCover(url, title, artist, opts = {}) {
@@ -115,10 +115,9 @@ function holoCover(url, title, artist, opts = {}) {
   const lbl = url ? `background-image:url('${esc(url)}')` : '';
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const sheen = owned ? '<i class="sheen"></i>' : '';
-  const sticker = owned ? '<i class="sticker" aria-label="On your shelf">★</i>' : '';
   const back = opts.back ? '<div class="sleeve-back"></div>' : '';
   return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
-    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<span class="fx">${sheen}<i class="glare"></i></span>${sticker}</div>${back}</div></div>`;
+    <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<span class="fx">${sheen}<i class="glare"></i></span></div>${back}</div></div>`;
 }
 
 /**
@@ -610,6 +609,9 @@ function flyCover(from, to, ms) {
   anim.onfinish = land;
   anim.oncancel = end;
   setTimeout(end, ms + 900);
+  // Scrolling meanwhile moves where it would land: then it lands at once.
+  const scroller = to.closest('.page') || window;
+  scroller.addEventListener('scroll', () => anim.cancel(), { once: true, passive: true });
 }
 /** Where the record page's cover came from, so Back can fly it home. */
 let flyHome = null;
@@ -746,6 +748,7 @@ function renderState() {
   renderQueueCard();
   renderPhoneCard();
   renderStatsHead();
+  if (isOpen('nowPage')) renderNow();
   if (isOpen('settingsPage')) renderSettings();
   if (isOpen('playlistPage') && $('#plTidalBlock') && !(TIDALJOB && TIDALJOB.state === 'finding')) $('#plTidalBlock').innerHTML = tidalBlock();
   if (isOpen('comparePage')) renderCompare();
@@ -822,7 +825,7 @@ function renderPhoneNow() {
   const n = (ST.phone || {}).now;
   if (!n || !n.title) { showNow(null); return; }
   showNow({ cover: n.cover, title: n.title, album: n.album, artist: n.artist, playing: n.playing, label: `${n.playing ? 'Now playing' : 'Paused'} · ${n.app}`,
-    attrs: trackAttrs(n.artist, n.title, { album: n.album, cover: n.cover }), barId: 'phNowBar' }, ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|'));
+    attrs: 'data-nowpage', barId: 'phNowBar' }, ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|'));
   tickPhone();
 }
 
@@ -830,6 +833,7 @@ let lastCur = -2;
 /** Once a second while a record spins: progress, times and which track is current. */
 function tickUi() {
   tickPhone();
+  tickNow();
   const sp = ST.spin;
   if (!sp) return;
   const now = Date.now();
@@ -911,6 +915,131 @@ function renderShelfEmpty() {
   else if (!COLL.length && d.connected) h = `${icon('album', 'i big')}<p>No records yet.<br>Add some to your Discogs collection, then sync.</p><button class="btn tonal" id="emptySync">${icon('sync')}Sync now</button>`;
   e.innerHTML = h;
   e.hidden = !h;
+}
+
+// ---------- Now playing on the phone: the song, the app's queue or the album, the controls ----------
+
+/** The album of what plays, from Deezer: asked once per album ([q] is "artist|album"). */
+let NOWALB = { q: '', data: null };
+let nowSig = '';
+function openNow() {
+  openPage('nowPage');
+  nowSig = '';
+  renderNow();
+}
+window.onNowAlbum = (a) => {
+  if (a.q !== NOWALB.q) return;
+  NOWALB.data = a;
+  if (isOpen('nowPage')) renderNow();
+};
+/** Where the song is now: the app's own position, carried forward while it plays; else the listened time. */
+function nowPos(n) {
+  const m = n.media || {};
+  const dur = m.dur || n.dur || 0;
+  const p = m.pos != null && m.pos >= 0
+    ? m.pos + (m.playing ? (Date.now() - m.posAt) * (m.speed || 1) : 0)
+    : n.listened + (n.playing ? Date.now() - n.at : 0);
+  return Math.max(0, dur ? Math.min(dur, p) : p);
+}
+/** Which of the album's tracks is the song (by its title, "(Remastered)" and the like aside); -1 if none. */
+function nowAlbumIndex(tracks, title) {
+  const k = looseKey(title);
+  return tracks.findIndex((t) => looseKey(t.title) === k);
+}
+function renderNow() {
+  const n = (ST.phone || {}).now, body = $('#nowBody');
+  if (!n || !n.title) {
+    nowSig = '';
+    body.innerHTML = `<div class="empty">${icon('music', 'i big')}<p>Nothing plays on the phone right now.</p></div>`;
+    return;
+  }
+  const m = n.media || {};
+  const q = m.queue || [];
+  const playing = m.playing ?? n.playing;
+  const aq = n.album ? `${n.artist}|${n.album}` : '';
+  if (aq !== NOWALB.q) {
+    NOWALB = { q: aq, data: null };
+    if (aq) send({ t: 'nowAlbum', artist: n.artist, album: n.album, q: aq });
+  }
+  const al = NOWALB.data;
+  const sig = [n.pkg, n.artist, n.title, n.album, n.cover, playing, m.active, q.map((x) => x.id).join(','), m.queueTitle, m.canNext, m.canPrev, m.canSeek, m.canQueue, al ? 1 : 0].join('|');
+  if (sig === nowSig) { tickNow(); return; }
+  nowSig = sig;
+  const dur = m.dur || n.dur || 0;
+  const ctl = (act, ic, label, ok, cls = '') => `<button class="icon-btn np-ctl ${cls}" data-np="${act}" aria-label="${label}"${ok ? '' : ' disabled'}>${icon(ic)}</button>`;
+  const hasMedia = n.media != null;
+  let h = `<div class="hero now-hero"><div id="nowHolo">${holoCover(n.cover || '', n.album || n.title, n.artist, { key: `now|${n.artist}|${n.album || n.title}` })}</div>
+    <div class="np-app">${icon('phone', 'i small')}${esc(n.app)} · ${playing ? 'playing' : 'paused'}</div>
+    <h1>${esc(n.title)}</h1>
+    <div class="artist"><button class="artist-link" data-artist="${esc(n.artist)}">${esc(n.artist)}</button>${n.album ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(n.artist, n.album)}>${esc(n.album)}</button>` : ''}</div>
+    <div class="np-progress"><input type="range" id="npSeek" min="0" max="${dur}" step="1000" value="0"${m.canSeek ? '' : ' disabled'} aria-label="Position in the song">
+      <div class="times"><span id="npEl"></span><span id="npLeft"></span></div></div>
+    ${hasMedia ? `<div class="np-ctls">${ctl('prev', 'skip-prev', 'Previous', m.canPrev)}${ctl(playing ? 'pause' : 'play', playing ? 'pause' : 'play', playing ? 'Pause' : 'Play', m.canPlay !== false, 'big')}${ctl('next', 'skip-next', 'Next', m.canNext)}</div>` : ''}
+  </div>`;
+  // What the app will play next, if it tells (a playlist, a mix, the album, the radio).
+  if (q.length) {
+    const at = q.findIndex((x) => x.id === m.active);
+    h += `<div class="section-head"><h2>Up next</h2><span class="sub">${esc(m.queueTitle || n.app)}${m.queueSize > q.length ? ` · ${plural(m.queueSize, 'song')}` : ''}</span></div>
+      <div class="list np-queue">${q.map((x, i) => `<button class="track${i === at ? ' now' : at >= 0 && i < at ? ' done' : ''}"${m.canQueue ? ` data-npq="${x.id}"` : ''}>
+        <span class="pos">${i === at ? '<span class="eq plain"><i></i><i></i><i></i></span>' : at >= 0 ? (i < at ? '' : i - at) : i + 1}</span>
+        <span class="grow"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span></button>`).join('')}</div>`;
+  }
+  // The whole album, with the song in it and how long it has left, as on a record.
+  if (n.album) {
+    if (!al) h += `<div class="section-head"><h2>${esc(n.album)}</h2><span class="sub">looking up the album…</span></div>`;
+    else if (al.tracks && al.tracks.length) {
+      const i = nowAlbumIndex(al.tracks, n.title);
+      h += `<div class="section-head"><h2>${esc(al.title || n.album)}</h2><span class="sub" id="npAlbumLeft"></span></div>
+        <div class="list">${al.tracks.map((t, k) => `<button class="track${k === i ? ' now' : i >= 0 && k < i ? ' done' : ''}" ${trackAttrs(n.artist, t.title, { album: n.album, cover: n.cover })}>
+          <span class="pos">${k + 1}</span><span class="grow"><b>${esc(t.title)}</b></span><span class="dur">${t.sec ? fmtDur(t.sec) : ''}</span></button>`).join('')}</div>`;
+    } else h += `<p class="hint">Deezer doesn't know the album "${esc(n.album)}".</p>`;
+  }
+  if (!hasMedia) h += `<p class="hint">${esc(n.app)} doesn't share its controls or queue with other apps.</p>`;
+  else if (!q.length) h += `<p class="hint">${esc(n.app)} doesn't share what it plays next, so here is the album.</p>`;
+  keepHolo(body, h);
+  tint(body, n.cover || '', (n.album || n.title) + n.artist);
+  tickNow();
+  Tilt.refresh();
+}
+/** Once a second: the position, the time left, and what is left of the album. */
+function tickNow() {
+  if (!isOpen('nowPage')) return;
+  const n = (ST.phone || {}).now;
+  const seek = $('#npSeek');
+  if (!n || !seek) return;
+  const m = n.media || {};
+  const dur = m.dur || n.dur || 0;
+  const pos = nowPos(n);
+  if (!seek.matches(':active')) {
+    seek.max = dur;
+    seek.value = pos;
+  }
+  seek.style.setProperty('--p', dur ? `${((+seek.value / dur) * 100).toFixed(2)}%` : '0%');
+  $('#npEl').textContent = fmtDur(+seek.value / 1000);
+  $('#npLeft').textContent = dur ? `−${fmtDur((dur - +seek.value) / 1000)}` : '';
+  const al = NOWALB.data, left = $('#npAlbumLeft');
+  if (left && al && al.tracks) {
+    const i = nowAlbumIndex(al.tracks, n.title);
+    const rest = i < 0 ? 0 : al.tracks.slice(i + 1).reduce((s, t) => s + (t.sec || 0), 0) + Math.max(0, dur - pos) / 1000;
+    left.textContent = i < 0 ? plural(al.tracks.length, 'track') : `track ${i + 1} of ${al.tracks.length} · ${fmtLong(rest)} left`;
+  }
+}
+/** Asks the app to play, pause, skip, seek or jump; the page shows the result right away and the app's own answer after. */
+function npControl(action, arg = 0) {
+  const n = (ST.phone || {}).now;
+  if (!n) return;
+  send({ t: 'phoneControl', pkg: n.pkg, action, arg });
+  const m = n.media;
+  if (m && (action === 'play' || action === 'pause')) {
+    m.pos = nowPos(n);
+    m.posAt = Date.now();
+    m.playing = action === 'play';
+    renderNow();
+  } else if (m && action === 'seek') {
+    m.pos = arg;
+    m.posAt = Date.now();
+    tickNow();
+  }
 }
 
 // ---------- search: what you own first, then everything you played ----------
@@ -4221,6 +4350,7 @@ function build() {
     if (ls) { openListen(ls); return; }
     const pl = e.target.closest('[data-pl]');
     if (pl) { openPlaylist(pl.dataset.pl); return; }
+    if (e.target.closest('[data-nowpage]')) { openNow(); return; }
     const tr = e.target.closest('[data-track]');
     if (tr) { openTrack(tr.dataset.a, tr.dataset.track, { album: tr.dataset.al, cover: tr.dataset.cover }); return; }
     const alb = e.target.closest('[data-album]');
@@ -4266,6 +4396,18 @@ function build() {
     if (r) openRecord(+r.dataset.id, r);
   };
   $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
+  $('#nowBody').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-np]');
+    if (b) { npControl(b.dataset.np); return; }
+    const q = e.target.closest('[data-npq]');
+    if (q) npControl('queue', +q.dataset.npq);
+  });
+  $('#nowBody').addEventListener('input', (e) => { if (e.target.id === 'npSeek') tickNow(); });
+  $('#nowBody').addEventListener('change', (e) => { if (e.target.id === 'npSeek') npControl('seek', +e.target.value); });
+  $('#nowStats').onclick = () => {
+    const n = (ST.phone || {}).now;
+    if (n) openTrack(n.artist, n.title, { album: n.album, cover: n.cover });
+  };
   $('#grid').onclick = (e) => { const b = e.target.closest('.rec'); if (b) openRecord(+b.dataset.id, b); };
   $('#shelfEmpty').onclick = (e) => { if (e.target.closest('#emptySync')) send({ t: 'sync' }); };
   $('#spinSlot').onclick = (e) => { if (e.target.closest('#spinCard')) { openPage('spinPage'); renderSpin(true); } };
