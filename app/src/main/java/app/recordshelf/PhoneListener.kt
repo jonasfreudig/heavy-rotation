@@ -168,7 +168,18 @@ class PhoneListener : NotificationListenerService() {
     private inner class Session(val c: MediaController) : MediaController.Callback() {
         val t = trackers.getOrPut(c.packageName) { Tracked(c.packageName) }
 
+        /**
+         * The app's queue as last told (see [mediaJson]). Asked for once and then taken from
+         * [onQueueChanged]: a long playlist is a big transfer, and playback reports come often.
+         */
+        var queue: List<MediaSession.QueueItem>? = null
+
         fun begin() {
+            queue = try {
+                c.queue
+            } catch (_: Exception) {
+                null
+            }
             c.registerCallback(this, main)
             t.tracker.onMetadata(meta(c.metadata), mono(), wall())
             c.playbackState?.let { t.tracker.onState(state(it), position(it), mono(), wall()) }
@@ -179,7 +190,7 @@ class PhoneListener : NotificationListenerService() {
         /** The app's own account of its playback goes to the Now playing page. */
         fun media() {
             active[c.packageName] = c
-            Phone.media(c.packageName, mediaJson(c))
+            Phone.media(c.packageName, mediaJson(c, queue))
         }
 
         /** The session went away: for the listen that is a pause, until the app plays again. */
@@ -209,7 +220,10 @@ class PhoneListener : NotificationListenerService() {
             media()
         }
 
-        override fun onQueueChanged(queue: MutableList<MediaSession.QueueItem>?) = media()
+        override fun onQueueChanged(queue: MutableList<MediaSession.QueueItem>?) {
+            this.queue = queue
+            media()
+        }
 
         override fun onQueueTitleChanged(title: CharSequence?) = media()
 
@@ -244,7 +258,7 @@ class PhoneListener : NotificationListenerService() {
      * us do, and its queue (the songs around the current one, up to 40) with its title, such as a
      * playlist's name. Apps that work with Android Auto usually share a queue; others don't.
      */
-    private fun mediaJson(c: MediaController): JSONObject {
+    private fun mediaJson(c: MediaController, q: List<MediaSession.QueueItem>?): JSONObject {
         val o = JSONObject()
         val s = c.playbackState
         if (s != null) {
@@ -262,11 +276,6 @@ class PhoneListener : NotificationListenerService() {
             m.getLong(MediaMetadata.METADATA_KEY_TRACK_NUMBER).takeIf { it > 0 }?.let { o.put("trackNo", it) }
         }
         c.queueTitle?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { o.put("queueTitle", it) }
-        val q = try {
-            c.queue
-        } catch (_: Exception) {
-            null
-        }
         if (!q.isNullOrEmpty()) {
             val at = q.indexOfFirst { it.queueId == s?.activeQueueItemId }
             val from = if (at >= 0) maxOf(0, at - 3) else 0

@@ -55,13 +55,11 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
   background: radial-gradient(40% 40% at 22% 30%, var(--amb1, transparent), transparent 100%),
               radial-gradient(44% 42% at 78% 20%, var(--amb2, transparent), transparent 100%),
               radial-gradient(48% 40% at 55% 50%, var(--amb3, transparent), transparent 100%);
-  opacity: .55; animation: ambDrift 26s ease-in-out infinite alternate; transition: opacity .6s; will-change: transform; }
+  opacity: .55; transition: opacity .6s; transform: rotate(-2deg); }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) body::before { opacity: .38; } }
 :root[data-theme="light"] body::before { opacity: .38; }
 :root[data-ambient="off"] body::before { opacity: 0; }
-@keyframes ambDrift { 0% { transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1); } 100% { transform: translate3d(4%, 3%, 0) rotate(7deg) scale(1.12); } }
-
-@media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+/* It holds still: a slow drift without end kept the page drawing frames all the time, even idle. */
 
 /* ---- the back of the sleeve: records on the shelf turn over to their tracklist ---- */
 .holo .sleeve { transition: transform .6s cubic-bezier(.3, .7, .2, 1); backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }

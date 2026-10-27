@@ -1763,7 +1763,24 @@ object Core {
         compareJson?.let { c -> push("onCompare") { c } }
     }
 
-    fun pushState() = push("onState") { stateJson() }
+    /** The state is built on its own thread: callers include the main thread (the phone's playback reports). */
+    private val stateExec = serial()
+    @Volatile private var statePending = false
+
+    /**
+     * The page gets the latest state, at most every 100 ms: changes come in bursts (a song change,
+     * playback reports, an import page), and each one rebuilt the state and the page's cards.
+     */
+    fun pushState() {
+        if (ui == null || statePending) return
+        statePending = true
+        main.postDelayed({
+            stateExec.execute {
+                statePending = false
+                push("onState") { stateJson() }
+            }
+        }, 100)
+    }
 
     private fun pushCollection() = push("onCollection") {
         val sp = spinCounts
