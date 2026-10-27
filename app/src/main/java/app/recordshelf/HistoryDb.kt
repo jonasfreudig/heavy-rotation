@@ -13,6 +13,10 @@ import app.recordshelf.scrobble.Listen
  * importing the same page twice changes nothing.
  */
 class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), BackupDb {
+    private companion object {
+        /** Scrobbles read per query by [forEach]. */
+        const val CHUNK = 5000
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -65,16 +69,27 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), Ba
         DatabaseUtils.longForQuery(readableDatabase, "SELECT COUNT(*) FROM scrobbles WHERE ts BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).toInt()
 
     override fun forEach(fn: (Long, String, String, String) -> Unit) {
-        // In one transaction: the rows are read a window at a time, each a new query, and an import
-        // adding older scrobbles in between would shift them (some read twice). This way it waits.
-        val db = readableDatabase
-        db.beginTransactionNonExclusive()
-        try {
-            db.rawQuery("SELECT ts, artist, track, album FROM scrobbles ORDER BY ts", null).use { c ->
-                while (c.moveToNext()) fn(c.getLong(0), c.getString(1), c.getString(2), c.getString(3))
+        // A chunk at a time, each a fresh query for the rows after the last one read. An import adding
+        // older scrobbles meanwhile can't shift what is read (no row comes twice), and nothing has to
+        // wait for this long read: one transaction around it froze the screen for seconds.
+        var ts = Long.MIN_VALUE
+        var artist = ""
+        var track = ""
+        while (true) {
+            var n = 0
+            readableDatabase.rawQuery(
+                "SELECT ts, artist, track, album FROM scrobbles WHERE (ts, artist, track) > (CAST(? AS INTEGER), ?, ?) ORDER BY ts, artist, track LIMIT $CHUNK",
+                arrayOf(ts.toString(), artist, track),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    ts = c.getLong(0)
+                    artist = c.getString(1)
+                    track = c.getString(2)
+                    fn(ts, artist, track, c.getString(3))
+                    n++
+                }
             }
-        } finally {
-            db.endTransaction()
+            if (n < CHUNK) break
         }
     }
 

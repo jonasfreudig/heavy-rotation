@@ -445,6 +445,7 @@ function animateOut(el, how, done) {
     el.style.transform = '';
     el.style.borderRadius = '';
     el.style.transition = '';
+    el.style.willChange = '';
   };
   a.onfinish = end;
   a.oncancel = end;
@@ -517,6 +518,7 @@ function closePage() {
     p.scrollTop = saved.scroll;
     p.style.transform = '';
     p.style.borderRadius = '';
+    p.style.willChange = '';
     p.animate([{ opacity: 0.4, transform: 'translateX(-24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
   } else if (i < 0) {
     const flew = id === 'recordPage' && flyBack();
@@ -576,6 +578,10 @@ window.onBackStart = () => {
   backFx = backTarget();
   if (!backFx) return;
   backFx.el.style.transition = 'none';
+  // Layers of their own from the start, and the corners rounded once: redrawing them on every
+  // frame of the swipe is what made it stutter.
+  backFx.el.style.willChange = 'transform';
+  if (backFx.kind !== 'sheet') backFx.el.style.borderRadius = '28px';
   if (!backFx.under) return;
   // The shade sits right under the page: same layer, just before it.
   const z = getComputedStyle(backFx.el).zIndex;
@@ -583,7 +589,7 @@ window.onBackStart = () => {
   backShade.style.transition = 'none';
   backFx.el.before(backShade);
   backFx.el.style.boxShadow = '-10px 0 32px rgba(0, 0, 0, .24)';
-  backFx.under.forEach((u) => { u.style.transition = 'none'; });
+  backFx.under.forEach((u) => { u.style.transition = 'none'; u.style.willChange = 'transform'; });
   window.onBackProgress(0);
 };
 window.onBackProgress = (p) => {
@@ -592,11 +598,9 @@ window.onBackProgress = (p) => {
   if (backFx.kind === 'sheet') { el.style.transform = `translateY(${(k * 80).toFixed(1)}px)`; return; }
   if (backFx.kind === 'inplace') {
     el.style.transform = `translateX(${(k * w * 0.12).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
-    el.style.borderRadius = `${Math.round(Math.min(1, k * 4) * 28)}px`;
     return;
   }
   el.style.transform = `translateX(${(k * w * 0.85).toFixed(1)}px) scale(${(1 - k * 0.06).toFixed(3)})`;
-  el.style.borderRadius = `${Math.round(Math.min(1, k * 4) * 28)}px`;
   backFx.under.forEach((u) => { u.style.transform = `translateX(${(-(1 - k) * w * BACK_UNDER).toFixed(1)}px)`; });
   backShade.style.opacity = ((1 - k) * BACK_SHADE).toFixed(3);
 };
@@ -613,7 +617,7 @@ function backSettle(fx, chosen) {
   setTimeout(() => {
     if (!backFx || backFx.el !== fx.el) fx.el.style.boxShadow = '';
     if (backFx) return; // a new swipe has started and owns the rest now
-    fx.under.forEach((u) => { u.style.transition = ''; u.style.transform = ''; });
+    fx.under.forEach((u) => { u.style.transition = ''; u.style.transform = ''; u.style.willChange = ''; });
     backShade.remove();
   }, ms + 30);
 }
@@ -622,7 +626,7 @@ function backSpring(el) {
   el.style.transition = 'transform .3s cubic-bezier(.2, 0, 0, 1), border-radius .3s';
   el.style.transform = '';
   el.style.borderRadius = '';
-  setTimeout(() => { if (!el.style.transform) el.style.transition = ''; }, 320);
+  setTimeout(() => { if (!el.style.transform) { el.style.transition = ''; el.style.willChange = ''; } }, 320);
 }
 window.onBackCancel = () => {
   if (!backFx) return;
@@ -4440,6 +4444,7 @@ function closeStory() {
   $('#story').hidden = true;
   $('#story').style.transform = '';
   $('#story').style.borderRadius = '';
+  $('#story').style.willChange = '';
   $('#storySlide').innerHTML = '';
   Tilt.refresh();
   syncBack();
