@@ -1316,6 +1316,10 @@ const Mock = (() => {
         }
         case 'openPhoneApp': toast('(preview) TIDAL would open on its now playing screen'); break;
         case 'nowAlbum': later(300, () => onNowAlbum({ ...fakeNowAlbum(m.album), q: m.q })); break;
+        case 'sleep':
+          S.sleep = m.cancel ? null : m.song ? { at: Date.now() + 140e3, song: true } : { at: Date.now() + m.minutes * 60e3, song: false };
+          pushState();
+          break;
         case 'lyrics': {
           const words = ['', 'First line of the first verse', 'Second line, a little longer than the first', 'Third line comes back around', 'And the fourth one ends the verse',
             '', 'Here is where the chorus starts', 'Sung a little louder now', 'Same words as the second time', 'And the chorus ends', '',

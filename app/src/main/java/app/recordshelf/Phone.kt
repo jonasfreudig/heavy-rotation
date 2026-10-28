@@ -148,6 +148,13 @@ object Phone {
         if (had && pkg == nowPkg) Core.pushState()
     }
 
+    /** The app now playing and what its session says (a copy; null if it shares none); null if nothing plays. */
+    fun playing(): Pair<String, JSONObject?>? {
+        val n = now ?: return null
+        val pkg = n.optString("pkg")
+        return pkg to synchronized(media) { media[pkg]?.let { JSONObject(it.toString()) } }
+    }
+
     private fun nowJson(): Any {
         val n = now ?: return JSONObject.NULL
         val m = synchronized(media) { media[n.optString("pkg")]?.toString() } ?: return n

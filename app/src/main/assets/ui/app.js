@@ -1242,6 +1242,7 @@ function renderNow() {
     <div class="np-progress"><input type="range" id="npSeek" min="0" max="${dur}" step="1000" value="0"${m.canSeek ? '' : ' disabled'} aria-label="Position in the song">
       <div class="times"><span id="npEl"></span><span id="npLeft"></span></div></div>
     ${hasMedia ? `<div class="np-ctls">${ctl('prev', 'skip-prev', 'Previous', m.canPrev)}${ctl(playing ? 'pause' : 'play', playing ? 'pause' : 'play', playing ? 'Pause' : 'Play', m.canPlay !== false, 'big')}${ctl('next', 'skip-next', 'Next', m.canNext)}</div>` : ''}
+    ${hasMedia && m.canPlay !== false ? `<button class="chip np-sleep${ST.sleep ? ' on' : ''}" id="npSleep" data-sleep>${icon('moon', 'i small')}<span>${esc(sleepLabel())}</span></button>` : ''}
   </div>`;
   // The words, in time with the song when they come with times.
   const lq = `${n.artist}|${n.title}`;
@@ -1363,6 +1364,12 @@ function tickNow() {
   seek.style.setProperty('--p', dur ? `${((at / dur) * 100).toFixed(2)}%` : '0%');
   syncLyrics();
   $('#npEl').textContent = fmtDur(at / 1000);
+  const sl = $('#npSleep');
+  if (sl) {
+    sl.classList.toggle('on', !!ST.sleep);
+    const t = sleepLabel();
+    if (sl.lastElementChild.textContent !== t) sl.lastElementChild.textContent = t;
+  }
   $('#npLeft').textContent = dur ? `−${fmtDur((dur - at) / 1000)}` : '';
   const al = NOWALB.data, left = $('#npAlbumLeft');
   if (left && al && al.tracks) {
@@ -1371,6 +1378,32 @@ function tickNow() {
     left.textContent = i < 0 ? plural(al.tracks.length, 'track') : `track ${i + 1} of ${al.tracks.length} · ${fmtLong(rest)} left`;
   }
 }
+/** The sleep timer, as its button says it: off, at the end of the song, or the time left. */
+function sleepLabel() {
+  const s = ST.sleep;
+  if (!s) return 'Sleep timer';
+  if (s.song) return 'Stops after this song';
+  const min = Math.max(1, Math.ceil((s.at - Date.now()) / 60000));
+  return `Stops in ${min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}` : `${min} min`}`;
+}
+/** Stop what plays after a while: the music fades out over the last half minute, then pauses. */
+function openSleepSheet() {
+  const s = ST.sleep;
+  const opts = [[15, '15 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour'], [90, '1½ hours']];
+  openSheet(`<div class="sheet-title">Sleep timer</div>
+    <p class="body">${s ? `${esc(sleepLabel())}${s.song ? '' : ` (at ${esc(fmtTime(s.at))})`}. Pick another time, or turn it off.` : 'Stops what plays after a while. The music fades out over the last half minute, then pauses; the volume is back where it was for next time.'}</p>
+    <div class="chips">${opts.map(([m, l]) => `<button class="chip" data-sleepset="${m}">${l}</button>`).join('')}<button class="chip" data-sleepsong>${icon('music', 'i small')}End of this song</button></div>
+    ${s ? `<div class="btn-row"><button class="btn tonal" data-sleepoff>Turn off</button></div>` : ''}`);
+  $('#sheetContent').onclick = (e) => {
+    const m = e.target.closest('[data-sleepset]');
+    if (m) send({ t: 'sleep', minutes: +m.dataset.sleepset });
+    else if (e.target.closest('[data-sleepsong]')) send({ t: 'sleep', song: true });
+    else if (e.target.closest('[data-sleepoff]')) send({ t: 'sleep', cancel: true });
+    else return;
+    closeSheet();
+  };
+}
+
 /** Asks the app to play, pause, skip, seek or jump; the page shows the result right away and the app's own answer after. */
 function npControl(action, arg = 0) {
   const n = (ST.phone || {}).now;
@@ -5751,6 +5784,7 @@ function build() {
     if (e.target.closest('[data-npapp]')) { const n = (ST.phone || {}).now; if (n) send({ t: 'openPhoneApp', pkg: n.pkg }); return; }
     const b = e.target.closest('[data-np]');
     if (b) { npControl(b.dataset.np); return; }
+    if (e.target.closest('[data-sleep]')) { openSleepSheet(); return; }
     const q = e.target.closest('[data-npq]');
     if (q) { npControl('queue', +q.dataset.npq); return; }
     const lt = e.target.closest('[data-lt]');

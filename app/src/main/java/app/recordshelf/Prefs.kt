@@ -89,6 +89,14 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getLong("historyLastSync", 0)
         set(v) = app.edit().putLong("historyLastSync", v).apply()
 
+    /** The sleep timer: when the music stops (ms, 0: off), and whether that is the end of a song. */
+    var sleepAt: Long
+        get() = app.getLong("sleepAt", 0)
+        set(v) = app.edit().putLong("sleepAt", v).apply()
+    var sleepSong: Boolean
+        get() = app.getBoolean("sleepSong", false)
+        set(v) = app.edit().putBoolean("sleepSong", v).apply()
+
     /** When the history was last counted against Last.fm (ms; see Core.checkHistoryInner). */
     var historyChecked: Long
         get() = app.getLong("historyChecked", 0)

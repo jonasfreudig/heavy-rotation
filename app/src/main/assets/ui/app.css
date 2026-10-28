@@ -856,6 +856,8 @@ input[type=datetime-local] { color-scheme: inherit; }
 .lyr-lines.synced p.now { color: var(--md-on-surface); transform: scale(1.04); }
 .lyr-gap { letter-spacing: .3em; }
 .np-lyrics .credit { margin-top: 10px; }
+/* The sleep timer under the controls: quiet when off, lit while it counts down. */
+.np-sleep { margin: 14px auto 0; gap: 6px; }
 /* A genre's playlist: its mix and size, and the songs new to you marked. */
 .pl-ctl { display: grid; gap: 8px; margin: 12px 0 16px; }
 .new-tag { font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 8px;

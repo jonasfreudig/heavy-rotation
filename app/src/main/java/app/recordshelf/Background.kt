@@ -31,6 +31,12 @@ import app.recordshelf.scrobble.SpinItem
 class SpinReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
+        if (intent.action == SLEEP) {
+            // The sleep timer: the music fades and stops (half a minute, well within a broadcast's time).
+            Core.ensure(context)
+            SleepTimer.onAlarm(context) { pending.finish() }
+            return
+        }
         Core.onSpinAction(context, intent.action.orEmpty(), intent.getLongExtra(EXTRA_RELEASE, 0), intent.getStringExtra(EXTRA_SIDE).orEmpty()) {
             pending.finish()
         }
@@ -41,12 +47,27 @@ class SpinReceiver : BroadcastReceiver() {
         const val STOP = "app.recordshelf.STOP"
         const val FLIP = "app.recordshelf.FLIP"
         const val PLAY_SIDE = "app.recordshelf.PLAY_SIDE"
+        const val SLEEP = "app.recordshelf.SLEEP"
         private const val EXTRA_RELEASE = "release"
         private const val EXTRA_SIDE = "side"
 
         fun intent(ctx: Context, action: String, release: Long = 0, side: String = ""): PendingIntent {
             val i = Intent(ctx, SpinReceiver::class.java).setAction(action).putExtra(EXTRA_RELEASE, release).putExtra(EXTRA_SIDE, side)
             return PendingIntent.getBroadcast(ctx, action.hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+
+        /** The sleep timer's wake-up at [atMs] (when the fade starts); null cancels it. */
+        fun scheduleSleep(ctx: Context, atMs: Long?) {
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+            val pi = intent(ctx, SLEEP)
+            if (atMs == null) return am.cancel(pi)
+            val t = maxOf(atMs, System.currentTimeMillis() + 500)
+            try {
+                if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi)
+                else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi)
+            } catch (_: SecurityException) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi)
+            }
         }
 
         /** Next wake-up at [atMs]; null cancels it. */

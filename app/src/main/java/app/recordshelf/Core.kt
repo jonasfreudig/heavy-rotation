@@ -503,6 +503,11 @@ object Core {
                 historyExec.execute { importInner() }
             }
             "historyCheck" -> historyExec.execute { checkHistoryInner(msg.optBoolean("repair")) }
+            "sleep" -> when {
+                msg.optBoolean("cancel") -> SleepTimer.cancel(ctx)
+                msg.optBoolean("song") -> if (!SleepTimer.startEndOfSong(ctx)) toast("The app playing doesn't say how long the song is")
+                else -> SleepTimer.start(ctx, msg.optInt("minutes", 30))
+            }
             "historyCancel" -> {
                 // Paused stays paused, also when the app comes back to the front.
                 cancelImport = true
@@ -2106,6 +2111,7 @@ object Core {
         .put("queue", JSONObject().put("waiting", queue.size()).put("oldest", queue.oldestTimestamp()).put("error", flushError))
         .put("spin", spinUi?.let { JSONObject(it) } ?: JSONObject.NULL)
         .put("phone", phoneJson())
+        .put("sleep", SleepTimer.json() ?: JSONObject.NULL)
         .put(
             "history",
             JSONObject().put("count", histCount).put("done", prefs.historyDone).put("resumable", prefs.historyCursor > 0)
