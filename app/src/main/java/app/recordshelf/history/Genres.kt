@@ -110,9 +110,13 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
          * "triphop" (see [SAME]): Discogs and Last.fm's taggers write the same style apart or together.
          */
         fun key(s: String): String {
-            val k = s.lowercase().replace('-', ' ').replace('_', ' ').replace('/', ' ').trim().replace(Regex("\\s+"), " ")
+            // Accents aside too: "Forró" and "forro", "Norteño" and "norteno" are one style.
+            val plain = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD).replace(MARKS, "")
+            val k = plain.replace('-', ' ').replace('_', ' ').replace('/', ' ').trim().replace(SPACES, " ")
             return SAME[k] ?: k
         }
+        private val MARKS = Regex("\\p{Mn}+")
+        private val SPACES = Regex("\\s+")
 
         /** Spellings of one style, to the one kept. */
         private val SAME = mapOf(
@@ -150,6 +154,30 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "vaporwave" to "electronic", "witch house" to "electronic", "electro swing" to "electronic",
             "bedroom pop" to "indie", "new rave" to "indie", "baggy" to "indie", "sadcore" to "indie", "hamburger schule" to "indie",
             "boogie" to "soul", "western swing" to "country", "liedermacher" to "folk", "prog" to "rock",
+            // Beyond rock and indie: scenes whose names give no family away, or the wrong one.
+            "c pop" to "pop", "mandopop" to "pop", "cantopop" to "pop", "opm" to "pop", "dangdut" to "pop", "enka" to "pop",
+            "vocaloid" to "pop", "idol" to "pop", "bubblegum" to "pop", "eurovision" to "pop", "variete" to "pop",
+            "merengue" to "latin", "vallenato" to "latin", "banda" to "latin", "norteno" to "latin", "regional mexican" to "latin",
+            "corridos" to "latin", "corridos tumbados" to "latin", "ranchera" to "latin", "mariachi" to "latin", "sertanejo" to "latin",
+            "forro" to "latin", "pagode" to "latin", "axe" to "latin", "tejano" to "latin", "son cubano" to "latin", "trova" to "latin",
+            "nueva trova" to "latin", "musica popular brasileira" to "latin", "reggaeton" to "latin", "dembow" to "latin",
+            "funk carioca" to "hiphop", "baile funk" to "hiphop", "brazilian funk" to "hiphop", "phonk" to "hiphop", "drift phonk" to "hiphop",
+            "amapiano" to "dance", "gqom" to "dance", "kwaito" to "dance", "kuduro" to "dance", "jersey club" to "dance",
+            "footwork" to "dance", "juke" to "dance", "2 step" to "dance", "speed garage" to "dance", "bass music" to "dance",
+            "future bass" to "dance", "moombahton" to "dance", "eurobeat" to "dance", "happy hardcore" to "dance", "gabber" to "dance",
+            "goa" to "dance", "big room" to "dance", "uk funky" to "dance",
+            "breakcore" to "electronic", "chiptune" to "electronic", "8 bit" to "electronic", "bitpop" to "electronic", "plunderphonics" to "electronic",
+            "musique concrete" to "ambient", "sound collage" to "ambient", "field recordings" to "ambient", "lowercase" to "ambient",
+            "carnatic" to "classical", "hindustani" to "classical", "gregorian chant" to "classical", "chant" to "classical",
+            "early music" to "classical", "renaissance" to "classical", "medieval" to "classical", "lieder" to "classical", "art song" to "classical",
+            "qawwali" to "global", "sufi" to "global", "ghazal" to "global", "bhangra" to "global", "klezmer" to "global", "rebetiko" to "global",
+            "arabesk" to "global", "rai" to "global", "chaabi" to "global", "gnawa" to "global", "mbalax" to "global", "soukous" to "global",
+            "bongo flava" to "global", "kizomba" to "global", "zouk" to "global", "semba" to "global", "throat singing" to "global",
+            "gamelan" to "global", "griot" to "global", "desert blues" to "global", "dangdut koplo" to "pop",
+            "anime" to "soundtrack", "anison" to "soundtrack", "filmi" to "soundtrack",
+            "visual kei" to "rock", "red dirt" to "country", "zydeco" to "country", "polka" to "folk", "volksmusik" to "folk",
+            "shanty" to "folk", "sea shanty" to "folk", "cantautore" to "folk", "cantautor" to "folk",
+            "quiet storm" to "rnb", "doo wop" to "soul", "lovers rock" to "reggae",
             "pop rock" to "rock", "soft rock" to "rock", "blues rock" to "rock", "hard rock" to "rock", "art rock" to "rock",
             "experimental rock" to "rock", "beat" to "rock", "mod" to "rock", "aor" to "rock", "classic rock" to "rock",
             "noise rock" to "punk", "hardcore" to "punk", "emo" to "punk", "screamo" to "punk", "oi" to "punk",
@@ -176,9 +204,9 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "country" to Regex("country|honky tonk"),
             "soul" to Regex("soul|funk"),
             "rnb" to Regex("r&b|\\brnb\\b"),
-            "reggae" to Regex("reggae|\\bdub\\b|\\bska\\b|dancehall|rocksteady"),
+            "reggae" to Regex("reggae|\\bdub\\b|\\bska\\b|dancehall|rocksteady|ragga"),
             "ambient" to Regex("ambient|drone|avant ?garde"),
-            "classical" to Regex("classical|orchestra|opera|baroque|contemporary|choral|minimalism|chamber music"),
+            "classical" to Regex("classical|orchestra|opera|baroque|contemporary|choral|minimalism|chamber music|symphon"),
             "soundtrack" to Regex("soundtrack|film|video game|\\bost\\b"),
             "latin" to Regex("latin|bossa|samba|salsa|reggaeton|cumbia|bachata|tropical"),
             "global" to Regex("afro|world|african|celtic|balkan|highlife|bollywood|arabic|thai|turkish"),

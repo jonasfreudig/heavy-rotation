@@ -2185,15 +2185,28 @@ function insightText(x, kind, running) {
     case 'discovery': return ['explore', `You found <b>${plural(x.count, 'new artist')}</b>. The one that stuck: <b>${esc(x.best)}</b>, ${plural(x.plays, 'play')}.`];
     case 'comeback': return ['history', `Welcome back, <b>${esc(x.artist)}</b>: your first plays since ${esc(dateLabel(x.lastBefore))}.`];
     case 'bigDay': return ['calendar', `Biggest day: <b>${esc(dayName(x.day))}</b>, ${plural(x.count, 'play')}.`];
+    case 'session': {
+      const dur = x.minutes >= 60 ? `${Math.floor(x.minutes / 60)} h${x.minutes % 60 ? ` ${x.minutes % 60} min` : ''}` : `${x.minutes} min`;
+      return ['music', `Your longest session: <b>${dur}</b>${kind === 'day' ? '' : ` on ${esc(dayName(x.start))}`} from ${esc(fmtTime(x.start))}, ${plural(x.count, 'song')}${x.artist ? `, mostly <b>${esc(x.artist)}</b>` : ''}.`];
+    }
+    case 'albums': return ['album', x.count === 1 ? `You played <b>${esc(x.title)}</b> by ${esc(x.artist)} through.`
+      : `<b>${plural(x.count, 'album')}</b> played through${x.times > 1 ? `, <b>${esc(x.title)}</b> ${x.times} times` : ''}.`];
+    case 'genreShift': return ['chart', `More <button class="inline-link" data-genre="${esc(x.key)}" data-glabel="${esc(x.label)}">${esc(x.label)}</button> than usual: <b>${pct(x.share)}</b> of your plays, against ${pct(x.before)} in the year before.`];
+    case 'decade': return ['history', x.current ? `Mostly new music: <b>${pct(x.share)}</b> of it came out in the ${x.decade}s.` : `A trip back: <b>${pct(x.share)}</b> of what you played came out in the <b>${x.decade}s</b>.`];
+    case 'loop': return ['repeat', `On repeat: <b>${esc(x.track)}</b> by ${esc(x.artist)}, ${x.run} times in a row.`];
+    case 'shelf': return ['big-grid', `Off your shelf: <b>${pct(x.share)}</b> of your plays were albums you own, most of all <b>${esc(x.title)}</b>.`];
     case 'streak': return ['fire', `Music on <b>${x.days} days in a row</b>, until ${esc(dateLabel(x.to))}.`];
     case 'vinyl': return ['album', `<b>${plural(x.count, 'track')}</b> came from your records, ${pct(x.share)} of your listening.`];
     default: return null;
   }
 }
-const INSIGHT_ORDER = ['comeback', 'discovery', 'volume', 'stillTop', 'peak', 'night', 'song', 'streak', 'vinyl', 'weekend', 'bigDay', 'topArtist'];
+const INSIGHT_ORDER = ['comeback', 'discovery', 'genreShift', 'albums', 'loop', 'volume', 'session', 'decade', 'stillTop', 'shelf', 'vinyl', 'peak', 'night', 'streak', 'song', 'weekend', 'bigDay', 'topArtist'];
 
 function highlightsViz(s) {
-  const list = (s.insights || []).slice().sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
+  // A song on repeat that is also the most played one is said once.
+  const loop = (s.insights || []).find((x) => x.kind === 'loop');
+  const list = (s.insights || []).filter((x) => !(x.kind === 'song' && loop && loop.track === x.track && loop.artist === x.artist))
+    .sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
     .map((x) => insightText(x, s.range.kind, s.range.running)).filter(Boolean);
   if (!list.length) return '';
   return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl"><span class="hl-ic">${icon(ic)}</span><span>${text}</span></div>`).join('')}</div>`;

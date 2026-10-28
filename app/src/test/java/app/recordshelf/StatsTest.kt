@@ -177,6 +177,21 @@ class StatsTest {
             "Midwest Emo" to "punk", "hiphop" to "hiphop", "Prog" to "rock", "Boogie" to "soul",
         )
         cases.forEach { (name, family) -> assertEquals(name, family, Genres.family(name)) }
+        // Music far from the app's first listener: every one of these finds a family.
+        val world = mapOf(
+            "K-Pop" to "pop", "J-Rock" to "rock", "Mandopop" to "pop", "City Pop" to "pop", "Visual Kei" to "rock", "Anime" to "soundtrack",
+            "Sertanejo" to "latin", "Forró" to "latin", "Norteño" to "latin", "Corridos Tumbados" to "latin", "Reggaeton" to "latin",
+            "Cumbia" to "latin", "MPB" to "latin", "Baile Funk" to "hiphop", "Phonk" to "hiphop", "UK Drill" to "hiphop",
+            "Amapiano" to "dance", "Gqom" to "dance", "Afrobeats" to "global", "Highlife" to "global", "Soukous" to "global",
+            "Qawwali" to "global", "Bhangra" to "global", "Carnatic" to "classical", "Hindustani" to "classical", "Bollywood" to "global",
+            "Klezmer" to "global", "Fado" to "global", "Flamenco" to "latin", "Rebetiko" to "global",
+            "Melodic Death Metal" to "metal", "Symphonic Metal" to "metal", "Doom Metal" to "metal", "Psytrance" to "dance",
+            "Jersey Club" to "dance", "Breakcore" to "electronic", "Chiptune" to "electronic", "Footwork" to "dance",
+            "Bluegrass" to "country", "Zydeco" to "country", "Polka" to "folk", "Sea Shanty" to "folk",
+            "Gregorian Chant" to "classical", "Symphony" to "classical", "Doo Wop" to "soul", "Lovers Rock" to "reggae", "Ragga" to "reggae",
+        )
+        world.forEach { (name, family) -> assertEquals(name, family, Genres.family(name)) }
+        assertEquals("accents aside", Genres.key("Forró"), Genres.key("forro"))
         assertEquals(null, Genres.family("Spoken Word"))
         assertEquals("Punk & Post-Punk", Genres.label("punk"))
         assertEquals("a chip's name finds its family", "indie", Genres.resolve("Indie & Alternative"))
@@ -217,6 +232,25 @@ class StatsTest {
         assertEquals(listOf(1L), (0 until page.getJSONArray("shelf").length()).map { page.getJSONArray("shelf").getLong(it) })
         assertEquals(0.25, page.getDouble("ofFamily"), 0.001)
         assertEquals("Lo-Fi", s.genrePage("indie:lo fi")!!.getString("label"))
+    }
+
+    @Test
+    fun highlightsFitTheirPeriod() {
+        // One evening: an album played through (six songs, all of it you know), then one song four times in a row.
+        val plays = (0 until 6).map { Play(at(2025, 3, 7, 20) + it * 240L, "IDLES", "Song $it", "TANGK") } +
+            (0 until 4).map { Play(at(2025, 3, 7, 20) + (6 + it) * 240L, "Shame", "Alibis", "Food for Worms") } +
+            (0 until 30).map { Play(at(2025, 1, 10, 12) + it * 86_400L, "Air", "Track ${it % 5}", "Moon Safari") }
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 3, 8))
+        val r = s.range("d2025-03-07")
+        val kinds = (0 until s.insights(r, h.lowerBound(r.from), h.lowerBound(r.to), null).length())
+            .map { s.insights(r, h.lowerBound(r.from), h.lowerBound(r.to), null).getJSONObject(it).getString("kind") }
+        assertFalse("no biggest day for one day", "bigDay" in kinds)
+        assertFalse("no busiest weekday for one day", "peak" in kinds)
+        val more = s.moreInsights(r, h.lowerBound(r.from), h.lowerBound(r.to)).associateBy { it.getString("kind") }
+        assertEquals(10, more.getValue("session").getInt("count"))
+        assertEquals("TANGK", more.getValue("albums").getString("title"))
+        assertEquals(4, more.getValue("loop").getInt("run"))
     }
 
     @Test

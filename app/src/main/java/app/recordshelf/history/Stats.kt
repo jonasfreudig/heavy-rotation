@@ -1535,11 +1535,14 @@ class Stats(
         // The two hours around the busiest single hour, so this agrees with the story's golden hour.
         val golden = (0 until 24).maxByOrNull { byHour[it] }!!
         val bestHour = if (byHour[(golden + 23) % 24] > byHour[(golden + 1) % 24]) (golden + 23) % 24 else golden
-        if (n >= 20) out.put(JSONObject().put("kind", "peak").put("dow", bestDow).put("hour", bestHour).put("dowShare", byDow[bestDow].toDouble() / n))
+        // A single day has no busiest weekday, biggest day or weekend share to speak of.
+        val oneDay = r.kind == "day"
+        if (n >= 20 && !oneDay) out.put(JSONObject().put("kind", "peak").put("dow", bestDow).put("hour", bestHour).put("dowShare", byDow[bestDow].toDouble() / n))
         val night = (listOf(22, 23, 0, 1, 2, 3).sumOf { byHour[it] }).toDouble() / n
         if (n >= 20 && night >= 0.2) out.put(JSONObject().put("kind", "night").put("share", night))
         val weekend = (byDow[5] + byDow[6]).toDouble() / n
-        if (n >= 20 && (weekend >= 0.4 || weekend <= 0.15) && r.kind != "week") out.put(JSONObject().put("kind", "weekend").put("share", weekend))
+        if (n >= 20 && (weekend >= 0.4 || weekend <= 0.15) && r.kind != "week" && !oneDay) out.put(JSONObject().put("kind", "weekend").put("share", weekend))
+        moreInsights(r, i0, i1).forEach { out.put(it) }
         // New and returning artists
         val startsHere = historyStart in r.from until r.to
         if (!startsHere) {
@@ -1556,11 +1559,104 @@ class Stats(
         // Biggest day, streak, vinyl
         val days = HashMap<Long, Int>()
         for (i in i0 until i1) days.merge(day(h.ts[i]), 1, Int::plus)
-        days.maxByOrNull { it.value }?.let { (d, cnt) -> if (r.kind != "week" || days.size > 1) out.put(JSONObject().put("kind", "bigDay").put("day", dayStart(d) * 1000).put("count", cnt)) }
+        days.maxByOrNull { it.value }?.let { (d, cnt) -> if (!oneDay && days.size > 1) out.put(JSONObject().put("kind", "bigDay").put("day", dayStart(d) * 1000).put("count", cnt)) }
         val st = streaks(r, i0, i1)
         if (st.getInt("longest") >= 4 && r.kind != "week") out.put(JSONObject().put("kind", "streak").put("days", st.getInt("longest")).put("to", st.getLong("longestTo")))
         val v = vinyl.count { it.ts in r.from until r.to }
         if (v > 0) out.put(JSONObject().put("kind", "vinyl").put("count", v).put("share", v.toDouble() / n))
+        return out
+    }
+
+    /** How many different songs of each album you ever played (to tell an album played through). */
+    private val albumSongs: IntArray by lazy {
+        val seen = HashSet<Long>()
+        IntArray(h.albumTitles.size).also { c -> for (i in 0 until h.size) h.album[i].takeIf { it >= 0 }?.let { al -> if (seen.add((al.toLong() shl 32) or h.track[i].toLong())) c[al]++ } }
+    }
+
+    /**
+     * Highlights that need a closer look than counting: the longest session; albums played through
+     * (one after another, most of the songs of each you know); a genre you played much more than in
+     * the year before; the decade most of it came from; a song on repeat; how much came off your shelf.
+     */
+    internal fun moreInsights(r: Range, i0: Int, i1: Int): List<JSONObject> {
+        val out = ArrayList<JSONObject>()
+        val n = i1 - i0
+        if (n == 0) return out
+        // The longest session (a break of half an hour ends one).
+        var s0 = i0
+        var bestS = i0
+        var bestE = i0
+        for (i in i0 until i1) {
+            if (i > i0 && h.ts[i] - h.ts[i - 1] > SESSION_GAP) s0 = i
+            if (i - s0 > bestE - bestS) {
+                bestS = s0
+                bestE = i
+            }
+        }
+        val count = bestE - bestS + 1
+        if (count >= 8) {
+            val who = (bestS..bestE).groupingBy { h.artist[it] }.eachCount().maxByOrNull { it.value }!!
+            val minutes = ((h.ts[bestE] - h.ts[bestS]) / 60 + Math.round(MINUTES_PER_PLAY)).toInt()
+            out += JSONObject().put("kind", "session").put("start", h.ts[bestS] * 1000).put("minutes", minutes).put("count", count)
+                .put("artist", if (who.value * 3 >= count) h.artistNames[who.key] else "")
+        }
+        // Albums played through: a run of one album's songs, close together, with most of the songs of it you know.
+        val runs = HashMap<Int, Int>()
+        var i = i0
+        while (i < i1) {
+            val al = h.album[i]
+            var j = i + 1
+            while (j < i1 && h.album[j] == al && h.ts[j] - h.ts[j - 1] <= 20 * 60) j++
+            if (al >= 0) {
+                val distinct = (i until j).map { h.track[it] }.toSet().size
+                if (distinct >= maxOf(4, Math.ceil(albumSongs[al] * 0.75).toInt())) runs.merge(al, 1, Int::plus)
+            }
+            i = j
+        }
+        if (runs.isNotEmpty()) {
+            val top = runs.entries.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key }).first()
+            out += JSONObject().put("kind", "albums").put("count", runs.values.sum()).put("albums", runs.size)
+                .put("title", h.albumTitles[top.key]).put("artist", h.artistNames[h.albumArtist[top.key]]).put("times", top.value)
+        }
+        // A genre played much more than in the year before (not over all time: no before).
+        if (r.kind != "all" && n >= 20) {
+            val (g, _, _) = scrobbleGenre
+            val b0 = h.lowerBound(r.from - 365 * DAY_SEC)
+            if (i0 - b0 >= 100) {
+                val now = IntArray(genreKeys.size)
+                val before = IntArray(genreKeys.size)
+                for (k in i0 until i1) if (g[k] >= 0) now[g[k]]++
+                for (k in b0 until i0) if (g[k] >= 0) before[g[k]]++
+                val known = now.sum().toDouble()
+                val knownBefore = before.sum().toDouble()
+                if (known >= 15 && knownBefore >= 50) {
+                    now.indices.map { f -> Triple(f, now[f] / known, before[f] / knownBefore) }
+                        .filter { (_, s, b) -> s >= 0.15 && s - b >= 0.1 }
+                        .maxByOrNull { (_, s, b) -> s - b }
+                        ?.let { (f, s, b) -> out += JSONObject().put("kind", "genreShift").put("key", genreKeys[f]).put("label", Genres.label(genreKeys[f])).put("share", s).put("before", b) }
+                }
+            }
+        }
+        // The decade most of it came out in.
+        val decades = HashMap<Int, Int>()
+        var dated = 0
+        for (k in i0 until i1) yearOf(k).takeIf { it > 0 }?.let { decades.merge(it / 10 * 10, 1, Int::plus); dated++ }
+        if (n >= 20 && dated * 2 >= n) {
+            val (d, c) = decades.maxByOrNull { it.value }!!
+            val share = c.toDouble() / dated
+            val current = date(nowSec).year / 10 * 10
+            if ((d < current && share >= 0.35) || (d == current && share >= 0.7)) out += JSONObject().put("kind", "decade").put("decade", d).put("share", share).put("current", d == current)
+        }
+        // A song on repeat.
+        loops(i0, i1, 1).optJSONObject(0)?.takeIf { it.optInt("run") >= 4 }?.let { out += JSONObject(it.toString()).put("kind", "loop") }
+        // Off your shelf: plays of albums you own, wherever they were played.
+        val ownedPlays = HashMap<Int, Int>()
+        for (k in i0 until i1) h.album[k].takeIf { it >= 0 && owned(it) != null }?.let { ownedPlays.merge(it, 1, Int::plus) }
+        val shelfShare = ownedPlays.values.sum().toDouble() / n
+        if (n >= 20 && shelfShare >= 0.2) {
+            val top = ownedPlays.maxByOrNull { it.value }!!.key
+            out += JSONObject().put("kind", "shelf").put("share", shelfShare).put("title", h.albumTitles[top]).put("artist", h.artistNames[h.albumArtist[top]])
+        }
         return out
     }
 

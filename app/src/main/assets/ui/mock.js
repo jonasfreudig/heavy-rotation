@@ -579,7 +579,14 @@ const Mock = (() => {
     const bestDow = byDow.indexOf(Math.max(...byDow));
     const golden = byHour.indexOf(Math.max(...byHour));
     const bestHour = byHour[(golden + 23) % 24] > byHour[(golden + 1) % 24] ? (golden + 23) % 24 : golden;
-    if (n >= 20) ins.push({ kind: 'peak', dow: bestDow, hour: bestHour, dowShare: byDow[bestDow] / n });
+    if (n >= 20 && r.kind !== 'day') ins.push({ kind: 'peak', dow: bestDow, hour: bestHour, dowShare: byDow[bestDow] / n });
+    // The highlights that look closer, as the app finds them.
+    if (n >= 8) ins.push({ kind: 'session', start: r.from * 1000 + 20 * 3600e3, minutes: 160, count: Math.min(n, 41), artist: order.length ? L.artists[order[0]] : '' });
+    if (n >= 10) ins.push({ kind: 'albums', count: r.kind === 'day' ? 1 : 9, albums: r.kind === 'day' ? 1 : 7, title: 'Romance', artist: 'Fontaines D.C.', times: r.kind === 'day' ? 1 : 3 });
+    if (r.kind !== 'all' && n >= 20) ins.push({ kind: 'genreShift', key: 'punk', label: 'Punk & Post-Punk', share: 0.38, before: 0.22 });
+    if (n >= 20) ins.push({ kind: 'decade', decade: 1980, share: 0.41, current: false });
+    if (topT.length) ins.push({ kind: 'loop', track: L.titles[topT[0]], artist: L.artists[trackArtist[topT[0]]], run: 5, at: r.from * 1000 });
+    if (n >= 20) ins.push({ kind: 'shelf', share: 0.34, title: 'Rumours', artist: 'Fleetwood Mac' });
     const night = [22, 23, 0, 1, 2, 3].reduce((x, hr) => x + byHour[hr], 0) / Math.max(1, n);
     if (n >= 20 && night >= 0.2) ins.push({ kind: 'night', share: night });
     if (!sm.historyStartsHere && sm.newArtists) { const best = order.find((a) => L.first[a] >= r.from * 1000); if (best != null) ins.push({ kind: 'discovery', count: sm.newArtists, best: L.artists[best], plays: ac[best] }); }
