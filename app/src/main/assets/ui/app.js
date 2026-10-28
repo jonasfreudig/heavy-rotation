@@ -1196,6 +1196,13 @@ function renderNow() {
       <div class="times"><span id="npEl"></span><span id="npLeft"></span></div></div>
     ${hasMedia ? `<div class="np-ctls">${ctl('prev', 'skip-prev', 'Previous', m.canPrev)}${ctl(playing ? 'pause' : 'play', playing ? 'pause' : 'play', playing ? 'Pause' : 'Play', m.canPlay !== false, 'big')}${ctl('next', 'skip-next', 'Next', m.canNext)}</div>` : ''}
   </div>`;
+  // The words, in time with the song when they come with times.
+  const lq = `${n.artist}|${n.title}`;
+  if (lq !== LYR.q) {
+    LYR = { q: lq, data: null, lines: null };
+    send({ t: 'lyrics', artist: n.artist, title: n.title, album: n.album || '', dur: Math.round(dur / 1000), q: lq });
+  }
+  h += `<div class="viz np-lyrics" id="npLyrics">${lyricsHtml(m.canSeek)}</div>`;
   // What the app will play next, if it tells (a playlist, a mix, the album, the radio).
   if (q.length) {
     const at = q.findIndex((x) => x.id === m.active);
@@ -1218,8 +1225,76 @@ function renderNow() {
   else if (!q.length) h += `<p class="hint">${esc(n.app)} doesn't share what it plays next, so here is the album.</p>`;
   keepHolo(body, h);
   tint(body, n.cover || '', (n.album || n.title) + n.artist);
+  lyrAt = -2;
   tickNow();
   Tilt.refresh();
+}
+
+/*
+ * Lyrics from LRCLIB for what plays. With times ("[01:23.45] a line"), the line being sung lights
+ * up and the lyrics scroll along by themselves (a timer set for the next line, not a loop), unless
+ * you scrolled them a moment ago; tapping a line jumps the song there.
+ */
+let LYR = { q: '', data: null, lines: null };
+let lyrAt = -2, lyrTimer = 0, lyrUserUntil = 0;
+/** Lines are lit this much early: the eye is a little behind the ear. */
+const LYR_LEAD = 250;
+function parseLrc(s) {
+  const out = [];
+  for (const line of String(s || '').split('\n')) {
+    const tags = [...line.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
+    if (!tags.length) continue;
+    const text = line.replace(/\[[^\]]*\]/g, '').trim();
+    for (const t of tags) out.push({ t: Math.round((+t[1] * 60 + +t[2]) * 1000), text });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+function lyricsHtml(canSeek) {
+  const d = LYR.data;
+  const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
+  if (!d) return '<h2>Lyrics</h2><p class="hint">Looking for the lyrics…</p>';
+  if (d.error) return '<h2>Lyrics</h2><p class="hint">Couldn\'t reach LRCLIB for the lyrics just now.</p>';
+  if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
+  if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
+  if (LYR.lines && LYR.lines.length) {
+    return `<h2>Lyrics</h2><span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
+      <div class="lyr-lines synced">${LYR.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
+  }
+  return `<h2>Lyrics</h2><div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
+}
+window.onLyrics = (d) => {
+  if (d.q !== LYR.q) return;
+  LYR.data = d;
+  LYR.lines = d.synced ? parseLrc(d.synced) : null;
+  const box = $('#npLyrics'), n = (ST.phone || {}).now;
+  if (!box || !n) return;
+  box.innerHTML = lyricsHtml((n.media || {}).canSeek);
+  lyrAt = -2;
+  syncLyrics();
+};
+/** Lights the line being sung, and sets a timer for the next one while the song plays. */
+function syncLyrics() {
+  clearTimeout(lyrTimer);
+  const box = $('#npLyrics .lyr-lines.synced'), L = LYR.lines, n = (ST.phone || {}).now;
+  if (!box || !L || !n || !isOpen('nowPage')) return;
+  const m = n.media || {};
+  const pos = nowPos(n) + LYR_LEAD;
+  let i = -1;
+  while (i + 1 < L.length && L[i + 1].t <= pos) i++;
+  if (i !== lyrAt) {
+    const ps = box.children;
+    for (let k = 0; k < ps.length; k++) {
+      ps[k].classList.toggle('now', k === i);
+      ps[k].classList.toggle('past', k < i);
+    }
+    // Into the middle of the box, unless you are reading elsewhere in it.
+    if (i >= 0 && ps[i] && Date.now() > lyrUserUntil) {
+      const off = ps[i].getBoundingClientRect().top - box.getBoundingClientRect().top;
+      box.scrollTo({ top: box.scrollTop + off - box.clientHeight / 2 + ps[i].offsetHeight / 2, behavior: lyrAt === -2 ? 'auto' : 'smooth' });
+    }
+    lyrAt = i;
+  }
+  if ((m.playing ?? n.playing) && i + 1 < L.length) lyrTimer = setTimeout(syncLyrics, Math.max(40, (L[i + 1].t - pos) / (m.speed || 1)));
 }
 /** Once a second: the position, the time left, and what is left of the album. */
 function tickNow() {
@@ -1239,6 +1314,7 @@ function tickNow() {
   seek.hidden = !dur;
   const at = dragging ? +seek.value : pos;
   seek.style.setProperty('--p', dur ? `${((at / dur) * 100).toFixed(2)}%` : '0%');
+  syncLyrics();
   $('#npEl').textContent = fmtDur(at / 1000);
   $('#npLeft').textContent = dur ? `−${fmtDur((dur - at) / 1000)}` : '';
   const al = NOWALB.data, left = $('#npAlbumLeft');
@@ -5140,7 +5216,7 @@ const PERSONAS = {
   earlyBird: { title: 'Early Bird', icon: 'sun', why: (m) => `${pct(m.morning)} of your plays came between 5 and 9 in the morning. Music before coffee.` },
   loyalist: { title: 'Loyalist', icon: 'heart', why: (m) => `${esc(m.topArtist)} alone made up ${pct(m.topShare)} of your listening. When you love something, you stay.` },
   explorer: { title: 'Explorer', icon: 'explore', why: (m) => `${pct(m.newShare)} of your plays were artists you had never heard before.` },
-  onRepeat: { title: 'Repeat Offender', icon: 'repeat', why: (m) => (m.loop >= 5 ? `You played one song ${m.loop} times in a row. No regrets.` : `One song got ${m.obsession} plays in a single week.`) },
+  onRepeat: { title: 'On Repeat', icon: 'repeat', why: (m) => (m.loop >= 5 ? `You played one song ${m.loop} times in a row. No regrets.` : `One song got ${m.obsession} plays in a single week.`) },
   weekender: { title: 'Weekend Warrior', icon: 'weekend', why: (m) => `${pct(m.weekend)} of your plays fell on Saturdays and Sundays.` },
   crateDigger: { title: 'Crate Digger', icon: 'album', why: (m) => `${pct(m.vinyl)} of everything you played came off your record shelf.` },
   genreHopper: { title: 'Genre Hopper', icon: 'shuffle', why: (m) => `${m.genres} different genres, each with a real share of your plays.` },
@@ -5586,8 +5662,15 @@ function build() {
     const b = e.target.closest('[data-np]');
     if (b) { npControl(b.dataset.np); return; }
     const q = e.target.closest('[data-npq]');
-    if (q) npControl('queue', +q.dataset.npq);
+    if (q) { npControl('queue', +q.dataset.npq); return; }
+    const lt = e.target.closest('[data-lt]');
+    const n = (ST.phone || {}).now;
+    if (lt && n && (n.media || {}).canSeek) { lyrUserUntil = 0; npControl('seek', +lt.dataset.lt); }
   });
+  // Scrolling the lyrics yourself: they leave you there for a few seconds.
+  for (const ev of ['touchstart', 'wheel']) {
+    $('#nowBody').addEventListener(ev, (e) => { if (e.target.closest('.lyr-lines')) lyrUserUntil = Date.now() + 4000; }, { passive: true });
+  }
   $('#nowBody').addEventListener('input', (e) => { if (e.target.id === 'npSeek') tickNow(); });
   $('#nowBody').addEventListener('change', (e) => { if (e.target.id === 'npSeek') npControl('seek', +e.target.value); });
   $('#nowStats').onclick = () => {

@@ -1316,6 +1316,14 @@ const Mock = (() => {
         }
         case 'openPhoneApp': toast('(preview) TIDAL would open on its now playing screen'); break;
         case 'nowAlbum': later(300, () => onNowAlbum({ ...fakeNowAlbum(m.album), q: m.q })); break;
+        case 'lyrics': {
+          const words = ['', 'First line of the first verse', 'Second line, a little longer than the first', 'Third line comes back around', 'And the fourth one ends the verse',
+            '', 'Here is where the chorus starts', 'Sung a little louder now', 'Same words as the second time', 'And the chorus ends', '',
+            'Second verse, first line', 'Second verse, another line', 'Third line of the second verse', 'The last line of the verse', '', 'Chorus once more', 'And out'];
+          const lrc = words.map((w, i) => `[${String(Math.floor((6 + i * 4) / 60)).padStart(2, '0')}:${String((6 + i * 4) % 60).padStart(2, '0')}.00] ${w}`).join('\n');
+          later(500, () => onLyrics({ q: m.q, synced: lrc, plain: words.filter(Boolean).join('\n'), instrumental: false }));
+          break;
+        }
         case 'tilt': break;
         case 'palette': {
           // Made-up colors from the address, as if read from the picture.

@@ -209,6 +209,7 @@ object Core {
 
     // ---- pictures: artist photos (Deezer) and the colors of covers and photos ----
     private val deezer = DeezerClient()
+    private val lrclib = app.recordshelf.net.LrclibClient()
 
     /** Deezer lookups for pages (discographies, tracklists), apart from the history work. */
     private val webExec = serial()
@@ -656,6 +657,20 @@ object Core {
                         JSONObject().put("error", true)
                     }
                     push("onNowAlbum") { JSONObject(j.toString()).put("q", msg.optString("q")) }
+                }
+            }
+            "lyrics" -> {
+                // A song's lyrics for Now playing (kept for the session): timed lines when LRCLIB has them.
+                val artist = msg.optString("artist")
+                val title = msg.optString("title")
+                val key = Text.norm(artist) + "\u0000" + Text.normLoose(title)
+                webExec.execute {
+                    val j = lyrics[key] ?: try {
+                        (lrclib.find(artist, title, msg.optString("album"), msg.optInt("dur"))?.toJson() ?: JSONObject().put("missing", true)).also { lyrics[key] = it }
+                    } catch (_: Exception) {
+                        JSONObject().put("error", true)
+                    }
+                    push("onLyrics") { JSONObject(j.toString()).put("q", msg.optString("q")) }
                 }
             }
             "dzAlbum" -> {
@@ -1963,6 +1978,11 @@ object Core {
     /** Tracklists of albums phone apps played (by album key), the last 30. */
     private val nowAlbums: MutableMap<String, JSONObject> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, JSONObject>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, JSONObject>?) = size > 30
+    })
+
+    /** Lyrics of songs played on the phone (by artist and title), the last 40. */
+    private val lyrics: MutableMap<String, JSONObject> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, JSONObject>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, JSONObject>?) = size > 40
     })
 
     /** The album key and cover of what a phone app is playing, once found ("" while looking or when there is none). */
