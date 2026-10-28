@@ -3661,7 +3661,8 @@ function renderGenre() {
       ${tile('Since', esc(monthYear(g.first)), `last played ${esc(dateLabel(g.last))}`, '', 'history')}
       ${tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire')}
     </div>
-    <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}">${icon('chart')}Stats for ${esc(g.label)}</button></div>`;
+    <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}">${icon('chart')}Stats for ${esc(g.label)}</button>
+      <button class="btn tonal" data-genrepl>${icon('playlist')}Make a playlist</button></div>`;
     h += genreInsideHtml(g);
     if ((top.artists || []).length) {
       h += `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
@@ -4638,7 +4639,41 @@ function openPlaylist(kind, range) {
   renderPlaylist();
   send({ t: 'playlist', kind, range: range || statsRange });
 }
+/** A genre's playlist: 30 songs, mixed, until you pick another size or mix. */
+function openGenrePlaylist(key, label) {
+  openPage('playlistPage');
+  PLAYLIST = { loading: true, kind: 'genre', key, label, name: `${label} mix`, size: 30, mode: 'mix', seed: 0 };
+  TIDALJOB = null;
+  renderPlaylist();
+  askGenrePlaylist();
+}
+function askGenrePlaylist() {
+  const p = PLAYLIST;
+  send({ t: 'playlist', kind: 'genre', key: p.key, size: p.size, mode: p.mode, seed: p.seed });
+}
+/** Size, mix and "make another" for a genre's playlist. */
+function genrePlControls(p) {
+  const modes = [['yours', 'Your favorites'], ['mix', 'Mix'], ['discover', 'Discover']];
+  return `<div class="pl-ctl" id="plCtl"><div class="chips">${modes.map(([v, l]) => `<button class="chip${p.mode === v ? ' on' : ''}" data-plmode="${v}">${l}</button>`).join('')}</div>
+    <div class="chips">${[20, 30, 50, 100].map((n) => `<button class="chip${p.size === n ? ' on' : ''}" data-plsize="${n}">${n} songs</button>`).join('')}
+      <button class="chip" data-plagain>${icon('shuffle', 'i small')}Make another</button></div></div>`;
+}
+function wireGenrePlControls() {
+  const box = $('#plCtl');
+  if (!box) return;
+  box.onclick = (e) => {
+    const m = e.target.closest('[data-plmode]'), s = e.target.closest('[data-plsize]'), again = e.target.closest('[data-plagain]');
+    if (!m && !s && !again) return;
+    const p = PLAYLIST;
+    PLAYLIST = { ...p, loading: true, mode: m ? m.dataset.plmode : p.mode, size: s ? +s.dataset.plsize : p.size, seed: again ? Date.now() % 1e9 : p.seed };
+    TIDALJOB = null;
+    renderPlaylist();
+    askGenrePlaylist();
+  };
+}
 window.onPlaylist = (p) => {
+  // A genre's playlist that is no longer the one asked for (another size or mix since): left out.
+  if (p.kind === 'genre' && PLAYLIST && PLAYLIST.kind === 'genre' && (p.key !== PLAYLIST.key || p.size !== PLAYLIST.size || p.mode !== PLAYLIST.mode || p.seed !== PLAYLIST.seed)) return;
   if (p.kind === 'top' && p.range) { p.name = `${periodName(p.range)} on record`; p.note = `Your most played songs of ${periodName(p.range)}`; }
   PLAYLIST = p;
   renderPlaylist();
@@ -4677,6 +4712,11 @@ function renderPlaylist() {
   const p = PLAYLIST;
   if (!p || !isOpen('playlistPage')) return;
   const body = $('#playlistBody');
+  if (p.loading && p.kind === 'genre') {
+    body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.name)}</h1><p>Mixing ${p.size} songs…</p></div></div>${genrePlControls(p)}<div class="lin inline indet"><i></i></div>`;
+    wireGenrePlControls();
+    return;
+  }
   if (p.loading) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (p.empty || !p.tracks || !p.tracks.length) { body.innerHTML = `<div class="empty">${icon('playlist', 'i big')}<p>No songs for this playlist yet.</p></div>`; return; }
   body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.name)}</h1><p>${esc(p.note)} · ${plural(p.tracks.length, 'song')}</p></div></div>
@@ -4685,6 +4725,7 @@ function renderPlaylist() {
       <button class="btn tonal" id="plShare">${icon('share')}Share</button>
       ${p.kind === 'dig' ? `<button class="btn text" data-pl="dig">${icon('shuffle')}Dig again</button>` : ''}
     </div>
+    ${p.kind === 'genre' ? genrePlControls(p) : ''}
     <div id="plTidalBlock">${tidalBlock()}</div>
     <div class="card how">
       <div class="card-title">${icon('open')}${(ST.tidal || {}).loggedIn ? 'Or with TuneMyMusic or Soundiiz (also for Spotify)' : 'Into TIDAL (or Spotify)'}</div>
@@ -4695,7 +4736,9 @@ function renderPlaylist() {
       </ol>
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
-    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? ` · ${esc(t.album)}` : ''}</small></span><span class="v">${t.plays}×</span></button>`).join('')}</div>`;
+    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? ` · ${esc(t.album)}` : ''}</small></span>${t.source === 'new' ? '<span class="v new-tag">new</span>' : `<span class="v">${t.plays}×</span>`}</button>`).join('')}</div>
+    ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}`;
+  wireGenrePlControls();
   $('#plTidalBlock').onclick = (e) => {
     if (e.target.closest('#plTidalLogin')) send({ t: 'tidalLogin' });
     if (e.target.closest('#plTidal')) {
@@ -5803,6 +5846,7 @@ function build() {
     if (rec) openRecord(+rec.dataset.rec, rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
     if (e.target.closest('[data-genresubs]')) { GENRE.showSubs = true; renderGenre(); }
+    if (e.target.closest('[data-genrepl]')) openGenrePlaylist(GENRE.key, GENRE.label);
   };
   watchBar(window, $('#appbar'), (away) => document.body.classList.toggle('bar-away', away));
   sheetDrag();

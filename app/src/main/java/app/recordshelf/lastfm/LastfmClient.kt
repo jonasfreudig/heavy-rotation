@@ -222,6 +222,12 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
     fun albumCounts(artist: String, album: String): GlobalCount? =
         info("album.getInfo", linkedMapOf("artist" to artist, "album" to album))?.optJSONObject("album")?.let { counts(it) }
 
+    /** Songs Last.fm finds similar to one (artist, title, match 0..1), most similar first; empty if it doesn't know the song. */
+    fun similarTracks(artist: String, track: String, limit: Int = 40): List<Triple<String, String, Double>> =
+        info("track.getSimilar", linkedMapOf("artist" to artist, "track" to track, "limit" to limit.toString()))?.optJSONObject("similartracks")
+            ?.arrayOrOne("track")?.objects().orEmpty()
+            .map { Triple(it.optJSONObject("artist")?.str("name").orEmpty(), it.str("name"), it.optDouble("match", 0.0)) }
+
     /** An artist's most played songs on Last.fm with everyone's plays, most played first; empty if unknown. */
     fun artistTopTracks(artist: String, limit: Int = 50): List<Pair<String, Long>> =
         info("artist.getTopTracks", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("toptracks")

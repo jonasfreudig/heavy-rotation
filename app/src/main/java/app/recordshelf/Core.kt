@@ -616,6 +616,7 @@ object Core {
             }
             "playlist" -> statsExec.execute {
                 val s = currentStats()
+                if (msg.optString("kind") == "genre") return@execute genrePlaylist(s, msg)
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
             "genre" -> {
@@ -1469,6 +1470,58 @@ object Core {
 
     /** Artists whose tags an artist page asked Last.fm for (once each while the app runs). */
     private val tagsAsked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
+
+    /** Songs Last.fm finds similar to a song (by its key), for genre playlists: the last 60 asked. */
+    private val similar: MutableMap<String, List<Triple<String, String, Double>>> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, List<Triple<String, String, Double>>>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Triple<String, String, Double>>>?) = size > 60
+    })
+
+    /**
+     * A genre's (or style's) playlist of the size and mix asked for ([app.recordshelf.history.PlaylistMix]):
+     * your favorites in it, songs near them in your listening and, to mix or discover, songs Last.fm
+     * finds similar to the top ones that you never played (looked up on [webExec]; without Last.fm
+     * the playlist is mixed from your own). On [statsExec].
+     */
+    private fun genrePlaylist(s: Stats?, msg: JSONObject) {
+        if (s == null) return push("onPlaylist") { JSONObject().put("empty", true) }
+        val key = msg.optString("key")
+        val size = msg.optInt("size", 30).coerceIn(10, 200)
+        val mode = msg.optString("mode").ifEmpty { "mix" }
+        val seed = msg.optLong("seed")
+        val (core, near) = s.genrePicks(key)
+        val label = s.genreLabel(key)
+        val note = when (mode) {
+            "yours" -> "Your most played $label, and songs you played around them"
+            "discover" -> "Your $label favorites, and many songs like them you haven't heard"
+            else -> "Your $label favorites, songs from around them, and a few new ones"
+        }
+        fun done(fresh: List<app.recordshelf.history.Pick>) {
+            val list = app.recordshelf.history.PlaylistMix.mix(core, near, fresh, size, mode, seed)
+            push("onPlaylist") {
+                JSONObject().put("kind", "genre").put("key", key).put("label", label).put("size", size).put("mode", mode).put("seed", seed)
+                    .put("name", "$label mix").put("note", note).put("tracks", JSONArray(list.map { it.toJson() }))
+            }
+        }
+        val c = lastfm()
+        if (mode == "yours" || c == null || core.isEmpty()) return done(emptyList())
+        webExec.execute {
+            // Songs similar to the top ones, by their summed likeness, that you never played.
+            val score = HashMap<String, Pair<app.recordshelf.history.Pick, Double>>()
+            try {
+                for (p in core.take(8)) {
+                    val list = similar[p.key] ?: c.similarTracks(p.artist, p.title, 40).also { similar[p.key] = it }
+                    for ((a, t, m) in list) {
+                        if (a.isBlank() || t.isBlank() || s.played(a, t)) continue
+                        val q = app.recordshelf.history.Pick(a, t, "", 0, "new")
+                        score.merge(q.key, q to m) { x, y -> x.first to x.second + y.second }
+                    }
+                }
+            } catch (_: Exception) {
+                // Offline or Last.fm busy: what was found so far, or only your own.
+            }
+            done(score.values.sortedByDescending { it.second }.map { it.first })
+        }
+    }
 
     /** A check of the history against Last.fm is under way ([checkHistoryInner]). */
     @Volatile private var checking = false

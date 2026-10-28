@@ -760,6 +760,40 @@ class Stats(
             .put("decades", s.decades(0, sub.size))
     }
 
+    /** The name of a genre or style key from anywhere ("indie", "indie:shoegaze", "Post-Punk"). */
+    fun genreLabel(key: String) = genres.labelOf(Genres.resolve(key))
+
+    /** Whether you ever played this song. */
+    fun played(artist: String, title: String) = findTrack(artist, title) >= 0
+
+    /**
+     * The pools for a genre's playlist: your songs in it, most played first (a play in the last
+     * year counts one and a half), and songs by other artists you often played right next to the
+     * top of them (twice at least, within 20 minutes).
+     */
+    fun genrePicks(key: String, max: Int = 200): Pair<List<Pick>, List<Pick>> {
+        val inG = inGenre(key)
+        val recent = nowSec - 365 * DAY_SEC
+        val score = HashMap<Int, Double>()
+        for (i in 0 until h.size) if (inG(i)) score.merge(h.track[i], if (h.ts[i] >= recent) 1.5 else 1.0, Double::plus)
+        val core = score.entries.sortedWith(compareByDescending<Map.Entry<Int, Double>> { it.value }.thenBy { it.key }).map { it.key }.take(max)
+        val coreSet = core.toHashSet()
+        val top = core.take(60).toHashSet()
+        val near = HashMap<Int, Int>()
+        for (i in 0 until h.size) {
+            if (h.track[i] !in top) continue
+            for (j in intArrayOf(i - 1, i + 1)) {
+                if (j < 0 || j >= h.size || Math.abs(h.ts[j] - h.ts[i]) > 1200) continue
+                val t = h.track[j]
+                if (t in coreSet || h.trackArtist[t] == h.trackArtist[h.track[i]]) continue
+                near.merge(t, 1, Int::plus)
+            }
+        }
+        fun pick(t: Int, source: String) = Pick(h.artistNames[h.trackArtist[t]], h.trackTitles[t], trackAlbum[t].let { if (it >= 0) h.albumTitles[it] else "" }, trackPlays[t], source)
+        return core.map { pick(it, "core") } to
+            near.entries.filter { it.value >= 2 }.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key }).take(max).map { pick(it.key, "near") }
+    }
+
     /** Every genre family's share of all your plays, with its biggest subgenres: the map on the Explore tab. */
     fun genreMap(): JSONObject {
         val known = genreTotals.first.sum()

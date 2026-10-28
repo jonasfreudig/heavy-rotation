@@ -1378,7 +1378,16 @@ const Mock = (() => {
             later(600, step);
           } else later(250, () => onVs(fakeVs()));
           break;
-        case 'playlist': later(300, () => onPlaylist(fakePlaylist(m.kind))); break;
+        case 'playlist':
+          if (m.kind === 'genre') {
+            // Songs from the made-up log, a few "new" ones mixed in, as many as asked.
+            const base = fakePlaylist('dig').tracks;
+            const fresh = m.mode === 'yours' ? 0 : Math.round(m.size * (m.mode === 'discover' ? 0.4 : 0.15));
+            const tracks = Array.from({ length: m.size }, (_, i) => (i % Math.max(1, Math.round(m.size / Math.max(1, fresh))) === 2 && fresh
+              ? { artist: `New Artist ${i}`, title: `Unheard Song ${i}`, album: '', plays: 0, source: 'new' } : { ...base[(i + (m.seed % 7)) % base.length], source: 'core' }));
+            later(500, () => onPlaylist({ kind: 'genre', key: m.key, label: 'New Wave & Synth', size: m.size, mode: m.mode, seed: m.seed, name: 'New Wave & Synth mix', note: 'Your favorites, songs from around them, and a few new ones', tracks }));
+          } else later(300, () => onPlaylist(fakePlaylist(m.kind)));
+          break;
         case 'hide': case 'unhide': case 'keep':
           tidyApply(m.t, m.items || [m]);
           later(300, () => { onTidy(tidyOf()); if (S.history.count) onStats(fakeStats(statsRange)); });
