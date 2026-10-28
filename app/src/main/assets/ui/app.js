@@ -387,14 +387,16 @@ window.onInsets = (i) => {
 };
 window.onBack = () => {
   const fx = backFx;
-  backSettle(fx, true);
   backFx = null;
   // Something opened during the swipe, and back closes that instead: the layer the finger moved goes back.
   const t = fx && backTarget();
-  if (fx && (!t || t.el !== fx.el)) backSpring(fx.el);
+  const mine = fx && t && t.el === fx.el;
+  if (fx && !mine) backSpring(fx.el);
+  // A page the finger moved slides on out in closePage, what was under it coming home at the same pace.
+  if (!(mine && fx.kind === 'page' && pageStack.length && t.el === $('#' + pageStack[pageStack.length - 1]))) backSettle(fx, true);
   if (!$('#story').hidden) { closeStory(); return true; }
   if (sheetOpen()) { closeSheet(); return true; }
-  if (pageStack.length) { closePage(); return true; }
+  if (pageStack.length) { closePage(mine && fx.kind === 'page' ? fx : null); return true; }
   if (searching()) { closeSearch(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
   return false;
@@ -441,15 +443,22 @@ const pageSaved = [];
 /** Material's emphasized easing: quick out of the gate and a long settle; the accelerating one for things leaving. */
 const EASE_OUT = 'cubic-bezier(.2, 0, 0, 1)';
 const EASE_IN = 'cubic-bezier(.3, 0, .8, .15)';
-/** [el] leaves (sliding right and fading, or only fading), starting from wherever a back swipe left it. */
-function animateOut(el, how, done) {
+/** How long a page takes to slide the rest of the way out from where it is (a whole screen: 320 ms). */
+function slideMs(el) {
   const t = getComputedStyle(el).transform;
-  const from = t === 'none' ? '' : t;
-  const ms = how === 'fade' ? 200 : 230;
-  const a = el.animate([
-    { transform: from || 'none', opacity: 1 },
-    { transform: how === 'fade' ? from || 'none' : `${from} translateX(30%)`, opacity: 0 },
-  ], { duration: ms, easing: EASE_IN });
+  const x = t === 'none' ? 0 : new DOMMatrix(t).m41;
+  return Math.round(120 + 200 * Math.max(0, 1 - x / window.innerWidth));
+}
+/**
+ * [el] leaves: sliding all the way out to the right (from wherever a back swipe left it, at the
+ * pace it was going), or only fading when its cover flies home.
+ */
+function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
+  const t = getComputedStyle(el).transform;
+  const from = t === 'none' ? 'none' : t;
+  const a = el.animate(how === 'fade'
+    ? [{ transform: from, opacity: 1 }, { transform: from, opacity: 0 }]
+    : [{ transform: from }, { transform: `translateX(${window.innerWidth}px)` }], { duration: ms, easing: how === 'fade' ? EASE_IN : EASE_OUT });
   // Finished, cancelled, or never run (a page in the background): either way it ends once.
   let over = false;
   const end = () => {
@@ -518,7 +527,11 @@ function watchBar(scroller, bar, onAway) {
   // Slid away: back into the page's flow, where it waits out of view at the top.
   bar.addEventListener('transitionend', (e) => { if (e.propertyName === 'transform' && bar.classList.contains('away')) bar.classList.remove('back', 'away'); });
 }
-function closePage() {
+/**
+ * Closes the top page. [swipe]: the back swipe that moved it, whose page underneath comes home
+ * as it slides out; closed by a tap, it is set up the same way first, so both look alike.
+ */
+function closePage(swipe = null) {
   const id = pageStack.pop();
   pageSaved.length = pageStack.length;
   if (!id) return;
@@ -539,7 +552,14 @@ function closePage() {
     const flew = id === 'recordPage' && flyBack();
     // On its way out it takes no taps: they belong to the page coming back under it.
     p.inert = true;
-    const a = animateOut(p, flew ? 'fade' : 'slide', () => { if (p._closing === a) { p.hidden = true; p.inert = false; p._closing = null; } });
+    let ms;
+    if (flew) backSettle(swipe, true);
+    else {
+      ms = slideMs(p);
+      const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
+      backSettle(swipe || backReveal(p, top ? [top] : homeLayers()), true, ms);
+    }
+    const a = animateOut(p, flew ? 'fade' : 'slide', () => { if (p._closing === a) { p.hidden = true; p.inert = false; p._closing = null; } }, ms);
     p._closing = a;
   }
   if (id === 'settingsPage') showKeyForm = false;
@@ -614,14 +634,14 @@ window.onBackProgress = (p) => {
     el.style.transform = `translateX(${(k * w * 0.12).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
     return;
   }
-  el.style.transform = `translateX(${(k * w * 0.85).toFixed(1)}px) scale(${(1 - k * 0.06).toFixed(3)})`;
+  el.style.transform = `translateX(${(k * w).toFixed(1)}px)`;
   backFx.under.forEach((u) => { u.style.transform = `translateX(${(-(1 - k) * w * BACK_UNDER).toFixed(1)}px)`; });
   backShade.style.opacity = ((1 - k) * BACK_SHADE).toFixed(3);
 };
 /** After the swipe: what was under the page settles home (it was chosen) or back under it (cancelled). */
-function backSettle(fx, chosen) {
+function backSettle(fx, chosen, ms = chosen ? 260 : 300) {
   if (!fx || !fx.under) return;
-  const ms = chosen ? 260 : 300, w = window.innerWidth;
+  const w = window.innerWidth;
   fx.under.forEach((u) => {
     u.style.transition = `transform ${ms}ms cubic-bezier(.2, 0, 0, 1)`;
     u.style.transform = chosen ? '' : `translateX(${(-w * BACK_UNDER).toFixed(1)}px)`;
@@ -641,6 +661,22 @@ function backSpring(el) {
   el.style.transform = '';
   el.style.borderRadius = '';
   setTimeout(() => { if (!el.style.transform) { el.style.transition = ''; el.style.willChange = ''; } }, 320);
+}
+/** Back by a tap: what the page covers waits a little to the left under the shade, as at the start of a swipe. */
+function backReveal(el, under) {
+  const z = getComputedStyle(el).zIndex;
+  backShade.style.zIndex = z === 'auto' ? '' : z;
+  backShade.style.transition = 'none';
+  backShade.style.opacity = String(BACK_SHADE);
+  el.before(backShade);
+  el.style.boxShadow = '-10px 0 32px rgba(0, 0, 0, .24)';
+  under.forEach((u) => {
+    u.style.transition = 'none';
+    u.style.willChange = 'transform';
+    u.style.transform = `translateX(${(-window.innerWidth * BACK_UNDER).toFixed(1)}px)`;
+  });
+  void el.offsetWidth; // from there, not from where they were
+  return { el, kind: 'page', under };
 }
 window.onBackCancel = () => {
   if (!backFx) return;
@@ -2679,8 +2715,10 @@ function fillSleeveBacks() {
 /**
  * Puts [html] into [el] changing only what differs: elements that stay keep their state, and
  * pictures already on screen aren't loaded and decoded again. (Rebuilding a whole page each time
- * a cover, a photo or a count arrived made its pictures blink.) Children are matched by position,
- * tag and id or data-key; [keep](old, fresh) may claim an element and leave it as it is.
+ * a cover, a photo or a count arrived made its pictures blink.) Children are matched in order by
+ * tag and id or data-key; a block put in or taken out is noticed (looking a few blocks ahead by
+ * tag, class and heading), so the blocks after it still meet their old selves instead of each
+ * being rebuilt into its neighbor. [keep](old, fresh) may claim an element and leave it as it is.
  */
 function morph(el, html, keep) {
   const t = document.createElement('template');
@@ -2689,12 +2727,38 @@ function morph(el, html, keep) {
 }
 const sameKind = (a, b) => a.nodeType === b.nodeType && a.nodeName === b.nodeName
   && (a.nodeType !== 1 || (a.id === b.id && a.getAttribute('data-key') === b.getAttribute('data-key')));
+/** What tells blocks apart when one comes or goes: tag, id, key, class and a heading of their own. */
+function blockSig(n) {
+  const h = n.firstElementChild;
+  return `${n.nodeName}#${n.id}|${n.getAttribute('data-key') || ''}|${n.getAttribute('class') || ''}|${h && /^H\d$/.test(h.nodeName) ? h.textContent : ''}`;
+}
+const LOOK_AHEAD = 12;
+/** Whether an element with signature [s] comes up among the next few elements from [n] on. */
+function comesUp(n, s) {
+  for (let k = 0; n && k < LOOK_AHEAD; n = n.nextSibling) if (n.nodeType === 1) { if (blockSig(n) === s) return n; k++; }
+  return null;
+}
 function morphKids(a, b, keep) {
   let x = a.firstChild, y = b.firstChild;
   while (y) {
     const next = y.nextSibling;
-    if (!x) a.appendChild(y);
-    else if (sameKind(x, y)) { morphNode(x, y, keep); x = x.nextSibling; }
+    if (!x) { a.appendChild(y); y = next; continue; }
+    // Text and elements out of step: a new text goes in, an old one goes.
+    if (y.nodeType !== 1 && x.nodeType === 1) { a.insertBefore(y, x); y = next; continue; }
+    if (y.nodeType === 1 && x.nodeType !== 1) { const after = x.nextSibling; x.remove(); x = after; continue; }
+    if (y.nodeType === 1 && blockSig(x) !== blockSig(y)) {
+      const sx = blockSig(x), at = comesUp(x.nextSibling, blockSig(y));
+      if (at && !comesUp(next, sx)) {
+        // Blocks before [y]'s old self were taken out.
+        while (x !== at) { const after = x.nextSibling; x.remove(); x = after; }
+      } else if (comesUp(next, sx)) {
+        // [y] is new: in it goes, and [x] waits for its own new self.
+        a.insertBefore(y, x);
+        y = next;
+        continue;
+      }
+    }
+    if (sameKind(x, y)) { morphNode(x, y, keep); x = x.nextSibling; }
     else { const after = x.nextSibling; a.replaceChild(y, x); x = after; }
     y = next;
   }
@@ -3423,10 +3487,12 @@ function renderTrack() {
     <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
     h += vsBlock(t.global, 'it', t.globalRank ? ` It's ${esc(t.artist)}'s #${t.globalRank} most played song there.` : '');
     h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
+    h += sitsViz(t);
     if (t.next && t.next.length) {
       h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
         `<button class="r" ${trackAttrs(x.artist, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${x.count}×</span></button>`).join('')}</div></div>`;
     }
+    h += repeatViz(t);
   }
   keepHolo($('#trackBody'), h);
   tint($('#trackBody'), cover, (albumTitle || t.title) + t.artist);
@@ -3479,6 +3545,7 @@ function renderAlbum() {
     const songs = a.dzInfo && !a.dzInfo.error && a.dzInfo.tracks ? a.dzInfo.tracks.length : 0;
     if (songs) h += `<p class="hint center">Plays count songs, not whole albums: ${num(a.plays)} song plays are about ${a.plays >= songs ? `${num(Math.round(a.plays / songs))} times` : 'less than once'} through its ${plural(songs, 'song')}.</p>`;
     const tl = a.trackList || [];
+    h += trackShapeViz(a);
     const tracklist = tracklistHtml(a, cover);
     if (tracklist) h += tracklist;
     else if (tl.length) {
@@ -3487,11 +3554,120 @@ function renderAlbum() {
         `<button class="r" ${trackAttrs(a.artist, x.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
     }
     h += vsBlock(a.global, 'it');
+    h += clickedViz(a);
     h += lifeCharts(a, 'it', cover, a.title + a.artist);
   }
   keepHolo($('#albumBody'), h);
   tint($('#albumBody'), cover, a.title + a.artist);
 }
+
+// ---- album and song pages: the album's shape for you, when it clicked, where a song sits, its runs on repeat ----
+
+/** Your plays of each song of the album, in its order (Deezer's tracklist): [{ title, plays }]. */
+function albumShape(a) {
+  const dz = a.dzInfo && !a.dzInfo.error ? a.dzInfo : null;
+  if (!dz || !dz.tracks) return [];
+  const plays = {};
+  (a.trackList || []).forEach((t) => { plays[looseKey(t.title)] = (plays[looseKey(t.title)] || 0) + t.plays; });
+  return dz.tracks.map((t) => ({ title: t.title, plays: plays[looseKey(t.title)] || 0 }));
+}
+/** Track by track: a column per song in the album's order, the favorite in full color. */
+function trackShapeViz(a) {
+  const s = albumShape(a);
+  const total = s.reduce((n, x) => n + x.plays, 0);
+  if (s.length < 3 || total < 5) return '';
+  const max = Math.max(...s.map((x) => x.plays));
+  const fav = s.findIndex((x) => x.plays === max);
+  const never = s.filter((x) => !x.plays).length;
+  const half = Math.floor(s.length / 2);
+  const front = s.slice(0, half).reduce((n, x) => n + x.plays, 0), back = s.slice(s.length - half).reduce((n, x) => n + x.plays, 0);
+  const lean = front >= back * 1.6 ? 'you play its first half far more than its second'
+    : back >= front * 1.6 ? 'you play its second half more than its first'
+      : never ? (never === 1 ? 'one song you\'ve never played' : `${never} songs you've never played`) : 'you\'ve played every song on it';
+  const step = s.length > 16 ? 5 : 1;
+  return `<div class="viz"><h2>Track by track</h2><span class="sub">Your plays of each song, in the album's order: its shape for you</span>
+    <div class="shape">${s.map((x, i) => `<span data-col="tt" data-i="${i}"${i === fav ? ' class="top"' : ''}><i style="height:${x.plays ? (6 + (x.plays / max) * 94).toFixed(1) : 0}%"${x.plays ? '' : ' class="none"'}></i></span>`).join('')}</div>
+    <div class="shape-n">${s.map((x, i) => `<span>${(i + 1) % step === 0 || i === 0 ? i + 1 : ''}</span>`).join('')}</div>
+    <div class="readout"><b>${esc(s[fav].title)}</b> (${fav + 1}) is your favorite, ${plural(max, 'play')}; ${lean}.</div></div>`;
+}
+const shapeText = (a, i) => { const x = albumShape(a)[i]; return x ? `${i + 1}. <b>${esc(x.title)}</b>: ${x.plays ? plural(x.plays, 'play') : 'never played'}` : ''; };
+
+/** The week [i] weeks after the one of [from] (calendar days, so a DST change doesn't move it). */
+const weekAfter = (from, i) => { const d = new Date(from); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + i * 7); };
+/** The first week an album really took off: half its busiest week, three plays at least. */
+function clickWeek(w) {
+  const max = Math.max(...w);
+  return w.findIndex((x) => x >= Math.max(3, max * 0.5));
+}
+/** When it clicked: all your plays of the album added up since the first one, and the week it took off. */
+function clickedViz(a) {
+  const w = a.weeks || [];
+  let c = 0;
+  const cum = w.map((x) => (c += x));
+  if (w.length < 6 || c < 12) return '';
+  const k = clickWeek(w);
+  const W = 320, H = 120, n = w.length;
+  const x = (i) => (i / (n - 1)) * W, y = (v) => H - 3 - (v / c) * (H - 12);
+  const line = smoothPath(cum.map((v, i) => [x(i), y(v)]));
+  const id = `cg${++svgSeq}`;
+  const when = (i) => weekAfter(a.weeksFrom, i).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  const span = k < 9 ? plural(k, 'week') : plural(Math.round(k / 4.35), 'month');
+  const sub = k <= 1 ? `It clicked right away: <b>${plural(w[0] + (k === 1 ? w[1] : 0), 'play')}</b> in its first ${k ? 'two weeks' : 'week'}.`
+    : `It sat for ${span} after your first play (${plural(cum[k] - w[k], 'play')}), then <b>${plural(w[k], 'play')}</b> in the week of ${esc(when(k))}.`;
+  const px = (x(k) / W) * 100, py = (y(cum[k]) / H) * 100;
+  const step = Math.max(1, Math.ceil(n / 4));
+  return `<div class="viz"><h2>When it clicked</h2><span class="sub">All your plays added up, week by week since the first one</span>
+    <div class="area">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tint);stop-opacity:.4"/><stop offset="1" style="stop-color:var(--tint);stop-opacity:0"/></linearGradient></defs>
+        <path d="${line} L${W},${H} L0,${H} Z" fill="url(#${id})"/>
+        <path d="${line}" fill="none" style="stroke:var(--tint)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <i class="peak" style="left:${px}%;top:${py}%"></i>
+      <span class="peak-label${px > 62 ? ' end' : px < 20 ? ' start' : ''}" style="left:${px}%;top:${py}%">${k <= 1 ? 'right away' : `clicked: ${esc(weekAfter(a.weeksFrom, k).toLocaleDateString([], { month: 'short', year: 'numeric' }))}`}</span>
+      <div class="hits">${w.map((v, i) => `<div data-col="ck" data-i="${i}"></div>`).join('')}</div>
+    </div>
+    <div class="xl">${w.map((v, i) => i).filter((i) => i % step === 0).map((i) => `<span>${esc(weekAfter(a.weeksFrom, i).toLocaleDateString([], { month: 'short', year: '2-digit' }))}</span>`).join('')}</div>
+    <div class="readout">${sub}</div></div>`;
+}
+function clickedText(a, i) {
+  const w = a.weeks || [];
+  const cum = w.slice(0, i + 1).reduce((n, v) => n + v, 0);
+  return `Week of ${esc(weekAfter(a.weeksFrom, i).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }))}: <b>${plural(w[i] || 0, 'play')}</b>, ${num(cum)} in all by then`;
+}
+
+/** Where it sits: how often a song opens your listening sessions, sits in their middle or closes them. */
+function sitsViz(t) {
+  const s = t.sits;
+  const n = s ? s.open + s.middle + s.close : 0;
+  if (n < 5) return '';
+  const open = s.open / n, close = s.close / n;
+  const sub = open >= Math.max(0.15, 2 * s.baseOpen) ? `<b>Often your opener</b>: ${pct(open)} of its plays start a listening session; a song usually does ${pct(s.baseOpen)}.`
+    : close >= Math.max(0.15, 2 * s.baseClose) ? `<b>Often your closer</b>: ${pct(close)} of its plays end a listening session; a song usually does ${pct(s.baseClose)}.`
+      : 'Mostly <b>somewhere in the middle</b> of a listening session.';
+  const row = (label, v, base, on) => `<div class="sit${on ? ' on' : ''}"><span>${label}</span><span class="sbar"><i style="width:${(v * 100).toFixed(1)}%"></i>${base != null ? `<b style="left:${(base * 100).toFixed(1)}%" title="a song usually"></b>` : ''}</span><span class="v">${pct(v)}</span></div>`;
+  const most = Math.max(open, close, s.middle / n);
+  return `<div class="viz"><h2>Where it sits</h2><span class="sub">In your listening sessions (a break of half an hour ends one); the tick: any song</span>
+    <div class="sits">${row('Opener', open, s.baseOpen, open === most)}${row('In the middle', s.middle / n, null, s.middle / n === most)}${row('Closer', close, s.baseClose, close === most)}</div>
+    <div class="readout">${sub}${s.alone ? ` ${plural(s.alone, 'time')} it was all you played.` : ''}</div></div>`;
+}
+
+const RUNS_SHOWN = 40;
+/** Repeat runs: each time it played back to back, a column of its plays in a row (the latest 40). */
+function repeatViz(t) {
+  const runs = t.runs || [];
+  if (!runs.length) return '';
+  const best = runs.reduce((m, r) => (r.n > m.n ? r : m));
+  const days = new Set(runs.map((r) => new Date(r.at).toDateString())).size;
+  const shown = runs.slice(-RUNS_SHOWN);
+  const tall = Math.min(12, Math.max(...shown.map((r) => r.n)));
+  const sub = runs.length === 1 ? `<b>${best.n} times in a row</b> on ${esc(dateLabel(best.at))}.`
+    : `<b>${best.n} times in a row</b> on ${esc(dateLabel(best.at))}, your longest; on repeat on ${plural(days, 'day')}.`;
+  return `<div class="viz"><h2>Repeat runs</h2><span class="sub">Each time it played back to back${runs.length > RUNS_SHOWN ? ` (the latest ${RUNS_SHOWN})` : ''}: one block per play</span>
+    <div class="runs" style="--rows:${tall}">${shown.map((r, i) => `<span data-col="rr" data-i="${i}"${r.n === best.n ? ' class="top"' : ''}>${'<i></i>'.repeat(Math.min(r.n, 12))}${r.n > 12 ? `<em>${r.n}</em>` : ''}</span>`).join('')}</div>
+    <div class="readout">${sub}</div></div>`;
+}
+const runText = (t, i) => { const r = (t.runs || []).slice(-RUNS_SHOWN)[i]; return r ? `${esc(dateLabel(r.at))}: <b>${r.n} times in a row</b>` : ''; };
 
 // ---- the atlas: your artists as a universe, how you found them, the landscape of your top ones ----
 
@@ -4773,6 +4949,9 @@ function onVizPointer(e, data) {
     d.setMonth(d.getMonth() + i);
     col.closest('.viz').querySelector('.readout').innerHTML = `${esc(d.toLocaleDateString([], { month: 'long', year: 'numeric' }))}: <b>${plural(data.months[i], 'play')}</b>`;
   } else if (col.dataset.col === 'ah') col.closest('.viz').querySelector('.readout').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
+  else if (col.dataset.col === 'tt') col.closest('.viz').querySelector('.readout').innerHTML = shapeText(data, i);
+  else if (col.dataset.col === 'ck') col.closest('.viz').querySelector('.readout').innerHTML = clickedText(data, i);
+  else if (col.dataset.col === 'rr') col.closest('.viz').querySelector('.readout').innerHTML = runText(data, i);
   else if (col.dataset.col === 'aw') {
     const g = +col.dataset.g || 1;
     // Calendar days from the first week's Monday, so a DST change doesn't move the dates.

@@ -304,7 +304,15 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .slide .dots2 .avg em { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); white-space: nowrap; }
 
 /* ---- pages over their cover: the picture blurred behind everything (cards and chips: looks.css) ---- */
-.page > .backdrop { display: none; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+/*
+ * Sticky to the page's own scrolling, not fixed to the screen: a page the back swipe moves (a
+ * transform) would turn "fixed" into scrolling with the page, and a page scrolled down lost its
+ * picture for the whole swipe. It takes no room: the page's content starts at its top again.
+ */
+.page > .backdrop { display: none; position: sticky; top: 0; height: 100vh; margin-bottom: -100vh; z-index: 0; overflow: hidden; pointer-events: none; }
+/* Its padding at the bottom goes inside, or the picture would stop short of the bottom at the end of the page. */
+.page.has-backdrop { padding-bottom: 0; }
+.page.has-backdrop > .page-body { padding-bottom: calc(var(--inset-bottom) + 32px); }
 .page.has-backdrop > .backdrop { display: block; }
 /* A layer of its own (stretched the same way always: switching layers changed its blur mid-swipe);
    it goes at once and fades in, so the page never shows the last record's picture fading out. */
@@ -455,8 +463,7 @@ body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none
 html.locked, html.locked body, html.locked-root, html.locked-root body { overflow: hidden; }
 html.locked .page { overflow: hidden; }
 /* Pages keep a layer of their own: made only when a page started to leave, it showed up blank for
-   a frame or two while the phone drew it. (Opacity, not transform: that would carry the page's
-   fixed backdrop off with its scrolling.) */
+   a frame or two while the phone drew it. */
 .page:not([hidden]), .search-page:not([hidden]) { will-change: opacity; }
 /* Under a page being swiped back: what it reveals starts dimmed and lightens as the page goes. */
 .back-shade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }

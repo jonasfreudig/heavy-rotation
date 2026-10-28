@@ -818,6 +818,29 @@ input[type=datetime-local] { color-scheme: inherit; }
 .barcode { display: flex; align-items: stretch; gap: 1px; height: 64px; margin-top: 14px; touch-action: pan-y; }
 .barcode i { flex: 1; min-width: 1px; border-radius: 1px; background: var(--tint); cursor: pointer; }
 .barcode i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+/* Track by track: a column per song (the whole height takes the tap), the favorite in full color. */
+.shape { display: flex; align-items: stretch; gap: 3px; height: 110px; margin-top: 14px; touch-action: pan-y; }
+.shape span { flex: 1; min-width: 2px; display: flex; align-items: flex-end; cursor: pointer; }
+.shape i { width: 100%; border-radius: 4px 4px 1px 1px; background: var(--tint); opacity: .45; }
+.shape i.none { height: 3px !important; opacity: .18; background: var(--md-on-surface); }
+.shape span.top i { opacity: 1; }
+.shape span.sel i { opacity: 1; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+.shape-n { display: flex; gap: 3px; margin-top: 4px; }
+.shape-n span { flex: 1; min-width: 2px; text-align: center; font: 10px var(--mono); color: var(--md-on-surface-variant); }
+/* Where it sits: a bar per place in a session, a tick where any song would be. */
+.sits { display: grid; gap: 10px; margin-top: 14px; }
+.sit { display: grid; grid-template-columns: 100px 1fr 42px; gap: 10px; align-items: center; font-size: 13px; }
+.sit .sbar { position: relative; height: 12px; border-radius: 6px; background: color-mix(in srgb, var(--md-on-surface) 10%, transparent); }
+.sit .sbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--tint); opacity: .45; }
+.sit.on .sbar i { opacity: 1; }
+.sit .sbar b { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--md-on-surface); opacity: .7; }
+.sit .v { font: 12px var(--mono); text-align: right; }
+/* Repeat runs: a column of blocks per run, one block per play in a row. */
+.runs { display: flex; align-items: flex-end; gap: 3px; height: calc(var(--rows) * 7px + 14px); margin-top: 14px; touch-action: pan-y; }
+.runs span { flex: 1; max-width: 16px; min-width: 3px; display: flex; flex-direction: column-reverse; gap: 2px; align-self: stretch; justify-content: flex-start; position: relative; cursor: pointer; }
+.runs i { height: 5px; border-radius: 1.5px; background: var(--tint); opacity: .4; }
+.runs span.top i, .runs span.sel i { opacity: 1; }
+.runs em { position: absolute; top: -2px; left: 50%; transform: translateX(-50%); font: 9px var(--mono); font-style: normal; color: var(--md-on-surface-variant); }
 
 /* Artist header: a framed photo that tilts, and the name as big as it fits */
 .artist-hero { display: flex; align-items: center; gap: 18px; padding: 14px 2px 6px; }

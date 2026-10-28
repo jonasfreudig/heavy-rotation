@@ -868,7 +868,22 @@ const Mock = (() => {
       if (L.t[i] === t && L.t[i + 1] !== t && L.ts[i + 1] - L.ts[i] < 20 * 60e3) next[L.t[i + 1]] = { a: L.a[i + 1], n: ((next[L.t[i + 1]] || {}).n || 0) + 1 };
     }
     const ap = counts(0, L.ts.length, (L2, i) => L2.a[i]);
-    return { ...life, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a],
+    // Where it sits in sessions (half an hour apart) and its runs back to back, as the app works them out.
+    const sits = { open: 0, middle: 0, close: 0, alone: 0 }, all4 = [0, 0, 0, 0], runs = [];
+    let run = 0, runAt = 0;
+    for (let i = 0; i < L.ts.length; i++) {
+      const starts = i === 0 || L.ts[i] - L.ts[i - 1] > 30 * 60e3, ends = i === L.ts.length - 1 || L.ts[i + 1] - L.ts[i] > 30 * 60e3;
+      const at = starts && ends ? 3 : starts ? 0 : ends ? 2 : 1;
+      all4[at]++;
+      if (L.t[i] !== t) continue;
+      sits[['open', 'middle', 'close', 'alone'][at]]++;
+      if (i > 0 && L.t[i - 1] === t && L.ts[i] - L.ts[i - 1] < 20 * 60e3) run++;
+      else { if (run >= 2) runs.push({ n: run, at: runAt }); run = 1; runAt = L.ts[i]; }
+    }
+    if (run >= 2) runs.push({ n: run, at: runAt });
+    const inS = Math.max(1, all4[0] + all4[1] + all4[2]);
+    Object.assign(sits, { baseOpen: all4[0] / inS, baseClose: all4[2] / inS });
+    return { ...life, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a], sits, runs,
       range: { ...r, plays: c[t] || 0, rank: rankIn(c, t) },
       next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
       album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },

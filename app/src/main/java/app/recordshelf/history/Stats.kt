@@ -1667,7 +1667,11 @@ class Stats(
     /** Rank (1 = most) of [x] among [counts], and how many have any. */
     private fun rank(counts: IntArray, x: Int) = if (counts[x] > 0) counts.count { it > counts[x] } + 1 else 0
 
-    /** One song: its life in plays, rank, the album it's on, and what you tend to play right after it. */
+    /**
+     * One song: its life in plays, rank, the album it's on, what you tend to play right after it,
+     * where in a listening session it sits (opener, middle, closer, against how often any song
+     * does) and its runs on repeat (back to back, within 20 minutes of each other).
+     */
     fun track(artist: String, title: String, r: Range): JSONObject? {
         val t = findTrack(artist, title)
         if (t < 0) return null
@@ -1678,19 +1682,43 @@ class Stats(
         val inRange = IntArray(h.trackTitles.size)
         var artistPlays = 0
         val next = HashMap<Int, Int>()
+        // Where plays sit in their session: [opener, middle, closer, alone], for this song and for every play.
+        val sits = IntArray(4)
+        val sitsAll = IntArray(4)
+        val runs = JSONArray()
+        var run = 0
+        var runAt = 0L
         for (i in 0 until h.size) {
             all[h.track[i]]++
             if (i in i0 until i1) inRange[h.track[i]]++
             if (h.artist[i] == h.trackArtist[t]) artistPlays++
             // What followed it within 20 minutes, not counting repeats.
             if (h.track[i] == t && i + 1 < h.size && h.track[i + 1] != t && h.ts[i + 1] - h.ts[i] < 1200) next.merge(h.track[i + 1], 1, Int::plus)
+            val starts = i == 0 || h.ts[i] - h.ts[i - 1] > SESSION_GAP
+            val ends = i == h.size - 1 || h.ts[i + 1] - h.ts[i] > SESSION_GAP
+            val at = if (starts && ends) 3 else if (starts) 0 else if (ends) 2 else 1
+            sitsAll[at]++
+            if (h.track[i] != t) continue
+            sits[at]++
+            if (i > 0 && h.track[i - 1] == t && h.ts[i] - h.ts[i - 1] < 1200) {
+                run++
+            } else {
+                if (run >= 2) runs.put(JSONObject().put("n", run).put("at", runAt * 1000))
+                run = 1
+                runAt = h.ts[i]
+            }
         }
+        if (run >= 2) runs.put(JSONObject().put("n", run).put("at", runAt * 1000))
+        val inSessions = maxOf(1, sitsAll[0] + sitsAll[1] + sitsAll[2])
         val al = trackAlbum[t]
         o.put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
             .put("rank", rank(all, t)).put("tracks", all.count { it > 0 })
             .put("shareOfArtist", all[t].toDouble() / maxOf(1, artistPlays))
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[t]).put("rank", rank(inRange, t)))
             .put("next", JSONArray(next.entries.sortedByDescending { it.value }.take(5).map { (n, c) -> JSONObject().put("title", h.trackTitles[n]).put("artist", h.artistNames[h.trackArtist[n]]).put("count", c) }))
+            .put("sits", JSONObject().put("open", sits[0]).put("middle", sits[1]).put("close", sits[2]).put("alone", sits[3])
+                .put("baseOpen", sitsAll[0].toDouble() / inSessions).put("baseClose", sitsAll[2].toDouble() / inSessions))
+            .put("runs", runs)
         if (al >= 0) o.put("album", albumJson(al))
         val artistName = h.artistNames[h.trackArtist[t]]
         globals.track(artistName, h.trackTitles[t])?.let { o.put("global", vsJson(all[t], it)) }
