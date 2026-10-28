@@ -1001,6 +1001,8 @@ button.listen-line { width: 100%; text-align: left; color: inherit; }
 .tags .chip.link { height: 28px; padding: 0 12px; font-size: 13px; }
 .chips.everyone { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chips.everyone .chip small.n { margin-left: 6px; opacity: .7; font-size: 11px; }
+.g-also { margin-top: 14px; }
+.g-also .sub { margin-bottom: 0; }
 
 /* You vs everyone */
 .vs-card { width: 100%; text-align: left; color: inherit; }

@@ -115,7 +115,7 @@ class StatsTest {
     }
 
     @Test
-    fun genresPreferDiscogsThenLastfmTags() {
+    fun genresComeFromDiscogsAndLastfmTags() {
         val collection = listOf(item(1, "Fleetwood Mac", "Rumours", listOf("Pop Rock", "Soft Rock")))
         val genres = Genres(collection, mapOf(Genres.artistKey("Khruangbin") to listOf("psychedelic rock", "funk")))
         assertEquals("both styles are rock", listOf("rock") to Genres.Source.DISCOGS, genres.of("Fleetwood Mac", app.recordshelf.util.Text.albumKey("Fleetwood Mac", "Rumours")))
@@ -123,8 +123,6 @@ class StatsTest {
         assertEquals("other albums by an artist you own", Genres.Source.DISCOGS, genres.of("Fleetwood Mac", "fleetwood mac|tusk").second)
         assertEquals(Genres.Source.LASTFM, genres.of("Khruangbin", null).second)
         assertEquals(Genres.Source.NONE, genres.of("Nobody", null).second)
-        assertTrue(genres.knowsFromDiscogs("Fleetwood Mac"))
-        assertFalse(genres.knowsFromDiscogs("Khruangbin"))
     }
 
     @Test
@@ -157,7 +155,7 @@ class StatsTest {
             "seen live" to 100, "trip-hop" to 90, "british" to 80, "90s" to 70, "Electronic" to 60, "Portishead" to 50,
             "downtempo" to 40, "female vocalists" to 30, "chillout" to 5,
         )
-        assertEquals(listOf("trip hop", "electronic", "downtempo"), Genres.fromTags(tags, "Portishead"))
+        assertEquals(listOf("v2", "90:trip hop", "60:electronic", "40:downtempo"), Genres.fromTags(tags, "Portishead"))
         assertEquals("Trip Hop", Genres.label("trip hop"))
         assertEquals("trip hop", Genres.key("Trip-Hop"))
     }

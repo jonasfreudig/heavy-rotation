@@ -5,62 +5,84 @@ import app.recordshelf.util.Text
 
 /**
  * Genres for scrobbles, in one vocabulary for all music: a couple of dozen families (see
- * [FAMILIES]) that both sources are sorted into. Records you own get their Discogs styles (the
- * most precise source); other music by an artist you own records of gets that artist's usual
- * styles; everything else uses the artist's Last.fm tags, cleaned of non-genres like "seen
- * live". "Indie", "Indie Rock" and "Garage Rock Revival" all land in Indie & Alternative.
+ * [FAMILIES]) that both sources are sorted into, then weighed together. A record you own brings
+ * its Discogs styles, each read within the record's Discogs genres ("Psychedelic" on a Funk /
+ * Soul record is psychedelic soul, not rock); the artist's other records on your shelf count a
+ * little; the artist's Last.fm tags, cleaned of non-genres like "seen live", count as much as the
+ * record. The family with the most weight is the scrobble's genre: one source's slip (Discogs
+ * filing a jazz record under Hip Hop for its guest rappers) doesn't decide it alone.
+ * "Indie", "Indie Rock" and "Garage Rock Revival" all land in Indie & Alternative.
  *
  * Inside each family, the styles and tags themselves are its subgenres ("indie:shoegaze"): a
- * scrobble's subgenre is the first specific one in its family ("Rock" or "Indie" alone tell none).
+ * scrobble's subgenre is its weightiest specific one in its family ("Rock" or "Indie" alone tell none).
  */
-class Genres(collection: List<CollectionItem>, private val artistTags: Map<String, List<String>>) {
+class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<String>>) {
     enum class Source { DISCOGS, LASTFM, NONE }
 
-    /** A scrobble's genre in detail: its family, its style in that family ("" if none is told), and the source. */
+    /** A scrobble's genre in detail: its family, its style in that family ("" if none is told), and the source most of it came from. */
     class Detail(val family: String, val style: String, val source: Source)
 
-    /** (family, style) pairs of each record and of each artist you own records of, best first. */
-    private val byAlbum = HashMap<String, List<Pair<String, String>>>()
-    private val byArtist = HashMap<String, List<Pair<String, String>>>()
+    /** Weighed (family, style) pairs, each set summing to 1: of each record, of each artist you own records of, of each artist's Last.fm tags. */
+    private val byAlbum = HashMap<String, Map<Pair<String, String>, Double>>()
+    private val byArtist = HashMap<String, Map<Pair<String, String>, Double>>()
+    private val byTags = HashMap<String, Map<Pair<String, String>, Double>>()
 
     /** How Discogs spells the styles on your shelf ("Post-Punk"), by [key]. */
     private val spelling = HashMap<String, String>()
 
     init {
-        val artistCounts = HashMap<String, HashMap<Pair<String, String>, Int>>()
+        val artistSums = LinkedHashMap<String, LinkedHashMap<Pair<String, String>, Double>>()
         for (c in collection) {
-            val names = c.styles + c.genres
-            names.forEach { spelling.putIfAbsent(key(it), it) }
-            val p = pairs(names)
-            if (p.isEmpty()) continue
-            byAlbum[Text.albumKey(c.artist, c.title)] = p
-            val counts = artistCounts.getOrPut(artistKey(c.artist)) { HashMap() }
-            p.forEachIndexed { i, s -> counts[s] = (counts[s] ?: 0) + (p.size - i) }
+            (c.styles + c.genres).forEach { spelling.putIfAbsent(key(it), it) }
+            val v = votes(discogs(c.styles, c.genres)) ?: continue
+            byAlbum[Text.albumKey(c.artist, c.title)] = v
+            val sums = artistSums.getOrPut(artistKey(c.artist)) { LinkedHashMap() }
+            v.forEach { (p, w) -> sums.merge(p, w, Double::plus) }
         }
-        for ((a, counts) in artistCounts) byArtist[a] = counts.entries.sortedByDescending { it.value }.map { it.key }.take(6)
+        for ((a, sums) in artistSums) votes(sums.toList())?.let { byArtist[a] = it }
+        for ((a, kept) in artistTags) votes(tagVotes(readTags(kept)))?.let { byTags[a] = it }
     }
 
-    private fun pairsOf(artist: String, albumKey: String?): Pair<List<Pair<String, String>>, Source> {
-        albumKey?.let { k -> byAlbum[k]?.let { return it to Source.DISCOGS } }
+    /** All that is known of an artist/album: families by weight, best first, the weight of each (family, style), and each family's main source. */
+    private class Tally(val families: List<Pair<String, Double>>, val styles: Map<Pair<String, String>, Double>, val source: (String) -> Source)
+
+    private fun tally(artist: String, albumKey: String?): Tally? {
         val a = artistKey(artist)
-        byArtist[a]?.let { return it to Source.DISCOGS }
-        artistTags[a]?.let { pairs(it) }?.takeIf { it.isNotEmpty() }?.let { return it to Source.LASTFM }
-        return emptyList<Pair<String, String>>() to Source.NONE
+        val parts = listOfNotNull(
+            albumKey?.let { byAlbum[it] }?.let { Triple(it, RECORD_SHARE, Source.DISCOGS) },
+            byArtist[a]?.let { Triple(it, SHELF_SHARE, Source.DISCOGS) },
+            byTags[a]?.let { Triple(it, TAGS_SHARE, Source.LASTFM) },
+        )
+        if (parts.isEmpty()) return null
+        val total = parts.sumOf { it.second }
+        val styles = LinkedHashMap<Pair<String, String>, Double>()
+        val fams = LinkedHashMap<String, Double>()
+        val bySource = HashMap<Pair<String, Source>, Double>()
+        for ((v, share, src) in parts) for ((p, w) in v) {
+            val x = w * share / total
+            styles.merge(p, x, Double::plus)
+            fams.merge(p.first, x, Double::plus)
+            bySource.merge(p.first to src, x, Double::plus)
+        }
+        return Tally(fams.entries.sortedByDescending { it.value }.map { it.key to it.value }, styles) { f ->
+            if ((bySource[f to Source.DISCOGS] ?: 0.0) >= (bySource[f to Source.LASTFM] ?: 0.0)) Source.DISCOGS else Source.LASTFM
+        }
     }
 
-    /** Genre families (keys of [FAMILIES]) for an artist/album, best first, and where they came from. */
-    fun of(artist: String, albumKey: String?): Pair<List<String>, Source> =
-        pairsOf(artist, albumKey).let { (p, s) -> p.map { it.first }.distinct() to s }
+    /** Genre families (keys of [FAMILIES]) for an artist/album, best first (the minor ones left out), and where the first came from. */
+    fun of(artist: String, albumKey: String?): Pair<List<String>, Source> {
+        val t = tally(artist, albumKey) ?: return emptyList<String>() to Source.NONE
+        val (best, top) = t.families.first()
+        return t.families.filter { it.second >= maxOf(top * SHOWN, SHOWN_MIN) }.map { it.first } to t.source(best)
+    }
 
     /** The main family of an artist/album and its style in that family; null if nothing is known. */
     fun detail(artist: String, albumKey: String?): Detail? {
-        val (p, s) = pairsOf(artist, albumKey)
-        val f = p.firstOrNull()?.first ?: return null
-        return Detail(f, p.firstOrNull { it.first == f && it.second !in GENERIC && it.second != f }?.second.orEmpty(), s)
+        val t = tally(artist, albumKey) ?: return null
+        val f = t.families.first().first
+        val style = t.styles.entries.filter { it.key.first == f && it.key.second !in GENERIC && it.key.second != f }.maxByOrNull { it.value }
+        return Detail(f, style?.key?.second.orEmpty(), t.source(f))
     }
-
-    /** Whether Discogs already tells this artist's genres (no Last.fm lookup needed). */
-    fun knowsFromDiscogs(artist: String) = byArtist.containsKey(artistKey(artist))
 
     /** A style's name, as Discogs spells it on your shelf when it does ("Post-Punk"), else tidied. */
     fun styleLabel(style: String): String = spelling[style] ?: PRETTY[style]
@@ -71,11 +93,20 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
 
     /** Whether your record [c] is in the family or subgenre [key] (as [resolve] gives it). */
     fun owns(c: CollectionItem, key: String): Boolean {
-        val p = pairs(c.styles + c.genres)
+        val p = discogs(c.styles, c.genres).map { it.first }
         return if (':' in key) p.any { "${it.first}:${it.second}" == key } else p.any { it.first == key }
     }
 
     companion object {
+        /** How much each source weighs: the record itself, the artist's records on your shelf, the artist's Last.fm tags. */
+        private const val RECORD_SHARE = 2.0
+        private const val SHELF_SHARE = 1.0
+        private const val TAGS_SHARE = 2.0
+
+        /** An artist/album's other families show beside its main one from this share of the main one's weight (and this much of all). */
+        private const val SHOWN = 0.25
+        private const val SHOWN_MIN = 0.1
+
         private val NOT_GENRES = setOf(
             "seen live", "favorites", "favourites", "favorite", "favourite", "my favorite", "my favourite", "love", "loved",
             "awesome", "beautiful", "albums i own", "spotify", "under 2000 listeners", "check out", "good", "cool", "amazing",
@@ -93,6 +124,15 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "reggae", "latin", "world", "world music", "soundtrack", "stage & screen", "experimental", "synth", "electro",
         )
 
+        /**
+         * Words for a sound more than a genre ("psychedelic" funk, "experimental" jazz, a "piano" ballad): they count only
+         * when nothing else on the record or among the tags names a genre, else they'd pull a jazz band into rock.
+         */
+        private val SOUNDS = setOf(
+            "psychedelic", "psych", "experimental", "avant garde", "avantgarde", "progressive", "acoustic", "chill", "chillout",
+            "chill out", "lounge", "minimal", "atmospheric", "piano", "vocal", "ballad", "beat", "abstract", "dance", "easy listening",
+        )
+
         /** Names the plain capitalizing gets wrong. */
         private val PRETTY = mapOf(
             "post punk" to "Post-Punk", "post rock" to "Post-Rock", "post hardcore" to "Post-Hardcore", "lo fi" to "Lo-Fi",
@@ -100,10 +140,73 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "post punk revival" to "Post-Punk Revival", "dance punk" to "Dance-Punk", "art punk" to "Art Punk", "idm" to "IDM",
             "edm" to "EDM", "uk garage" to "UK Garage", "ebm" to "EBM", "new wave" to "New Wave", "mpb" to "MPB", "aor" to "AOR",
             "singer songwriter" to "Singer-Songwriter", "neo soul" to "Neo-Soul", "nu disco" to "Nu-Disco", "alt country" to "Alt-Country",
+            "hard bop" to "Hard Bop", "post bop" to "Post-Bop", "g funk" to "G-Funk", "hi nrg" to "Hi-NRG",
         )
 
-        /** The (family, style) pairs of [names] (styles or tags, best first), each once. */
-        fun pairs(names: List<String>): List<Pair<String, String>> = names.mapNotNull { n -> family(n)?.let { it to key(n) } }.distinct()
+        /**
+         * Discogs' genres, by [key], with the families their styles may fall in: a style read as some other family
+         * (its words mislead: "Psychedelic" is a Funk / Soul style too) goes in the first. From Discogs' own list of
+         * styles per genre (see the tests).
+         */
+        private val DISCOGS = mapOf(
+            "rock" to listOf("rock", "indie", "punk", "metal", "synth", "pop", "folk", "country", "ambient", "electronic", "reggae", "soul"),
+            "electronic" to listOf("dance", "electronic", "ambient", "synth", "hiphop", "indie", "pop", "jazz", "classical", "reggae", "latin", "folk"),
+            "funk soul" to listOf("soul", "rnb", "dance", "global"),
+            "hip hop" to listOf("hiphop", "rnb", "electronic", "dance"),
+            "jazz" to listOf("jazz", "latin", "global", "pop"),
+            "blues" to listOf("blues"),
+            "pop" to listOf("pop", "indie", "synth", "global"),
+            "folk, world, & country" to listOf("global", "folk", "country", "latin", "classical", "soul"),
+            "latin" to listOf("latin"),
+            "reggae" to listOf("reggae"),
+            "classical" to listOf("classical"),
+            "stage & screen" to listOf("soundtrack"),
+        )
+
+        /** Discogs' genres for what isn't music (or no genre of it): their styles get no family. */
+        private val NOT_MUSIC = setOf("non music", "children's", "brass & military")
+
+        /**
+         * The weighed (family, style) pairs of a Discogs record: each style read within the record's genres (a style no
+         * word of which tells a family goes in the record's genre, when it has just one), then the genres at half weight.
+         */
+        fun discogs(styles: List<String>, genres: List<String>): List<Pair<Pair<String, String>, Double>> {
+            val gk = genres.map { key(it) }
+            val within = gk.mapNotNull { DISCOGS[it] }
+            val music = gk.none { it in NOT_MUSIC }
+            val named = styles.map { key(it) to family(it) }
+            val plain = named.any { (k, f) -> f != null && k !in SOUNDS }
+            val out = ArrayList<Pair<Pair<String, String>, Double>>()
+            named.forEachIndexed { i, (k, f) ->
+                if (plain && k in SOUNDS) return@forEachIndexed
+                val fam = when {
+                    within.isEmpty() -> f
+                    f != null && within.any { f in it } -> f
+                    f != null || (within.size == 1 && music) -> within.first().first()
+                    else -> null
+                } ?: return@forEachIndexed
+                out += (fam to k) to maxOf(0.7, 1.0 - 0.05 * i)
+            }
+            gk.forEach { k -> family(k)?.let { out += (it to k) to 0.5 } }
+            return out
+        }
+
+        /** The weighed (family, tag) pairs of an artist's Last.fm tags (tag, weight 0..100). */
+        private fun tagVotes(tags: List<Pair<String, Int>>): List<Pair<Pair<String, String>, Double>> {
+            val named = tags.mapNotNull { (k, w) -> family(k)?.let { Triple(it, k, w) } }
+            val plain = named.any { it.second !in SOUNDS }
+            return named.filter { !plain || it.second !in SOUNDS }.map { (f, k, w) -> (f to k) to w / 100.0 }
+        }
+
+        /** [pairs] merged and scaled to sum 1; null if there are none. */
+        private fun votes(pairs: List<Pair<Pair<String, String>, Double>>): Map<Pair<String, String>, Double>? {
+            val m = LinkedHashMap<Pair<String, String>, Double>()
+            pairs.forEach { (p, w) -> m.merge(p, w, Double::plus) }
+            val sum = m.values.sum()
+            if (sum <= 0.0) return null
+            for (e in m.entries) e.setValue(e.value / sum)
+            return m
+        }
 
         /**
          * One spelling per genre: "Trip-Hop", "trip hop" and "Trip Hop" are all "trip hop", and so is
@@ -126,7 +229,8 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "shoegazer" to "shoegaze", "shoegazing" to "shoegaze", "alt rock" to "alternative rock", "neosoul" to "neo soul",
             "nudisco" to "nu disco", "kpop" to "k pop", "jpop" to "j pop", "afro beat" to "afrobeat", "goth rock" to "gothic rock",
             "drum n bass" to "drum and bass", "drum & bass" to "drum and bass", "d&b" to "drum and bass", "dnb" to "drum and bass",
-            "deutsch rap" to "deutschrap",
+            "deutsch rap" to "deutschrap", "brit pop" to "britpop", "powerviolence" to "power violence", "postbop" to "post bop",
+            "hardbop" to "hard bop", "gfunk" to "g funk", "hinrg" to "hi nrg",
         )
 
         fun label(key: String) = FAMILIES[key] ?: key.split(' ').joinToString(" ") { w -> if (w == "and" || w == "n") w else w.replaceFirstChar { it.uppercase() } }
@@ -149,7 +253,7 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "italo disco" to "synth", "ebm" to "synth", "darkwave" to "synth", "coldwave" to "synth", "minimal wave" to "synth",
             "synthwave" to "synth", "retrowave" to "synth", "outrun" to "synth", "new wave" to "synth",
             // Scenes that grew out of post-punk, whatever their names say.
-            "crank wave" to "punk", "no wave" to "punk", "gothic rock" to "punk", "goth" to "punk", "deathrock" to "punk",
+            "crank wave" to "punk", "no wave" to "punk", "gothic rock" to "punk", "goth" to "punk", "gothic" to "punk", "deathrock" to "punk",
             "riot grrrl" to "punk",
             "vaporwave" to "electronic", "witch house" to "electronic", "electro swing" to "electronic",
             "bedroom pop" to "indie", "new rave" to "indie", "baggy" to "indie", "sadcore" to "indie", "hamburger schule" to "indie",
@@ -178,6 +282,24 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "visual kei" to "rock", "red dirt" to "country", "zydeco" to "country", "polka" to "folk", "volksmusik" to "folk",
             "shanty" to "folk", "sea shanty" to "folk", "cantautore" to "folk", "cantautor" to "folk",
             "quiet storm" to "rnb", "doo wop" to "soul", "lovers rock" to "reggae",
+            // Discogs' own styles whose words mislead or tell nothing (all of them are checked in the tests).
+            "boogie woogie" to "blues", "fusion" to "jazz", "modal" to "jazz", "free improvisation" to "jazz",
+            "swingbeat" to "rnb", "rnb swing" to "rnb", "g funk" to "hiphop", "bounce" to "hiphop", "crunk" to "hiphop",
+            "gangsta" to "hiphop", "horrorcore" to "hiphop", "miami bass" to "hiphop", "screw" to "hiphop", "chopped and screwed" to "hiphop",
+            "turntablism" to "hiphop", "conscious" to "hiphop", "britcore" to "hiphop", "cut up dj" to "hiphop", "dj battle tool" to "hiphop",
+            "breaks" to "electronic", "progressive breaks" to "electronic", "broken beat" to "electronic", "berlin school" to "electronic",
+            "illbient" to "electronic", "rhythmic noise" to "electronic", "italodance" to "dance", "dungeon synth" to "ambient",
+            "hi nrg" to "dance", "hands up" to "dance", "jumpstyle" to "dance", "makina" to "dance", "schranz" to "dance",
+            "speedcore" to "dance", "new beat" to "dance", "bassline" to "dance",
+            "symphonic rock" to "rock", "psychobilly" to "rock", "crust" to "punk", "melodic hardcore" to "punk", "power violence" to "punk",
+            "goregrind" to "metal", "pornogrind" to "metal", "noisecore" to "metal", "thrash" to "metal", "ye ye" to "pop",
+            "bolero" to "latin", "mambo" to "latin", "cha cha" to "latin", "son montuno" to "latin", "descarga" to "latin",
+            "boogaloo" to "latin", "rumba" to "latin", "guaguanco" to "latin", "guajira" to "latin", "guaracha" to "latin",
+            "pachanga" to "latin", "charanga" to "latin", "porro" to "latin", "compas" to "latin", "baiao" to "latin",
+            "batucada" to "latin", "beguine" to "latin", "cubano" to "latin", "nueva cancion" to "latin",
+            "hillbilly" to "country", "cajun" to "country", "nordic" to "folk", "laiko" to "global", "romani" to "global",
+            "sega" to "global", "entekhno" to "global", "pacific" to "global",
+            "kayokyoku" to "pop", "light music" to "pop", "music hall" to "pop", "novelty" to "pop", "calypso" to "reggae", "soca" to "reggae",
             "pop rock" to "rock", "soft rock" to "rock", "blues rock" to "rock", "hard rock" to "rock", "art rock" to "rock",
             "experimental rock" to "rock", "beat" to "rock", "mod" to "rock", "aor" to "rock", "classic rock" to "rock",
             "noise rock" to "punk", "hardcore" to "punk", "emo" to "punk", "screamo" to "punk", "oi" to "punk",
@@ -198,7 +320,7 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "metal" to Regex("metal|grindcore|deathcore|djent"),
             "punk" to Regex("punk|post hardcore|\\bemo\\b"),
             "dance" to Regex("house|techno|trance|drum (and|n) bass|\\bdnb\\b|dubstep|disco|\\bdance\\b|hardstyle|eurodance|big beat"),
-            "jazz" to Regex("jazz|swing|bebop|big band"),
+            "jazz" to Regex("jazz|\\bswing\\b|\\bbop\\b|bebop|big band|dixieland|ragtime"),
             "blues" to Regex("blues"),
             "folk" to Regex("folk"),
             "country" to Regex("country|honky tonk"),
@@ -225,9 +347,6 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             return RULES.firstOrNull { it.second.containsMatchIn(k) }?.first
         }
 
-        /** The families of [names] (styles or tags, best first), each once, best first. */
-        fun families(names: List<String>): List<String> = names.mapNotNull { family(it) }.distinct()
-
         /**
          * The family or subgenre a key from anywhere stands for: a family, a family's name, a
          * subgenre ("indie:shoegaze"), or a style or tag ("Post-Punk" is "punk:post punk", "Rock" is "rock").
@@ -243,16 +362,33 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
 
         fun artistKey(artist: String) = Text.norm(artist)
 
-        /** Up to three genre keys from an artist's Last.fm tags (name, weight 0..100). */
+        /** The mark before Last.fm tags kept with their weights; older versions kept three, without. */
+        private const val TAGS_V = "v2"
+        private const val TAGS_MAX = 10
+        private const val TAG_MIN = 10
+
+        /**
+         * An artist's Last.fm tags (name, weight 0..100, best first) as they are kept: the genre-like ones, up to
+         * [TAGS_MAX] of them, each as "weight:tag" after the mark [TAGS_V].
+         */
         fun fromTags(tags: List<Pair<String, Int>>, artist: String): List<String> {
             val self = key(artist)
-            return tags.asSequence()
-                .filter { it.second >= 10 }
-                .map { key(it.first) }
-                .filter { it.length in 2..30 && it !in NOT_GENRES && !YEARS.matches(it) && it != self }
-                .distinct()
-                .take(3)
+            return listOf(TAGS_V) + tags.asSequence()
+                .filter { it.second >= TAG_MIN }
+                .map { key(it.first) to it.second }
+                .filter { (k, _) -> k.length in 2..30 && k !in NOT_GENRES && !YEARS.matches(k) && k != self }
+                .distinctBy { it.first }
+                .take(TAGS_MAX)
+                .map { (k, w) -> "$w:$k" }
                 .toList()
         }
+
+        /** Whether kept tags are of this version (with weights): older ones are looked up again. */
+        fun tagsCurrent(kept: List<String>) = kept.firstOrNull() == TAGS_V
+
+        /** Kept tags back as (tag, weight); older ones, best first without weights, get falling ones. */
+        fun readTags(kept: List<String>): List<Pair<String, Int>> =
+            if (tagsCurrent(kept)) kept.drop(1).mapNotNull { e -> e.substringBefore(':').toIntOrNull()?.let { e.substringAfter(':') to it } }
+            else kept.mapIndexed { i, k -> k to maxOf(TAG_MIN, 100 - 30 * i) }
     }
 }

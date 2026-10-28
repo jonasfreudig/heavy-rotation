@@ -1155,6 +1155,8 @@ const Mock = (() => {
       shelf: coll.filter((r, i) => i % 4 === (isSub ? 1 : 0)).slice(0, 5).map((r) => r.id),
       share: plays / L.ts.length, rank: isSub ? 1 : opts.indexOf(fo) + 1,
       artists: order.length, all: order.map((a) => ({ name: L.artists[a], plays: ac[a] })), ...weeksOf(match),
+      also: isSub ? [] : L.artists.map((n, a) => ({ name: n, a })).filter((x) => !order.includes(x.a) && x.a % 5 === 2).slice(0, 5)
+        .map((x) => ({ name: x.name, plays: L.a.filter((y) => y === x.a).length })).filter((x) => x.plays),
       monthsFrom: +new Date(start.getFullYear(), start.getMonth(), 1), months: mArr, hours,
       busiestMonth: { start: +new Date(start.getFullYear(), start.getMonth() + bm, 1), count: mArr[bm] || 0 },
       bestDay: { day: bestDay, count: bestCount },

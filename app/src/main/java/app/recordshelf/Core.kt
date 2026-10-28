@@ -548,14 +548,15 @@ object Core {
                     if (j.optString("photo").isEmpty() && Stats.photoKey(n) !in db.images().keys) historyExec.execute { fetchPhotosInner(listOf(n)) { handle(msg) } }
                     // Everyone's counts on Last.fm, for "you vs everyone"; the page comes again.
                     globalsFor(pageAsks(GlobalAsk.Kind.ARTIST, j), msg)
-                    // No genres (tags are looked up ahead only for your most played): Last.fm's tags for them now.
+                    // No genres (tags are looked up ahead only for your most played): Last.fm's tags for them now,
+                    // weighed with your records of theirs like everywhere else.
                     val c = lastfm()
                     if (c != null && !j.has("missing") && j.optJSONArray("genres")?.length() == 0 && tagsAsked.add(Genres.artistKey(n))) {
                         historyExec.execute {
                             try {
                                 val tags = Genres.fromTags(c.artistTopTags(n), n)
                                 db.saveTags(Genres.artistKey(n), tags)
-                                val families = Genres.families(tags)
+                                val families = Genres(collection, mapOf(Genres.artistKey(n) to tags)).of(n, null).first
                                 if (families.isNotEmpty()) push("onArtist") { JSONObject(j.toString()).put("genres", JSONArray(families.map { Genres.label(it) })) }
                             } catch (_: Exception) {
                                 tagsAsked.remove(Genres.artistKey(n)) // offline: next time
@@ -1813,10 +1814,11 @@ object Core {
             .put("examples", JSONArray((0 until minOf(3, s.length())).map { s.getJSONObject(it).optString("title") }))
     }
 
-    /** Last.fm tags for the most played artists Discogs can't give genres for. On [historyExec]. */
+    /** Last.fm tags for the most played artists (weighed with Discogs' styles for those on your shelf). On [historyExec]. */
     private fun fetchTagsInner(c: LastfmClient) {
         val s = currentStats() ?: return
-        val need = s.artistsNeedingTags(db.tags().keys)
+        // Tags kept by older versions (three, without their weights) are looked up again.
+        val need = s.artistsNeedingTags(db.tags().filterValues { Genres.tagsCurrent(it) }.keys)
         if (need.isEmpty()) return
         tagsTotal = need.size
         tagsDone = 0

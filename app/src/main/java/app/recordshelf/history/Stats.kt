@@ -76,6 +76,7 @@ class Stats(
         const val TAIL_PLAYS = 5
         const val PLAYLIST_SIZE = 40
         const val GENRE_ALL_MAX = 300
+        const val GENRE_ALSO_MAX = 12
 
         // You against everyone: what is looked up on Last.fm, and what the lists need.
         const val VS_ARTISTS = 200
@@ -752,7 +753,14 @@ class Stats(
         val per = IntArray(sub.artistNames.size)
         for (i in 0 until sub.size) per[sub.artist[i]]++
         val all = per.indices.sortedByDescending { per[it] }.take(GENRE_ALL_MAX).map { JSONObject().put("name", sub.artistNames[it]).put("plays", per[it]) }
+        // Artists mostly filed elsewhere who are partly this family too (Surprise Chef: Soul & Funk, and Jazz).
+        val also = if (':' in key || fid < 0) emptyList() else {
+            val plays = IntArray(h.artistNames.size).also { p -> for (a in h.artist) p[a]++ }
+            plays.indices.filter { a -> plays[a] > 0 && artistGenre[a] != fid && family in genres.of(h.artistNames[a], null).first }
+                .sortedByDescending { plays[it] }.take(GENRE_ALSO_MAX).map { JSONObject().put("name", h.artistNames[it]).put("plays", plays[it]) }
+        }
         return o.put("key", key).put("kind", if (':' in key) "sub" else "family").put("all", JSONArray(all)).put("label", genres.labelOf(key))
+            .put("also", JSONArray(also))
             .put("share", sub.size.toDouble() / maxOf(1, h.size)).put("ofFamily", sub.size.toDouble() / maxOf(1, famPlays))
             .put("family", JSONObject().put("key", family).put("label", Genres.label(family)).put("plays", famPlays).put("rank", if (fid >= 0) famTotals.count { it > famPlays } + 1 else 0))
             .put("inside", JSONArray(inside.map { subJson(it) }))
@@ -1114,7 +1122,7 @@ class Stats(
             .put("coverage", JSONObject().put("discogs", coverage[0] / n).put("lastfm", coverage[1] / n).put("none", coverage[2] / n))
     }
 
-    /** Artists that would need Last.fm tags for the genres: the most played ones Discogs doesn't cover. */
+    /** Artists whose Last.fm tags the genres still need ([have] has them): the most played ones, Discogs or not (both are weighed). */
     fun artistsNeedingTags(have: Set<String>, max: Int = 300, coverage: Double = 0.9): List<String> {
         val plays = IntArray(h.artistNames.size)
         for (a in h.artist) plays[a]++
@@ -1125,7 +1133,7 @@ class Stats(
             if (covered >= coverage * h.size || out.size >= max) break
             covered += plays[a]
             val name = h.artistNames[a]
-            if (!genres.knowsFromDiscogs(name) && Genres.artistKey(name) !in have) out += name
+            if (Genres.artistKey(name) !in have) out += name
         }
         return out
     }

@@ -2477,7 +2477,7 @@ function genreViz(g) {
     <div class="stack">${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
     <div class="readout" id="ro-g">${genreText(g, last)}</div>
     <div class="legend">${legend}</div>
-    <p class="hint">One set of genres for all your music: Discogs styles (records you own and their artists, ${pct(cov.discogs)} of plays) and Last.fm tags (${pct(cov.lastfm)}) are both sorted into it; unknown for ${pct(cov.none)}.</p></div>`;
+    <p class="hint">One set of genres for all your music: the Discogs styles of records you own and each artist's Last.fm tags are sorted into it and weighed together (mostly Discogs for ${pct(cov.discogs)} of plays, mostly Last.fm for ${pct(cov.lastfm)}); unknown for ${pct(cov.none)}.</p></div>`;
 }
 function genreText(g, i) {
   const p = g.periods[i];
@@ -3725,6 +3725,13 @@ window.onGenre = (g) => {
   });
 };
 
+/** Artists mostly in another genre who are partly this one too: their plays stay counted there. */
+function alsoHtml(g) {
+  const also = g.also || [];
+  if (!also.length) return '';
+  return `<div class="g-also"><span class="sub">Also partly ${esc(g.label)}; their plays count under their main genre</span>
+    <div class="chips everyone">${also.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div></div>`;
+}
 function renderGenre() {
   const g = GENRE;
   if (!g || !isOpen('genrePage')) return;
@@ -3751,7 +3758,7 @@ function renderGenre() {
     h += genreInsideHtml(g);
     if ((top.artists || []).length) {
       h += `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
-        <div class="xcards">${top.artists.slice(0, 10).map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
+        <div class="xcards">${top.artists.slice(0, 10).map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div>${alsoHtml(g)}</div>`;
     }
     const lost = g.lost || [], lostAlbums = g.lostAlbums || [];
     if (lost.length || lostAlbums.length) {
