@@ -9,36 +9,71 @@ import app.recordshelf.util.Text
  * most precise source); other music by an artist you own records of gets that artist's usual
  * styles; everything else uses the artist's Last.fm tags, cleaned of non-genres like "seen
  * live". "Indie", "Indie Rock" and "Garage Rock Revival" all land in Indie & Alternative.
+ *
+ * Inside each family, the styles and tags themselves are its subgenres ("indie:shoegaze"): a
+ * scrobble's subgenre is the first specific one in its family ("Rock" or "Indie" alone tell none).
  */
 class Genres(collection: List<CollectionItem>, private val artistTags: Map<String, List<String>>) {
     enum class Source { DISCOGS, LASTFM, NONE }
 
-    private val byAlbum = HashMap<String, List<String>>()
-    private val byArtist = HashMap<String, List<String>>()
+    /** A scrobble's genre in detail: its family, its style in that family ("" if none is told), and the source. */
+    class Detail(val family: String, val style: String, val source: Source)
+
+    /** (family, style) pairs of each record and of each artist you own records of, best first. */
+    private val byAlbum = HashMap<String, List<Pair<String, String>>>()
+    private val byArtist = HashMap<String, List<Pair<String, String>>>()
+
+    /** How Discogs spells the styles on your shelf ("Post-Punk"), by [key]. */
+    private val spelling = HashMap<String, String>()
 
     init {
-        val artistCounts = HashMap<String, HashMap<String, Int>>()
+        val artistCounts = HashMap<String, HashMap<Pair<String, String>, Int>>()
         for (c in collection) {
-            val g = families(c.styles + c.genres)
-            if (g.isEmpty()) continue
-            byAlbum[Text.albumKey(c.artist, c.title)] = g
+            val names = c.styles + c.genres
+            names.forEach { spelling.putIfAbsent(key(it), it) }
+            val p = pairs(names)
+            if (p.isEmpty()) continue
+            byAlbum[Text.albumKey(c.artist, c.title)] = p
             val counts = artistCounts.getOrPut(artistKey(c.artist)) { HashMap() }
-            g.forEachIndexed { i, s -> counts[s] = (counts[s] ?: 0) + (g.size - i) }
+            p.forEachIndexed { i, s -> counts[s] = (counts[s] ?: 0) + (p.size - i) }
         }
-        for ((a, counts) in artistCounts) byArtist[a] = counts.entries.sortedByDescending { it.value }.map { it.key }.take(3)
+        for ((a, counts) in artistCounts) byArtist[a] = counts.entries.sortedByDescending { it.value }.map { it.key }.take(6)
     }
 
-    /** Genre families (keys of [FAMILIES]) for an artist/album, best first, and where they came from. */
-    fun of(artist: String, albumKey: String?): Pair<List<String>, Source> {
+    private fun pairsOf(artist: String, albumKey: String?): Pair<List<Pair<String, String>>, Source> {
         albumKey?.let { k -> byAlbum[k]?.let { return it to Source.DISCOGS } }
         val a = artistKey(artist)
         byArtist[a]?.let { return it to Source.DISCOGS }
-        artistTags[a]?.let { families(it) }?.takeIf { it.isNotEmpty() }?.let { return it to Source.LASTFM }
-        return emptyList<String>() to Source.NONE
+        artistTags[a]?.let { pairs(it) }?.takeIf { it.isNotEmpty() }?.let { return it to Source.LASTFM }
+        return emptyList<Pair<String, String>>() to Source.NONE
+    }
+
+    /** Genre families (keys of [FAMILIES]) for an artist/album, best first, and where they came from. */
+    fun of(artist: String, albumKey: String?): Pair<List<String>, Source> =
+        pairsOf(artist, albumKey).let { (p, s) -> p.map { it.first }.distinct() to s }
+
+    /** The main family of an artist/album and its style in that family; null if nothing is known. */
+    fun detail(artist: String, albumKey: String?): Detail? {
+        val (p, s) = pairsOf(artist, albumKey)
+        val f = p.firstOrNull()?.first ?: return null
+        return Detail(f, p.firstOrNull { it.first == f && it.second !in GENERIC && it.second != f }?.second.orEmpty(), s)
     }
 
     /** Whether Discogs already tells this artist's genres (no Last.fm lookup needed). */
     fun knowsFromDiscogs(artist: String) = byArtist.containsKey(artistKey(artist))
+
+    /** A style's name, as Discogs spells it on your shelf when it does ("Post-Punk"), else tidied. */
+    fun styleLabel(style: String): String = spelling[style] ?: PRETTY[style]
+        ?: label(style).replace(Regex("^Post "), "Post-").replace(Regex("^Lo Fi$"), "Lo-Fi")
+
+    /** The name of a family ("indie") or a subgenre ("indie:shoegaze"). */
+    fun labelOf(key: String): String = if (':' in key) styleLabel(key.substringAfter(':')) else label(key)
+
+    /** Whether your record [c] is in the family or subgenre [key] (as [resolve] gives it). */
+    fun owns(c: CollectionItem, key: String): Boolean {
+        val p = pairs(c.styles + c.genres)
+        return if (':' in key) p.any { "${it.first}:${it.second}" == key } else p.any { it.first == key }
+    }
 
     companion object {
         private val NOT_GENRES = setOf(
@@ -50,6 +85,25 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "korean", "danish", "belgian", "mexican", "jamaican", "polish", "russian", "new zealand", "welsh", "african",
         )
         private val YEARS = Regex("^(\\d0s|\\d{4}s?|\\d0 s)$")
+
+        /** Words that only say the family again: no subgenre of their own. */
+        private val GENERIC = setOf(
+            "rock", "indie", "alternative", "punk", "metal", "pop", "electronic", "electronica", "dance", "ambient", "hip hop", "rap",
+            "r&b", "rnb", "soul", "funk", "funk / soul", "jazz", "blues", "folk", "folk, world, & country", "country", "classical",
+            "reggae", "latin", "world", "world music", "soundtrack", "stage & screen", "experimental", "synth", "electro",
+        )
+
+        /** Names the plain capitalizing gets wrong. */
+        private val PRETTY = mapOf(
+            "post punk" to "Post-Punk", "post rock" to "Post-Rock", "post hardcore" to "Post-Hardcore", "lo fi" to "Lo-Fi",
+            "trip hop" to "Trip Hop", "synth pop" to "Synth-pop", "synthpop" to "Synth-pop", "k pop" to "K-Pop", "j pop" to "J-Pop",
+            "post punk revival" to "Post-Punk Revival", "dance punk" to "Dance-Punk", "art punk" to "Art Punk", "idm" to "IDM",
+            "edm" to "EDM", "uk garage" to "UK Garage", "ebm" to "EBM", "new wave" to "New Wave", "mpb" to "MPB", "aor" to "AOR",
+            "singer songwriter" to "Singer-Songwriter", "neo soul" to "Neo-Soul", "nu disco" to "Nu-Disco", "alt country" to "Alt-Country",
+        )
+
+        /** The (family, style) pairs of [names] (styles or tags, best first), each once. */
+        fun pairs(names: List<String>): List<Pair<String, String>> = names.mapNotNull { n -> family(n)?.let { it to key(n) } }.distinct()
 
         /** One spelling per genre: "Trip-Hop", "trip hop" and "Trip Hop" are all "trip hop". */
         fun key(s: String) = s.lowercase().replace('-', ' ').replace('_', ' ').trim().replace(Regex("\\s+"), " ")
@@ -122,12 +176,17 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
         /** The families of [names] (styles or tags, best first), each once, best first. */
         fun families(names: List<String>): List<String> = names.mapNotNull { family(it) }.distinct()
 
-        /** The family a key from anywhere stands for: a family, a family's name, or a style or tag ("Post-Punk"). */
+        /**
+         * The family or subgenre a key from anywhere stands for: a family, a family's name, a
+         * subgenre ("indie:shoegaze"), or a style or tag ("Post-Punk" is "punk:post punk", "Rock" is "rock").
+         */
         fun resolve(s: String): String {
             val k = key(s)
+            if (':' in k) return k
             if (k in FAMILIES) return k
             FAMILIES.entries.firstOrNull { key(it.value) == k }?.let { return it.key }
-            return family(k) ?: k
+            val f = family(k) ?: return k
+            return if (k in GENERIC || k == f) f else "$f:$k"
         }
 
         fun artistKey(artist: String) = Text.norm(artist)

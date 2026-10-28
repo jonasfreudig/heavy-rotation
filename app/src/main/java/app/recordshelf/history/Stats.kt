@@ -590,38 +590,73 @@ class Stats(
     private val genreIds = HashMap<String, Int>()
     private val genreKeys = ArrayList<String>()
 
-    /** Primary genre per scrobble (-1: unknown) and where it came from, worked out once per album/artist. */
-    private val scrobbleGenre: Pair<IntArray, ByteArray> by lazy {
+    private val subIds = HashMap<String, Int>()
+    private val subKeys = ArrayList<String>()
+
+    /**
+     * Primary genre family per scrobble (-1: unknown), where it came from, and its subgenre in that
+     * family (-1: none told), worked out once per album/artist.
+     */
+    private val scrobbleGenre: Triple<IntArray, ByteArray, IntArray> by lazy {
         val albumG = IntArray(h.albumTitles.size) { -2 }
         val albumS = ByteArray(h.albumTitles.size)
+        val albumSub = IntArray(h.albumTitles.size)
         val artistG = IntArray(h.artistNames.size) { -2 }
         val artistS = ByteArray(h.artistNames.size)
-        fun id(keys: List<String>) = keys.firstOrNull()?.let { k -> genreIds.getOrPut(k) { genreKeys += k; genreKeys.size - 1 } } ?: -1
+        val artistSub = IntArray(h.artistNames.size)
+        fun id(d: Genres.Detail?) = d?.family?.let { k -> genreIds.getOrPut(k) { genreKeys += k; genreKeys.size - 1 } } ?: -1
+        fun subId(d: Genres.Detail?) = d?.takeIf { it.style.isNotEmpty() }?.let { "${it.family}:${it.style}" }
+            ?.let { k -> subIds.getOrPut(k) { subKeys += k; subKeys.size - 1 } } ?: -1
         val g = IntArray(h.size)
         val src = ByteArray(h.size)
+        val sub = IntArray(h.size)
         for (i in 0 until h.size) {
             val al = h.album[i]
             if (al >= 0) {
                 if (albumG[al] == -2) {
-                    val (k, s) = genres.of(h.artistNames[h.albumArtist[al]], h.albumKeys[al])
-                    albumG[al] = id(k)
-                    albumS[al] = s.ordinal.toByte()
+                    val d = genres.detail(h.artistNames[h.albumArtist[al]], h.albumKeys[al])
+                    albumG[al] = id(d)
+                    albumS[al] = (d?.source ?: Genres.Source.NONE).ordinal.toByte()
+                    albumSub[al] = subId(d)
                 }
                 g[i] = albumG[al]
                 src[i] = albumS[al]
+                sub[i] = albumSub[al]
             } else {
                 val a = h.artist[i]
                 if (artistG[a] == -2) {
-                    val (k, s) = genres.of(h.artistNames[a], null)
-                    artistG[a] = id(k)
-                    artistS[a] = s.ordinal.toByte()
+                    val d = genres.detail(h.artistNames[a], null)
+                    artistG[a] = id(d)
+                    artistS[a] = (d?.source ?: Genres.Source.NONE).ordinal.toByte()
+                    artistSub[a] = subId(d)
                 }
                 g[i] = artistG[a]
                 src[i] = artistS[a]
+                sub[i] = artistSub[a]
             }
         }
-        g to src
+        Triple(g, src, sub)
     }
+
+    /** All-time plays per family and per subgenre (by [genreKeys] and [subKeys]). */
+    private val genreTotals: Pair<IntArray, IntArray> by lazy {
+        val (g, _, sub) = scrobbleGenre
+        val fam = IntArray(genreKeys.size)
+        val subs = IntArray(subKeys.size)
+        for (i in g.indices) {
+            if (g[i] >= 0) fam[g[i]]++
+            if (sub[i] >= 0) subs[sub[i]]++
+        }
+        fam to subs
+    }
+
+    /** A family's subgenres with plays, most played first. */
+    private fun subsOf(family: String, max: Int): List<Int> {
+        val subs = genreTotals.second
+        return subKeys.indices.filter { subs[it] > 0 && subKeys[it].startsWith("$family:") }.sortedByDescending { subs[it] }.take(max)
+    }
+
+    private fun subJson(s: Int) = JSONObject().put("key", subKeys[s]).put("label", genres.labelOf(subKeys[s])).put("plays", genreTotals.second[s])
 
     /** The genres that get their own color: the biggest over all time, so colors don't change with the period. */
     private val topGenres: List<Int> by lazy {
@@ -631,14 +666,15 @@ class Stats(
         totals.indices.filter { totals[it] > 0 }.sortedByDescending { totals[it] }.take(TOP_GENRES)
     }
 
-    /** The biggest genres over all time (by each scrobble's main genre), to filter the stats by. */
-    fun genreOptions(max: Int = 16): JSONArray {
-        val (g, _) = scrobbleGenre
-        val totals = IntArray(genreKeys.size)
-        for (x in g) if (x >= 0) totals[x]++
+    /** The biggest genres over all time (by each scrobble's main genre), each with its biggest subgenres, to filter and browse by. */
+    fun genreOptions(max: Int = 24, subsMax: Int = 16): JSONArray {
+        val totals = genreTotals.first
         return JSONArray(
             totals.indices.filter { totals[it] > 0 }.sortedByDescending { totals[it] }.take(max)
-                .map { JSONObject().put("key", genreKeys[it]).put("label", Genres.label(genreKeys[it])).put("plays", totals[it]) },
+                .map { f ->
+                    JSONObject().put("key", genreKeys[f]).put("label", Genres.label(genreKeys[f])).put("plays", totals[f])
+                        .put("subs", JSONArray(subsOf(genreKeys[f], subsMax).map { subJson(it) }))
+                },
         )
     }
 
@@ -697,19 +733,37 @@ class Stats(
     fun genrePage(asked: String): JSONObject? {
         val key = Genres.resolve(asked)
         val sub = h.filter(inGenre(key))
-        if (sub.size == 0) return null
+        val family = key.substringBefore(':')
+        // A style that is no play's main one: its family's page instead.
+        if (sub.size == 0) return if (':' in key) genrePage(family) else null
         val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals)
         val o = s.life { true } ?: return null
         val ex = s.explore()
-        val order = genreOptions(100)
-        val rank = (0 until order.length()).firstOrNull { order.getJSONObject(it).getString("key") == key }?.plus(1) ?: 0
+        val (famTotals, subTotals) = genreTotals
+        val fid = genreIds[family] ?: -1
+        val famPlays = if (fid >= 0) famTotals[fid] else 0
+        // Its place among the families, or among all subgenres.
+        val rank = if (':' in key) subIds[key]?.let { id -> subTotals.count { it > subTotals[id] } + 1 } ?: 0
+        else if (fid >= 0) famTotals.count { it > famPlays } + 1 else 0
+        val inside = subsOf(family, 40)
         val per = IntArray(sub.artistNames.size)
         for (i in 0 until sub.size) per[sub.artist[i]]++
         val all = per.indices.sortedByDescending { per[it] }.take(GENRE_ALL_MAX).map { JSONObject().put("name", sub.artistNames[it]).put("plays", per[it]) }
-        return o.put("key", key).put("all", JSONArray(all)).put("label", Genres.label(key)).put("share", sub.size.toDouble() / maxOf(1, h.size))
+        return o.put("key", key).put("kind", if (':' in key) "sub" else "family").put("all", JSONArray(all)).put("label", genres.labelOf(key))
+            .put("share", sub.size.toDouble() / maxOf(1, h.size)).put("ofFamily", sub.size.toDouble() / maxOf(1, famPlays))
+            .put("family", JSONObject().put("key", family).put("label", Genres.label(family)).put("plays", famPlays).put("rank", if (fid >= 0) famTotals.count { it > famPlays } + 1 else 0))
+            .put("inside", JSONArray(inside.map { subJson(it) }))
+            .put("general", maxOf(0, famPlays - subKeys.indices.filter { subKeys[it].startsWith("$family:") }.sumOf { subTotals[it] }))
+            .put("shelf", JSONArray(collection.filter { genres.owns(it, key) }.map { it.releaseId }.distinct()))
             .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, 10))
             .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
             .put("decades", s.decades(0, sub.size))
+    }
+
+    /** Every genre family's share of all your plays, with its biggest subgenres: the map on the Explore tab. */
+    fun genreMap(): JSONObject {
+        val known = genreTotals.first.sum()
+        return JSONObject().put("all", h.size).put("known", known).put("families", genreOptions(30, 6))
     }
 
     // ---- the musical atlas: universe, family tree, landscape (all time) ----
@@ -969,8 +1023,13 @@ class Stats(
 
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
     fun inGenre(key: String): (Int) -> Boolean {
-        val (g, _) = scrobbleGenre
-        val id = genreIds[Genres.resolve(key)] ?: return { false }
+        val (g, _, sub) = scrobbleGenre
+        val k = Genres.resolve(key)
+        if (':' in k) {
+            val id = subIds[k] ?: return { false }
+            return { sub[it] == id }
+        }
+        val id = genreIds[k] ?: return { false }
         return { g[it] == id }
     }
 
@@ -1922,6 +1981,7 @@ class Stats(
         )
         val few = l.plays.count { it in 1 until TAIL_PLAYS }
         return JSONObject()
+            .put("genreMap", genreMap())
             .put("tail", JSONObject().put("artists", l.plays.count { it > 0 }).put("few", few).put("fewPlays", TAIL_PLAYS))
             .put("lostArtists", JSONArray(lostArtists.map { artistJson(it) }))
             .put("lostAlbums", JSONArray(lostAlbums.map { albumJson(it).put("plays", albumPlays[it]).put("last", albumLast[it] * 1000) }))

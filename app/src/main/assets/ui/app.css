@@ -818,6 +818,32 @@ input[type=datetime-local] { color-scheme: inherit; }
 .barcode { display: flex; align-items: stretch; gap: 1px; height: 64px; margin-top: 14px; touch-action: pan-y; }
 .barcode i { flex: 1; min-width: 1px; border-radius: 1px; background: var(--tint); cursor: pointer; }
 .barcode i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+/* Your genres as a map: boxes by share, the six biggest in the genre drift's colors. */
+.genre-map { position: relative; height: 300px; margin-top: 14px; }
+.gm-box { position: absolute; box-sizing: border-box; border: 2px solid transparent; background-clip: padding-box; border-radius: 12px; padding: 8px 9px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; overflow: hidden; text-align: left; color: #fff; background-color: var(--c);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.gm-box b { font: 600 13.5px/16px var(--font); }
+.gm-box small { font: 11px/14px var(--mono); opacity: .92; }
+.gm-box .gm-subs { margin-top: auto; font: 11px/14px var(--font); opacity: .85; }
+/* A genre's page: the way back up, and the styles inside it as one bar and chips. */
+.crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: center; font: 12px var(--mono); color: var(--md-on-surface-variant); }
+.crumb button { color: var(--md-primary); font: inherit; padding: 4px 2px; }
+.crumb b { font-weight: 500; color: var(--md-on-surface); }
+.gbar { display: flex; gap: 2px; height: 22px; margin: 14px 0 12px; border-radius: 8px; overflow: hidden; }
+.gbar i { min-width: 3px; }
+.gbar i.rest { background: color-mix(in srgb, var(--md-on-surface) 14%, transparent); }
+.gbar i.on { box-shadow: inset 0 0 0 2px var(--md-on-surface); }
+.gchips .sw, .gfam .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.gchips .chip { gap: 6px; }
+/* The genre filter: a row per family, its styles under it. */
+.gfams { display: grid; margin-top: 8px; }
+.gfam { display: grid; grid-template-columns: 12px 1fr 40px; gap: 10px; align-items: center; padding: 2px 4px; border-bottom: 1px solid var(--md-outline-variant); }
+.gfam.on .gfam-name { color: var(--md-primary); font-weight: 600; }
+.gfam-name { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; text-align: left; font-size: 15px; color: var(--md-on-surface); }
+.gfam .icon-btn svg { transition: transform .2s; }
+.gfam .icon-btn.open svg { transform: rotate(90deg); }
+.gsubs { padding: 8px 0 12px 22px; border-bottom: 1px solid var(--md-outline-variant); }
 /* The history against Last.fm: a small table per year (and per artist that differs). */
 .hc { display: grid; gap: 2px; margin: 12px 0; }
 .hc-row { display: grid; grid-template-columns: 1fr 70px 70px 58px; gap: 8px; align-items: center; padding: 6px 4px; border-radius: 8px; font-size: 14px; }

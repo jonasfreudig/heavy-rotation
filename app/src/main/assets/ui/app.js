@@ -3339,13 +3339,12 @@ function shelfSummaryHtml(list) {
   const bars = Object.entries(split).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const max = bars.length ? bars[0][1] : 1;
   const gk = shelf.genre ? genreKeyOf(shelf.genre.slice(2)) : '';
-  const known = !STATS || !STATS.genreOptions || STATS.genreOptions.some((o) => o.key === gk);
   return `<div class="card sel-sum"><div class="card-title">${icon('album')}${esc(name)} on your shelf</div>
     <div class="sum-nums"><div><b>${list.length}</b><small>${list.length === 1 ? 'record' : 'records'}</small></div><div><b>${artists}</b><small>${artists === 1 ? 'artist' : 'artists'}</small></div>
       <div><b>${compact(plays)}</b><small>plays on Last.fm</small></div><div><b>${never}</b><small>never played</small></div></div>
     ${top.length ? `<p class="body">Most played: ${top.map((r) => `<b>${esc(r.title)}</b>`).join(', ')}</p>` : ''}
     ${bars.length > 1 ? `<p class="label">${shelf.genre ? 'By decade' : 'By style'}</p><div class="mini-bars">${bars.map(([k, n]) => `<div><span>${esc(k)}</span><i><b style="width:${(n / max) * 100}%"></b></i><small>${n}</small></div>`).join('')}</div>` : ''}
-    ${gk && known && (ST.history || {}).count ? `<div class="btn-row"><button class="btn tonal" data-statsgenre="${esc(gk)}">${icon('chart')}Your ${esc(shelf.genre.slice(2))} listening</button></div>` : ''}</div>`;
+    ${gk && (ST.history || {}).count ? `<div class="btn-row"><button class="btn tonal" data-statsgenre="${esc(gk)}">${icon('chart')}Your ${esc(shelf.genre.slice(2))} listening</button></div>` : ''}</div>`;
 }
 
 // ---- the Stats tab for one genre ----
@@ -3354,12 +3353,20 @@ let statsGenre = '';
 let statsDecade = 0;
 /** "in Post Punk", "from the 1970s", "in Post Punk from the 1970s", or "" without filters. */
 const filterWords = (genre, decade) => [genre ? `in ${genreLabel(genre)}` : '', decade ? `from the ${decade}s` : ''].filter(Boolean).join(' ');
-const genreLabel = (key) => ((STATS && STATS.genreOptions) || []).find((o) => o.key === key)?.label || key.replace(/\b\w/g, (c) => c.toUpperCase());
+function genreLabel(key) {
+  for (const o of (STATS && STATS.genreOptions) || []) {
+    if (o.key === key) return o.label;
+    const s = (o.subs || []).find((x) => x.key === key);
+    if (s) return s.label;
+  }
+  return key.replace(/^[a-z]+:/, '').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 /** The genre and decade the stats are narrowed to, each with its ✕; the filter button picks them. */
 function renderGenreRow() {
   const row = $('#genreRow');
   if (!row) return;
-  const g = statsGenre ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>` : '';
+  const g = statsGenre ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>`
+    + `<button class="chip link" data-genre="${esc(statsGenre)}" data-glabel="${esc(genreLabel(statsGenre))}">About ${esc(genreLabel(statsGenre))} ›</button>` : '';
   const d = statsDecade ? `<button class="chip on" data-dclear>${icon('calendar', 'i small')}${statsDecade}s${icon('close', 'i small')}</button>` : '';
   row.innerHTML = g + d;
   row.hidden = !(g || d);
@@ -3403,11 +3410,25 @@ function decadesViz(x) {
   return `<div class="viz"><h2>Decades</h2><span class="sub">When the music you played came out (${share}% of plays have a known year). Tap one for its stats.</span>
     <div class="decades">${ds.map((d) => `<button class="dec${statsDecade === d.decade ? ' on' : ''}" data-setdecade="${d.decade}"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></button>`).join('')}</div></div>`;
 }
+/** The sheet to pick a genre for the stats: the families, each opening to the styles inside it. */
 function openGenreSheet() {
   const opts = (STATS && STATS.genreOptions) || [];
-  openSheet(`<div class="sheet-title">Stats for one genre</div><p class="body">Everything on the Stats tab and in the story, for the plays whose main genre is this one.</p>
-    <div class="chips">${opts.map((o) => `<button class="chip" data-gset="${esc(o.key)}">${esc(o.label)}<small class="n">${compact(o.plays)}</small></button>`).join('') || '<p class="hint">Genres show up once they are looked up.</p>'}</div>`);
+  const open = new Set(statsGenre ? [statsGenre.split(':')[0]] : []);
+  const draw = () => `<div class="sheet-title">Stats for one genre</div><p class="body">Everything on the Stats tab and in the story, for the plays whose main genre, or style in it, is this one.</p>
+    <div class="gfams">${opts.map((o, k) => `<div class="gfam${statsGenre === o.key ? ' on' : ''}"><i class="sw" style="background:${familyColor(k + 1)}"></i>
+      <button class="gfam-name" data-gset="${esc(o.key)}">${esc(o.label)}<small class="n">${compact(o.plays)}</small></button>
+      ${(o.subs || []).length ? `<button class="icon-btn small${open.has(o.key) ? ' open' : ''}" data-gexp="${esc(o.key)}" aria-label="Styles in ${esc(o.label)}">${icon('chevron-right')}</button>` : '<span></span>'}</div>
+      ${open.has(o.key) ? `<div class="chips gsubs">${o.subs.map((s) => `<button class="chip${statsGenre === s.key ? ' on' : ''}" data-gset="${esc(s.key)}">${esc(s.label)}<small class="n">${compact(s.plays)}</small></button>`).join('')}</div>` : ''}`).join('')
+      || '<p class="hint">Genres show up once they are looked up.</p>'}</div>`;
+  openSheet(draw());
   $('#sheetContent').onclick = (e) => {
+    const x = e.target.closest('[data-gexp]');
+    if (x) {
+      const k = x.dataset.gexp;
+      if (open.has(k)) open.delete(k); else open.add(k);
+      $('#sheetContent').innerHTML = draw();
+      return;
+    }
     const b = e.target.closest('[data-gset]');
     if (!b) return;
     closeSheet();
@@ -3418,6 +3439,64 @@ function setStatsGenre(key) {
   statsGenre = key;
   renderGenreRow();
   requestStats();
+}
+
+// ---- your genres: a map of all of them, each with the styles inside it ----
+
+/** Squarified treemap: [items] (each with .v) laid into a [W]×[H] box, biggest first; each gets x, y, w, h. */
+function squarify(items, W, H) {
+  const total = items.reduce((a, b) => a + b.v, 0) || 1;
+  let rest = items.map((it) => ({ ...it, a: (it.v / total) * W * H }));
+  const out = [];
+  let x = 0, y = 0, w = W, h = H;
+  const worst = (row, side) => {
+    const s = row.reduce((a, b) => a + b.a, 0), mx = Math.max(...row.map((r) => r.a)), mn = Math.min(...row.map((r) => r.a));
+    return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+  };
+  while (rest.length) {
+    const side = Math.min(w, h);
+    let k = 1;
+    while (k < rest.length && worst(rest.slice(0, k + 1), side) <= worst(rest.slice(0, k), side)) k++;
+    const row = rest.slice(0, k), thick = row.reduce((a, b) => a + b.a, 0) / side;
+    let off = 0;
+    for (const it of row) {
+      const len = it.a / thick;
+      out.push(w >= h ? { ...it, x, y: y + off, w: thick, h: len } : { ...it, x: x + off, y, w: len, h: thick });
+      off += len;
+    }
+    if (w >= h) { x += thick; w -= thick; } else { y += thick; h -= thick; }
+    rest = rest.slice(k);
+  }
+  return out;
+}
+/** A family's color: the six biggest have the genre drift's colors (same order: all time), the rest grays. */
+const familyColor = (rank) => (rank >= 1 && rank <= GENRE_COLORS.length ? GENRE_COLORS[rank - 1] : `color-mix(in srgb, var(--md-on-surface) ${Math.max(28, 52 - rank * 2)}%, var(--md-surface))`);
+let GENRE_MORE = [];
+/** Your genres as a map (Explore): every family by its share of all your plays; tap one for its page. */
+function genreMapHtml(m) {
+  const fams = (m && m.families) || [];
+  if (fams.length < 2) return '';
+  const total = m.known || fams.reduce((n, f) => n + f.plays, 0);
+  const big = fams.filter((f, k) => k < 12 && f.plays / total >= 0.015);
+  GENRE_MORE = fams.slice(big.length);
+  const items = big.map((f, k) => ({ v: f.plays, f, color: familyColor(k + 1) }));
+  const others = GENRE_MORE.reduce((n, f) => n + f.plays, 0);
+  if (others) items.push({ v: others, others: true, color: 'var(--md-outline)' });
+  const W = 1000, H = 860;
+  const boxes = squarify(items, W, H).map((b) => {
+    const pw = (b.w / W) * 100, ph = (b.h / H) * 100;
+    const name = b.others ? `${GENRE_MORE.length} more` : b.f.label;
+    const subs = pw > 30 && ph > 22 && !b.others && b.f.subs.length ? `<small class="gm-subs">${b.f.subs.slice(0, 3).map((s) => esc(s.label)).join(' · ')}</small>` : '';
+    const attrs = b.others ? 'data-genremore' : `data-genre="${esc(b.f.key)}" data-glabel="${esc(b.f.label)}"`;
+    return `<button class="gm-box" ${attrs} aria-label="${esc(name)}" style="left:${((b.x / W) * 100).toFixed(2)}%;top:${((b.y / H) * 100).toFixed(2)}%;width:${pw.toFixed(2)}%;height:${ph.toFixed(2)}%;--c:${b.color}">
+      ${pw < 10 || ph < 9 ? '' : `<b>${esc(name)}</b><small>${Math.round((b.v / total) * 100)}%</small>${subs}`}</button>`;
+  }).join('');
+  return `<div class="viz genre-map-card"><h2>Your genres</h2><span class="sub">All your listening, sorted into genres: the bigger, the more you play it${m.all > total ? ` (${pct(total / m.all)} of your plays have a known genre)` : ''}. Tap one for its page.</span>
+    <div class="genre-map">${boxes}</div></div>`;
+}
+function openGenreMore() {
+  openSheet(`<div class="sheet-title">More genres</div><div class="chips">${GENRE_MORE.map((f) => `<button class="chip" data-genre="${esc(f.key)}" data-glabel="${esc(f.label)}">${esc(f.label)}<small class="n">${compact(f.plays)}</small></button>`).join('')}</div>`);
+  $('#sheetContent').onclick = (e) => { if (e.target.closest('[data-genre]')) closeSheet(); };
 }
 
 // ---- one genre: its stats, your music in it, what to rediscover, your records ----
@@ -3432,7 +3511,7 @@ function openGenre(key, label) {
 }
 window.onGenre = (g) => {
   GENRE = deliver('genrePage', g.req, GENRE, (s, shown) => {
-    const next = { ...s, ...g, label: s.label || g.label, req: s.req, loading: false };
+    const next = { ...s, ...g, label: g.label || s.label, req: s.req, loading: false };
     if (shown) { GENRE = next; renderGenre(); }
     return next;
   });
@@ -3441,9 +3520,14 @@ window.onGenre = (g) => {
 function renderGenre() {
   const g = GENRE;
   if (!g || !isOpen('genrePage')) return;
-  const shelfRecs = COLL.filter((r) => [...(r.genres || []), ...(r.styles || [])].some((x) => genreKeyOf(x) === g.key));
-  let h = `<div class="genre-hero page-hero"><i class="glow"></i><span class="k">Genre</span><h1>${esc(g.label)}</h1>
-    ${g.plays ? `<div class="meta">${pct(g.share)} of everything you play${g.rank ? `, your number ${g.rank} genre` : ''}</div>` : ''}</div>`;
+  const shelfRecs = (g.shelf || []).map((id) => COLL.find((r) => r.id === id)).filter(Boolean);
+  const fam = g.family || null, isSub = g.kind === 'sub';
+  const crumbs = fam ? `<nav class="crumb"><button data-genremap>Genres</button><span>›</span>${isSub ? `<button data-genre="${esc(fam.key)}" data-glabel="${esc(fam.label)}">${esc(fam.label)}</button><span>›</span>` : ''}<b>${esc(g.label)}</b></nav>` : '<span class="k">Genre</span>';
+  const meta = !g.plays ? '' : isSub
+    ? `${pct(g.ofFamily)} of ${esc(fam.label)}, ${pct(g.share)} of everything you play`
+    : `${pct(g.share)} of everything you play${g.rank ? `, your number ${g.rank} genre` : ''}`;
+  let h = `<div class="genre-hero page-hero"><i class="glow"></i>${crumbs}<h1>${esc(g.label)}</h1>
+    ${meta ? `<div class="meta">${meta}</div>` : ''}</div>`;
   if (g.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (g.missing) h += `<div class="empty small"><p>None of your plays has ${esc(g.label)} as its main genre${shelfRecs.length ? ', but some of your records do' : ''}.</p></div>`;
   else {
@@ -3454,7 +3538,8 @@ function renderGenre() {
       ${tile('Since', esc(monthYear(g.first)), `last played ${esc(dateLabel(g.last))}`, '', 'history')}
       ${tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire')}
     </div>
-    <div class="btn-row"><button class="btn tonal" data-statsgenre="${esc(g.key)}">${icon('chart')}Full stats for ${esc(g.label)}</button></div>`;
+    <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}">${icon('chart')}Stats for ${esc(g.label)}</button></div>`;
+    h += genreInsideHtml(g);
     if ((top.artists || []).length) {
       h += `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
         <div class="xcards">${top.artists.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
@@ -3491,7 +3576,29 @@ function renderGenre() {
       <div class="xcards">${shelfRecs.map((r) => `<button class="xcard" data-rec="${r.id}">${coverHtml(r.cover || r.thumb, r.title, r.artist)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${r.year || ''}</small></button>`).join('')}</div></div>`;
   }
   morph($('#genreBody'), h);
-  tint($('#genreBody'), '', g.label + g.label);
+  tint($('#genreBody'), '', (g.family ? g.family.label : g.label) + g.label);
+}
+
+/**
+ * The styles inside a genre (on its page) or next to a style (on a style's page): one bar of
+ * their shares in the family's color, and a chip for each to open it.
+ */
+function genreInsideHtml(g) {
+  const inside = g.inside || [], fam = g.family;
+  if (!fam || !inside.length) return '';
+  const isSub = g.kind === 'sub';
+  const total = Math.max(1, fam.plays);
+  const color = familyColor(fam.rank);
+  const shown = g.showSubs ? inside : inside.slice(0, 8);
+  const rest = inside.slice(shown.length).reduce((n, s) => n + s.plays, 0) + (g.general || 0);
+  const shade = (k) => `color-mix(in srgb, ${color} ${Math.max(28, 100 - k * 18)}%, var(--md-surface))`;
+  const segs = shown.map((s, k) => `<i style="flex:${s.plays} 1 0;background:${shade(k)}"${s.key === g.key ? ' class="on"' : ''}></i>`).join('')
+    + (rest ? `<i style="flex:${rest} 1 0" class="rest"></i>` : '');
+  const chips = shown.map((s, k) => `<button class="chip${s.key === g.key ? ' on' : ''}" ${s.key === g.key ? '' : `data-genre="${esc(s.key)}" data-glabel="${esc(s.label)}"`}><i class="sw" style="background:${shade(k)}"></i>${esc(s.label)}<small class="n">${Math.round((s.plays / total) * 100)}%</small></button>`).join('');
+  const more = inside.length > shown.length ? `<button class="chip" data-genresubs>${inside.length - shown.length} more</button>` : '';
+  return `<div class="viz"><h2>${isSub ? 'Next to it' : 'Inside it'}</h2>
+    <span class="sub">${isSub ? `The other styles in ${esc(fam.label)}` : 'The styles and tags it is made of'}${g.general ? `; ${pct(g.general / total)} of its plays name no style` : ''}. Tap one for its page.</span>
+    <div class="gbar">${segs}</div><div class="chips gchips">${chips}${more}</div></div>`;
 }
 
 // ---- one song ----
@@ -4358,6 +4465,7 @@ function renderExplore() {
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
     </div>
     <button class="btn tonal xp-dig" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button>`;
+  h += genreMapHtml(x.genreMap);
   const la = x.lostArtists || [];
   if (la.length) {
     h += xSection('Lost favorites', 'Artists you played a lot that have gone quiet for half a year or more', 'lost',
@@ -5428,6 +5536,13 @@ function build() {
     if (sg) { while (pageStack.length) closePage(); statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
+    if (e.target.closest('[data-genremore]')) { openGenreMore(); return; }
+    if (e.target.closest('[data-genremap]')) {
+      while (pageStack.length) closePage();
+      showTab('explore');
+      requestAnimationFrame(() => { const m = $('.genre-map-card'); if (m) m.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+      return;
+    }
     const atl = e.target.closest('[data-atlas]');
     if (atl) { openAtlas(atl.dataset.atlas || ''); return; }
     if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
@@ -5557,6 +5672,7 @@ function build() {
     const rec = e.target.closest('[data-rec]');
     if (rec) openRecord(+rec.dataset.rec, rec);
     if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
+    if (e.target.closest('[data-genresubs]')) { GENRE.showSubs = true; renderGenre(); }
   };
   watchBar(window, $('#appbar'), (away) => document.body.classList.toggle('bar-away', away));
   sheetDrag();

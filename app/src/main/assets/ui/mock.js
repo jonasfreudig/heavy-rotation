@@ -208,6 +208,31 @@ const Mock = (() => {
   const MOCK_ARTISTS = ['IDLES', 'Fontaines D.C.', 'Khruangbin', 'Shame', 'Tame Impala', 'Beach House', 'The Strokes', 'Little Simz', 'Gorillaz',
     'Fleetwood Mac', 'Bonobo', 'Turnstile', 'Air', 'Portishead', 'Frank Ocean', 'Glass Animals'];
   const GENRES = ['Post-Punk', 'Indie Rock', 'Psychedelic Rock', 'Hip Hop', 'Electronic', 'Dream Pop', 'Other'];
+  // The made-up genres as the app's families and styles.
+  const MFAM = ['punk', 'indie', 'rock', 'hiphop', 'electronic', 'indie'];
+  const MSUB = ['punk:post punk', 'indie:indie rock', 'rock:psychedelic rock', '', '', 'indie:dream pop'];
+  const FAMNAME = { punk: 'Punk & Post-Punk', indie: 'Indie & Alternative', rock: 'Rock', hiphop: 'Hip Hop', electronic: 'Electronic' };
+  const subName = (k) => GENRES[MSUB.indexOf(k)] || k;
+  function mockResolve(key) {
+    const k = String(key).toLowerCase().replace(/-/g, ' ');
+    if (FAMNAME[k] || k.includes(':')) return k;
+    const byName = Object.keys(FAMNAME).find((f) => FAMNAME[f].toLowerCase() === k);
+    if (byName) return byName;
+    const i = GENRES.findIndex((x) => x.toLowerCase().replace(/-/g, ' ') === k);
+    return i >= 0 ? MSUB[i] || MFAM[i] : k;
+  }
+  function mockGenreOptions() {
+    const L = history();
+    const fam = {}, sub = {};
+    for (let i = 0; i < L.ts.length; i++) {
+      const g = genreOf(L.a[i]);
+      if (g < 0 || g > 5) continue;
+      fam[MFAM[g]] = (fam[MFAM[g]] || 0) + 1;
+      if (MSUB[g]) sub[MSUB[g]] = (sub[MSUB[g]] || 0) + 1;
+    }
+    return Object.entries(fam).sort((a, b) => b[1] - a[1]).map(([f, n]) => ({ key: f, label: FAMNAME[f], plays: n,
+      subs: Object.entries(sub).filter(([s]) => s.startsWith(f + ':')).sort((a, b) => b[1] - a[1]).map(([s, m]) => ({ key: s, label: subName(s), plays: m })) }));
+  }
   const genreOf = (ai) => [0, 0, 2, 0, 2, 5, 1, 3, 4, 1, 4, 0, 4, 4, 3, 1][ai] ?? (ai % 7 === 6 ? -1 : ai % 6);
   let LOG = null;
   function history() {
@@ -570,8 +595,7 @@ const Mock = (() => {
     out.storyExtra = { byHour, topT, tc, trackArtist, order, ac };
     out.tidy = tidySummary();
     const gTotals = counts(0, L.ts.length, (L2, i) => genreOf(L2.a[i]));
-    out.genreOptions = Object.entries(gTotals).filter(([g]) => +g >= 0 && GENRES[g]).sort((a, b) => b[1] - a[1])
-      .map(([g, n]) => ({ key: GENRES[g].toLowerCase().replace(/-/g, ' '), label: GENRES[g].replace(/-/g, ' '), plays: n }));
+    out.genreOptions = mockGenreOptions();
     out.genre = statsGenre;
     // Decades from the made-up records' years; a few plays without a known year.
     const decOf = (a) => Math.floor(RECORDS[a % RECORDS.length][2] / 10) * 10;
@@ -971,7 +995,8 @@ const Mock = (() => {
       return { year: y, plays: i1 - i0, artists: ranked(ac).slice(0, 3).map((a) => L.artists[a]),
         tracks: ranked(tc).slice(0, 4).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], album: albumOf(ta[t]), plays: tc[t] })) };
     }).filter(Boolean);
-    return { tail: { artists: lives.length, few: lives.filter((o) => o.plays < 5).length, fewPlays: 5 },
+    const gopts = mockGenreOptions();
+    return { genreMap: { all: L.ts.length, known: gopts.reduce((n, o) => n + o.plays, 0), families: gopts }, tail: { artists: lives.length, few: lives.filter((o) => o.plays < 5).length, fewPlays: 5 },
       lostArtists: lost, lostAlbums: lost.slice(0, 5).map((o) => ({ title: albumOf(o.a), artist: o.name, cover: '', key: '', owned: 0, plays: Math.round(o.plays * 0.6), last: o.last })),
       regulars, oneDay, deepCuts, onThisDay: otd };
   }
@@ -1078,10 +1103,12 @@ const Mock = (() => {
   }
 
   // One genre's page: the plays of the artists the made-up log files under it.
-  function fakeGenre(key) {
+  function fakeGenre(asked) {
     const L = history();
-    const g = GENRES.findIndex((x) => x.toLowerCase().replace(/-/g, ' ') === key);
-    const match = (i) => g >= 0 && genreOf(L.a[i]) === g;
+    const key = mockResolve(asked);
+    const isSub = key.includes(':'), fam = key.split(':')[0];
+    const inKey = (gi) => gi >= 0 && gi < 6 && (isSub ? MSUB[gi] === key : MFAM[gi] === key);
+    const match = (i) => inKey(genreOf(L.a[i]));
     let plays = 0, first = 0, last = 0, bestDay = 0, bestCount = 0, run = 0, runDay = -1;
     const days = new Set(), months = {}, hours = new Array(24).fill(0);
     const ac = {}, tc = {}, ta = {};
@@ -1112,10 +1139,14 @@ const Mock = (() => {
     const decs = {};
     order.forEach((a) => { const dd = Math.floor(RECORDS[a % RECORDS.length][2] / 10) * 10; decs[dd] = (decs[dd] || 0) + ac[a]; });
     const x = fakeExplore();
-    const inG = (o) => genreOf(o.a) === g;
+    const inG = (o) => inKey(genreOf(o.a));
+    const opts = mockGenreOptions(), fo = opts.find((o) => o.key === fam) || { plays, subs: [] };
     return {
-      key, label: GENRES[g].replace(/-/g, ' '), plays, days: days.size, first, last,
-      share: plays / L.ts.length, rank: 1 + Object.values(counts(0, L.ts.length, (L2, i) => genreOf(L2.a[i]))).filter((n) => n > plays).length,
+      key, kind: isSub ? 'sub' : 'family', label: isSub ? subName(key) : FAMNAME[key], plays, days: days.size, first, last,
+      family: { key: fam, label: FAMNAME[fam], plays: fo.plays, rank: opts.indexOf(fo) + 1 }, inside: fo.subs,
+      general: fo.plays - fo.subs.reduce((n, s) => n + s.plays, 0), ofFamily: plays / Math.max(1, fo.plays),
+      shelf: coll.filter((r, i) => i % 4 === (isSub ? 1 : 0)).slice(0, 5).map((r) => r.id),
+      share: plays / L.ts.length, rank: isSub ? 1 : opts.indexOf(fo) + 1,
       artists: order.length, all: order.map((a) => ({ name: L.artists[a], plays: ac[a] })), ...weeksOf(match),
       monthsFrom: +new Date(start.getFullYear(), start.getMonth(), 1), months: mArr, hours,
       busiestMonth: { start: +new Date(start.getFullYear(), start.getMonth() + bm, 1), count: mArr[bm] || 0 },
@@ -1125,7 +1156,7 @@ const Mock = (() => {
         albums: order.slice(0, 8).map((a, i) => ({ title: albumOf(a), artist: L.artists[a], plays: Math.round(ac[a] * 0.7), cover: '', owned: i % 3 !== 2 })),
         tracks: ranked(tc).slice(0, 10).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], plays: tc[t] })),
       },
-      lost: x.lostArtists.filter(inG), lostAlbums: x.lostAlbums.filter((o) => genreOf(findArtist(o.artist)) === g),
+      lost: x.lostArtists.filter(inG), lostAlbums: x.lostAlbums.filter((o) => inKey(genreOf(findArtist(o.artist)))),
       decades: { known: plays, total: plays, decades: Object.keys(decs).map(Number).sort((a, b) => a - b).map((d) => ({ decade: d, plays: decs[d] })) },
     };
   }

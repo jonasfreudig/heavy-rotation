@@ -176,7 +176,40 @@ class StatsTest {
         assertEquals(null, Genres.family("Spoken Word"))
         assertEquals("Punk & Post-Punk", Genres.label("punk"))
         assertEquals("a chip's name finds its family", "indie", Genres.resolve("Indie & Alternative"))
-        assertEquals("a record's own style finds its family", "punk", Genres.resolve("post punk"))
+        assertEquals("a record's own style is a subgenre", "punk:post punk", Genres.resolve("post punk"))
+        assertEquals("a family's own word is the family", "rock", Genres.resolve("Rock"))
+        assertEquals("indie:shoegaze", Genres.resolve("indie:shoegaze"))
+    }
+
+    @Test
+    fun subgenresSitInsideTheirFamily() {
+        val collection = listOf(
+            item(1, "Slowdive", "Souvlaki", listOf("Shoegaze", "Dream Pop")),
+            item(2, "The Strokes", "Is This It", listOf("Indie Rock", "Garage Rock")),
+            item(3, "Wet Leg", "Wet Leg", listOf("Indie Rock")),
+        )
+        val genres = Genres(collection, mapOf(Genres.artistKey("Pavement") to listOf("indie", "lo fi")))
+        val plays = listOf(
+            Play(at(2025, 1, 5), "Slowdive", "Alison", "Souvlaki"), Play(at(2025, 1, 6), "The Strokes", "Someday", "Is This It"),
+            Play(at(2025, 1, 7), "Wet Leg", "Chaise Longue", "Wet Leg"), Play(at(2025, 1, 8), "Pavement", "Gold Soundz", "Crooked Rain"),
+        )
+        val h = history(plays)
+        val s = Stats(h, utc, at(2025, 3, 1), collection, genres)
+        assertEquals("all of it is one family", 4, h.filter(s.inGenre("indie")).size)
+        assertEquals(2, h.filter(s.inGenre("Indie Rock")).size)
+        assertEquals(1, h.filter(s.inGenre("indie:shoegaze")).size)
+        assertEquals("Pavement's \"indie\" tells no style; \"lo fi\" does", 1, h.filter(s.inGenre("indie:lo fi")).size)
+        val opts = s.genreOptions()
+        val indie = opts.getJSONObject(0)
+        assertEquals("indie", indie.getString("key"))
+        assertEquals("indie:indie rock", indie.getJSONArray("subs").getJSONObject(0).getString("key"))
+        assertEquals("Discogs' spelling", "Indie Rock", indie.getJSONArray("subs").getJSONObject(0).getString("label"))
+        val page = s.genrePage("Shoegaze")!!
+        assertEquals("sub", page.getString("kind"))
+        assertEquals("Indie & Alternative", page.getJSONObject("family").getString("label"))
+        assertEquals(listOf(1L), (0 until page.getJSONArray("shelf").length()).map { page.getJSONArray("shelf").getLong(it) })
+        assertEquals(0.25, page.getDouble("ofFamily"), 0.001)
+        assertEquals("Lo-Fi", s.genrePage("indie:lo fi")!!.getString("label"))
     }
 
     @Test
