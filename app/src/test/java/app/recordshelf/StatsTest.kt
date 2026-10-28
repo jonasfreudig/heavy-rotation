@@ -223,6 +223,11 @@ class StatsTest {
         assertEquals("Macklemore", app.recordshelf.history.Artists.main("Macklemore & Ryan Lewis", solo))
         assertEquals("Gorillaz", app.recordshelf.history.Artists.main("Gorillaz feat. Bad Bunny", solo))
         assertEquals("Gorillaz", app.recordshelf.history.Artists.main("Gorillaz (feat. Bad Bunny)", solo))
+        val fela = setOf("fela kuti")
+        assertEquals("Fela Kuti", app.recordshelf.history.Artists.main("Fela Kuti and Africa 70", fela))
+        assertEquals("Fela Kuti", app.recordshelf.history.Artists.main("Fela Kuti With Ginger Baker", fela))
+        assertEquals("Fela Kuti", app.recordshelf.history.Artists.main("Fela Kuti x Roy Ayers", fela))
+        assertEquals("Simon and Garfunkel", app.recordshelf.history.Artists.main("Simon and Garfunkel", fela))
         val store = app.recordshelf.history.MemoryStore()
         store.insert(
             listOf(

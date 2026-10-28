@@ -472,6 +472,10 @@ object Core {
         // An import that was interrupted continues; a finished one picks up new scrobbles now and then.
         if (prefs.historyCursor > 0 && !importing && !prefs.importPaused) historyExec.execute { importInner() }
         else if (prefs.historyDone && System.currentTimeMillis() - prefs.historyLastSync > HOUR / 2) historyExec.execute { refreshHistoryInner() }
+        // Once a week the whole history is counted against Last.fm, and a year that comes up short fetched again.
+        if (prefs.historyDone && !checking && System.currentTimeMillis() - prefs.historyChecked > 7 * 24 * HOUR) {
+            historyExec.execute { checkHistoryInner(repair = true, quiet = true) }
+        }
     }
 
     /** Messages from the page (see app.js). Main thread. */
@@ -497,6 +501,7 @@ object Core {
                 prefs.importPaused = false
                 historyExec.execute { importInner() }
             }
+            "historyCheck" -> historyExec.execute { checkHistoryInner(msg.optBoolean("repair")) }
             "historyCancel" -> {
                 // Paused stays paused, also when the app comes back to the front.
                 cancelImport = true
@@ -537,6 +542,20 @@ object Core {
                     if (j.optString("photo").isEmpty() && Stats.photoKey(n) !in db.images().keys) historyExec.execute { fetchPhotosInner(listOf(n)) { handle(msg) } }
                     // Everyone's counts on Last.fm, for "you vs everyone"; the page comes again.
                     globalsFor(pageAsks(GlobalAsk.Kind.ARTIST, j), msg)
+                    // No genres (tags are looked up ahead only for your most played): Last.fm's tags for them now.
+                    val c = lastfm()
+                    if (c != null && !j.has("missing") && j.optJSONArray("genres")?.length() == 0 && tagsAsked.add(Genres.artistKey(n))) {
+                        historyExec.execute {
+                            try {
+                                val tags = Genres.fromTags(c.artistTopTags(n), n)
+                                db.saveTags(Genres.artistKey(n), tags)
+                                val families = Genres.families(tags)
+                                if (families.isNotEmpty()) push("onArtist") { JSONObject(j.toString()).put("genres", JSONArray(families.map { Genres.label(it) })) }
+                            } catch (_: Exception) {
+                                tagsAsked.remove(Genres.artistKey(n)) // offline: next time
+                            }
+                        }
+                    }
                 }
             }
             "track", "album" -> {
@@ -1430,6 +1449,75 @@ object Core {
             dropStats()
             statsExec.execute { statsInner() }
             fetchTagsInner(c)
+        }
+    }
+
+    /** Artists whose tags an artist page asked Last.fm for (once each while the app runs). */
+    private val tagsAsked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
+
+    /** A check of the history against Last.fm is under way ([checkHistoryInner]). */
+    @Volatile private var checking = false
+
+    /**
+     * Checks the stored history against Last.fm: all scrobbles, each year's (counts only) and your
+     * most played artists' plays. [repair]: years Last.fm has more scrobbles in are fetched again
+     * (what is there already is skipped) and counted once more. [quiet]: the weekly check, which
+     * repairs without showing anything. On [historyExec].
+     */
+    private fun checkHistoryInner(repair: Boolean, quiet: Boolean = false) {
+        val c = lastfm()
+        val user = prefs.lastfmUser
+        fun report(o: JSONObject) { if (!quiet) push("onHistoryCheck") { o } }
+        if (c == null || user.isEmpty()) return report(JSONObject().put("error", "Connect Last.fm first."))
+        if (!prefs.historyDone || importing) return report(JSONObject().put("error", "Your history is still being imported. Check it once that is done."))
+        if (checking) return
+        checking = true
+        try {
+            report(JSONObject().put("busy", true).put("step", "Counting your scrobbles on Last.fm…"))
+            val (lastfmTotal, registered) = c.userInfo(user)
+            val zone = java.time.ZoneId.systemDefault()
+            fun yearOf(sec: Long) = java.time.Instant.ofEpochSecond(sec).atZone(zone).year
+            fun yearStart(y: Int) = java.time.LocalDate.of(y, 1, 1).atStartOfDay(zone).toEpochSecond()
+            val nowYear = java.time.LocalDate.now(zone).year
+            val firstYear = listOf(registered, db.oldest()).filter { it > 0 }.minOrNull()?.let { yearOf(it) } ?: nowYear
+            val years = (firstYear..nowYear).map { y -> yearStart(y) to yearStart(y + 1) - 1 }
+            val sync = historySync(c, user)
+            val count = { f: Long, t: Long -> c.recentTracks(user, f, t, 1, limit = 1).total }
+            var stretches = sync.compare(years, count)
+            var added = 0
+            if (repair && stretches.any { it.missing >= HistorySync.MISSING_MIN }) {
+                added = sync.repair(stretches) { s, p ->
+                    report(JSONObject().put("busy", true).put("step", "Fetching ${yearOf(s.from)} again: ${p.fetched} of ${maxOf(p.total, p.fetched)}…"))
+                }
+                stretches = sync.compare(years, count)
+                if (added > 0) {
+                    histCount = db.count()
+                    history = History.from(db, hidden())
+                    dropStats()
+                    statsExec.execute { statsInner() }
+                    pushState()
+                }
+            }
+            prefs.historyChecked = System.currentTimeMillis()
+            if (quiet) return
+            // Your most played artists, by the names as scrobbled (before features are counted for the main artist).
+            report(JSONObject().put("busy", true).put("step", "Comparing your most played artists…"))
+            val raw = HashMap<String, Int>()
+            db.forEach { _, a, _, _ -> raw.merge(Text.norm(a), 1, Int::plus) }
+            val top = c.topArtists(user, 500)
+            val differ = top.mapNotNull { (name, plays) ->
+                val here = raw[Text.norm(name)] ?: 0
+                if (plays - here >= maxOf(HistorySync.MISSING_MIN, plays / 20)) JSONObject().put("name", name).put("lastfm", plays).put("here", here) else null
+            }
+            report(
+                JSONObject().put("lastfm", lastfmTotal).put("here", db.count()).put("added", added).put("checked", top.size)
+                    .put("years", JSONArray(stretches.map { JSONObject().put("year", yearOf(it.from)).put("lastfm", it.lastfm).put("here", it.here) }))
+                    .put("artists", JSONArray(differ.take(25))),
+            )
+        } catch (e: Exception) {
+            report(JSONObject().put("error", "Last.fm didn't answer (${e.message ?: "offline"}). Try again in a moment."))
+        } finally {
+            checking = false
         }
     }
 

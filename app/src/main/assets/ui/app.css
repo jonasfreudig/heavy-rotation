@@ -818,6 +818,17 @@ input[type=datetime-local] { color-scheme: inherit; }
 .barcode { display: flex; align-items: stretch; gap: 1px; height: 64px; margin-top: 14px; touch-action: pan-y; }
 .barcode i { flex: 1; min-width: 1px; border-radius: 1px; background: var(--tint); cursor: pointer; }
 .barcode i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+/* The history against Last.fm: a small table per year (and per artist that differs). */
+.hc { display: grid; gap: 2px; margin: 12px 0; }
+.hc-row { display: grid; grid-template-columns: 1fr 70px 70px 58px; gap: 8px; align-items: center; padding: 6px 4px; border-radius: 8px; font-size: 14px; }
+.hc-row span, .hc-row em { font: 13px var(--mono); text-align: right; font-style: normal; }
+.hc-row b { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-h { font-size: 11px; color: var(--md-on-surface-variant); }
+.hc-h b, .hc-h span { font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.hc-row.short { background: color-mix(in srgb, var(--md-error) 12%, transparent); }
+.hc-row.short em { color: var(--md-error); }
+.hc-t { margin: 18px 0 2px; font: 600 17px var(--display); }
+button.listen-line { width: 100%; text-align: left; color: inherit; }
 /* Track by track: a column per song (the whole height takes the tap), the favorite in full color. */
 .shape { display: flex; align-items: stretch; gap: 3px; height: 110px; margin-top: 14px; touch-action: pan-y; }
 .shape span { flex: 1; min-width: 2px; display: flex; align-items: flex-end; cursor: pointer; }

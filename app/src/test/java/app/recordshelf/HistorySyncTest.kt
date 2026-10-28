@@ -89,6 +89,33 @@ class HistorySyncTest {
         assertEquals(1000, store.count())
     }
 
+    @Test
+    fun anEmptyPageMidHistoryDoesntEndTheImport() {
+        // Last.fm, busy, sends an empty page with more still to come: an import once stopped there.
+        val lfm = FakeLastfm(history(), inclusive = false)
+        val store = MemoryStore()
+        HistorySync({ f, t -> lfm.fetch(f, t).let { p -> if (lfm.calls == 3) RecentPage(emptyList(), p.pages, p.total) else p } }, store) { }
+            .walk(0, base + 10_000_000)
+        assertEquals(1000, store.count())
+    }
+
+    @Test
+    fun aYearThatCameUpShortIsFetchedAgain() {
+        val lfm = FakeLastfm(history(), inclusive = true)
+        val store = MemoryStore()
+        // Only the newer half made it here.
+        store.insert(lfm.all.filter { it.ts >= base + 500 * 180L })
+        val sync = HistorySync(lfm::fetch, store) { }
+        val halves = listOf(base to base + 500 * 180L - 1, base + 500 * 180L to base + 10_000_000)
+        val count = { f: Long, t: Long -> lfm.fetch(f, t).total }
+        val before = sync.compare(halves, count)
+        assertEquals("the older half is short", 500, before[0].missing)
+        assertEquals(0, before[1].missing)
+        assertEquals(500, sync.repair(before))
+        assertEquals(1000, store.count())
+        assertTrue(sync.compare(halves, count).all { it.missing == 0 })
+    }
+
     private class State : HistorySync.RefreshState {
         override var syncedTo = 0L
         override var from = 0L

@@ -1298,6 +1298,14 @@ const Mock = (() => {
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'historyCheck': {
+          // As if 2024 had come up short, until it is fetched again.
+          const years = [2023, 2024, 2025, 2026].map((y, k) => ({ year: y, lastfm: [9120, 31873, 28440, 16579][k], here: [9120, m.repair ? 31873 : 22410, 28440, 16577][k] }));
+          later(400, () => onHistoryCheck({ busy: true, step: 'Counting your scrobbles on Last.fm…' }));
+          later(1300, () => onHistoryCheck({ lastfm: 86012, here: years.reduce((n, y) => n + y.here, 0), added: m.repair ? 9463 : 0, checked: 500, years,
+            artists: m.repair ? [] : [{ name: 'Fela Kuti', lastfm: 412, here: 2 }, { name: 'Tony Allen', lastfm: 96, here: 31 }] }));
+          break;
+        }
         case 'badges': {
           // A few of each, as the history would give them.
           const ids = coll.map((r) => r.id);

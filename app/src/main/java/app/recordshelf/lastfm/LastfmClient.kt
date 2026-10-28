@@ -151,6 +151,22 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
         return AlbumInfo(tracks, a.str("userplaycount").toIntOrNull() ?: 0, image)
     }
 
+    /** The user's scrobbles in all, and when they joined Last.fm (Unix seconds, 0 if not told). */
+    fun userInfo(user: String): Pair<Int, Long> {
+        val u = call("user.getInfo", mapOf("user" to user), signed = false, post = false).getJSONObject("user")
+        return (u.str("playcount").toIntOrNull() ?: 0) to (u.optJSONObject("registered")?.str("unixtime")?.toLongOrNull() ?: 0L)
+    }
+
+    /** The user's most played artists of all time with their plays, most played first. */
+    fun topArtists(user: String, limit: Int = 500): List<Pair<String, Int>> {
+        val t = call(
+            "user.getTopArtists",
+            mapOf("user" to user, "period" to "overall", "limit" to limit.toString()),
+            signed = false, post = false,
+        ).getJSONObject("topartists")
+        return t.arrayOrOne("artist").objects().map { it.str("name") to (it.str("playcount").toIntOrNull() ?: 0) }
+    }
+
     /** One page of the user's all-time top albums, plus the number of pages. */
     fun topAlbums(user: String, page: Int, limit: Int = 1000): Pair<List<TopAlbum>, Int> {
         val t = call(

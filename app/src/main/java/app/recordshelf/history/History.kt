@@ -130,22 +130,25 @@ class History private constructor(
     }
 }
 
-/** Artist credits as they come from players: "A feat. B", "A, B", "A & B". */
+/** Artist credits as they come from players: "A feat. B", "A, B", "A & B", "A and B", "A with B", "A x B", "A / B". */
 object Artists {
     private val feat = Regex("\\s+\\(?(?:feat\\.?|ft\\.?|featuring)\\s+", RegexOption.IGNORE_CASE)
 
+    /** What joins two names in a credit ("Fela Kuti and Africa 70", "A x B" for a collaboration). */
+    private val SEPARATORS = listOf(", ", " & ", " and ", " with ", " x ", " / ", " + ", " vs. ", " vs ")
+
     /**
-     * The artist a play counts for. "feat." credits always go to the first name. "A, B" and
-     * "A & B" go to A only if A is also played on its own ([solo] holds normalized names),
-     * so bands like "Earth, Wind & Fire" or "Simon & Garfunkel" stay whole.
+     * The artist a play counts for. "feat." credits always go to the first name. "A, B", "A & B",
+     * "A and B" and the like go to A only if A is also played on its own ([solo] holds normalized
+     * names), so bands like "Earth, Wind & Fire" or "Simon and Garfunkel" stay whole.
      */
     fun main(raw: String, solo: Set<String>): String {
         feat.find(raw)?.let { m ->
             val head = raw.substring(0, m.range.first).trim()
             if (head.isNotEmpty()) return main(head, solo)
         }
-        for (sep in listOf(", ", " & ")) {
-            val i = raw.indexOf(sep)
+        for (sep in SEPARATORS) {
+            val i = raw.indexOf(sep, ignoreCase = true)
             if (i > 0) {
                 val head = raw.substring(0, i).trim()
                 if (Text.norm(head) in solo) return head

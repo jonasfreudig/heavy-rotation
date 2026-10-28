@@ -89,6 +89,11 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getLong("historyLastSync", 0)
         set(v) = app.edit().putLong("historyLastSync", v).apply()
 
+    /** When the history was last counted against Last.fm (ms; see Core.checkHistoryInner). */
+    var historyChecked: Long
+        get() = app.getLong("historyChecked", 0)
+        set(v) = app.edit().putLong("historyChecked", v).apply()
+
     /** Everything Last.fm had up to this time (Unix seconds) is stored; 0 when not known yet. */
     var historySyncedTo: Long
         get() = app.getLong("historySyncedTo", 0)

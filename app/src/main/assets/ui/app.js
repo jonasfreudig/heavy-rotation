@@ -1920,7 +1920,7 @@ function renderStatsHead() {
   } else {
     const bits = [`${num(hs.count)} scrobbles`, hs.syncing ? 'updating…' : hs.lastSync ? `updated ${ago(hs.lastSync)}` : ''];
     if (hs.tagsTotal) bits.push(`looking up genres ${hs.tagsDone}/${hs.tagsTotal}`);
-    h = `<div class="listen-line">${icon('history')}<span>${bits.filter(Boolean).join(' · ')}</span></div>`;
+    h = `<button class="listen-line" data-histcheck>${icon('history')}<span>${bits.filter(Boolean).join(' · ')}</span></button>`;
   }
   const slot = $('#statsHead');
   if (slot.dataset.html !== h) { slot.innerHTML = h; slot.dataset.html = h; }
@@ -1928,6 +1928,42 @@ function renderStatsHead() {
     renderStatsHead.asked = true;
     send({ t: 'stats', range: statsRange });
   }
+}
+
+/**
+ * Your history against Last.fm: all scrobbles, each year's, and your most played artists. A year
+ * that came up short can be fetched again (the app also does this by itself once a week).
+ */
+let HCHECK = null;
+function openHistoryCheck() {
+  HCHECK = { busy: true, step: 'Asking Last.fm…' };
+  openSheet(`<div class="sheet-title">Your history and Last.fm</div><div id="hcBody">${hcHtml()}</div>`);
+  send({ t: 'historyCheck', repair: false });
+}
+window.onHistoryCheck = (r) => {
+  HCHECK = r;
+  const b = $('#hcBody');
+  if (b) b.innerHTML = hcHtml();
+};
+function hcHtml() {
+  const r = HCHECK || {};
+  if (r.error) return `<p class="body error">${esc(r.error)}</p>`;
+  if (r.busy) return `<p class="body">${esc(r.step || 'Checking…')}</p><div class="lin inline indet"><i></i></div>`;
+  const years = r.years || [];
+  const short = years.filter((y) => y.lastfm - y.here >= 3);
+  const gap = r.lastfm - r.here;
+  const head = short.length
+    ? `<p class="body"><b>${num(short.reduce((n, y) => n + y.lastfm - y.here, 0))} scrobbles</b> on Last.fm aren't on this phone yet, in ${short.map((y) => y.year).join(', ')}. Fetching those years again adds them; what is here already stays as it is.</p>`
+    : `<p class="body">Every year matches Last.fm${gap > 0 ? ` (${plural(gap, 'scrobble')} apart in all: new ones on their way, or on a year's edge)` : ''}.${r.added ? ` ${num(r.added)} missing ${r.added === 1 ? 'scrobble was' : 'scrobbles were'} just added.` : ''}</p>`;
+  const rows = years.slice().reverse().map((y) => {
+    const d = y.lastfm - y.here;
+    return `<div class="hc-row${d >= 3 ? ' short' : ''}"><b>${y.year}</b><span>${num(y.lastfm)}</span><span>${num(y.here)}</span><em>${d >= 3 ? `−${num(d)}` : '✓'}</em></div>`;
+  }).join('');
+  const artists = (r.artists || []).map((a) => `<div class="hc-row"><b>${esc(a.name)}</b><span>${num(a.lastfm)}</span><span>${num(a.here)}</span><em></em></div>`).join('');
+  return `${head}
+    <div class="hc"><div class="hc-row hc-h"><b>Year</b><span>Last.fm</span><span>Here</span><em></em></div>${rows}</div>
+    ${short.length ? '<div class="btn-row"><button class="btn filled" data-hcfix>Fetch those years again</button></div>' : ''}
+    ${artists ? `<h3 class="hc-t">Artists that differ</h3><p class="hint">Of your ${num(r.checked)} most played on Last.fm, counted by the name as scrobbled. A gap left after the years match usually means Last.fm merged spellings of a name that are apart here.</p><div class="hc">${artists}</div>` : ''}`;
 }
 
 /** Week / Month / Year / All, and ‹ period › to step through them. */
@@ -5358,6 +5394,13 @@ function build() {
   $('#settingsBtn').onclick = () => openSettings();
   $('#syncBtn').onclick = () => { send({ t: 'sync' }); toast('Syncing your collection…'); };
   document.addEventListener('click', (e) => {
+    if (e.target.closest('#settingsPage [data-histcheck]')) { openHistoryCheck(); return; }
+    if (e.target.closest('[data-hcfix]')) {
+      HCHECK = { busy: true, step: 'Fetching the missing years…' };
+      $('#hcBody').innerHTML = hcHtml();
+      send({ t: 'historyCheck', repair: true });
+      return;
+    }
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
     const flip = e.target.closest('[data-flip]');
@@ -5456,6 +5499,7 @@ function build() {
   };
   $('#compareBody').onclick = (e) => { if (e.target.closest('#cmpRun')) send({ t: 'comparePano' }); };
   $('#statsHead').onclick = (e) => {
+    if (e.target.closest('[data-histcheck]')) { openHistoryCheck(); return; }
     if (e.target.closest('#histImport')) send({ t: 'historyImport' });
     if (e.target.closest('#histStop')) send({ t: 'historyCancel' });
   };
