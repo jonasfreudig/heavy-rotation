@@ -451,14 +451,17 @@ function slideMs(el) {
 }
 /**
  * [el] leaves: sliding all the way out to the right (from wherever a back swipe left it, at the
- * pace it was going), or only fading when its cover flies home.
+ * pace it was going), or only fading when its cover flies home. It holds its last frame until it
+ * is hidden: let go at the end, a busy phone showed the whole page again for a frame (its big
+ * blurred cover too) before the page was hidden.
  */
 function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
   const t = getComputedStyle(el).transform;
   const from = t === 'none' ? 'none' : t;
   const a = el.animate(how === 'fade'
     ? [{ transform: from, opacity: 1 }, { transform: from, opacity: 0 }]
-    : [{ transform: from }, { transform: `translateX(${window.innerWidth}px)` }], { duration: ms, easing: how === 'fade' ? EASE_IN : EASE_OUT });
+    : [{ transform: from }, { transform: `translateX(${window.innerWidth}px)` }],
+  { duration: ms, easing: how === 'fade' ? EASE_IN : EASE_OUT, fill: 'forwards' });
   // Finished, cancelled, or never run (a page in the background): either way it ends once.
   let over = false;
   const end = () => {
@@ -469,6 +472,8 @@ function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
     el.style.borderRadius = '';
     el.style.transition = '';
     el.style.willChange = '';
+    // Hidden now: the held last frame can go.
+    if (a.playState !== 'idle') a.cancel();
   };
   a.onfinish = end;
   a.oncancel = end;
@@ -549,7 +554,9 @@ function closePage(swipe = null) {
     p.style.willChange = '';
     p.animate([{ opacity: 0.4, transform: 'translateX(-24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
   } else if (i < 0) {
-    const flew = id === 'recordPage' && flyBack();
+    // A swipe carries the record off with its page; a tap on back flies its cover home to the shelf.
+    if (swipe) flyHome = null;
+    const flew = id === 'recordPage' && !swipe && flyBack();
     // On its way out it takes no taps: they belong to the page coming back under it.
     p.inert = true;
     let ms;
@@ -693,9 +700,8 @@ window.onBackCancel = () => {
  * in, then the record slides out. If [to] shows a sharper picture, the copy fades it in on the
  * way, and lands only once it is there.
  */
-function flyCover(from, to, ms, shiftX = 0) {
-  const a = from.getBoundingClientRect(), t = to.getBoundingClientRect();
-  const b = { left: t.left + shiftX, top: t.top, width: t.width, height: t.height };
+function flyCover(from, to, ms) {
+  const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
   if (!a.width || !b.width) return;
   const c = from.cloneNode(true);
   c.classList.add('fly');
@@ -767,9 +773,7 @@ function flyBack() {
   if (!home || !hero) return false;
   const r = home.getBoundingClientRect();
   if (!r.width || r.bottom < 0 || r.top > innerHeight) return false;
-  // After a back swipe the shelf is still sliding home from the left: aim where it ends up.
-  const t = getComputedStyle($('#main')).transform;
-  flyCover(hero, home, 380, t && t !== 'none' ? -new DOMMatrix(t).m41 : 0);
+  flyCover(hero, home, 380);
   return true;
 }
 /**
