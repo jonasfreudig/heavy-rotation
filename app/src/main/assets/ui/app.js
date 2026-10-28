@@ -482,7 +482,16 @@ function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
 }
 function openPage(id, how) {
   const p = $('#' + id);
-  if (p._closing) { p._closing.cancel(); p._closing = null; p.hidden = true; p.inert = false; p.style.transform = ''; p.style.borderRadius = ''; }
+  tidyLayers();
+  if (p._closing) {
+    p._closing.cancel();
+    p._closing = null;
+    p.inert = false;
+    p.style.transform = '';
+    p.style.borderRadius = '';
+    // Leaving a page it shows further down: that one's state comes back now; else it was on its way out.
+    if (p._restore) p._restore(); else p.hidden = true;
+  }
   if (p.hidden) {
     p.hidden = false;
     pageStack.push(id);
@@ -543,8 +552,27 @@ function closePage(swipe = null) {
   const p = $('#' + id);
   const i = pageStack.lastIndexOf(id);
   const saved = i >= 0 ? pageSaved[i] : null;
-  if (saved) {
-    // The same kind of page further down: show what it showed, where it was.
+  const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
+  if (saved && top !== p) {
+    // This page also shows something further down the stack (artist, genre, then artist again):
+    // it slides off like any page, the one under it coming home, and only then takes up what it
+    // showed down there, under the others.
+    pageSaved[i] = undefined;
+    p.inert = true;
+    const ms = slideMs(p);
+    backSettle(swipe || backReveal(p, [top]), true, ms);
+    p._restore = () => {
+      p._restore = null;
+      p.inert = false;
+      PAGE_STATE[id].set(saved.state);
+      p.style.zIndex = 10 + i + 1;
+      p.scrollTop = saved.scroll;
+    };
+    const a = animateOut(p, 'slide', () => { if (p._closing === a) { p._closing = null; if (p._restore) p._restore(); } }, ms);
+    p._closing = a;
+  } else if (saved) {
+    // The same kind of page right under it, that is this very page: show what it showed, where it was.
+    if (swipe) backSettle(swipe, true);
     pageSaved[i] = undefined;
     PAGE_STATE[id].set(saved.state);
     p.style.zIndex = 10 + i + 1;
@@ -660,7 +688,26 @@ function backSettle(fx, chosen, ms = chosen ? 260 : 300) {
     if (backFx) return; // a new swipe has started and owns the rest now
     fx.under.forEach((u) => { u.style.transition = ''; u.style.transform = ''; u.style.willChange = ''; });
     backShade.remove();
+    tidyLayers();
   }, ms + 30);
+}
+/**
+ * The safety net: any page (or the tabs) a swipe or a slide moved, that nothing moves anymore,
+ * goes back to its place, and a shade left behind goes. (A quick second swipe, or a way back that
+ * forgot its layers, once left a page shifted to the side over another.)
+ */
+function tidyLayers() {
+  if (backFx) return;
+  for (const el of [...$$('.page'), ...homeLayers()]) {
+    if (el.getAnimations().some((a) => a.playState === 'running')) continue;
+    if (el.style.transform || el.style.willChange || el.style.boxShadow) {
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.willChange = '';
+      el.style.boxShadow = '';
+    }
+  }
+  if (backShade.isConnected && !backShade.getAnimations().some((a) => a.playState === 'running')) backShade.remove();
 }
 /** A layer the swipe moved springs back to its place. */
 function backSpring(el) {
