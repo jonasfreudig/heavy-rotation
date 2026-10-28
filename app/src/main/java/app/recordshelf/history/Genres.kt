@@ -89,14 +89,14 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
         /** Words that only say the family again: no subgenre of their own. */
         private val GENERIC = setOf(
             "rock", "indie", "alternative", "punk", "metal", "pop", "electronic", "electronica", "dance", "ambient", "hip hop", "rap",
-            "r&b", "rnb", "soul", "funk", "funk / soul", "jazz", "blues", "folk", "folk, world, & country", "country", "classical",
+            "r&b", "rnb", "soul", "funk", "funk soul", "jazz", "blues", "folk", "folk, world, & country", "country", "classical",
             "reggae", "latin", "world", "world music", "soundtrack", "stage & screen", "experimental", "synth", "electro",
         )
 
         /** Names the plain capitalizing gets wrong. */
         private val PRETTY = mapOf(
             "post punk" to "Post-Punk", "post rock" to "Post-Rock", "post hardcore" to "Post-Hardcore", "lo fi" to "Lo-Fi",
-            "trip hop" to "Trip Hop", "synth pop" to "Synth-pop", "synthpop" to "Synth-pop", "k pop" to "K-Pop", "j pop" to "J-Pop",
+            "trip hop" to "Trip Hop", "synth pop" to "Synth-pop", "electro pop" to "Electropop", "k pop" to "K-Pop", "j pop" to "J-Pop",
             "post punk revival" to "Post-Punk Revival", "dance punk" to "Dance-Punk", "art punk" to "Art Punk", "idm" to "IDM",
             "edm" to "EDM", "uk garage" to "UK Garage", "ebm" to "EBM", "new wave" to "New Wave", "mpb" to "MPB", "aor" to "AOR",
             "singer songwriter" to "Singer-Songwriter", "neo soul" to "Neo-Soul", "nu disco" to "Nu-Disco", "alt country" to "Alt-Country",
@@ -105,8 +105,25 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
         /** The (family, style) pairs of [names] (styles or tags, best first), each once. */
         fun pairs(names: List<String>): List<Pair<String, String>> = names.mapNotNull { n -> family(n)?.let { it to key(n) } }.distinct()
 
-        /** One spelling per genre: "Trip-Hop", "trip hop" and "Trip Hop" are all "trip hop". */
-        fun key(s: String) = s.lowercase().replace('-', ' ').replace('_', ' ').trim().replace(Regex("\\s+"), " ")
+        /**
+         * One spelling per genre: "Trip-Hop", "trip hop" and "Trip Hop" are all "trip hop", and so is
+         * "triphop" (see [SAME]): Discogs and Last.fm's taggers write the same style apart or together.
+         */
+        fun key(s: String): String {
+            val k = s.lowercase().replace('-', ' ').replace('_', ' ').replace('/', ' ').trim().replace(Regex("\\s+"), " ")
+            return SAME[k] ?: k
+        }
+
+        /** Spellings of one style, to the one kept. */
+        private val SAME = mapOf(
+            "synthpop" to "synth pop", "postpunk" to "post punk", "post punk rock" to "post punk", "triphop" to "trip hop", "lofi" to "lo fi",
+            "electropop" to "electro pop", "dreampop" to "dream pop", "postrock" to "post rock", "posthardcore" to "post hardcore",
+            "dark wave" to "darkwave", "cold wave" to "coldwave", "newwave" to "new wave", "crankwave" to "crank wave",
+            "shoegazer" to "shoegaze", "shoegazing" to "shoegaze", "alt rock" to "alternative rock", "neosoul" to "neo soul",
+            "nudisco" to "nu disco", "kpop" to "k pop", "jpop" to "j pop", "afro beat" to "afrobeat", "goth rock" to "gothic rock",
+            "drum n bass" to "drum and bass", "drum & bass" to "drum and bass", "d&b" to "drum and bass", "dnb" to "drum and bass",
+            "deutsch rap" to "deutschrap",
+        )
 
         fun label(key: String) = FAMILIES[key] ?: key.split(' ').joinToString(" ") { w -> if (w == "and" || w == "n") w else w.replaceFirstChar { it.uppercase() } }
 
@@ -124,8 +141,15 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "indie pop" to "indie", "jangle pop" to "indie", "noise pop" to "indie", "dream pop" to "indie", "chillwave" to "indie",
             "dance pop" to "pop", "art pop" to "pop", "power pop" to "pop", "vocal" to "pop", "ballad" to "pop", "chanson" to "pop",
             "schlager" to "pop", "easy listening" to "pop", "europop" to "pop", "k pop" to "pop", "j pop" to "pop",
-            "synth pop" to "synth", "synthpop" to "synth", "electropop" to "synth", "electro pop" to "synth", "neue deutsche welle" to "synth",
-            "italo disco" to "synth", "ebm" to "synth",
+            "synth pop" to "synth", "electro pop" to "synth", "neue deutsche welle" to "synth", "ndw" to "synth",
+            "italo disco" to "synth", "ebm" to "synth", "darkwave" to "synth", "coldwave" to "synth", "minimal wave" to "synth",
+            "synthwave" to "synth", "retrowave" to "synth", "outrun" to "synth", "new wave" to "synth",
+            // Scenes that grew out of post-punk, whatever their names say.
+            "crank wave" to "punk", "no wave" to "punk", "gothic rock" to "punk", "goth" to "punk", "deathrock" to "punk",
+            "riot grrrl" to "punk",
+            "vaporwave" to "electronic", "witch house" to "electronic", "electro swing" to "electronic",
+            "bedroom pop" to "indie", "new rave" to "indie", "baggy" to "indie", "sadcore" to "indie", "hamburger schule" to "indie",
+            "boogie" to "soul", "western swing" to "country", "liedermacher" to "folk", "prog" to "rock",
             "pop rock" to "rock", "soft rock" to "rock", "blues rock" to "rock", "hard rock" to "rock", "art rock" to "rock",
             "experimental rock" to "rock", "beat" to "rock", "mod" to "rock", "aor" to "rock", "classic rock" to "rock",
             "noise rock" to "punk", "hardcore" to "punk", "emo" to "punk", "screamo" to "punk", "oi" to "punk",
@@ -142,9 +166,9 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
 
         /** Words that tell a family, checked in this order (punk before electro: "electropunk" is punk). */
         private val RULES = listOf(
-            "hiphop" to Regex("hip hop|\\brap\\b|\\btrap\\b|grime|\\bdrill\\b|boom bap|deutschrap"),
+            "hiphop" to Regex("hip ?hop|\\brap\\b|\\btrap\\b|grime|\\bdrill\\b|boom bap|deutschrap"),
             "metal" to Regex("metal|grindcore|deathcore|djent"),
-            "punk" to Regex("punk|post hardcore"),
+            "punk" to Regex("punk|post hardcore|\\bemo\\b"),
             "dance" to Regex("house|techno|trance|drum (and|n) bass|\\bdnb\\b|dubstep|disco|\\bdance\\b|hardstyle|eurodance|big beat"),
             "jazz" to Regex("jazz|swing|bebop|big band"),
             "blues" to Regex("blues"),
@@ -158,11 +182,11 @@ class Genres(collection: List<CollectionItem>, private val artistTags: Map<Strin
             "soundtrack" to Regex("soundtrack|film|video game|\\bost\\b"),
             "latin" to Regex("latin|bossa|samba|salsa|reggaeton|cumbia|bachata|tropical"),
             "global" to Regex("afro|world|african|celtic|balkan|highlife|bollywood|arabic|thai|turkish"),
-            "synth" to Regex("synth|new wave|wave\\b|\\bwave"),
+            "synth" to Regex("synth|new wave|darkwave|coldwave|minimal wave|italo"),
             "electronic" to Regex("electr|idm|chill|glitch|trip hop"),
-            "indie" to Regex("indie|alternative|lo ?fi|post rock|math rock|slowcore|garage|madchester"),
+            "indie" to Regex("indie|alternative|lo ?fi|post rock|math rock|slowcore|garage|madchester|gaze"),
             "pop" to Regex("pop"),
-            "rock" to Regex("rock|krautrock|stoner|surf|glam|psychedel"),
+            "rock" to Regex("rock|krautrock|stoner|surf|glam|psychedel|\\bprog"),
         )
 
         /** The family of one style or tag (a [key]), or null for what isn't a genre ("Spoken Word", "Children's"). */

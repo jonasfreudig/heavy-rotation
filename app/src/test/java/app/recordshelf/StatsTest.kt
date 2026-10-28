@@ -171,12 +171,19 @@ class StatsTest {
             "Deep House" to "dance", "Funk / Soul" to "soul", "thai funk" to "soul", "Folk, World, & Country" to "folk",
             "Stage & Screen" to "soundtrack", "Psychedelic Rock" to "rock", "dance pop" to "pop", "Black Metal" to "metal",
             "Contemporary R&B" to "rnb", "Bossa Nova" to "latin", "Afrobeat" to "global", "Ambient" to "ambient",
+            // Post-punk scenes, whatever their names say; the "wave"s that are synth music.
+            "Crank Wave" to "punk", "no wave" to "punk", "Gothic Rock" to "punk", "Coldwave" to "synth", "dark wave" to "synth",
+            "Minimal Wave" to "synth", "synthwave" to "synth", "New Wave" to "synth", "vaporwave" to "electronic", "chillwave" to "indie",
+            "Midwest Emo" to "punk", "hiphop" to "hiphop", "Prog" to "rock", "Boogie" to "soul",
         )
         cases.forEach { (name, family) -> assertEquals(name, family, Genres.family(name)) }
         assertEquals(null, Genres.family("Spoken Word"))
         assertEquals("Punk & Post-Punk", Genres.label("punk"))
         assertEquals("a chip's name finds its family", "indie", Genres.resolve("Indie & Alternative"))
         assertEquals("a record's own style is a subgenre", "punk:post punk", Genres.resolve("post punk"))
+        assertEquals("punk:crank wave", Genres.resolve("Crank Wave"))
+        assertEquals("one style, however it is written", Genres.key("Synth-pop"), Genres.key("synthpop"))
+        assertEquals(Genres.key("post-punk"), Genres.key("postpunk"))
         assertEquals("a family's own word is the family", "rock", Genres.resolve("Rock"))
         assertEquals("indie:shoegaze", Genres.resolve("indie:shoegaze"))
     }

@@ -3733,7 +3733,7 @@ function renderGenre() {
       ${tile('Since', esc(monthYear(g.first)), `last played ${esc(dateLabel(g.last))}`, '', 'history')}
       ${tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire')}
     </div>
-    <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}">${icon('chart')}Stats for ${esc(g.label)}</button>
+    <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}" aria-label="Stats for ${esc(g.label)}">${icon('chart')}Stats</button>
       <button class="btn tonal" data-genrepl>${icon('playlist')}Make a playlist</button></div>`;
     h += genreInsideHtml(g);
     if ((top.artists || []).length) {
