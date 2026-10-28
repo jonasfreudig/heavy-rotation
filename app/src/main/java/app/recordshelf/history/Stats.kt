@@ -47,6 +47,9 @@ class Stats(
         const val TOP_GENRES = 6
         const val TOP_INKS = 8
 
+        /** Top lists go this far; the page shows 10 of them unless you ask for 50 or 100. */
+        const val TOP_MAX = 100
+
         /** A new artist you "kept": played this often since. */
         const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
@@ -256,7 +259,7 @@ class Stats(
             .put("loops", loops(i0, i1))
             .put("rarely", rarelyPlayed(i0, i1))
             .put("wishlist", wishlist(i0, i1))
-            .put("top", top(i0, i1, 10))
+            .put("top", top(i0, i1, TOP_MAX))
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
@@ -755,7 +758,7 @@ class Stats(
             .put("inside", JSONArray(inside.map { subJson(it) }))
             .put("general", maxOf(0, famPlays - subKeys.indices.filter { subKeys[it].startsWith("$family:") }.sumOf { subTotals[it] }))
             .put("shelf", JSONArray(collection.filter { genres.owns(it, key) }.map { it.releaseId }.distinct()))
-            .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, 10))
+            .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, TOP_MAX))
             .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
             .put("decades", s.decades(0, sub.size))
     }
@@ -1671,7 +1674,7 @@ class Stats(
             .put("hours", JSONArray(hours.toList()))
             .put("streak", best).put("streakEnd", dayStart(bestEnd) * 1000)
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[a]).put("rank", rank))
-            .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(10).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
+            .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(TOP_MAX).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))

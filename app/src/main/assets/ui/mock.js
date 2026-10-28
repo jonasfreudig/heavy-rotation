@@ -565,7 +565,7 @@ const Mock = (() => {
       rarely: { items: coll.slice().sort((x, y) => x.plays - y.plays).slice(0, 8).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', plays: 0, last: c.plays ? Date.now() - (60 + c.plays) * DAY : 0 })), owned: coll.length, unplayed: 5, neverPlayed: 2 },
       wishlist: [['Tame Impala', 'Lonerism', 212, 12], ['Khruangbin', 'Mordechai', 164, 10], ['Shame', 'Food for Worms', 131, 10], ['Little Simz', 'Sometimes I Might Be Introvert', 96, 14]]
         .map(([artist, album, plays, tracks]) => ({ artist, album, plays, tracks, last: Date.now() - 9 * DAY, key: '', image: '', search: 'https://www.discogs.com/search/?type=master&q=' + encodeURIComponent(artist + ' ' + album) })),
-      top: { artists: order.slice(0, 10).map((a) => ({ name: L.artists[a], plays: ac[a] })), albums: topAlbums,
+      top: { artists: order.slice(0, 100).map((a) => ({ name: L.artists[a], plays: ac[a] })), albums: topAlbums,
         tracks: topT.map((t) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t] })) },
     };
     // insights and personality, from the numbers above

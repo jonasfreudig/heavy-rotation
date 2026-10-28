@@ -1011,14 +1011,27 @@ function showNow(it, sig) {
   const art = npArt(it.cover, it.album || it.title, it.artist);
   if (corner) {
     slot.innerHTML = '';
-    peek.outerHTML = `<button class="np-peek${it.playing ? ' playing' : ''}" id="npPeek" ${it.attrs} aria-label="${esc(`${it.title} — ${it.artist}`)}">${art}</button>`;
+    peek.outerHTML = `<button class="np-peek${it.playing ? ' playing' : ''}" id="npPeek" ${it.attrs} aria-label="${esc(`${it.title} — ${it.artist}`)}">${art}<span class="np-zz" hidden>${icon('moon', 'i small')}<b></b></span></button>`;
     $('#npPeek').onclick = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
   } else {
     peek.hidden = true;
     peek.innerHTML = '';
     slot.innerHTML = `<button class="np-line${it.playing ? ' playing' : ''}" ${it.attrs}>${art}
       <span class="np-txt"><small ${it.labelId ? `id="${it.labelId}"` : ''}>${esc(it.label || '')}</small><b ${it.titleId ? `id="${it.titleId}"` : ''}>${esc(it.title || '')}</b>
-      <span>${esc(it.artist)}${it.album ? ` — ${esc(it.album)}` : ''}</span><i class="np-bar"><i id="${it.barId}"></i></i></span></button>`;
+      <span>${esc(it.artist)}${it.album ? ` — ${esc(it.album)}` : ''}</span><i class="np-bar"><i id="${it.barId}"></i></i></span><span class="np-zz" hidden>${icon('moon', 'i small')}<b></b></span></button>`;
+  }
+  sleepMarks();
+}
+/** The sleep timer on what plays, in the corner or on the shelf's line: a moon and the minutes left. */
+function sleepMarks() {
+  const s = ST.sleep;
+  const min = s && !s.song ? Math.max(1, Math.ceil((s.at - Date.now()) / 60000)) : 0;
+  for (const z of $$('.np-zz')) {
+    const corner = !!z.closest('.np-peek');
+    const t = !s ? '' : s.song ? (corner ? '' : 'after this song') : corner ? `${min}′` : `${min} min`;
+    z.hidden = !s;
+    if (z.lastElementChild.textContent !== t) z.lastElementChild.textContent = t;
+    z.title = s ? sleepLabel() : '';
   }
 }
 function renderSpinCard() {
@@ -1045,6 +1058,7 @@ let lastCur = -2;
 function tickUi() {
   tickPhone();
   tickNow();
+  sleepMarks();
   const sp = ST.spin;
   if (!sp) return;
   const now = Date.now();
@@ -3645,11 +3659,36 @@ function genreMapHtml(m) {
     const subs = pw > 30 && ph > 22 && !b.others && b.f.subs.length ? `<small class="gm-subs">${b.f.subs.slice(0, 3).map((s) => esc(s.label)).join(' · ')}</small>` : '';
     const attrs = b.others ? 'data-genremore' : `data-genre="${esc(b.f.key)}" data-glabel="${esc(b.f.label)}"`;
     return `<button class="gm-box" ${attrs} aria-label="${esc(name)}" style="left:${((b.x / W) * 100).toFixed(2)}%;top:${((b.y / H) * 100).toFixed(2)}%;width:${pw.toFixed(2)}%;height:${ph.toFixed(2)}%;--c:${b.color}">
-      ${pw < 10 || ph < 9 ? '' : `<b>${esc(name)}</b><small>${Math.round((b.v / total) * 100)}%</small>${subs}`}</button>`;
+      <b>${esc(name)}</b><small>${Math.round((b.v / total) * 100)}%</small>${subs}</button>`;
   }).join('');
   return `<div class="viz genre-map-card"><h2>Your genres</h2><span class="sub">All your listening, sorted into genres: the bigger, the more you play it${m.all > total ? ` (${pct(total / m.all)} of your plays have a known genre)` : ''}. Tap one for its page.</span>
-    <div class="genre-map">${boxes}</div></div>`;
+    <div class="genre-map">${boxes}</div><div class="chips gm-more" hidden></div></div>`;
 }
+/**
+ * Fits each name to its box: wrapped between words, never cut. Too big, it gets smaller, then
+ * drops its styles, then its share; a box too small for any name stays plain, and its genre is
+ * listed under the map instead. Again whenever the map changes size (it has none while hidden).
+ */
+const FIT_STEPS = ['', 'fs1', 'fs1 nosubs', 'fs2 nosubs', 'fs2 nosubs nopct', 'quiet'];
+function fitGenreMap() {
+  const map = $('.genre-map');
+  if (!map || !map.offsetWidth) return;
+  const fits = (box) => box.scrollHeight <= box.clientHeight + 1 && [...box.children].every((c) => c.offsetParent === null || c.scrollWidth <= c.clientWidth + 1);
+  const quiet = [];
+  for (const box of map.querySelectorAll('.gm-box')) {
+    for (const step of FIT_STEPS) {
+      box.className = `gm-box ${step}`.trim();
+      if (step === 'quiet' || fits(box)) break;
+    }
+    if (box.classList.contains('quiet') && box.dataset.genre) quiet.push(box);
+  }
+  const more = map.parentElement.querySelector('.gm-more');
+  if (more) {
+    more.innerHTML = quiet.map((b) => `<button class="chip" data-genre="${esc(b.dataset.genre)}" data-glabel="${esc(b.dataset.glabel)}"><i class="sw" style="background:${b.style.getPropertyValue('--c')}"></i>${esc(b.dataset.glabel)}</button>`).join('');
+    more.hidden = !quiet.length;
+  }
+}
+const gmSizes = new ResizeObserver(() => fitGenreMap());
 function openGenreMore() {
   openSheet(`<div class="sheet-title">More genres</div><div class="chips">${GENRE_MORE.map((f) => `<button class="chip" data-genre="${esc(f.key)}" data-glabel="${esc(f.label)}">${esc(f.label)}<small class="n">${compact(f.plays)}</small></button>`).join('')}</div>`);
   $('#sheetContent').onclick = (e) => { if (e.target.closest('[data-genre]')) closeSheet(); };
@@ -3699,7 +3738,7 @@ function renderGenre() {
     h += genreInsideHtml(g);
     if ((top.artists || []).length) {
       h += `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
-        <div class="xcards">${top.artists.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
+        <div class="xcards">${top.artists.slice(0, 10).map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
     }
     const lost = g.lost || [], lostAlbums = g.lostAlbums || [];
     if (lost.length || lostAlbums.length) {
@@ -3708,11 +3747,11 @@ function renderGenre() {
         ${lostAlbums.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`).join('')}</div></div>`;
     }
     if ((top.albums || []).length) {
-      h += `<div class="viz"><h2>Albums</h2><div class="xcards">${top.albums.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
+      h += `<div class="viz"><h2>Albums</h2><div class="xcards">${top.albums.slice(0, 10).map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div></div>`;
     }
     if ((top.tracks || []).length) {
       const max = Math.max(1, ...top.tracks.map((t) => t.plays));
-      h += `<div class="viz"><h2>Songs</h2><div class="rank">${top.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${num(t.plays)}</span><div class="bar"><i style="width:${(t.plays / max) * 100}%"></i></div></button>`).join('')}</div></div>`;
+      h += `<div class="viz"><h2>Songs</h2><div class="rank">${top.tracks.slice(0, topN('genre')).map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${num(t.plays)}</span><div class="bar"><i style="width:${(t.plays / max) * 100}%"></i></div></button>`).join('')}</div>${topMore('genre', top.tracks.length)}</div>`;
     }
     const all = g.all || [];
     if (all.length > (top.artists || []).length) {
@@ -4657,6 +4696,8 @@ function renderExplore() {
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
   morph(body, h);
+  const gm = $('.genre-map');
+  if (gm) { gmSizes.disconnect(); gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
   renderVsCard();
   if (!VS) send({ t: 'vs' });
 }
@@ -4852,8 +4893,8 @@ function renderArtist() {
     }
   }
   if (a.tracks.length) {
-    h += `<div class="viz"><h2>Top tracks</h2><span class="sub">Not music? ${icon('eye-off', 'i inl')} hides a track from your stats.</span><div class="rank">${a.tracks.map((x, i) => `<div class="r with-act" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span>
-      <button class="icon-btn small" data-hide ${hideAttrs('track', a.name, x.title)} aria-label="Hide ${esc(x.title)} from stats">${icon('eye-off')}</button></div>`).join('')}</div></div>`;
+    h += `<div class="viz"><h2>Top tracks</h2><span class="sub">Not music? ${icon('eye-off', 'i inl')} hides a track from your stats.</span><div class="rank">${a.tracks.slice(0, topN('artist')).map((x, i) => `<div class="r with-act" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span>
+      <button class="icon-btn small" data-hide ${hideAttrs('track', a.name, x.title)} aria-label="Hide ${esc(x.title)} from stats">${icon('eye-off')}</button></div>`).join('')}</div>${topMore('artist', a.tracks.length)}</div>`;
   }
   if (a.albums.length) {
     h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>`;
@@ -4973,9 +5014,26 @@ function wishlistViz(w) {
     `<button class="r with-cover" data-url="${esc(x.search)}">${coverHtml(x.image, x.album, x.artist, 'tiny')}<span class="t"><b>${esc(x.album)}</b><small>${esc(x.artist)} · ${x.tracks} tracks</small></span><span class="v">${plural(x.plays, 'play')}</span></button>`).join('')}</div></div>`;
 }
 
+/** How many rows each top list shows (10, 50 or 100), as you last chose for that list. */
+const TOPN = (() => { try { return JSON.parse(localStorage.getItem('topN') || '{}'); } catch (_) { return {}; } })();
+const topN = (k) => TOPN[k] || 10;
+/** The buttons under a top list of [have] rows: one step longer, and back to 10. */
+function topMore(k, have) {
+  const n = topN(k), next = n < 50 ? 50 : 100;
+  const longer = have > n ? `<button class="btn text small" data-topn="${k}:${next}">Show top ${Math.min(next, have)}</button>` : '';
+  const shorter = n > 10 && have > 10 ? `<button class="btn text small" data-topn="${k}:10">Show top 10</button>` : '';
+  return longer || shorter ? `<div class="btn-row top-more">${longer}${shorter}</div>` : '';
+}
+function setTopN(k, n) {
+  TOPN[k] = n;
+  try { localStorage.setItem('topN', JSON.stringify(TOPN)); } catch (_) { /* preview without storage */ }
+  if (k === 'stats') renderStats();
+  else if (k === 'artist') renderArtist();
+  else if (k === 'genre') renderGenre();
+}
 function topViz(top) {
   if (!top) return '';
-  const list = top[topKind] || [];
+  const all = top[topKind] || [], list = all.slice(0, topN('stats'));
   const max = Math.max(1, ...list.map((x) => x.plays));
   const rows = list.map((x, i) => {
     const name = topKind === 'artists' ? x.name : x.title;
@@ -4984,9 +5042,9 @@ function topViz(top) {
     const pic = topKind === 'albums' ? coverHtml(x.cover, x.title, x.artist, 'tiny') : topKind === 'artists' ? coverHtml(x.photo, x.name, x.name, 'tiny round') : `<span class="n">${i + 1}</span>`;
     return `<button class="r ${topKind === 'tracks' ? '' : 'with-cover'}" ${open}>${pic}<span class="t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`;
   }).join('');
-  return `<div class="viz"><h2>Top 10</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
+  return `<div class="viz"><h2>Top ${list.length > 10 ? list.length : 10}</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
     `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
-    <div class="rank">${rows || '<p class="hint">Nothing in this period.</p>'}</div>
+    <div class="rank">${rows || '<p class="hint">Nothing in this period.</p>'}</div>${topMore('stats', all.length)}
     ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}</div>` : ''}</div>`;
 }
 
@@ -5033,7 +5091,7 @@ const BLOCKS = {
   obsessions: { name: 'Obsessions', html: (s) => obsessionsViz(s.obsessions, s.loops) },
   rarely: { name: 'Rarely played records', html: (s) => rarelyViz(s.rarely) },
   wishlist: { name: 'Wishlist ideas', html: (s) => wishlistViz(s.wishlist) },
-  top: { name: 'Top 10', kinds: ['day', ...SPAN], html: (s) => topViz(s.top) },
+  top: { name: 'Top lists', kinds: ['day', ...SPAN], html: (s) => topViz(s.top) },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
   dayline: { name: 'Your day', kinds: ['day'], html: (s) => daylineViz(s) },
   firstLatest: { name: 'First and latest', kinds: ['day'], html: (s) => firstLatestViz(s) },
@@ -5736,6 +5794,8 @@ function build() {
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
     if (e.target.closest('[data-genremore]')) { openGenreMore(); return; }
+    const tn = e.target.closest('[data-topn]');
+    if (tn) { const [k, n] = tn.dataset.topn.split(':'); setTopN(k, +n); return; }
     if (e.target.closest('[data-genremap]')) {
       while (pageStack.length) closePage();
       showTab('explore');
