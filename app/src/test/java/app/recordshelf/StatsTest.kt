@@ -118,7 +118,8 @@ class StatsTest {
     fun genresPreferDiscogsThenLastfmTags() {
         val collection = listOf(item(1, "Fleetwood Mac", "Rumours", listOf("Pop Rock", "Soft Rock")))
         val genres = Genres(collection, mapOf(Genres.artistKey("Khruangbin") to listOf("psychedelic rock", "funk")))
-        assertEquals(listOf("pop rock", "soft rock") to Genres.Source.DISCOGS, genres.of("Fleetwood Mac", app.recordshelf.util.Text.albumKey("Fleetwood Mac", "Rumours")))
+        assertEquals("both styles are rock", listOf("rock") to Genres.Source.DISCOGS, genres.of("Fleetwood Mac", app.recordshelf.util.Text.albumKey("Fleetwood Mac", "Rumours")))
+        assertEquals(listOf("rock", "soul"), genres.of("Khruangbin", null).first)
         assertEquals("other albums by an artist you own", Genres.Source.DISCOGS, genres.of("Fleetwood Mac", "fleetwood mac|tusk").second)
         assertEquals(Genres.Source.LASTFM, genres.of("Khruangbin", null).second)
         assertEquals(Genres.Source.NONE, genres.of("Nobody", null).second)
@@ -129,7 +130,7 @@ class StatsTest {
     @Test
     fun genreDriftSharesPerMonth() {
         val collection = listOf(item(1, "Fleetwood Mac", "Rumours", listOf("Pop Rock")))
-        val genres = Genres(collection, mapOf(Genres.artistKey("Khruangbin") to listOf("psychedelic rock")))
+        val genres = Genres(collection, mapOf(Genres.artistKey("Khruangbin") to listOf("thai funk")))
         val plays = listOf(
             Play(at(2025, 1, 5), "Fleetwood Mac", "Dreams", "Rumours"), Play(at(2025, 1, 6), "Fleetwood Mac", "Dreams", "Rumours"),
             Play(at(2025, 1, 7), "Khruangbin", "Maria", "Con Todo El Mundo"), Play(at(2025, 1, 8), "Nobody", "x"),
@@ -139,7 +140,7 @@ class StatsTest {
         val s = Stats(h, utc, at(2025, 3, 1), collection, genres)
         val g = s.genreDrift(s.range("y2025"), 0, h.size)
         assertEquals("month", g.getString("unit"))
-        assertEquals(listOf("Pop Rock", "Psychedelic Rock", "Other"), (0 until g.getJSONArray("names").length()).map { g.getJSONArray("names").getString(it) })
+        assertEquals(listOf("Rock", "Soul & Funk", "Other"), (0 until g.getJSONArray("names").length()).map { g.getJSONArray("names").getString(it) })
         val jan = g.getJSONArray("periods").getJSONObject(0)
         assertEquals(3, jan.getInt("total"))
         assertEquals(0.667, jan.getJSONArray("shares").getDouble(0), 0.001)
@@ -159,6 +160,23 @@ class StatsTest {
         assertEquals(listOf("trip hop", "electronic", "downtempo"), Genres.fromTags(tags, "Portishead"))
         assertEquals("Trip Hop", Genres.label("trip hop"))
         assertEquals("trip hop", Genres.key("Trip-Hop"))
+    }
+
+    @Test
+    fun stylesAndTagsShareOneSetOfGenres() {
+        val cases = mapOf(
+            "Indie Rock" to "indie", "indie" to "indie", "Garage Rock Revival" to "indie", "alternative" to "indie",
+            "Post-Punk" to "punk", "post-punk revival" to "punk", "electropunk" to "punk", "dance-punk" to "punk",
+            "Hip Hop" to "hiphop", "Deutschrap" to "hiphop", "trip-hop" to "electronic", "Synth-pop" to "synth",
+            "Deep House" to "dance", "Funk / Soul" to "soul", "thai funk" to "soul", "Folk, World, & Country" to "folk",
+            "Stage & Screen" to "soundtrack", "Psychedelic Rock" to "rock", "dance pop" to "pop", "Black Metal" to "metal",
+            "Contemporary R&B" to "rnb", "Bossa Nova" to "latin", "Afrobeat" to "global", "Ambient" to "ambient",
+        )
+        cases.forEach { (name, family) -> assertEquals(name, family, Genres.family(name)) }
+        assertEquals(null, Genres.family("Spoken Word"))
+        assertEquals("Punk & Post-Punk", Genres.label("punk"))
+        assertEquals("a chip's name finds its family", "indie", Genres.resolve("Indie & Alternative"))
+        assertEquals("a record's own style finds its family", "punk", Genres.resolve("post punk"))
     }
 
     @Test

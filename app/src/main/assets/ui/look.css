@@ -392,12 +392,16 @@ body.bar-away .lin:not(.inline) { top: var(--inset-top); }
 .np-txt > span { font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-bar { position: relative; display: block; height: 6px; margin-top: 8px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--md-on-surface) 10%, transparent); }
 .np-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: var(--md-primary); transition: width 1s linear; }
-/* The record in the corner: above the search circle, tilted, tucked away a little more while you scroll down. */
-.np-peek { position: fixed; right: 10px; bottom: calc(var(--inset-bottom) + 54px); z-index: 5; width: 100px; height: 100px; transform: rotate(-8deg);
+/*
+ * The record in the corner: on the left, above the tabs (a right thumb covers the right corner).
+ * The record slides out of the sleeve's open side, as a real one does; the sleeve leans back,
+ * so that side faces up and to the right. Tucked away a little more while you scroll down.
+ */
+.np-peek { position: fixed; left: 12px; bottom: calc(var(--inset-bottom) + 50px); z-index: 5; width: 100px; height: 100px; transform: rotate(-14deg);
   transition: transform .3s cubic-bezier(.2, .7, .2, 1); }
 .np-peek .np-art { width: 100px; height: 100px; margin: 0; }
-.np-peek .np-disc { left: -22px; top: -40px; width: 94px; height: 94px; }
-body.bar-away .np-peek { transform: translateY(46px) rotate(-8deg); }
+.np-peek .np-disc { left: 44px; top: 3px; width: 94px; height: 94px; }
+body.bar-away .np-peek { transform: translateY(46px) rotate(-14deg); }
 
 /* ---- the search circle beside the tabs; search opens into a field at the bottom ---- */
 .navbar { right: calc(14px + 64px + 10px); max-width: none; margin: 0; }
@@ -482,7 +486,7 @@ html.locked .page { overflow: hidden; }
 .search-dock:not([hidden]) { animation: dockIn .36s cubic-bezier(.2, 0, 0, 1); }
 @keyframes dockIn { from { clip-path: inset(0 0 0 calc(100% - 62px) round 31px); } to { clip-path: inset(0 0 0 0 round 31px); } }
 .np-peek { animation: peekIn .55s cubic-bezier(.2, 0, 0, 1); }
-@keyframes peekIn { from { transform: translateY(110px) rotate(4deg); opacity: 0; } }
+@keyframes peekIn { from { transform: translateY(110px) rotate(-4deg); opacity: 0; } }
 .np-line .np-disc { animation: npSlide .7s .12s cubic-bezier(.2, 0, 0, 1) both; }
 .np-line.playing .np-disc { animation: npSlide .7s .12s cubic-bezier(.2, 0, 0, 1) both, spin33 3.6s linear infinite; }
 @keyframes npSlide { from { left: 4px; } }

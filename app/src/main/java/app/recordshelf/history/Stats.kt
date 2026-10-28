@@ -694,7 +694,8 @@ class Stats(
      * One genre's page (the plays whose main genre is [key]): its life in plays, its top artists,
      * albums and songs, its artists and albums gone quiet, and its decades; null if none.
      */
-    fun genrePage(key: String): JSONObject? {
+    fun genrePage(asked: String): JSONObject? {
+        val key = Genres.resolve(asked)
         val sub = h.filter(inGenre(key))
         if (sub.size == 0) return null
         val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals)
@@ -969,7 +970,7 @@ class Stats(
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
     fun inGenre(key: String): (Int) -> Boolean {
         val (g, _) = scrobbleGenre
-        val id = genreIds[key] ?: return { false }
+        val id = genreIds[Genres.resolve(key)] ?: return { false }
         return { g[it] == id }
     }
 
@@ -1090,6 +1091,33 @@ class Stats(
         }
         return JSONObject().put("unit", b.unit.id).put("starts", b.startsJson())
             .put("artists", JSONArray(order.map { h.artistNames[it] }))
+            .put("series", JSONArray(series.map { JSONArray(it.toList()) })).put("other", JSONArray(other.toList()))
+    }
+
+    /**
+     * A river for one album or artist, over all its time with you since [first]: plays per bin of
+     * its parts ([partOf]: songs or albums, -1 for none), the [TOP_INKS] most played in the
+     * record's colors, around the rest of it. Null when there is too little to flow.
+     */
+    private fun pageRiver(first: Long, match: (Int) -> Boolean, partOf: (Int) -> Int, name: (Int) -> String): JSONObject? {
+        val b = binsFor(Range("life", "", first, nowSec + 1, "all"), 60)
+        if (b.count < 4) return null
+        val i0 = h.lowerBound(first)
+        val counts = HashMap<Int, Int>()
+        for (i in i0 until h.size) if (match(i)) partOf(i).takeIf { it >= 0 }?.let { counts.merge(it, 1, Int::plus) }
+        val order = counts.entries.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key }).map { it.key }.take(TOP_INKS)
+        if (order.size < 2) return null
+        val slot = HashMap<Int, Int>().also { s -> order.forEachIndexed { k, p -> s[p] = k } }
+        val series = Array(order.size) { IntArray(b.count) }
+        val other = IntArray(b.count)
+        for (i in i0 until h.size) {
+            if (!match(i)) continue
+            val k = b.index(date(h.ts[i])).coerceIn(0, b.count - 1)
+            val s = slot[partOf(i)]
+            if (s != null) series[s][k]++ else other[k]++
+        }
+        return JSONObject().put("unit", b.unit.id).put("starts", b.startsJson())
+            .put("artists", JSONArray(order.map(name)))
             .put("series", JSONArray(series.map { JSONArray(it.toList()) })).put("other", JSONArray(other.toList()))
     }
 
@@ -1554,6 +1582,8 @@ class Stats(
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
+        // Their albums as a river, over all your time with them.
+        pageRiver(h.ts[first], { h.artist[it] == a }, { h.album[it] }, { h.albumTitles[it] })?.let { o.put("river", it) }
         // How you found them, back as far as the history goes, and who they led you to.
         val chain = JSONArray()
         var p = origins.second[a]
@@ -1714,7 +1744,7 @@ class Stats(
         o.put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
             .put("rank", rank(all, t)).put("tracks", all.count { it > 0 })
             .put("shareOfArtist", all[t].toDouble() / maxOf(1, artistPlays))
-            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[t]).put("rank", rank(inRange, t)))
+            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[t]).put("rank", rank(inRange, t)))
             .put("next", JSONArray(next.entries.sortedByDescending { it.value }.take(5).map { (n, c) -> JSONObject().put("title", h.trackTitles[n]).put("artist", h.artistNames[h.trackArtist[n]]).put("count", c) }))
             .put("sits", JSONObject().put("open", sits[0]).put("middle", sits[1]).put("close", sits[2]).put("alone", sits[3])
                 .put("baseOpen", sitsAll[0].toDouble() / inSessions).put("baseClose", sitsAll[2].toDouble() / inSessions))
@@ -1747,9 +1777,11 @@ class Stats(
             if (x == al) tracks.merge(h.track[i], 1, Int::plus)
         }
         globals.album(h.artistNames[h.albumArtist[al]], h.albumTitles[al])?.let { o.put("global", vsJson(all[al], it)) }
+        // Its songs as a river, over all your time with it.
+        pageRiver(o.getLong("first") / 1000, { h.album[it] == al }, { h.track[it] }, { h.trackTitles[it] })?.let { o.put("river", it) }
         return o.put("info", albumJson(al)).put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
             .put("rank", rank(all, al)).put("albums", all.count { it > 0 })
-            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("plays", inRange[al]).put("rank", rank(inRange, al)))
+            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[al]).put("rank", rank(inRange, al)))
             .put("trackList", JSONArray(tracks.entries.sortedByDescending { it.value }.map { (t, c) -> JSONObject().put("title", h.trackTitles[t]).put("plays", c) }))
     }
 

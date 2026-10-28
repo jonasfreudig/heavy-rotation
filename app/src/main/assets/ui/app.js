@@ -1843,6 +1843,8 @@ function periodLabel(ms, unit, short) {
 
 /** The name of a stats period ({kind, from in seconds}). */
 function periodName(r) {
+  // Without its start (an older answer), the period's own label rather than "Invalid date".
+  if (!r.from && r.kind !== 'all' && r.kind !== '12m') return r.label || 'This period';
   if (r.kind === 'day') {
     const d = new Date(r.from * 1000);
     return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
@@ -2074,7 +2076,11 @@ function soften(a, s) {
  * middle and the top artists (in their record colors) above and below it, in the order they
  * peaked, each named where it is widest. A long break shows as a pinch, with its length.
  */
-function riverViz(rv) {
+/**
+ * The river: [rv]'s parts as streams (artists on the Stats tab; songs or albums on a page, with
+ * [o]: title, sub(top share), link(name) for the legend, other for the grey).
+ */
+function riverViz(rv, o = {}) {
   const B = (rv && rv.starts) ? rv.starts.length : 0;
   if (B < 2 || !rv.artists.length) return '';
   const W = 340, H = 190, mid = H / 2;
@@ -2126,19 +2132,24 @@ function riverViz(rv) {
   }
   const cw = W / (B - 1);
   const hits = rv.starts.map((s, b) => `<rect class="hit" data-rv="${b}" x="${Math.max(0, x(b) - cw / 2)}" y="0" width="${cw}" height="${H}"/>`).join('');
-  const legend = rv.artists.map((n, k) => `<button class="ink" data-artist="${esc(n)}"><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span></button>`).join('')
-    + '<span class="ink"><i class="sw" style="background:var(--md-outline-variant)"></i><span>Everyone else</span></span>';
+  const others = rv.other.some((v) => v > 0);
+  const legend = rv.artists.map((n, k) => `<button class="ink" ${o.link ? o.link(n) : `data-artist="${esc(n)}"`}><i class="sw" style="background:${INKS[k]}"></i><span>${esc(n)}</span></button>`).join('')
+    + (others ? `<span class="ink"><i class="sw" style="background:var(--md-outline-variant)"></i><span>${esc(o.other || 'Everyone else')}</span></span>` : '');
   const topN = rv.series.reduce((a, s) => a + s.reduce((p, q) => p + q, 0), 0), all = topN + rv.other.reduce((p, q) => p + q, 0);
-  return `<div class="viz"><h2>The river</h2><span class="sub">Plays per ${rv.unit}, flowing around everyone else (grey). Your top ${rv.artists.length} are <b>${Math.round((topN / Math.max(1, all)) * 100)}%</b> of it.</span>
-    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}<line class="cursor" id="rvCursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
-      <text x="0" y="${H + 12}">${esc(periodLabel(rv.starts[0], rv.unit, true))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(periodLabel(rv.starts[B - 1], rv.unit, true))}</text></svg></div>
-    <div class="readout" id="ro-rv">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
+  const share = Math.round((topN / Math.max(1, all)) * 100);
+  // A page's river spans years: its ends say which.
+  const edge = (ms) => (o.title && rv.unit !== 'year' ? new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' }) : periodLabel(ms, rv.unit, true));
+  return `<div class="viz" data-other="${esc((o.other || 'everyone else').toLowerCase())}"><h2>${esc(o.title || 'The river')}</h2>
+    <span class="sub">${o.sub ? o.sub(share) : `Plays per ${rv.unit}, flowing around everyone else (grey). Your top ${rv.artists.length} are <b>${share}%</b> of it.`}</span>
+    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}<line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
+      <text x="0" y="${H + 12}">${esc(edge(rv.starts[0]))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(edge(rv.starts[B - 1]))}</text></svg></div>
+    <div class="readout">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
 }
-function riverText(rv, b) {
+function riverText(rv, b, otherWord = 'everyone else') {
   const parts = rv.artists.map((n, k) => [n, rv.series[k][b]]).filter((p) => p[1] > 0).sort((p, q) => q[1] - p[1]).slice(0, 3)
     .map(([n, v]) => `${esc(n)} ${v}`);
   const total = rv.series.reduce((a, s) => a + s[b], 0) + rv.other[b];
-  return `${esc(periodLabel(rv.starts[b], rv.unit))}: <b>${plural(total, 'play')}</b>${parts.length ? ` — ${parts.join(', ')}` : ''}${rv.other[b] ? `, everyone else ${rv.other[b]}` : ''}`;
+  return `${esc(periodLabel(rv.starts[b], rv.unit))}: <b>${plural(total, 'play')}</b>${parts.length ? ` — ${parts.join(', ')}` : ''}${rv.other[b] ? `, ${esc(otherWord)} ${rv.other[b]}` : ''}`;
 }
 
 /** New artists per day, week or month: columns in one hue; the start of your history is grayed. */
@@ -2247,7 +2258,7 @@ function genreViz(g) {
     <div class="stack">${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
     <div class="readout" id="ro-g">${genreText(g, last)}</div>
     <div class="legend">${legend}</div>
-    <p class="hint">Genres from Discogs styles for ${pct(cov.discogs)} of plays (records you own and their artists), Last.fm tags for ${pct(cov.lastfm)}, unknown for ${pct(cov.none)}.</p></div>`;
+    <p class="hint">One set of genres for all your music: Discogs styles (records you own and their artists, ${pct(cov.discogs)} of plays) and Last.fm tags (${pct(cov.lastfm)}) are both sorted into it; unknown for ${pct(cov.none)}.</p></div>`;
 }
 function genreText(g, i) {
   const p = g.periods[i];
@@ -3559,6 +3570,11 @@ function renderAlbum() {
     }
     h += vsBlock(a.global, 'it');
     h += clickedViz(a);
+    if (a.river) {
+      h += riverViz(a.river, { title: 'Its songs over time', other: 'Its other songs',
+        sub: (s) => `Plays per ${a.river.unit} of each song since you first played it; the top ${a.river.artists.length} are <b>${s}%</b> of them.`,
+        link: (n) => trackAttrs(a.artist, n, { album: a.title, cover }) });
+    }
     h += lifeCharts(a, 'it', cover, a.title + a.artist);
   }
   keepHolo($('#albumBody'), h);
@@ -4479,6 +4495,11 @@ function renderArtist() {
   h += vsBlock(a.global, esc(a.name));
   h += originHtml(a);
   h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
+  if (a.river) {
+    h += riverViz(a.river, { title: 'Their albums over time', other: 'Singles and the rest',
+      sub: (s) => `Plays per ${a.river.unit} of each album since you first played them; the top ${a.river.artists.length} are <b>${s}%</b> of it.`,
+      link: (n) => albumAttrs(a.name, n) });
+  }
   h += lifeCharts(a, 'them', pic, a.name + a.name);
   if (STATS && STATS.record && STATS.record.days) {
     const idx = STATS.record.artists.findIndex((n) => norm(n) === norm(a.name));
@@ -4927,9 +4948,11 @@ function onVizPointer(e, data) {
   if (rvHit && data && data.river) {
     const b = +rvHit.dataset.rv;
     const B = data.river.starts.length;
-    const cur = $('#rvCursor');
+    // Each river has its own cursor and readout (the Stats tab's and a page's can both be there).
+    const viz = rvHit.closest('.viz');
+    const cur = viz.querySelector('.cursor');
     if (cur) { cur.setAttribute('x1', (b / (B - 1)) * 340); cur.setAttribute('x2', (b / (B - 1)) * 340); cur.setAttribute('visibility', 'visible'); }
-    $('#ro-rv').innerHTML = riverText(data.river, b);
+    viz.querySelector('.readout').innerHTML = riverText(data.river, b, viz.dataset.other);
     return;
   }
   const ridge = t.closest('[data-ridge]');

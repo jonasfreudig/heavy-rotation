@@ -889,6 +889,25 @@ const Mock = (() => {
       album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
       global: globalOf(L.titles[t] + L.artists[a], life.plays), globalRank: 2 };
   }
+  /** A page's river, as the app works it out: plays per month of its [partOf] parts since its first play. */
+  function riverOf(match, partOf, name) {
+    const L = history();
+    let first = -1;
+    const tot = {};
+    for (let i = 0; i < L.ts.length; i++) if (match(i)) { if (first < 0) first = i; const q = partOf(i); if (q >= 0) tot[q] = (tot[q] || 0) + 1; }
+    if (first < 0) return null;
+    const order = Object.keys(tot).map(Number).sort((x, y) => tot[y] - tot[x]).slice(0, 8);
+    const d0 = new Date(L.ts[first]), now = new Date();
+    const m0 = d0.getFullYear() * 12 + d0.getMonth(), B = now.getFullYear() * 12 + now.getMonth() - m0 + 1;
+    if (order.length < 2 || B < 4) return null;
+    const series = order.map(() => new Array(B).fill(0)), other = new Array(B).fill(0);
+    for (let i = first; i < L.ts.length; i++) {
+      if (!match(i)) continue;
+      const d = new Date(L.ts[i]), k = d.getFullYear() * 12 + d.getMonth() - m0, s = order.indexOf(partOf(i));
+      if (s >= 0) series[s][k]++; else other[k]++;
+    }
+    return { unit: 'month', starts: Array.from({ length: B }, (_, k) => +new Date(Math.floor((m0 + k) / 12), (m0 + k) % 12, 1)), artists: order.map(name), series, other };
+  }
   const looseTitle = (t) => String(t || '').toLowerCase().replace(/\s*[([][^)\]]*[)\]]/g, '').trim();
   function fakeAlbum(artist, title) {
     const L = history();
@@ -904,7 +923,7 @@ const Mock = (() => {
       info: { title, artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
       range: { ...r, plays: c[a] || 0, rank: rankIn(c, a) },
       trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })),
-      global: globalOf(title + L.artists[a], life.plays) };
+      global: globalOf(title + L.artists[a], life.plays), river: riverOf((i) => L.a[i] === a, (i) => L.t[i], (k) => L.titles[k]) };
   }
   function artistLives() {
     const L = history();
