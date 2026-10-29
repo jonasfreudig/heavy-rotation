@@ -838,7 +838,7 @@ object Core {
                 } catch (_: Exception) {
                     null
                 }
-                if (hit == null) toast("No exact match on TIDAL, so here's a search")
+                if (hit == null) toast("TIDAL has no exact match; opening a search instead")
                 val url = hit?.link ?: msg.optString("fallback")
                 main.post { ui?.openUrl(url) }
             }
@@ -2253,7 +2253,7 @@ object Core {
         } catch (_: Exception) {
             activity.countSince(day0) to activity.countSince(week0)
         }
-        return o.put("line", "Today ${plays(d)} · this week $w")
+        return o.put("line", "Today ${plays(d)}, this week $w")
     }
 
     private fun plays(n: Int) = if (n == 1) "1 play" else "$n plays"

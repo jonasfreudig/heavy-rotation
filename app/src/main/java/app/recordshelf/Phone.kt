@@ -59,7 +59,7 @@ object Phone {
     @Synchronized
     private fun noteSeen(ctx: Context, pkg: String, meta: TrackMeta) {
         val a = apps()
-        val last = "${meta.artist} — ${meta.title}"
+        val last = "${meta.title} by ${meta.artist}"
         val o = a.optJSONObject(pkg)
         if (o != null && o.optString("last") == last) return
         a.put(pkg, (o ?: JSONObject().put("label", label(ctx, pkg)).put("on", false)).put("last", last).put("seen", System.currentTimeMillis()))

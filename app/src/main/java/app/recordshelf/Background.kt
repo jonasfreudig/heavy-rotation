@@ -220,11 +220,11 @@ object SpinNotifier {
         val sub = listOfNotNull(
             item?.track?.side?.takeIf { it.isNotEmpty() }?.let { sideName(it).replaceFirstChar { c -> c.uppercase() } },
             if (pos > 0) "$pos of ${live.size}" else null,
-        ).joinToString(" · ")
+        ).joinToString(", ")
         val b = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_record)
             .setContentTitle(item?.track?.title ?: s.album)
-            .setContentText("${s.artist} — ${s.album}")
+            .setContentText("${s.album} by ${s.artist}")
             .setSubText(sub)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

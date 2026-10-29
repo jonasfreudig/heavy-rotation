@@ -151,7 +151,7 @@ class DiscogsClient(
         val l = labels?.objects()?.firstOrNull() ?: return ""
         val name = Names.clean(l.str("name"))
         val cat = l.str("catno").takeIf { it.isNotEmpty() && !it.equals("none", true) }
-        return if (cat != null) "$name · $cat" else name
+        return if (cat != null) "$name, $cat" else name
     }
 
     private fun get(path: String): JSONObject {

@@ -785,7 +785,7 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 /* Song, album and playlist pages, "listen on" chips, Explore */
 .listen { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
 .listen .chip .i { width: 18px; height: 18px; }
-.hero .dot { margin: 0 6px; color: var(--md-on-surface-variant); }
+.hero .dot { margin: 0 6px 0 0; color: var(--md-on-surface-variant); }
 .hint.center { text-align: center; }
 .item.act { cursor: pointer; }
 .xhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

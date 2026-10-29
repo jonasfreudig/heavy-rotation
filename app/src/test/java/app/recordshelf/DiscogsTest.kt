@@ -65,7 +65,7 @@ class DiscogsTest {
         assertEquals(526351L, rumours.releaseId)
         assertEquals("Fleetwood Mac", rumours.artist)
         assertEquals("Vinyl, LP, Album", rumours.format)
-        assertEquals("Warner Bros. Records · BSK 3010", rumours.label)
+        assertEquals("Warner Bros. Records, BSK 3010", rumours.label)
         assertEquals(OffsetDateTime.parse("2024-06-22T08:43:47-07:00").toInstant().toEpochMilli(), rumours.addedMs)
         assertEquals("https://i.discogs.com/cover-rumours.jpeg", rumours.cover)
         assertEquals(listOf("Pop Rock", "Soft Rock", "AOR"), rumours.styles)
@@ -73,7 +73,7 @@ class DiscogsTest {
         val sg = list[1]
         assertEquals("Simon & Garfunkel", sg.artist)
         assertEquals("2×Vinyl, LP, Album, Reissue", sg.format)
-        assertEquals("Columbia · KCS 9914", sg.label)
+        assertEquals("Columbia, KCS 9914", sg.label)
     }
 
     @Test
@@ -119,7 +119,7 @@ class DiscogsTest {
         assertEquals("Rumours", r.title)
         assertEquals("Fleetwood Mac", r.artist)
         assertEquals(1977, r.year)
-        assertEquals("Warner Bros. Records · BSK 3010", r.label)
+        assertEquals("Warner Bros. Records, BSK 3010", r.label)
         assertEquals("Vinyl, LP, Album", r.format)
         assertEquals(listOf("A", "B"), r.sides)
         assertEquals(11, r.tracks.size)
