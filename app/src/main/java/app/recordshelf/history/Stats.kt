@@ -50,6 +50,9 @@ class Stats(
         /** Top lists go this far; the page shows 10 of them unless you ask for 50 or 100. */
         const val TOP_MAX = 100
 
+        /** A full top list opened from a page far down it also shows this many places either side of that page's. */
+        const val AROUND = 8
+
         /** A new artist you "kept": played this often since. */
         const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
@@ -1183,9 +1186,19 @@ class Stats(
     /** What was playing at [ts] (s), as [playNear] finds it, with "playing" telling which of the two it is. */
     fun playAt(ts: Long): JSONObject? = playNear(ts)?.let { (i, on) -> playJson(i).put("playing", on) }
 
-    /** The photos of [photos] worth showing in the story of [r], with what was playing when each was taken. */
-    fun moments(photos: List<Photo>, r: Range): JSONArray {
-        val picked = Moments.pick(photos, r.to - r.from, { t -> playNear(t)?.second == true }, { t -> playNear(t) != null })
+    /**
+     * The photos of [photos] worth showing in the story of [r], with what was playing when each was taken: of the ones
+     * taken while a song played ([mode] "playing"), around music ("near") or at any time ("any"), none of [hidden].
+     */
+    fun moments(photos: List<Photo>, r: Range, mode: String = "playing", hidden: Set<Long> = emptySet()): JSONArray {
+        val fit = photos.filter { p ->
+            p.id !in hidden && when (mode) {
+                "any" -> true
+                "near" -> playNear(p.ts) != null
+                else -> playNear(p.ts)?.second == true
+            }
+        }
+        val picked = Moments.pick(fit, r.to - r.from, { t -> playNear(t)?.second == true }, { t -> playNear(t) != null })
         return JSONArray(picked.map { p ->
             JSONObject().put("id", p.id).put("ts", p.ts * 1000).put("w", p.w).put("h", p.h).put("song", playAt(p.ts) ?: JSONObject.NULL)
         })
@@ -1510,6 +1523,51 @@ class Stats(
             .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
     }
 
+    /**
+     * The whole top list of [kind] ("tracks", "albums" or "artists") in [r], as a page shows it: places [from]
+     * until [from] + [n], and with [around] also the few around the one a page came from ([focusArtist], with
+     * [focusTitle] for songs and albums) if that is further down. Equal plays share their rank, like the pages' "#3".
+     */
+    fun rankList(r: Range, kind: String, from: Int, n: Int, focusArtist: String, focusTitle: String, around: Boolean): JSONObject {
+        val i0 = h.lowerBound(r.from)
+        val i1 = h.lowerBound(r.to)
+        val of: (Int) -> Int = when (kind) {
+            "albums" -> { i -> h.album[i] }
+            "artists" -> { i -> h.artist[i] }
+            else -> { i -> h.track[i] }
+        }
+        val name: (Int) -> String = when (kind) {
+            "albums" -> { x -> h.albumTitles[x] }
+            "artists" -> { x -> h.artistNames[x] }
+            else -> { x -> h.trackTitles[x] }
+        }
+        val counts = IntArray(when (kind) { "albums" -> h.albumTitles.size; "artists" -> h.artistNames.size; else -> h.trackTitles.size })
+        for (i in i0 until i1) of(i).let { if (it >= 0) counts[it]++ }
+        val order = counts.indices.filter { counts[it] > 0 }.sortedWith(compareByDescending<Int> { counts[it] }.thenBy { name(it).lowercase() })
+        val ranks = IntArray(order.size)
+        for (p in order.indices) ranks[p] = if (p > 0 && counts[order[p]] == counts[order[p - 1]]) ranks[p - 1] else p + 1
+        val focus = when {
+            focusArtist.isEmpty() -> -1
+            kind == "albums" -> findAlbum(focusArtist, focusTitle)
+            kind == "artists" -> artistIndex[Text.norm(focusArtist)] ?: artistIndex[Text.norm(Artists.main(focusArtist, artistIndex.keys))] ?: -1
+            else -> findTrack(focusArtist, focusTitle)
+        }.let { x -> if (x < 0) -1 else order.indexOf(x) }
+        fun row(p: Int): JSONObject {
+            val x = order[p]
+            val o = JSONObject().put("pos", p).put("rank", ranks[p]).put("plays", counts[x])
+            return when (kind) {
+                "albums" -> o.put("title", h.albumTitles[x]).put("artist", h.artistNames[h.albumArtist[x]]).put("cover", cover(x)).put("owned", owned(x) != null)
+                "artists" -> o.put("name", h.artistNames[x]).put("photo", artistPhoto(h.artistNames[x]))
+                else -> o.put("title", h.trackTitles[x]).put("artist", h.artistNames[h.trackArtist[x]]).put("cover", trackAlbum[x].let { if (it >= 0) cover(it) else "" })
+            }
+        }
+        val to = minOf(order.size, from + n)
+        val rows = JSONArray((from until to).map { row(it) })
+        if (around && focus >= to) for (p in maxOf(to, focus - AROUND) until minOf(order.size, focus + AROUND + 1)) rows.put(row(p))
+        return JSONObject().put("kind", kind).put("total", order.size).put("focus", focus).put("rows", rows)
+            .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from))
+    }
+
     // ---- search ----
 
     private class Plays(val artist: IntArray, val track: IntArray, val album: IntArray)
@@ -1791,7 +1849,9 @@ class Stats(
         var run = 0
         var best = 0
         var bestEnd = 0L
+        val allTime = IntArray(h.artistNames.size)
         for (i in 0 until h.size) {
+            allTime[h.artist[i]]++
             if (i in i0 until i1) inRange[h.artist[i]]++
             if (h.artist[i] != a) continue
             if (i in i0 until i1) {
@@ -1829,6 +1889,7 @@ class Stats(
         val rank = if (inRange[a] > 0) inRange.count { it > inRange[a] } + 1 else 0
         val o = weeksJson(JSONObject(), weeks)
             .put("name", h.artistNames[a]).put("plays", plays).put("days", days).put("photo", artistPhoto(h.artistNames[a]))
+            .put("rank", rank(allTime, a)).put("artists", allTime.count { it > 0 })
             .put("cover", albums.entries.sortedByDescending { it.value }.map { cover(it.key) }.firstOrNull { it.isNotEmpty() } ?: "")
             .put("first", JSONObject().put("ts", h.ts[first] * 1000).put("track", h.trackTitles[h.track[first]]))
             .put("last", JSONObject().put("ts", h.ts[last] * 1000).put("track", h.trackTitles[h.track[last]]))

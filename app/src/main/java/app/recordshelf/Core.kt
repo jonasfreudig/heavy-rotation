@@ -20,6 +20,7 @@ import app.recordshelf.history.Hidden
 import app.recordshelf.history.History
 import app.recordshelf.history.HistorySync
 import app.recordshelf.history.Junk
+import app.recordshelf.history.Moments
 import app.recordshelf.history.Stats
 import app.recordshelf.history.Years
 import app.recordshelf.lastfm.LastfmClient
@@ -393,6 +394,15 @@ object Core {
 
     // ---- TIDAL: exact links and playlists with the user's own TIDAL app ----
     private val tidalExec = serial()
+
+    /** Reading the phone's photo folders for Settings, apart from the stats. */
+    private val photoExec = serial()
+
+    /** The photos for the story of period [id], as the user set them up (Settings → Photos in your stories). */
+    private fun momentsOf(all: Stats, id: String): JSONArray {
+        val r = all.range(id)
+        return all.moments(Photos.taken(ctx, r.from, r.to, prefs.photoFolders), r, prefs.photosMode, prefs.photosHidden)
+    }
     private val tidal by lazy { Tidal(prefs, file("tidal_links.json"), { java.util.Locale.getDefault().country.ifEmpty { "US" } }) }
     @Volatile private var tidalBusy = false
     @Volatile private var tidalError = ""
@@ -574,6 +584,17 @@ object Core {
                     }
                 }
             }
+            "rankList" -> {
+                val id = msg.optString("range").ifEmpty { statsRange }
+                statsExec.execute {
+                    val s = currentStats() ?: return@execute
+                    val j = s.rankList(
+                        s.range(id), msg.optString("kind"), maxOf(0, msg.optInt("from")), msg.optInt("n", 100).coerceIn(1, 500),
+                        msg.optString("artist"), msg.optString("title"), msg.optBoolean("around"),
+                    )
+                    push("onRankList") { j.put("req", msg.optInt("req")) }
+                }
+            }
             "track", "album" -> {
                 val isTrack = msg.optString("t") == "track"
                 val artist = msg.optString("artist")
@@ -741,11 +762,20 @@ object Core {
                     val s = shownStats() ?: return@execute
                     val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade)
                     // Photos you took then, with what was playing: from all your plays, whatever the filter.
-                    if (prefs.storyPhotos) currentStats()?.let { all ->
-                        val r = all.range(id)
-                        story.put("moments", all.moments(Photos.taken(ctx, r.from, r.to), r))
-                    }
+                    if (prefs.storyPhotos) currentStats()?.let { all -> story.put("moments", momentsOf(all, id)) }
                     push("onStory") { story }
+                }
+            }
+            "storyMoments" -> {
+                // Photos taken out of a story, or another choice of which ones: the story's photos picked again.
+                val id = msg.optString("range")
+                val hide = msg.optJSONArray("hide")
+                statsExec.execute {
+                    if (hide != null && hide.length() > 0) prefs.photosHidden = prefs.photosHidden + (0 until hide.length()).map { hide.getLong(it) }
+                    msg.optString("mode").takeIf { it in Moments.MODES }?.let { prefs.photosMode = it }
+                    val all = currentStats() ?: return@execute
+                    push("onStoryMoments") { JSONObject().put("range", id).put("moments", if (prefs.storyPhotos) momentsOf(all, id) else JSONArray()) }
+                    pushState()
                 }
             }
             "saveLastfm" -> {
@@ -857,6 +887,21 @@ object Core {
                 prefs.storyPhotos = msg.optBoolean("on")
                 if (prefs.storyPhotos && Photos.access(ctx) == "none") askPhotos()
                 pushState()
+            }
+            "photoPrefs" -> {
+                msg.optString("mode").takeIf { it in Moments.MODES }?.let { prefs.photosMode = it }
+                if (msg.has("folders")) prefs.photoFolders = msg.optJSONArray("folders")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+                if (msg.optBoolean("unhide")) prefs.photosHidden = emptySet()
+                pushState()
+            }
+            "photoFolders" -> photoExec.execute {
+                val chosen = prefs.photoFolders
+                val list = Photos.folders(ctx)
+                push("onPhotoFolders") {
+                    JSONObject().put("custom", chosen != null).put("folders", JSONArray(list.map { f ->
+                        JSONObject().put("key", f.key).put("count", f.count).put("camera", f.camera).put("on", chosen?.contains(f.key) ?: f.camera)
+                    }))
+                }
             }
             "photosChoose" -> askPhotos()
             "photosSettings" -> main.post { ui?.openAppSettings() }
@@ -2265,7 +2310,11 @@ object Core {
                 .put("clientHint", hint(prefs.tidalClientId)).put("redirect", TidalClient.REDIRECT),
         )
         .put("setlist", JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey)))
-        .put("photos", JSONObject().put("on", prefs.storyPhotos).put("access", Photos.access(ctx)).put("asked", prefs.photosAsked).put("canChoose", android.os.Build.VERSION.SDK_INT >= 34))
+        .put(
+            "photos",
+            JSONObject().put("on", prefs.storyPhotos).put("access", Photos.access(ctx)).put("asked", prefs.photosAsked).put("canChoose", android.os.Build.VERSION.SDK_INT >= 34)
+                .put("mode", prefs.photosMode).put("hidden", prefs.photosHidden.size).put("folders", prefs.photoFolders?.size ?: -1),
+        )
         .put("version", BuildConfig.VERSION_NAME)
 
     // ---- small persisted maps ----

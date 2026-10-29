@@ -141,3 +141,7 @@
 
 /* Lists and cards inside a card stay flat. */
 :root[data-look] :is(.viz, .card, .tile) :is(.list, .rank, .card) { background: none; box-shadow: none; }
+
+/* The page's own place in a whole top list. */
+:root[data-look] .ranks > .r.here { background: color-mix(in srgb, var(--md-primary) 16%, transparent); box-shadow: inset 3px 0 0 var(--md-primary); }
+:root[data-look] .ranks > .rank-gap { background: transparent; }

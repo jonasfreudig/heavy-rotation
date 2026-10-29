@@ -100,7 +100,7 @@ const Mock = (() => {
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
     setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a' },
-    photos: { on: true, access: 'all', asked: true, canChoose: true },
+    photos: { on: true, access: 'all', asked: true, canChoose: true, mode: 'playing', hidden: 0, folders: -1 },
     version: '0.21 (browser preview)',
   };
 
@@ -780,8 +780,7 @@ const Mock = (() => {
       busiestDay: { day: s.range.from * 1000 + 9 * DAY, count: 61 },
       newArtists: { count: s.summary.historyStartsHere ? 0 : s.summary.newArtists, best: x.order.length ? { name: L.artists[x.order[Math.min(6, x.order.length - 1)]], plays: 44, first: s.range.from * 1000 + 2 * DAY } : null },
       loop: s.loops[0] || null, obsession: s.obsessions[0] || null, genres,
-      moments: S.photos.on ? x.topT.slice(0, 5).map((t, k) => ({ id: 900 + k, src: fakePhoto(hashStr(`${id}-${k}`)), ts: s.range.from * 1000 + (2 + k * 5) * DAY + (17 + k) * 3600e3, w: 4000, h: 3000,
-        song: k === 3 ? null : { title: L.titles[t], artist: L.artists[x.trackArtist[t]], album: '', cover: '', playing: k !== 1 } })) : [],
+      moments: S.photos.on ? fakeMoments(id, s.range.from, x.topT.slice(0, 9).map((t) => ({ title: L.titles[t], artist: L.artists[x.trackArtist[t]] }))) : [],
       vinyl: { count: Math.round(n * 0.03), share: 0.03, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }] },
       streak: s.streaks, insights: s.insights,
       first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
@@ -893,7 +892,9 @@ const Mock = (() => {
   function fakeTrack(artist, title) {
     const L = history();
     const a = findArtist(artist);
-    const t = L.titles.findIndex((n) => n.toLowerCase() === String(title).toLowerCase());
+    // The artist's own song of that name (titles repeat across artists in the made-up log).
+    let t = -1;
+    for (let i = 0; i < L.ts.length && t < 0; i++) if (L.a[i] === a && L.titles[L.t[i]].toLowerCase() === String(title).toLowerCase()) t = L.t[i];
     const life = a >= 0 && t >= 0 ? lifeOf((i) => L.t[i] === t) : null;
     if (!life) return { missing: true, artist, title };
     const all = counts(0, L.ts.length, (L2, i) => L2.t[i]);
@@ -982,6 +983,42 @@ const Mock = (() => {
     const typical = songs.slice(0, 8).map((x, k) => ({ ...x, n: 5 - (k % 3), encore: k >= 7 }));
     return { artist: name, url: 'https://www.setlist.fm/', of: shows.length, typical, shows,
       upcoming: [{ id: 'u1', date: iso(Date.now() + 16 * DAY), venue: 'Tempodrom', city: 'Berlin', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
+  }
+  /** The story's photos as the app picks them: made-up ones of the period, by the photo settings, the hidden left out. */
+  const HIDDEN_PHOTOS = new Set();
+  const MOMENT_POOLS = {};
+  function fakeMoments(id, from, songs) {
+    MOMENT_POOLS[id] = MOMENT_POOLS[id] || songs.map((sg, k) => ({ id: 900 + hashStr(id) % 1000 * 10 + k, src: fakePhoto(hashStr(`${id}-${k}`)), ts: from * 1000 + (2 + k * 3) * DAY + (17 + (k % 5)) * 3600e3, w: 4000, h: 3000,
+      song: k % 4 === 3 ? null : { ...sg, album: '', cover: '', playing: k % 3 !== 1 } }));
+    const P = S.photos;
+    return MOMENT_POOLS[id].filter((m) => !HIDDEN_PHOTOS.has(m.id) && (P.mode === 'any' || (m.song && (P.mode === 'near' || m.song.playing)))).slice(0, 5);
+  }
+  /** A whole top list, as the app sends it: places from..from+n, and the few around the page's own if it's further down. */
+  function fakeRankList(m) {
+    const L = history();
+    const r = mockRange(m.range || statsRange);
+    const tArtist = {};
+    for (let i = 0; i < L.ts.length; i++) if (tArtist[L.t[i]] == null) tArtist[L.t[i]] = L.a[i];
+    const key = m.kind === 'tracks' ? (L2, i) => L2.t[i] : (L2, i) => L2.a[i];
+    const c = counts(lowerBound(L.ts, r.from * 1000), lowerBound(L.ts, r.to * 1000), key);
+    const nameOf = (x) => (m.kind === 'tracks' ? L.titles[x] : m.kind === 'albums' ? albumOf(x) : L.artists[x]);
+    const order = Object.keys(c).map(Number).sort((x, y) => c[y] - c[x] || nameOf(x).localeCompare(nameOf(y)));
+    const ranks = [];
+    order.forEach((x, p) => { ranks[p] = p > 0 && c[x] === c[order[p - 1]] ? ranks[p - 1] : p + 1; });
+    const a = m.artist ? findArtist(m.artist) : -1;
+    const want = m.kind === 'tracks' ? L.titles.findIndex((n, t) => tArtist[t] === a && n.toLowerCase() === String(m.title).toLowerCase()) : a;
+    const focus = want >= 0 ? order.indexOf(want) : -1;
+    const row = (p) => {
+      const x = order[p], o = { pos: p, rank: ranks[p], plays: c[x] };
+      if (m.kind === 'tracks') return { ...o, title: L.titles[x], artist: L.artists[tArtist[x]], cover: '' };
+      if (m.kind === 'albums') return { ...o, title: albumOf(x), artist: L.artists[x], cover: '', owned: x % 3 === 0 };
+      return { ...o, name: L.artists[x], photo: '' };
+    };
+    const to = Math.min(order.length, m.from + m.n);
+    const rows = [];
+    for (let p = m.from; p < to; p++) rows.push(row(p));
+    if (m.around && focus >= to) for (let p = Math.max(to, focus - 8); p < Math.min(order.length, focus + 9); p++) rows.push(row(p));
+    return { kind: m.kind, total: order.length, focus, rows, range: r, req: m.req };
   }
   /** Stand-ins for photos from the phone: soft color fields with a horizon, as SVG. */
   function fakePhoto(seed) {
@@ -1120,6 +1157,7 @@ const Mock = (() => {
       first: { ts: L.first[ai] > 0 ? L.first[ai] : Date.now(), track: L.titles[ai] || 'Track' }, last: { ts: Date.now() - 2 * DAY, track: 'Pelota' },
       busiestMonth: { start: +new Date(first.getFullYear(), first.getMonth() + bm, 1), count: mArr[bm] || 0 },
       monthsFrom: +new Date(first.getFullYear(), first.getMonth(), 1), months: mArr, hours, streak: 6 + Math.floor(r() * 6), streakEnd: Date.now() - 52 * DAY,
+      rank: rankIn(counts(0, L.ts.length, (L2, i) => L2.a[i]), ai), artists: new Set(L.a).size,
       range: Object.assign({}, mockRange(statsRange), { plays: Math.round(plays / 8), rank: 2 }),
       rangeTracks: rangeSongs(ai), rangeAlbums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays / 9), cover: '' }],
       tracks: [0, 1, 2, 3, 4].map((i) => ({ title: L.titles[(ai * 7 + i) % L.titles.length], plays: 60 - i * 9 })),
@@ -1351,6 +1389,23 @@ const Mock = (() => {
         case 'saveSetlist': S.setlist = { hasKey: true, builtIn: false, keyHint: `…${m.key.slice(-4)}` }; pushState(); break;
         case 'setlistForget': S.setlist = { hasKey: false, builtIn: false, keyHint: '' }; pushState(); break;
         case 'photos': S.photos.on = m.on; pushState(); break;
+        case 'photoPrefs':
+          if (m.mode) S.photos.mode = m.mode;
+          if (m.unhide) { HIDDEN_PHOTOS.clear(); S.photos.hidden = 0; }
+          if ('folders' in m) S.photos.folders = m.folders ? m.folders.length : -1;
+          pushState(); break;
+        case 'photoFolders': later(300, () => onPhotoFolders({ custom: S.photos.folders >= 0, folders: [
+          { key: 'DCIM/Camera', count: 4210, camera: true }, { key: 'Pictures/Screenshots', count: 812, camera: false }, { key: 'Pictures/WhatsApp Images', count: 640, camera: false },
+          { key: 'DCIM/Concerts', count: 96, camera: true }, { key: 'Pictures/Snapseed', count: 54, camera: true }].map((f) => ({ ...f, on: f.camera })) })); break;
+        case 'storyMoments': {
+          (m.hide || []).forEach((h) => HIDDEN_PHOTOS.add(h));
+          S.photos.hidden = HIDDEN_PHOTOS.size;
+          if (m.mode) S.photos.mode = m.mode;
+          const pool = MOMENT_POOLS[m.range] || [];
+          later(300, () => { onStoryMoments({ range: m.range, moments: fakeMoments(m.range, 0, pool.map((x) => x.song || {})) }); pushState(); });
+          break;
+        }
+        case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
         case 'photosChoose': toast('(preview) Android would ask which photos'); break;
         case 'photosSettings': toast('(preview) Android settings would open now'); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;

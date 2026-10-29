@@ -13,6 +13,7 @@ import android.util.LruCache
 import android.util.Size
 import android.webkit.WebResourceResponse
 import androidx.core.content.ContextCompat
+import app.recordshelf.history.Moments
 import app.recordshelf.history.Photo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -31,8 +32,11 @@ object Photos {
     /** Photos smaller than this (on their short side) are icons, stickers and the like. */
     private const val SMALL = 480
 
-    /** Pictures saved from these apps aren't ones you took. */
-    private val APPS = listOf("whatsapp", "telegram", "instagram", "messenger", "signal", "download", "facebook", "snapchat")
+    /** At most this many folders to choose from in Settings, the fullest. */
+    private const val FOLDERS = 24
+
+    /** A folder with photos, from the storage's top ("DCIM/Camera"): how many it has and whether it's the camera's. */
+    data class Folder(val key: String, val count: Int, val camera: Boolean)
 
     private val cache = object : LruCache<Long, ByteArray>(12 * 1024 * 1024) {
         override fun sizeOf(key: Long, value: ByteArray) = value.size
@@ -57,10 +61,14 @@ object Photos {
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
-    /** Photos taken from [fromSec] until [toSec] by the phone's camera: no screenshots, nothing saved from other apps. */
-    fun taken(ctx: Context, fromSec: Long, toSec: Long): List<Photo> {
+    /**
+     * Photos taken from [fromSec] until [toSec] in [folders], or if null by the phone's camera: no screenshots,
+     * nothing saved from other apps.
+     */
+    fun taken(ctx: Context, fromSec: Long, toSec: Long, folders: Set<String>? = null): List<Photo> {
         if (access(ctx) == "none") return emptyList()
-        val where = if (Build.VERSION.SDK_INT >= 29) MediaStore.Images.Media.RELATIVE_PATH else @Suppress("DEPRECATION") MediaStore.Images.Media.DATA
+        val whole = Build.VERSION.SDK_INT < 29
+        val where = if (!whole) MediaStore.Images.Media.RELATIVE_PATH else @Suppress("DEPRECATION") MediaStore.Images.Media.DATA
         val proj = arrayOf(
             MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT, where, MediaStore.Images.Media.ORIENTATION,
@@ -72,7 +80,8 @@ object Photos {
                 arrayOf((fromSec * 1000).toString(), (toSec * 1000).toString()), "${MediaStore.Images.Media.DATE_TAKEN} ASC",
             )?.use { c ->
                 while (c.moveToNext() && out.size < LIMIT) {
-                    if (!byCamera(c.getString(4).orEmpty())) continue
+                    val folder = Moments.folderOf(c.getString(4).orEmpty(), whole)
+                    if (if (folders == null) !Moments.byCamera(folder) else folder !in folders) continue
                     var w = c.getInt(2)
                     var h = c.getInt(3)
                     if (c.getInt(5) % 180 == 90) w = h.also { h = w }
@@ -86,12 +95,21 @@ object Photos {
         return out
     }
 
-    /** Whether a photo's folder is the camera's (DCIM, or Pictures for some phones), not screenshots or another app's. */
-    private fun byCamera(path: String): Boolean {
-        // The folder from the storage's top ("DCIM/Camera/"), or before Android 10 the whole path of the file.
-        val p = "/" + path.lowercase().trimStart('/')
-        if ("screenshot" in p || "screen record" in p || "screenrecord" in p) return false
-        return "/dcim/" in p || ("/pictures/" in p && APPS.none { it in p })
+    /** The folders with photos on this phone, the fullest first, to choose from in Settings. */
+    fun folders(ctx: Context): List<Folder> {
+        if (access(ctx) == "none") return emptyList()
+        val whole = Build.VERSION.SDK_INT < 29
+        val col = if (!whole) MediaStore.Images.Media.RELATIVE_PATH else @Suppress("DEPRECATION") MediaStore.Images.Media.DATA
+        val counts = HashMap<String, Int>()
+        try {
+            ctx.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(col), null, null, null)?.use { c ->
+                while (c.moveToNext()) counts.merge(Moments.folderOf(c.getString(0).orEmpty(), whole), 1, Int::plus)
+            }
+        } catch (_: Exception) {
+            // As in taken: no folders to show.
+        }
+        return counts.entries.filter { it.key.isNotEmpty() }.sortedByDescending { it.value }.take(FOLDERS)
+            .map { Folder(it.key, it.value, Moments.byCamera(it.key)) }
     }
 
     /** The page's request for a photo, answered with it shrunk to a JPEG; null for anything else. */

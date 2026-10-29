@@ -128,11 +128,14 @@ month, quarter or year. What the tab shows for the chosen period:
   on repeat, your genres as a cloud of words, vinyl, your longest streak as a row of days, and a
   summary printed like the back of a record sleeve. With **Photos in your stories** switched on
   (Settings → Stats and listening), it also shows photos you took in those days: one full-screen
-  with the song that was playing as you took it, then a few more as prints. They come from your
-  phone's camera folders (no screenshots, nothing saved from other apps), favoring moments when
-  music was playing, spread over the period. They never leave the phone. Google Photos can't be
-  used for this: since 2025 Google lets apps see only photos the user picks by hand, not a stretch
-  of time, so only photos still on the phone show up.
+  with the song that was playing as you took it, then a few more as prints, spread over the
+  period. By default only photos taken while a song was playing count; **Which photos** can also
+  take ones from up to 45 minutes around music, or any photo. **From these folders** lists the
+  phone's photo folders: the camera's are on (no screenshots, nothing saved from other apps), tap
+  others to add them. **Change photos** on a story's photo leaves photos out (another one takes
+  their place) and changes which photos count; Settings brings hidden ones back. They never leave
+  the phone. Google Photos can't be used for this: since 2025 Google lets apps see only photos the
+  user picks by hand, not a stretch of time, so only photos still on the phone show up.
 - **Totals**: plays, hours (about 3.5 minutes a track), artists and new artists, each with the
   change against the period before. For a period still running (this week, this month) it
   compares with the same stretch of the previous one: Monday to Wednesday against last Monday to
@@ -194,6 +197,11 @@ for the hours you play it most. Tap any of them for the numbers.
 These pages are about all your time with that artist, album or song, whatever period the Stats
 tab is on. Opened from a period other than All, they add that period: a tile with its plays and
 rank, and on artist and album pages the songs you played most then.
+
+Tap a rank tile ("#3 of 735 songs") for the whole list it comes from: every song, album or artist
+of all time or of that period by plays, with this one marked and scrolled to (tabs switch between
+songs, albums and artists). Equal plays share a rank. **The whole list** under Top 10 on the Stats
+tab opens the same list for the Stats period.
 
 Album and song pages show their genres too: the album's own when Last.fm knows them (looked up
 when you open it, if it isn't among your most played), else the artist's.
@@ -304,6 +312,8 @@ Each list makes a **playlist** (up to 40 songs), and so do **Crate dig** (songs 
 times and forgot, shuffled anew each time) and **Playlist of the top 40** under Top 10 on the
 Stats tab. **Copy list** puts it on the clipboard as "Artist - Title" lines; paste that into
 TuneMyMusic or Soundiiz (import from text) and send it to TIDAL. **Share** hands it to any app.
+The pencil next to its name gives a playlist your own name and description; TIDAL gets both, and
+Share puts them above the songs.
 
 Tap any artist (in the lists, the phases, the record, or on a record page) for their own page:
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays

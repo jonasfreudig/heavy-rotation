@@ -431,7 +431,8 @@ const PAGE_STATE = {
   artistPage: { get: () => ARTIST, set: (s) => { ARTIST = s; renderArtist(); } },
   trackPage: { get: () => TRACK, set: (s) => { TRACK = s; renderTrack(); } },
   albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
-  playlistPage: { get: () => [PLAYLIST, TIDALJOB], set: (s) => { [PLAYLIST, TIDALJOB] = s; renderPlaylist(); } },
+  playlistPage: { get: () => [PLAYLIST, TIDALJOB, PLNAME], set: (s) => { [PLAYLIST, TIDALJOB, PLNAME] = s; renderPlaylist(); } },
+  rankPage: { get: () => RANKS, set: (s) => { RANKS = s; renderRanks(); } },
   vsPage: { get: () => VS, set: (s) => { VS = s; renderVs(); } },
   atlasPage: { get: () => atlasView, set: (s) => { atlasView = s; renderAtlas(); } },
   genrePage: { get: () => GENRE, set: (s) => { GENRE = s; renderGenre(); } },
@@ -863,6 +864,7 @@ function openSheet(html) {
   sheetGen++;
   const sh = $('#sheet'), body = $('#sheetBody');
   $('#sheetContent').innerHTML = html;
+  sh.classList.toggle('over', !$('#story').hidden);
   if (sh.hidden || sh.classList.contains('closing')) {
     sh.classList.remove('closing');
     [body, $('#scrim')].forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
@@ -881,6 +883,7 @@ function closeSheet() {
   if (sh.hidden || sh.classList.contains('closing')) return;
   const gen = ++sheetGen;
   sh.classList.add('closing');
+  $('#story').classList.remove('held');
   const body = $('#sheetBody');
   const t = getComputedStyle(body).transform;
   body.animate([{ transform: t === 'none' ? 'none' : t }, { transform: 'translateY(100%)' }], { duration: 220, easing: EASE_IN, fill: 'forwards' });
@@ -2155,7 +2158,12 @@ function deltaHtml(cur, prev, kind, running) {
   const vs = running ? vsWord({ kind, running }) : lastWord(kind);
   return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(vs)}</span>`;
 }
-const tile = (label, value, sub, delta, ic) => `<div class="tile"><span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}</div>`;
+const tile = (label, value, sub, delta, ic, attrs) => {
+  const inner = `<span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}`;
+  return attrs ? `<button class="tile go" ${attrs}>${inner}<i class="tile-go">${icon('chevron-right')}</i></button>` : `<div class="tile">${inner}</div>`;
+};
+/** A tile's way into the whole top list of [kind] in period [range], with the page's own song, album or artist marked there. */
+const rankAttrs = (kind, range, f = {}) => `data-ranks="${kind}" data-rrange="${esc(range)}" data-ra="${esc(f.artist || '')}" data-rt="${esc(f.title || '')}" data-ral="${esc(f.album || '')}" data-raa="${esc(f.albumArtist || '')}"`;
 
 function storyCardHtml(s) {
   if (!s.summary.scrobbles) return '';
@@ -3867,9 +3875,10 @@ function renderTrack() {
   else if (t.missing) h += `<div class="empty"><p>${esc(missingNote())}</p></div>`;
   else {
     const r = t.range || {};
+    const focusOf = { artist: t.artist, title: t.title, album: albumTitle, albumArtist: al ? al.artist : t.artist };
     h += `<div class="tiles">
-      ${tile('All time', num(t.plays), `plays · #${t.rank} of ${compact(t.tracks)} songs`, '', 'music')}
-      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('All time', num(t.plays), `plays · #${t.rank} of ${compact(t.tracks)} songs`, '', 'music', rankAttrs('tracks', 'all', focusOf))}
+      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar', r.plays ? rankAttrs('tracks', r.id, focusOf) : '')}
       ${tile('First heard', esc(monthYear(t.first)), `last played ${esc(dateLabel(t.last))}`, '', 'history')}
       ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)), '', 'fire')}
     </div>
@@ -3926,9 +3935,10 @@ function renderAlbum() {
     h += tracklistHtml(a, cover);
   } else {
     const r = a.range || {};
+    const focusOf = { artist: a.artist, title: a.title };
     h += `<div class="tiles">
-      ${tile('All time', num(a.plays), `plays · #${a.rank} of ${compact(a.albums)} albums`, '', 'music')}
-      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('All time', num(a.plays), `plays · #${a.rank} of ${compact(a.albums)} albums`, '', 'music', rankAttrs('albums', 'all', focusOf))}
+      ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar', r.plays ? rankAttrs('albums', r.id, focusOf) : '')}
       ${tile('First heard', esc(monthYear(a.first)), `last played ${esc(dateLabel(a.last))}`, '', 'history')}
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
@@ -4743,10 +4753,15 @@ function renderExplore() {
 
 let PLAYLIST = null;
 let TIDALJOB = null;
+let PLNAME = null; // the name and description you gave the playlist: { name, note }, until you reset them
+/** The playlist's name and description: yours, else the ones it came with. */
+const plTitle = (p) => (PLNAME ? PLNAME.name : p.name);
+const plNote = (p) => (PLNAME ? PLNAME.note : `${p.note}. Made with Heavy Rotation.`);
 function openPlaylist(kind, range) {
   openPage('playlistPage');
   PLAYLIST = { loading: true, kind };
   TIDALJOB = null;
+  PLNAME = null;
   renderPlaylist();
   send({ t: 'playlist', kind, range: range || statsRange });
 }
@@ -4755,6 +4770,7 @@ function openGenrePlaylist(key, label) {
   openPage('playlistPage');
   PLAYLIST = { loading: true, kind: 'genre', key, label, name: `${label} mix`, size: 30, mode: 'mix', seed: 0 };
   TIDALJOB = null;
+  PLNAME = null;
   renderPlaylist();
   askGenrePlaylist();
 }
@@ -4791,6 +4807,24 @@ window.onPlaylist = (p) => {
 };
 const playlistText = (p) => p.tracks.map((t) => `${t.artist} - ${t.title}`).join('\n');
 
+/** A sheet to name the playlist and say what it is, for TIDAL and for sharing. */
+function editPlaylistName() {
+  const p = PLAYLIST;
+  if (!p || p.loading) return;
+  openSheet(`<div class="sheet-title">Name and description</div>
+    <label class="field"><span>Name</span><input type="text" id="plnName" maxlength="200" value="${esc(plTitle(p))}"></label>
+    <label class="field"><span>Description</span><textarea id="plnNote" rows="3" maxlength="500">${esc(plNote(p))}</textarea></label>
+    <p class="hint">TIDAL gets both with the playlist; Share puts them above the songs.</p>
+    <div class="sheet-actions">${PLNAME ? '<button class="btn text" id="plnReset">Reset</button>' : ''}<button class="btn text" id="plnNo">Cancel</button><button class="btn filled" id="plnYes">Save</button></div>`);
+  $('#plnNo').onclick = closeSheet;
+  if ($('#plnReset')) $('#plnReset').onclick = () => { PLNAME = null; closeSheet(); renderPlaylist(); };
+  $('#plnYes').onclick = () => {
+    PLNAME = { name: $('#plnName').value.trim() || p.name, note: $('#plnNote').value.trim() };
+    closeSheet();
+    renderPlaylist();
+  };
+}
+
 /** Creating the playlist in TIDAL: the button, its progress, or what came of it. */
 function tidalBlock() {
   const td = ST.tidal || {};
@@ -4824,13 +4858,15 @@ function renderPlaylist() {
   if (!p || !isOpen('playlistPage')) return;
   const body = $('#playlistBody');
   if (p.loading && p.kind === 'genre') {
-    body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.name)}</h1><p>Mixing ${p.size} songs…</p></div></div>${genrePlControls(p)}<div class="lin inline indet"><i></i></div>`;
+    body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(plTitle(p))}</h1><p>Mixing ${p.size} songs…</p></div></div>${genrePlControls(p)}<div class="lin inline indet"><i></i></div>`;
     wireGenrePlControls();
     return;
   }
   if (p.loading) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (p.empty || !p.tracks || !p.tracks.length) { body.innerHTML = `<div class="empty">${icon('playlist', 'i big')}<p>No songs for this playlist yet.</p></div>`; return; }
-  body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.name)}</h1><p>${esc(p.note)} · ${plural(p.tracks.length, 'song')}</p></div></div>
+  const about = PLNAME ? PLNAME.note : p.note;
+  body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div class="pl-txt" id="plName"><h1>${esc(plTitle(p))}</h1><p>${about ? `${esc(about)} · ` : ''}${plural(p.tracks.length, 'song')}</p></div>
+      <button class="icon-btn pl-edit" id="plEdit" aria-label="Name and description">${icon('edit')}</button></div>
     <div class="btn-row">
       <button class="btn filled" id="plCopy">${icon('copy')}Copy list</button>
       <button class="btn tonal" id="plShare">${icon('share')}Share</button>
@@ -4851,25 +4887,94 @@ function renderPlaylist() {
     ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}
     ${p.kind === 'setlist' ? `<p class="hint">"New" are songs you haven't played yet. Setlist from <button class="link-inline" data-url="${esc(p.url || 'https://www.setlist.fm/')}">setlist.fm</button>.</p>` : ''}`;
   wireGenrePlControls();
+  $('#plEdit').onclick = $('#plName').onclick = editPlaylistName;
   $('#plTidalBlock').onclick = (e) => {
     if (e.target.closest('#plTidalLogin')) send({ t: 'tidalLogin' });
     if (e.target.closest('#plTidal')) {
-      TIDALJOB = { state: 'finding', done: 0, total: p.tracks.length, found: 0, name: p.name };
+      TIDALJOB = { state: 'finding', done: 0, total: p.tracks.length, found: 0, name: plTitle(p) };
       $('#plTidalBlock').innerHTML = tidalBlock();
-      send({ t: 'tidalPlaylist', name: p.name, note: `${p.note}. Made with Heavy Rotation.`, tracks: p.tracks.map((t) => ({ artist: t.artist, title: t.title })) });
+      send({ t: 'tidalPlaylist', name: plTitle(p), note: plNote(p), tracks: p.tracks.map((t) => ({ artist: t.artist, title: t.title })) });
     }
   };
   $('#plCopy').onclick = () => {
     const text = playlistText(p);
-    if (Native) send({ t: 'copyText', text, label: p.name });
+    if (Native) send({ t: 'copyText', text, label: plTitle(p) });
     else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Copied'), () => toast('Copying failed'));
   };
   $('#plShare').onclick = () => {
-    const text = `${p.name}\n\n${playlistText(p)}`;
-    if (Native) send({ t: 'shareText', text, subject: p.name });
-    else if (navigator.share) navigator.share({ title: p.name, text }).catch(() => {});
+    const note = plNote(p);
+    const text = `${plTitle(p)}${note ? `\n${note}` : ''}\n\n${playlistText(p)}`;
+    if (Native) send({ t: 'shareText', text, subject: plTitle(p) });
+    else if (navigator.share) navigator.share({ title: plTitle(p), text }).catch(() => {});
     else toast('Sharing works in the app');
   };
+}
+
+// ---- a whole top list: the period's songs, albums or artists by plays, the page you came from marked ----
+
+let RANKS = null;
+const RANK_NOUN = { tracks: 'songs', albums: 'albums', artists: 'artists' };
+/** From a tile (its data-r* attributes in [d]) or the Stats top list ([shown]: with the Stats filters). */
+function openRanks(kind, range, d, shown) {
+  // The page's own song, album and artist, to find in each list.
+  const focus = {
+    tracks: d.rt && kind === 'tracks' ? { artist: d.ra, title: d.rt } : null,
+    albums: kind === 'albums' && d.rt ? { artist: d.ra, title: d.rt } : d.ral ? { artist: d.raa || d.ra, title: d.ral } : null,
+    artists: d.ra ? { artist: d.ra, title: '' } : null,
+  };
+  openPage('rankPage');
+  RANKS = { kind, range: range || 'all', focus, shown, rows: {}, total: 0, pos: -1, loading: true, req: ++REQ, scrolled: false, more: -1 };
+  renderRanks();
+  askRanks(0, true);
+}
+function askRanks(from, around) {
+  const R = RANKS, f = R.focus[R.kind];
+  send({ t: 'rankList', kind: R.kind, range: R.range, shown: R.shown, from, n: 100, around, artist: f ? f.artist : '', title: f ? f.title : '', req: R.req });
+}
+window.onRankList = (j) => {
+  const R = RANKS;
+  if (!R || j.req !== R.req) return;
+  j.rows.forEach((x) => { R.rows[x.pos] = x; });
+  Object.assign(R, { total: j.total, pos: j.focus, info: j.range, loading: false, more: -1 });
+  renderRanks();
+};
+function rankRow(R, x, max) {
+  const bar = `<span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div>`;
+  const cls = `r${R.kind === 'tracks' ? '' : ' rc'}${x.pos === R.pos ? ' here' : ''}`;
+  const n = `<span class="n">${num(x.rank)}</span>`;
+  if (R.kind === 'artists') return `<button class="${cls}" data-pos="${x.pos}" data-artist="${esc(x.name)}">${n}${coverHtml(x.photo, x.name, x.name, 'tiny round')}<span class="t"><b>${esc(x.name)}</b></span>${bar}</button>`;
+  if (R.kind === 'albums') return `<button class="${cls}" data-pos="${x.pos}" ${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}">${n}${coverHtml(x.cover, x.title, x.artist, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span>${bar}</button>`;
+  return `<button class="${cls}" data-pos="${x.pos}" ${trackAttrs(x.artist, x.title)}>${n}<span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span>${bar}</button>`;
+}
+function renderRanks() {
+  const R = RANKS;
+  if (!R || !isOpen('rankPage')) return;
+  const noun = RANK_NOUN[R.kind];
+  const seg = `<div class="seg small" id="rankSeg">${['tracks', 'albums', 'artists'].map((k) => `<button data-rkind="${k}" class="${k === R.kind ? 'on' : ''}">${RANK_NOUN[k].charAt(0).toUpperCase() + RANK_NOUN[k].slice(1)}</button>`).join('')}</div>`;
+  const when = R.info ? `${periodName(R.info)}${R.shown && (statsGenre || statsDecade) ? `, ${filterWords(statsGenre, statsDecade)}` : ''}` : '';
+  let h = `<div class="rank-hero"><h1>Your top ${noun}</h1><p>${R.loading ? 'Counting…' : `${esc(when)} · ${num(R.total)} ${noun}`}</p></div>${seg}`;
+  if (R.loading) h += '<div class="lin inline indet"><i></i></div>';
+  else if (!R.total) h += '<p class="hint">Nothing in this period.</p>';
+  else {
+    const have = Object.keys(R.rows).map(Number).sort((a, b) => a - b);
+    const max = Math.max(1, (R.rows[0] || R.rows[have[0]]).plays);
+    let rows = '', prev = -1;
+    const gap = (from, to) => `<button class="rank-gap" data-rgap="${from}">${R.more === from ? 'Counting…' : `${icon('down')}${num(to - from)} more`}</button>`;
+    for (const p of have) {
+      if (p > prev + 1) rows += gap(prev + 1, p);
+      rows += rankRow(R, R.rows[p], max);
+      prev = p;
+    }
+    if (prev < R.total - 1) rows += gap(prev + 1, R.total);
+    h += `<div class="rank ranks">${rows}</div>`;
+    if (R.pos < 0 && R.focus[R.kind]) h += `<p class="hint">${R.kind === 'tracks' ? 'This song' : R.kind === 'albums' ? 'This album' : 'This artist'} has no plays in this period.</p>`;
+  }
+  morph($('#rankBody'), h);
+  if (!R.loading && !R.scrolled) {
+    R.scrolled = true;
+    const here = $('#rankBody .r.here');
+    if (here && R.pos > 4) requestAnimationFrame(() => here.scrollIntoView({ block: 'center' }));
+  }
 }
 
 // ---- setlists from setlist.fm, on artist pages ----
@@ -4925,6 +5030,7 @@ function openLivePlaylist(i) {
   if (!songs.length) return;
   openPage('playlistPage');
   TIDALJOB = null;
+  PLNAME = null;
   PLAYLIST = {
     kind: 'setlist', url: s ? s.url : L.url,
     name: s ? `${L.name} live in ${s.city || s.venue}` : `${L.name} live`,
@@ -4967,13 +5073,13 @@ function renderArtist() {
   let h = `<div class="artist-hero page-hero"><i class="glow"></i>
       ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}` })}
       <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
-        <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}</div></div></div>
+        <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}, on ${plural(a.days, 'day')}</div></div></div>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
     ${listenRow('artists', a.name)}
     <p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
     <div class="tiles">
-      ${tile('All time', num(a.plays), `plays on ${plural(a.days, 'day')}`, '', 'music')}
-      ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays', '', 'calendar')}
+      ${tile('All time', num(a.plays), a.rank ? `plays · #${a.rank} of ${compact(a.artists)} artists` : `plays on ${plural(a.days, 'day')}`, '', 'music', a.rank ? rankAttrs('artists', 'all', { artist: a.name }) : '')}
+      ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays', '', 'calendar', a.range.rank ? rankAttrs('artists', a.range.id, { artist: a.name }) : '')}
       ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'), '', 'chart')}
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
@@ -5150,7 +5256,7 @@ function topViz(top) {
   return `<div class="viz"><h2>Top ${list.length > 10 ? list.length : 10}</h2><div class="seg small" id="topSeg">${['artists', 'albums', 'tracks'].map((k) =>
     `<button data-top="${k}" class="${k === topKind ? 'on' : ''}">${k.charAt(0).toUpperCase() + k.slice(1)}</button>`).join('')}</div>
     <div class="rank">${rows || '<p class="hint">Nothing in this period.</p>'}</div>${topMore('stats', all.length)}
-    ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}</div>` : ''}</div>`;
+    ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}<button class="btn text" ${rankAttrs(topKind, statsRange)} data-rshown="1">${icon('view-list')}The whole list</button></div>` : ''}</div>`;
 }
 
 function numbersHtml(s) {
@@ -5529,6 +5635,54 @@ window.onStory = (s) => {
   storySlides = buildSlides(s);
   showSlide(0);
 };
+/** The story's photos to leave out, and which photos it may show: a sheet over the paused story. */
+const PHOTO_MODES = [['playing', 'Song playing', 'Only photos taken while a song was playing.'],
+  ['near', 'Around music', 'Also photos taken up to 45 minutes from music; those say what played around then.'],
+  ['any', 'Any photo', 'Any photo of those days, the ones with music first.']];
+const photoModeSeg = (id, mode) => `<div class="seg" id="${id}">${PHOTO_MODES.map(([v, l]) => `<button data-v="${v}" class="${v === mode ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+const photoModeHint = (mode) => (PHOTO_MODES.find((x) => x[0] === mode) || PHOTO_MODES[0])[2];
+function openMomentSheet() {
+  const s = STORY;
+  if (!s || !(s.moments || []).length) return;
+  $('#story').classList.add('held');
+  const off = new Set();
+  let mode = (ST.photos || {}).mode || 'playing';
+  const when = (ts) => new Date(ts).toLocaleDateString([], { day: 'numeric', month: 'short' });
+  openSheet(`<div class="sheet-title">Photos in this story</div><p class="body">Tap a photo to leave it out of your stories. Another one takes its place if there is one.</p>
+    <div class="mo-pick">${s.moments.map((m) => `<button class="mo-th" data-mid="${m.id}"><i style="background-image:url('${cssUrl(photoUrl(m))}')"></i><span class="off">${icon('eye-off')}</span><small>${esc(when(m.ts))}</small></button>`).join('')}</div>
+    <div class="row-label"><span>Which photos</span></div>${photoModeSeg('moMode', mode)}<p class="hint" id="moHint">${photoModeHint(mode)}</p>
+    <div class="sheet-actions"><button class="btn text" id="moNo">Cancel</button><button class="btn filled" id="moYes">Done</button></div>`);
+  $('#sheetContent .mo-pick').onclick = (e) => {
+    const b = e.target.closest('[data-mid]');
+    if (!b) return;
+    const id = +b.dataset.mid;
+    if (off.has(id)) off.delete(id); else off.add(id);
+    b.classList.toggle('hidden', off.has(id));
+  };
+  $('#moMode').onclick = (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    mode = b.dataset.v;
+    $$('#moMode button').forEach((x) => x.classList.toggle('on', x === b));
+    $('#moHint').textContent = photoModeHint(mode);
+  };
+  $('#moNo').onclick = closeSheet;
+  $('#moYes').onclick = () => {
+    closeSheet();
+    if (!off.size && mode === ((ST.photos || {}).mode || 'playing')) return;
+    send({ t: 'storyMoments', range: s.range.id, hide: [...off], mode });
+  };
+}
+window.onStoryMoments = (m) => {
+  if ($('#story').hidden || !STORY || STORY.range.id !== m.range) return;
+  const at = storySlides.findIndex((x) => x.moment);
+  STORY.moments = m.moments;
+  storySlides = buildSlides(STORY);
+  const now = storySlides.findIndex((x) => x.moment);
+  showSlide(now >= 0 ? now : at >= 0 ? at : storyIdx);
+  if (!m.moments.length) toast('No other photos fit this story');
+};
+
 function closeStory() {
   $('#story').hidden = true;
   $('#story').style.transform = '';
@@ -5544,6 +5698,7 @@ function showSlide(i) {
   const sl = storySlides[storyIdx];
   $('#storyBars').innerHTML = storySlides.map((x, k) => `<i class="${k < storyIdx ? 'done' : k === storyIdx && !x.wait ? 'now' : ''}" style="--dur:${x.dur || 7}s"><b></b></i>`).join('');
   $('#storySlide').innerHTML = `<div class="slide ${sl.cls}"><div class="aur bg"><i></i><i></i><i></i></div>${sl.html}</div>`;
+  $('#storyPhotos').hidden = !sl.moment;
   $$('#storySlide [data-fit]').forEach((el) => {
     const big = el.classList.contains('xl') ? 96 : el.classList.contains('pt') ? 40 : 54;
     fitText(el, +el.dataset.fit, big, el.classList.contains('pt') ? 22 : 26);
@@ -5707,12 +5862,12 @@ function buildSlides(s) {
     out.push({ cls: 'deep photo moment', html: `<div class="mo bg"><i class="img" style="background-image:url('${cssUrl(photoUrl(hero))}')"></i><i class="fade"></i></div>
       <div class="k in">${esc(when(hero.ts))}, ${esc(new Date(hero.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>
       ${sg ? `<div class="t m in" ${dly(0.15)} data-fit="2">${esc(sg.title)}</div><p class="p in" ${dly(0.3)}>${sg.playing ? `by ${esc(sg.artist)} was playing when you took this.` : `by ${esc(sg.artist)}, just around when you took this.`}</p>`
-        : `<div class="t m in" ${dly(0.15)} data-fit="2">A moment of ${esc(name)}</div>`}` });
+        : `<div class="t m in" ${dly(0.15)} data-fit="2">A moment of ${esc(name)}</div>`}`, moment: true });
     const rest = ms.filter((m) => m !== hero).slice(0, 4);
     if (rest.length >= 2) {
       const rnd = seededRandom(hue(name) + rest.length);
       out.push({ cls: 'paper moments', dur: 9, html: `<div class="k in">${esc(name)} in pictures</div><div class="polas n${rest.length}">${rest.map((m, i) => `<figure class="pola in" style="--d:${(0.15 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 7).toFixed(1)}deg">
-        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing ? '' : 'around '}${esc(m.song.title)}</span>` : ''}</figcaption></figure>`).join('')}</div>` });
+        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing ? '' : 'around '}${esc(m.song.title)}</span>` : ''}</figcaption></figure>`).join('')}</div>`, moment: true });
     }
   }
   // Golden hour, on a sundial
@@ -5831,11 +5986,50 @@ function renderPhotoSettings() {
     text = p.asked ? 'Android hasn\'t allowed Heavy Rotation to see your photos yet. If it doesn\'t ask anymore, allow it in Android\'s settings under Permissions → Photos and videos.' : 'Waiting for Android to ask you…';
     btns = '<button class="btn tonal" data-photos="choose">Ask again</button><button class="btn outlined" data-photos="settings">Android settings</button><button class="btn text" data-photos="off">Turn off</button>';
   } else {
-    text = p.access === 'some' ? 'On, with the photos you chose: stories show the ones taken in their days, with what was playing.' : 'On: stories show photos you took in their days, with what was playing. Screenshots and pictures saved from other apps are left out.';
-    btns = `${p.access === 'some' ? '<button class="btn tonal" data-photos="choose">Choose more photos</button>' : ''}<button class="btn outlined" data-photos="off">Turn off</button>`;
+    text = p.access === 'some' ? 'On, with the photos you chose: stories show the ones taken in their days, with what was playing.' : 'On: stories show photos you took in their days, with what was playing.';
+    btns = `${p.access === 'some' ? '<button class="btn tonal" data-photos="choose">Choose more photos</button>' : ''}${p.hidden ? `<button class="btn text" data-photos="unhide">Bring back ${plural(p.hidden, 'hidden photo')}</button>` : ''}<button class="btn outlined" data-photos="off">Turn off</button>`;
   }
+  const opts = p.on && p.access !== 'none';
   $('#phoText').textContent = text;
   $('#phoBtns').innerHTML = btns;
+  $('#phoOpts').hidden = !opts;
+  if (!opts) return;
+  $$('#phoMode button').forEach((b) => b.classList.toggle('on', b.dataset.v === (p.mode || 'playing')));
+  $('#phoModeHint').textContent = photoModeHint(p.mode || 'playing');
+  if (!PHOTO_FOLDERS || PHOTO_FOLDERS.access !== p.access) {
+    PHOTO_FOLDERS = { access: p.access, list: null };
+    send({ t: 'photoFolders' });
+  }
+  renderPhotoFolders();
+}
+
+/** The phone's photo folders, as chips: the ones stories take photos from are on. */
+let PHOTO_FOLDERS = null;
+window.onPhotoFolders = (f) => {
+  if (!PHOTO_FOLDERS) return;
+  PHOTO_FOLDERS.list = f.folders;
+  PHOTO_FOLDERS.custom = f.custom;
+  renderPhotoFolders();
+};
+function renderPhotoFolders() {
+  const F = PHOTO_FOLDERS, box = $('#phoFolders');
+  if (!F || !F.list) { box.innerHTML = '<span class="hint">Looking at your folders…</span>'; return; }
+  if (!F.list.length) { box.innerHTML = '<span class="hint">No photos found on this phone.</span>'; return; }
+  const last = (k) => k.split('/').pop();
+  const label = (k) => (F.list.filter((x) => last(x.key) === last(k)).length > 1 ? k : last(k));
+  box.innerHTML = F.list.map((x) => `<button class="chip${x.on ? ' on' : ''}" data-folder="${esc(x.key)}">${esc(label(x.key))} <small>${compact(x.count)}</small></button>`).join('');
+  $('#phoFolderHint').innerHTML = F.custom ? 'The folders you chose. <button class="link-inline" data-folderreset>Back to the camera\'s</button>'
+    : 'The camera\'s folders, no screenshots and nothing saved from other apps. Tap to choose others.';
+}
+function togglePhotoFolder(key) {
+  const F = PHOTO_FOLDERS;
+  const x = F && F.list && F.list.find((f) => f.key === key);
+  if (!x) return;
+  if (x.on && F.list.filter((f) => f.on).length === 1) { toast('Keep at least one folder'); return; }
+  x.on = !x.on;
+  F.custom = true;
+  send({ t: 'photoPrefs', folders: F.list.filter((f) => f.on).map((f) => f.key) });
+  renderPhotoFolders();
 }
 
 function renderSettings() {
@@ -5932,6 +6126,8 @@ function build() {
     if (ls) { openListen(ls); return; }
     const pl = e.target.closest('[data-pl]');
     if (pl) { openPlaylist(pl.dataset.pl); return; }
+    const rk = e.target.closest('[data-ranks]');
+    if (rk) { openRanks(rk.dataset.ranks, rk.dataset.rrange, rk.dataset, !!rk.dataset.rshown); return; }
     if (e.target.closest('[data-nowpage]')) { openNow(); return; }
     const tr = e.target.closest('[data-track]');
     if (tr) { openTrack(tr.dataset.a, tr.dataset.track, { album: tr.dataset.al, cover: tr.dataset.cover }); return; }
@@ -6172,13 +6368,14 @@ function build() {
   const story = $('#story');
   let downAt = 0, holdTimer = 0;
   story.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('#storyClose')) return;
+    if (e.target.closest('#storyClose, #storyPhotos')) return;
     downAt = performance.now();
     holdTimer = setTimeout(() => story.classList.add('paused'), 220);
   });
   story.addEventListener('pointerup', (e) => {
     clearTimeout(holdTimer);
     if (e.target.closest('#storyClose')) return;
+    if (e.target.closest('#storyPhotos')) { openMomentSheet(); return; }
     const held = performance.now() - downAt > 220;
     story.classList.remove('paused');
     if (held) return;
@@ -6262,7 +6459,39 @@ function build() {
     if (!b) return;
     const v = b.dataset.photos;
     if (v === 'on' || v === 'off') send({ t: 'photos', on: v === 'on' });
+    else if (v === 'unhide') send({ t: 'photoPrefs', unhide: true });
     else send({ t: v === 'choose' ? 'photosChoose' : 'photosSettings' });
+  };
+  $('#phoMode').onclick = (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    ST.photos = { ...ST.photos, mode: b.dataset.v };
+    send({ t: 'photoPrefs', mode: b.dataset.v });
+    renderPhotoSettings();
+  };
+  $('#phoOpts').onclick = (e) => {
+    const f = e.target.closest('[data-folder]');
+    if (f) { togglePhotoFolder(f.dataset.folder); return; }
+    if (e.target.closest('[data-folderreset]')) {
+      send({ t: 'photoPrefs', folders: null });
+      PHOTO_FOLDERS = null;
+      renderPhotoSettings();
+    }
+  };
+  $('#rankBody').onclick = (e) => {
+    const k = e.target.closest('[data-rkind]');
+    if (k && RANKS && k.dataset.rkind !== RANKS.kind) {
+      RANKS = { ...RANKS, kind: k.dataset.rkind, rows: {}, total: 0, pos: -1, loading: true, req: ++REQ, scrolled: false, more: -1 };
+      renderRanks();
+      askRanks(0, true);
+      return;
+    }
+    const g = e.target.closest('[data-rgap]');
+    if (g && RANKS && RANKS.more < 0) {
+      RANKS.more = +g.dataset.rgap;
+      renderRanks();
+      askRanks(RANKS.more, false);
+    }
   };
   $('#lfCheck').onclick = () => send({ t: 'lastfmCheck' });
   $('#lfReopen').onclick = () => send({ t: 'lastfmConnect' });

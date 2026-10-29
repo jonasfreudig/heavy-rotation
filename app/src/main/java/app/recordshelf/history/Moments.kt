@@ -15,6 +15,27 @@ object Moments {
     const val BURST_SEC = 20 * 60L
     const val MAX = 5
 
+    /** Which photos a story may show: taken while a song played, around music, or at any time. */
+    val MODES = setOf("playing", "near", "any")
+
+    /** Pictures saved from these apps aren't ones you took. */
+    private val APPS = listOf("whatsapp", "telegram", "instagram", "messenger", "signal", "download", "facebook", "snapchat")
+    private val STORAGE_TOP = Regex("^/storage/(emulated/\\d+|[^/]+)/")
+
+    /**
+     * The folder of a photo from the storage's top ("DCIM/Camera"): [path] is its relative path, or with
+     * [whole] (before Android 10) the file's whole path.
+     */
+    fun folderOf(path: String, whole: Boolean): String =
+        (if (whole) path.substringBeforeLast('/', "") else path).replace(STORAGE_TOP, "").trim('/')
+
+    /** Whether [folder] is the camera's (DCIM, or Pictures for some phones), not screenshots or another app's. */
+    fun byCamera(folder: String): Boolean {
+        val p = "/" + folder.lowercase().trim('/') + "/"
+        if ("screenshot" in p || "screen record" in p || "screenrecord" in p) return false
+        return "/dcim/" in p || ("/pictures/" in p && APPS.none { it in p })
+    }
+
     /** Moments at least this far apart, or a share of the period for long ones. */
     private const val GAP_MIN = 6 * 3600L
 
