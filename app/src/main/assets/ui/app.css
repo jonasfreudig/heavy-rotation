@@ -459,6 +459,27 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .rank-hero h1 { margin: 0; font: 700 26px/32px var(--font); }
 .rank-hero p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; }
 .pl-txt { flex: 1; min-width: 0; }
+/* Artist pages in tabs: the tabs stick under the top bar (or the top, with the bar gone) */
+.atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .26s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
+.atabs .seg { margin: 0; }
+.atabs.stuck { background: linear-gradient(180deg, var(--atabs-bg) calc(100% - 14px), transparent 100%); }
+.page.bar-gone .atabs { top: var(--inset-top); }
+.atab-body { min-height: 60vh; }
+.set2 { display: grid; grid-auto-flow: column; grid-template-columns: 1fr 1fr; }
+.set2 .r { grid-template-columns: 20px minmax(0, 1fr) auto; padding: 9px 10px; gap: 6px; }
+.set2 .t b { font-size: 13.5px; line-height: 17px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Shows as ticket stubs, scrolling sideways */
+.tix { display: flex; gap: 10px; overflow-x: auto; margin: 8px -16px 0; padding: 4px 16px 10px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.tix::-webkit-scrollbar { display: none; }
+.tk { flex: none; display: flex; width: 188px; min-height: 64px; border-radius: 10px; background: color-mix(in srgb, var(--tint, var(--md-primary)) 13%, var(--md-surface-container-high)); color: var(--md-on-surface); text-align: left; scroll-snap-align: start;
+  -webkit-mask: radial-gradient(circle 6px at 52px 0, #0000 97%, #000) top / 100% 51% no-repeat, radial-gradient(circle 6px at 52px 100%, #0000 97%, #000) bottom / 100% 51% no-repeat;
+  mask: radial-gradient(circle 6px at 52px 0, #0000 97%, #000) top / 100% 51% no-repeat, radial-gradient(circle 6px at 52px 100%, #0000 97%, #000) bottom / 100% 51% no-repeat; }
+.tk .tkd { flex: none; width: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-right: 2px dashed color-mix(in srgb, var(--md-on-surface) 18%, transparent); }
+.tk .tkd b { font: 650 22px/1 var(--display, var(--font)); }
+.tk .tkd small { margin-top: 3px; font: 500 10px/1 var(--mono, var(--font)); text-transform: uppercase; letter-spacing: .06em; color: var(--md-on-surface-variant); }
+.tk .tki { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 12px; min-width: 0; }
+.tk .tki b { font: 600 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk .tki small { font-size: 11.5px; line-height: 15px; color: var(--md-on-surface-variant); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .concerts .r { grid-template-columns: 40px 1fr auto; }
 .concerts .r > .i { width: 18px; height: 18px; color: var(--md-on-surface-variant); }
 .cdate { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 40px; padding: 4px 0; border-radius: 10px; background: var(--md-secondary-container); color: var(--md-on-secondary-container); line-height: 1; }

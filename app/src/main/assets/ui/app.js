@@ -530,6 +530,8 @@ function watchBar(scroller, bar, onAway) {
   let last = 0, gone = false;
   scroller.addEventListener('scroll', () => {
     const y = el.scrollTop, d = y - last;
+    // Moved by the app (another tab of a page): the bar stays as it is.
+    if (el.dataset.quiet) { last = y; return; }
     if (y <= 2) {
       bar.classList.remove('back', 'away');
       last = y;
@@ -4944,8 +4946,18 @@ function concertRow(c, byArtist) {
     <span class="t"><b>${esc(byArtist ? place || c.artist : c.artist)}</b><small>${esc(byArtist ? `${d.getFullYear()}${c.songs.length ? ` · ${plural(c.songs.length, 'song')}` : ''}` : place)}</small>${glow ? `<small class="glow${hot ? ' hot' : ''}">${hot ? icon('fire', 'i inl') : ''}${esc(glow)}</small>` : ''}</span>${icon('chevron-right')}</button>`;
 }
 /** On an artist's page: the shows of theirs you were at. */
+/** A show as a ticket stub: the date torn off on the left, the place and a line about it. */
+function ticketHtml(date, place, line, attrs) {
+  const d = new Date(`${date}T12:00:00`), thisYear = d.getFullYear() === new Date().getFullYear();
+  return `<button class="tk" ${attrs}><span class="tkd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}${thisYear ? '' : ` ${String(d.getFullYear()).slice(2)}`}</small></span>
+    <span class="tki"><b>${esc(place)}</b><small>${esc(line)}</small></span></button>`;
+}
 function concertsBlock(list) {
   if (!list || !list.length) return '';
+  if (artistTabs()) {
+    return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}. Tap a show for that night's setlist.</span>
+      <div class="tix">${list.map((c) => { CONCERT_BY_ID[c.id] = c; return ticketHtml(c.date, c.venue || c.city, [c.city, c.after != null ? `${plural(c.after, 'play')} after` : ''].filter(Boolean).join(' · '), `data-concert="${esc(c.id)}"`); }).join('')}</div></div>`;
+  }
   return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}, from your setlist.fm. Tap a show for that night's setlist.</span>
     <div class="rank concerts">${list.map((c) => concertRow(c, true)).join('')}</div></div>`;
 }
@@ -5084,7 +5096,8 @@ window.onSetlists = (s) => {
   if (!LIVE || s.req !== LIVE.req) return;
   LIVE = { ...s, name: LIVE.name, req: LIVE.req, loading: false };
   const slot = $('#liveSlot');
-  if (slot && isOpen('artistPage') && ARTIST && norm(ARTIST.name) === norm(LIVE.name)) slot.innerHTML = liveHtml();
+  // In tabs the whole tab is drawn again: an artist setlist.fm doesn't know leaves it saying so.
+  if (slot && isOpen('artistPage') && ARTIST && norm(ARTIST.name) === norm(LIVE.name)) { if (artistTabs()) renderArtist(); else slot.innerHTML = liveHtml(); }
 };
 const showDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 const songNote = (x) => [x.cover ? `cover of ${x.cover}` : '', x.with ? `with ${x.with}` : '', x.encore ? 'encore' : ''].filter(Boolean).join(' · ');
@@ -5106,11 +5119,18 @@ function liveHtml(name) {
   if (L.unknown || (!shows.length && !next)) return '';
   let h = `<div class="viz live">${head}<span class="sub">${typ.length ? `Their usual set at their last ${plural(L.of, 'show')} with a setlist, in its usual order` : 'Their shows on setlist.fm'}</span>`;
   if (next) h += `<button class="live-next" data-url="${esc(next.url)}">${icon('calendar')}<span><b>Next: ${esc(showDate(next.date))}</b><small>${esc([next.venue, next.city].filter(Boolean).join(', '))}</small></span></button>`;
-  if (typ.length) {
-    h += `<div class="rank">${typ.map((x, i) => `<button class="r" ${trackAttrs(L.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc([`at ${x.n} of ${L.of}`, songNote(x)].filter(Boolean).join(' · '))}</small></span>${x.plays ? `<span class="v">${num(x.plays)}×</span>` : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
+  const plays = (x) => (x.plays ? `<span class="v">${num(x.plays)}×</span>` : '<span class="v new-tag">new</span>');
+  if (typ.length && artistTabs()) {
+    // In tabs: the set in two columns, top to bottom, then the next column.
+    h += `<div class="rank set2" style="grid-template-rows:repeat(${Math.ceil(typ.length / 2)},auto)">${typ.map((x, i) => `<button class="r" ${trackAttrs(L.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span>${plays(x)}</button>`).join('')}</div>
+      <div class="btn-row"><button class="btn filled" data-livepl="usual">${icon('playlist')}Make a concert playlist</button></div>`;
+  } else if (typ.length) {
+    h += `<div class="rank">${typ.map((x, i) => `<button class="r" ${trackAttrs(L.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc([`at ${x.n} of ${L.of}`, songNote(x)].filter(Boolean).join(' · '))}</small></span>${plays(x)}</button>`).join('')}</div>
       <div class="btn-row"><button class="btn filled" data-livepl="usual">${icon('playlist')}Make a concert playlist</button></div>`;
   }
-  if (shows.length) {
+  if (shows.length && artistTabs()) {
+    h += `<h3 class="live-h">Recent shows</h3><div class="tix">${shows.slice(0, 15).map((s, i) => ticketHtml(s.date, s.city || s.venue, `${s.city ? `${s.venue} · ` : ''}${plural(s.songs.length, 'song')}`, `data-show="${i}"`)).join('')}</div>`;
+  } else if (shows.length) {
     h += `<h3 class="live-h">Recent shows</h3><div class="rank">${shows.slice(0, 8).map((s, i) => `<button class="r" data-show="${i}"><span class="t"><b>${esc(showDate(s.date))} · ${esc(s.city || s.venue)}</b><small>${esc([s.venue, s.country].filter(Boolean).join(', '))} · ${plural(s.songs.length, 'song')}</small></span><span class="v">${icon('chevron-right')}</span></button>`).join('')}</div>`;
   }
   return `${h}<p class="hint">Setlists from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, written down by fans. "New" are songs you haven't played yet.</p></div>`;
@@ -5149,7 +5169,7 @@ function openArtist(name) {
 }
 window.onArtist = (a) => {
   ARTIST = deliver('artistPage', a.req, ARTIST, (s, shown) => {
-    const next = { ...a, req: s.req };
+    const next = { ...a, req: s.req, tab: s.tab };
     if (shown) { const changed = !sameData(next, s); ARTIST = next; if (changed) renderArtist(); }
     return next;
   });
@@ -5165,13 +5185,16 @@ function renderArtist() {
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
   const pic = a.photo || a.cover || '';
+  const tabs = artistTabs();
   let h = `<div class="artist-hero page-hero"><i class="glow"></i>
       ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}` })}
       <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
         <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}, on ${plural(a.days, 'day')}</div></div></div>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
-    ${listenRow('artists', a.name)}
-    <p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
+    ${listenRow('artists', a.name)}`;
+  // The page in parts: one after the other, or in tabs (Settings → Look).
+  const P = {};
+  P.tiles = `<p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
     <div class="tiles">
       ${tile('All time', num(a.plays), a.rank ? `plays · #${a.rank} of ${compact(a.artists)} artists` : `plays on ${plural(a.days, 'day')}`, '', 'music', a.rank ? rankAttrs('artists', 'all', { artist: a.name }) : '')}
       ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays', '', 'calendar', a.range.rank ? rankAttrs('artists', a.range.id, { artist: a.name }) : '')}
@@ -5179,41 +5202,86 @@ function renderArtist() {
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
   const ra = a.rangeAlbums || [];
-  h += periodBlock(a.range, a.rangeTracks, 'artist', (x) => trackAttrs(a.name, x.title),
+  P.period = periodBlock(a.range, a.rangeTracks, 'artist', (x) => trackAttrs(a.name, x.title),
     ra.length ? `<p class="hint">Mostly from ${ra.map((x) => `<button class="link-inline" ${albumAttrs(a.name, x.title)}>${esc(x.title)}</button> (${num(x.plays)})`).join(', ')}.</p>` : '');
-  h += vsBlock(a.global, esc(a.name));
-  h += originHtml(a);
-  h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
-  if (a.river) {
-    h += riverViz(a.river, { title: 'Their albums over time', other: 'Singles and the rest',
-      sub: (s) => `Plays per ${a.river.unit} of each album since you first played them; the top ${a.river.artists.length} are <b>${s}%</b> of it.`,
-      link: (n) => albumAttrs(a.name, n) });
-  }
-  h += lifeCharts(a, 'them', pic, a.name + a.name);
+  P.vs = vsBlock(a.global, esc(a.name));
+  P.origin = originHtml(a);
+  P.disco = `<div id="discoSlot">${discoHtml(a.name)}</div>`;
+  P.river = a.river ? riverViz(a.river, { title: 'Their albums over time', other: 'Singles and the rest',
+    sub: (s) => `Plays per ${a.river.unit} of each album since you first played them; the top ${a.river.artists.length} are <b>${s}%</b> of it.`,
+    link: (n) => albumAttrs(a.name, n) }) : '';
+  P.life = lifeCharts(a, 'them', pic, a.name + a.name);
+  P.record = '';
   if (STATS && STATS.record && STATS.record.days) {
     const idx = STATS.record.artists.findIndex((n) => norm(n) === norm(a.name));
     if (idx >= 0) {
       RECS.artist = { rec: STATS.record, spot: idx, label: periodName(STATS.range) };
-      h += recordViz(STATS.record, 'artist', 'On your record', `Their plays lit up among everything you played (${periodName(STATS.range)}).`, { legend: false });
+      P.record = recordViz(STATS.record, 'artist', 'On your record', `Their plays lit up among everything you played (${periodName(STATS.range)}).`, { legend: false });
     }
   }
+  P.tracks = '';
   if (a.tracks.length) {
-    h += `<div class="viz"><h2>Top tracks</h2><span class="sub">Not music? ${icon('eye-off', 'i inl')} hides a track from your stats.</span><div class="rank">${a.tracks.slice(0, topN('artist')).map((x, i) => `<div class="r with-act" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span>
+    P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Not music? ${icon('eye-off', 'i inl')} hides a track from your stats.</span><div class="rank">${a.tracks.slice(0, topN('artist')).map((x, i) => `<div class="r with-act" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span>
       <button class="icon-btn small" data-hide ${hideAttrs('track', a.name, x.title)} aria-label="Hide ${esc(x.title)} from stats">${icon('eye-off')}</button></div>`).join('')}</div>${topMore('artist', a.tracks.length)}</div>`;
   }
-  if (a.albums.length) {
-    h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>`;
-  }
-  h += concertsBlock(a.concerts);
-  h += `<div id="liveSlot">${liveHtml(a.name)}</div>`;
-  h += globalTopHtml(a);
-  if (a.owned.length) {
-    h += `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>`;
+  P.albums = a.albums.length ? `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>` : '';
+  P.concerts = concertsBlock(a.concerts);
+  P.live = `<div id="liveSlot">${liveHtml(a.name)}</div>`;
+  P.global = globalTopHtml(a);
+  P.shelf = a.owned.length ? `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>` : '';
+  if (tabs) {
+    const tab = ARTIST_TABS.some(([k]) => k === a.tab) ? a.tab : 'overview';
+    const body = ARTIST_TAB_PARTS[tab].map((k) => P[k]).join('');
+    // The live tab waits for setlist.fm (liveSlot fills in); empty, it says so.
+    const empty = tab === 'live' && !a.concerts && LIVE && !LIVE.loading && !liveHtml() ? '<div class="empty small"><p>No shows of theirs on setlist.fm yet, and none you were at.</p></div>' : '';
+    h += `<i id="atabAnchor"></i><div class="atabs" id="artistTabs"><div class="seg small">${ARTIST_TABS.map(([k, l]) => `<button data-atab="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="atab-body" data-tab="${tab}">${body}${empty}</div>`;
+  } else {
+    h += ARTIST_LONG.map((k) => P[k]).join('');
   }
   keepHolo($('#artistBody'), h);
   tint($('#artistBody'), pic, a.name + a.name);
   fitText($('#artistBody .fit'));
   drawRecords();
+  syncArtistTabs();
+}
+
+/** Artist pages as one long page, or in tabs (Settings → Look). */
+const artistTabs = () => { try { return localStorage.getItem('artistLayout') === 'tabs'; } catch (_) { return false; } };
+const ARTIST_TABS = [['overview', 'Overview'], ['listening', 'Listening'], ['music', 'Music'], ['live', 'Live']];
+/** The page's parts: in the long page's order, and in each tab. */
+const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'albums', 'concerts', 'live', 'global', 'shelf'];
+const ARTIST_TAB_PARTS = {
+  overview: ['tiles', 'period', 'vs', 'origin'],
+  listening: ['river', 'life', 'record'],
+  music: ['tracks', 'albums', 'shelf', 'disco', 'global'],
+  live: ['concerts', 'live'],
+};
+/** Another tab: scrolled down past the tabs, the new one starts at its top, right under them. */
+function setArtistTab(t) {
+  const a = ARTIST;
+  if (!a || a.tab === t) return;
+  const page = $('#artistPage'), anchor = $('#atabAnchor'), bar = $('#artistTabs');
+  let to = null;
+  if (anchor && bar) {
+    const y = anchor.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop - (parseFloat(getComputedStyle(bar).top) || 0);
+    if (page.scrollTop > y) to = Math.max(0, y);
+  }
+  ARTIST = { ...a, tab: t };
+  renderArtist();
+  if (to != null) {
+    page.dataset.quiet = '1';
+    page.scrollTop = to;
+    setTimeout(() => { delete page.dataset.quiet; }, 120);
+  }
+}
+/** The tabs get the page's color behind them once they stick to the top. */
+function syncArtistTabs() {
+  const bar = $('#artistTabs'), anchor = $('#atabAnchor');
+  if (!bar || !anchor) return;
+  // Where they'd be without sticking (their anchor) against where they stick: measured so, the top bar sliding in or out doesn't matter.
+  const top = parseFloat(getComputedStyle(bar).top) || 0;
+  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - $('#artistPage').getBoundingClientRect().top < top);
 }
 
 // ---- tidy up: videos, app sounds and clips out of the stats ----
@@ -6158,6 +6226,7 @@ function renderSettings() {
   $$('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (ST.prefs.theme || 'system')));
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
+  $$('#artistSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (artistTabs() ? 'tabs' : 'long')));
   try { $('#tiltSw').checked = localStorage.getItem('tilt') !== 'off'; } catch (_) { $('#tiltSw').checked = true; }
   $('#version').textContent = ST.version ? `Heavy Rotation ${ST.version}` : '';
   renderPhoneSettings();
@@ -6354,7 +6423,13 @@ function build() {
   };
   const artistBody = $('#artistBody');
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
-  artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
+  artistBody.onclick = (e) => {
+    const at = e.target.closest('[data-atab]');
+    if (at) { setArtistTab(at.dataset.atab); return; }
+    const rec = e.target.closest('[data-rec]');
+    if (rec) openRecord(+rec.dataset.rec, rec);
+  };
+  $('#artistPage').addEventListener('scroll', syncArtistTabs, { passive: true });
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
@@ -6370,7 +6445,7 @@ function build() {
   sheetDrag();
   Pill.init();
   syncBack();
-  $$('.page').forEach((p) => { const bar = p.querySelector(':scope > .appbar'); if (bar) watchBar(p, bar); });
+  $$('.page').forEach((p) => { const bar = p.querySelector(':scope > .appbar'); if (bar) watchBar(p, bar, (away) => p.classList.toggle('bar-gone', away)); });
   $('#atlasSeg').onclick = (e) => { const b = e.target.closest('[data-av]'); if (b) { atlasView = b.dataset.av; renderAtlas(); } };
   $('#atlasBody').onclick = (e) => {
     const t = e.target;
@@ -6581,6 +6656,13 @@ function build() {
     try { localStorage.setItem('nowStyle', b.dataset.v); } catch (_) { /* preview without storage */ }
     renderSpinCard();
     renderSettings();
+  };
+  $('#artistSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('artistLayout', b.dataset.v); } catch (_) { /* preview without storage */ }
+    renderSettings();
+    renderArtist();
   };
   $('#lookSeg').onclick = (e) => {
     const b = e.target.closest('button');

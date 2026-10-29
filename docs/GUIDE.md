@@ -364,6 +364,13 @@ record spinning, or the song on the phone), else of the last one you played; in 
 tabs take a calm shade of it too. Pick **Your records**, **Wallpaper** (your Material You colors)
 or **Off** in Settings → Look → Background color.
 
+Artist pages come as **One long page** or in **Tabs** (Settings → Look → Artist pages). Tabs split
+the page under its header into **Overview** (the numbers, the period, you vs everyone, how you found
+them), **Listening** (the charts), **Music** (top tracks, albums, your shelf, the discography,
+their most played songs) and **Live** (the shows you were at, and what they play lately), each a
+screen or two long. The tabs stay at the top as you scroll; there, the setlist comes in two columns
+and the shows scroll sideways as ticket stubs.
+
 The shelf's count sits next to its title. One line under it has the order (tap it for the others:
 recently or first added, artist A–Z or Z–A, year, plays), the filter button, and three views: the
 grid of covers, big covers two to a row with year and plays, and a list with year, label, format,
