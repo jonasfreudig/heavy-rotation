@@ -2,11 +2,7 @@ package app.recordshelf
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.recordshelf.history.Moments
 import app.recordshelf.tidal.TidalStore
-
-/** At most this many photos stay hidden from stories (the latest). */
-private const val HIDDEN_MAX = 3000
 
 /**
  * Settings, plus the user's keys and tokens in a separate file ("secrets") that is kept out
@@ -127,14 +123,6 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getBoolean("importPaused", false)
         set(v) = app.edit().putBoolean("importPaused", v).apply()
 
-    /** Photos you took in the story's period, with what was playing (Settings → Stats and listening), and whether Android was asked. */
-    var storyPhotos: Boolean
-        get() = app.getBoolean("storyPhotos", false)
-        set(v) = app.edit().putBoolean("storyPhotos", v).apply()
-    var photosAsked: Boolean
-        get() = app.getBoolean("photosAsked", false)
-        set(v) = app.edit().putBoolean("photosAsked", v).apply()
-
     /** The user's setlist.fm username, for the concerts they marked as attended there, and when those were last fetched (ms). */
     var setlistUser: String
         get() = app.getString("setlistUser", "").orEmpty()
@@ -151,20 +139,6 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getString("fixRules", "[]") ?: "[]"
         set(v) = app.edit().putString("fixRules", v).apply()
 
-    /** Which photos stories show (one of Moments.MODES): by default only ones taken while a song played. */
-    var photosMode: String
-        get() = app.getString("photosMode", null)?.takeIf { it in Moments.MODES } ?: "playing"
-        set(v) = app.edit().putString("photosMode", v).apply()
-
-    /** Photos the user took out of their stories (media store ids), the latest [HIDDEN_MAX]. */
-    var photosHidden: Set<Long>
-        get() = app.getString("photosHidden", "").orEmpty().split(',').mapNotNull { it.toLongOrNull() }.toCollection(LinkedHashSet())
-        set(v) = app.edit().putString("photosHidden", v.toList().takeLast(HIDDEN_MAX).joinToString(",")).apply()
-
-    /** The folders stories take photos from, as the user chose them (see Photos.folders); null for the camera's own. */
-    var photoFolders: Set<String>?
-        get() = app.getString("photoFolders", null)?.let { j -> org.json.JSONArray(j).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } }
-        set(v) = app.edit().apply { if (v == null) remove("photoFolders") else putString("photoFolders", org.json.JSONArray(v.toList()).toString()) }.apply()
 
     /** The setlist.fm API key: the user's own, or the app's own if the build has one. */
     private val ownSetlist get() = s(sec, "setlistKey").isNotEmpty()

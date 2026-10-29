@@ -100,7 +100,6 @@ const Mock = (() => {
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
     setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a', user: 'gieskannenbauer', concerts: 14, concertsAt: Date.now() - 2 * DAY, concertsBusy: false, concertsError: '' },
-    photos: { on: true, access: 'all', asked: true, canChoose: true, mode: 'playing', hidden: 0, folders: -1 },
     fix: { presets: [
       { id: 'remaster', label: 'Take "Remastered" off songs and albums', example: 'Heroes - 2017 Remaster → Heroes', on: true },
       { id: 'explicit', label: 'Take "Explicit" and "Clean" off', example: 'Song (Explicit) → Song', on: false },
@@ -787,7 +786,6 @@ const Mock = (() => {
       busiestDay: { day: s.range.from * 1000 + 9 * DAY, count: 61 },
       newArtists: { count: s.summary.historyStartsHere ? 0 : s.summary.newArtists, best: x.order.length ? { name: L.artists[x.order[Math.min(6, x.order.length - 1)]], plays: 44, first: s.range.from * 1000 + 2 * DAY } : null },
       loop: s.loops[0] || null, obsession: s.obsessions[0] || null, genres,
-      moments: S.photos.on ? fakeMoments(id, s.range.from, x.topT.slice(0, 9).map((t) => ({ title: L.titles[t], artist: L.artists[x.trackArtist[t]] }))) : [],
       vinyl: { count: Math.round(n * 0.03), share: 0.03, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }] },
       streak: s.streaks, insights: s.insights,
       first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
@@ -991,15 +989,6 @@ const Mock = (() => {
     return { artist: name, url: 'https://www.setlist.fm/', of: shows.length, typical, shows,
       upcoming: [{ id: 'u1', date: iso(Date.now() + 16 * DAY), venue: 'Tempodrom', city: 'Berlin', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
   }
-  /** The story's photos as the app picks them: made-up ones of the period, by the photo settings, the hidden left out. */
-  const HIDDEN_PHOTOS = new Set();
-  const MOMENT_POOLS = {};
-  function fakeMoments(id, from, songs) {
-    MOMENT_POOLS[id] = MOMENT_POOLS[id] || songs.map((sg, k) => ({ id: 900 + hashStr(id) % 1000 * 10 + k, src: fakePhoto(hashStr(`${id}-${k}`)), ts: from * 1000 + (2 + k * 3) * DAY + (17 + (k % 5)) * 3600e3, w: 4000, h: 3000,
-      song: k % 4 === 3 ? null : { ...sg, album: '', cover: '', playing: k % 3 !== 1, gap: k % 3 !== 1 ? 120 : k === 1 ? 1500 : -7900 } }));
-    const P = S.photos;
-    return MOMENT_POOLS[id].filter((m) => !HIDDEN_PHOTOS.has(m.id) && (P.mode === 'any' || (m.song && (P.mode === 'near' || m.song.playing)))).slice(0, 5);
-  }
   /** A whole top list, as the app sends it: places from..from+n, and the few around the page's own if it's further down. */
   function fakeRankList(m) {
     const L = history();
@@ -1044,15 +1033,6 @@ const Mock = (() => {
     return out;
   }
   const concertsIn = (r) => (S.setlist.user ? fakeConcerts().filter((c) => { const t = +new Date(`${c.date}T12:00:00`) / 1000; return t >= r.from && t < r.to; }).reverse() : []);
-  /** Stand-ins for photos from the phone: soft color fields with a horizon, as SVG. */
-  function fakePhoto(seed) {
-    const r = rng(seed);
-    const h1 = Math.floor(r() * 360), h2 = (h1 + 40 + Math.floor(r() * 80)) % 360, y = 40 + Math.floor(r() * 30);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${h1} 60% 72%)"/><stop offset="1" stop-color="hsl(${h2} 50% 48%)"/></linearGradient></defs>
-      <rect width="120" height="120" fill="url(#a)"/><circle cx="${30 + Math.floor(r() * 60)}" cy="${y - 14}" r="${8 + Math.floor(r() * 8)}" fill="hsl(${h1} 90% 92%)" opacity=".9"/>
-      <path d="M0 ${y} Q30 ${y - 8} 60 ${y + 2} T120 ${y - 4} V120 H0Z" fill="hsl(${h2} 35% 28%)"/><path d="M0 ${y + 24} Q40 ${y + 14} 80 ${y + 26} T120 ${y + 20} V120 H0Z" fill="hsl(${h2} 30% 18%)"/></svg>`;
-    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-  }
   function artistLives() {
     const L = history();
     const n = L.artists.length;
@@ -1412,7 +1392,6 @@ const Mock = (() => {
         case 'setlists': later(700, () => onSetlists(S.setlist.hasKey ? { ...fakeSetlists(m.name), name: m.name, req: m.req } : { name: m.name, req: m.req, needsKey: true })); break;
         case 'saveSetlist': S.setlist = { hasKey: true, builtIn: false, keyHint: `…${m.key.slice(-4)}` }; pushState(); break;
         case 'setlistForget': S.setlist = { hasKey: false, builtIn: false, keyHint: '' }; pushState(); break;
-        case 'photos': S.photos.on = m.on; pushState(); break;
         case 'saveSetlistUser': S.setlist.user = m.user; S.setlist.concerts = m.user ? fakeConcerts().length : 0; pushState(); break;
         case 'concertsRefresh': toast('(preview) setlist.fm would be asked again'); break;
         case 'concerts': later(250, () => onConcerts({ user: S.setlist.user, busy: false, error: '', shows: S.setlist.user ? fakeConcerts() : [] })); break;
@@ -1423,25 +1402,7 @@ const Mock = (() => {
           pushState(); break;
         }
         case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
-        case 'photoPrefs':
-          if (m.mode) S.photos.mode = m.mode;
-          if (m.unhide) { HIDDEN_PHOTOS.clear(); S.photos.hidden = 0; }
-          if ('folders' in m) S.photos.folders = m.folders ? m.folders.length : -1;
-          pushState(); break;
-        case 'photoFolders': later(300, () => onPhotoFolders({ custom: S.photos.folders >= 0, folders: [
-          { key: 'DCIM/Camera', count: 4210, camera: true }, { key: 'Pictures/Screenshots', count: 812, camera: false }, { key: 'Pictures/WhatsApp Images', count: 640, camera: false },
-          { key: 'DCIM/Concerts', count: 96, camera: true }, { key: 'Pictures/Snapseed', count: 54, camera: true }].map((f) => ({ ...f, on: f.camera })) })); break;
-        case 'storyMoments': {
-          (m.hide || []).forEach((h) => HIDDEN_PHOTOS.add(h));
-          S.photos.hidden = HIDDEN_PHOTOS.size;
-          if (m.mode) S.photos.mode = m.mode;
-          const pool = MOMENT_POOLS[m.range] || [];
-          later(300, () => { onStoryMoments({ range: m.range, moments: fakeMoments(m.range, 0, pool.map((x) => x.song || {})) }); pushState(); });
-          break;
-        }
         case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
-        case 'photosChoose': toast('(preview) Android would ask which photos'); break;
-        case 'photosSettings': toast('(preview) Android settings would open now'); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'phoneControl': {
           if (m.action === 'play' || m.action === 'pause') phonePlaying = m.action === 'play';

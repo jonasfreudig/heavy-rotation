@@ -1,8 +1,6 @@
 package app.recordshelf
 
 import app.recordshelf.history.History
-import app.recordshelf.history.Photo
-import app.recordshelf.history.Range
 import app.recordshelf.history.Stats
 import app.recordshelf.lastfm.Scrobble
 import app.recordshelf.net.SetSong
@@ -12,14 +10,13 @@ import app.recordshelf.scrobble.FixRules.Rule
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 
-/** Names fixed before they're scrobbled, concerts and their afterglow, photos around music. */
+/** Names fixed before they're scrobbled, concerts and their afterglow. */
 class FixAndConcertsTest {
     private val utc = ZoneId.of("UTC")
     private fun at(y: Int, m: Int, d: Int, h: Int = 12, min: Int = 0) = LocalDateTime.of(y, m, d, h, min).toEpochSecond(ZoneOffset.UTC)
@@ -81,22 +78,5 @@ class FixAndConcertsTest {
         assertEquals(3 to 9, st.aroundDay("IDLES", LocalDate.of(2025, 6, 14)))
         assertEquals("never played: nothing either side", 0 to 0, st.aroundDay("Fontaines D.C.", LocalDate.of(2025, 6, 14)))
         assertNull("before the history starts", st.aroundDay("IDLES", LocalDate.of(2024, 12, 20)))
-    }
-
-    @Test
-    fun aroundMusicReachesHoursAndTakesTheClosest() {
-        val h = History.Builder().also { b -> b.add(at(2025, 6, 14, 12), "Ezra Collective", "Ajala", "") }.build()
-        val s = Stats(h, utc, at(2025, 7, 1))
-        val r = Range("m2025-06", "June 2025", at(2025, 6, 1, 0), at(2025, 7, 1, 0), "month")
-        // A walk three hours after the song: two photos, the later one further from it.
-        val photos = listOf(Photo(1, at(2025, 6, 14, 15, 0), 4000, 3000), Photo(2, at(2025, 6, 14, 15, 10), 4000, 3000))
-        val m = s.moments(photos, r, "near")
-        assertEquals(1, m.length())
-        assertEquals("the photo closest to the song", 1L, m.getJSONObject(0).getLong("id"))
-        val song = m.getJSONObject(0).getJSONObject("song")
-        assertEquals("Ajala", song.getString("title"))
-        assertEquals(3 * 3600L, song.getLong("gap"))
-        assertTrue(s.moments(photos, r, "playing").length() == 0)
-        assertEquals("five hours away is too far", 0, s.moments(listOf(Photo(3, at(2025, 6, 14, 17, 30), 4000, 3000)), r, "near").length())
     }
 }

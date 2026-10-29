@@ -23,7 +23,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebViewClient
 import android.window.BackEvent
 import android.window.OnBackAnimationCallback
@@ -60,23 +59,6 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     private val notifLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) Core.backupTo(uri) }
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) Core.restoreFrom(uri) }
-    private val photosLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { Core.photosAnswered() }
-
-    override fun askPhotos() = runOnUiThread {
-        try {
-            photosLauncher.launch(Photos.permissions())
-        } catch (_: Exception) {
-            Core.photosAnswered()
-        }
-    }
-
-    override fun openAppSettings() = runOnUiThread {
-        try {
-            startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
-        } catch (_: Exception) {
-            Core.toast("Android's settings didn't open")
-        }
-    }
 
     override fun pickBackup(save: Boolean, name: String) = runOnUiThread {
         try {
@@ -116,10 +98,6 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     pageReady = true
                 }
-
-                // Photos for the story, from this phone (see Photos): the only address the app answers itself.
-                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
-                    request?.url?.let { Photos.answer(applicationContext, it) }
 
                 // The app's page never goes anywhere else; a web link opens in the browser.
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {

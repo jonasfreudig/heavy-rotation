@@ -139,17 +139,8 @@ month, quarter or year. What the tab shows for the chosen period:
   full-screen in two colors, the top 5 with photos, song of the period as a 7" single spinning at
   45, the album as a moving cover, your golden hour on a sundial, one star per new artist, a song
   on repeat, your genres as a cloud of words, vinyl, your longest streak as a row of days, and a
-  summary printed like the back of a record sleeve. With **Photos in your stories** switched on
-  (Settings → Stats and listening), it also shows photos you took in those days: one full-screen
-  with the song that was playing as you took it, then a few more as prints, spread over the
-  period. By default only photos taken while a song was playing count; **Which photos** can also
-  take ones from up to 4 hours around music (each with the closest song, and how long before or
-  after it started; the closer, the likelier a photo is picked), or any photo. **From these folders** lists the
-  phone's photo folders: the camera's are on (no screenshots, nothing saved from other apps), tap
-  others to add them. **Change photos** on a story's photo leaves photos out (another one takes
-  their place) and changes which photos count; Settings brings hidden ones back. They never leave
-  the phone. Google Photos can't be used for this: since 2025 Google lets apps see only photos the
-  user picks by hand, not a stretch of time, so only photos still on the phone show up.
+  summary printed like the back of a record sleeve. With your concerts from setlist.fm, the shows
+  of the period come as ticket stubs.
 - **Totals**: plays, hours (about 3.5 minutes a track), artists and new artists, each with the
   change against the period before. For a period still running (this week, this month) it
   compares with the same stretch of the previous one: Monday to Wednesday against last Monday to

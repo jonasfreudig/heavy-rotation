@@ -2,8 +2,6 @@ package app.recordshelf
 
 import app.recordshelf.history.Genres
 import app.recordshelf.history.History
-import app.recordshelf.history.Moments
-import app.recordshelf.history.Photo
 import app.recordshelf.history.Range
 import app.recordshelf.history.Stats
 import app.recordshelf.net.SetlistfmClient
@@ -12,7 +10,6 @@ import app.recordshelf.util.Text
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -20,8 +17,8 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 
-/** Setlists from setlist.fm, photos for the story, album genres and the pages' period. */
-class ConcertsAndMomentsTest {
+/** Setlists from setlist.fm, album genres and the pages' period. */
+class ConcertsAndPagesTest {
     private val utc = ZoneId.of("UTC")
     private fun at(y: Int, m: Int, d: Int, h: Int = 12, min: Int = 0) = LocalDateTime.of(y, m, d, h, min).toEpochSecond(ZoneOffset.UTC)
     private fun history(vararg plays: Triple<Long, String, Pair<String, String>>) =
@@ -67,46 +64,6 @@ class ConcertsAndMomentsTest {
         assertEquals(2, usual.first().shows)
         assertEquals("one show alone: all of it", 7, Setlists.typical(lately.take(1)).size)
         assertEquals(emptyList<Any>(), Setlists.typical(emptyList()))
-    }
-
-    @Test
-    fun momentsArePhotosOfTheBestTimesSpreadOut() {
-        val day = 86_400L
-        val t0 = at(2025, 6, 1)
-        // A burst of photos at a gig with music playing, a lone photo in silence, two days with one photo each.
-        val gig = (0 until 8).map { Photo(100L + it, t0 + 3 * day + it * 120, 4000, 3000) }
-        val quiet = Photo(200, t0 + 10 * day, 3000, 4000)
-        val walk = Photo(300, t0 + 20 * day, 3000, 4000)
-        val beach = Photo(400, t0 + 20 * day + 3600, 3000, 4000)
-        val playing = { t: Long -> t in (t0 + 3 * day + 300)..(t0 + 3 * day + 700) || t == walk.ts }
-        val near = { t: Long -> if (playing(t) || t == beach.ts) 1.0 else 0.0 }
-        val picked = Moments.pick(gig + quiet + walk + beach, 30 * day, playing, near, max = 3)
-        assertEquals(3, picked.size)
-        assertTrue("the gig's photo is one taken while a song played", picked[0].id in 103L..105L)
-        assertTrue("walk and beach are an hour apart: only the one with music", walk in picked && beach !in picked)
-        assertEquals("in the order they were taken", picked.sortedBy { it.ts }, picked)
-        assertEquals(emptyList<Photo>(), Moments.pick(emptyList(), day, { false }, { 0.0 }))
-    }
-
-    @Test
-    fun aPhotoKnowsWhatWasPlaying() {
-        val h = history(
-            Triple(at(2025, 6, 14, 18, 30), "Ezra Collective", "Ajala" to "Where I'm Meant To Be"),
-            Triple(at(2025, 6, 14, 18, 36), "Ezra Collective", "Victory Dance" to "Where I'm Meant To Be"),
-        )
-        val s = Stats(h, utc, at(2025, 7, 1))
-        val during = s.playAt(at(2025, 6, 14, 18, 33))!!
-        assertEquals("Ajala", during.getString("title"))
-        assertTrue(during.getBoolean("playing"))
-        val after = s.playAt(at(2025, 6, 14, 19, 0))!!
-        assertEquals("Victory Dance", after.getString("title"))
-        assertFalse("long over, but around then", after.getBoolean("playing"))
-        assertNull(s.playAt(at(2025, 6, 15, 12, 0)))
-        val r = Range("2025-06", "June 2025", at(2025, 6, 1, 0), at(2025, 7, 1, 0), "month")
-        val m = s.moments(listOf(Photo(7, at(2025, 6, 14, 18, 33), 4000, 3000)), r)
-        assertEquals(1, m.length())
-        assertEquals("Ajala", m.getJSONObject(0).getJSONObject("song").getString("title"))
-        assertEquals(at(2025, 6, 14, 18, 33) * 1000, m.getJSONObject(0).getLong("ts"))
     }
 
     @Test

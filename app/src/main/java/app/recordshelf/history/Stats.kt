@@ -87,13 +87,6 @@ class Stats(
         /** Songs listed for the period on an artist or album page. */
         const val RANGE_LIST = 5
 
-        /**
-         * A photo is taken "while" a song played up to this long after it started, and "around" music when the
-         * closest song started within [NEAR_SEC]: generous, as photos and plays on the same day rarely meet.
-         */
-        const val PLAYING_SEC = 7 * 60L
-        const val NEAR_SEC = 4 * 3600L
-
         // You against everyone: what is looked up on Last.fm, and what the lists need.
         const val VS_ARTISTS = 200
         const val VS_ARTIST_MIN = 3
@@ -1179,23 +1172,6 @@ class Stats(
     }
 
     /**
-     * The play under way at [ts] (s): the last one that started at most [PLAYING_SEC] before, and true. If none,
-     * the nearest within [NEAR_SEC], and false. Null if nothing was played around then.
-     */
-    private fun playNear(ts: Long): Pair<Int, Boolean>? {
-        val i = h.lowerBound(ts + 1) - 1
-        if (i >= 0 && ts - h.ts[i] <= PLAYING_SEC) return i to true
-        val near = listOf(i, i + 1).filter { it in 0 until h.size }.minByOrNull { kotlin.math.abs(h.ts[it] - ts) } ?: return null
-        return if (kotlin.math.abs(h.ts[near] - ts) <= NEAR_SEC) near to false else null
-    }
-
-    /**
-     * What was playing at [ts] (s), as [playNear] finds it, with "playing" telling which of the two it is and
-     * "gap" how long before [ts] the song started (s; negative: after).
-     */
-    fun playAt(ts: Long): JSONObject? = playNear(ts)?.let { (i, on) -> playJson(i).put("playing", on).put("gap", ts - h.ts[i]) }
-
-    /**
      * Your plays of [artist] in the [days] days before [day] and in the [days] days after it (the day itself left
      * out): what a concert did to your listening. Null when the history doesn't reach back that far.
      */
@@ -1209,27 +1185,6 @@ class Stats(
             return n
         }
         return count(d0 - days * 86_400L, d0) to count(d0 + 86_400L, d0 + (days + 1) * 86_400L)
-    }
-
-    /** How close [ts] is to music: 1 while a song plays, less the further the closest song, 0 beyond [NEAR_SEC]. */
-    private fun closeness(ts: Long): Double = playNear(ts)?.let { (i, on) -> if (on) 1.0 else 1.0 - kotlin.math.abs(h.ts[i] - ts).toDouble() / NEAR_SEC } ?: 0.0
-
-    /**
-     * The photos of [photos] worth showing in the story of [r], with what was playing when each was taken: of the ones
-     * taken while a song played ([mode] "playing"), around music ("near") or at any time ("any"), none of [hidden].
-     */
-    fun moments(photos: List<Photo>, r: Range, mode: String = "playing", hidden: Set<Long> = emptySet()): JSONArray {
-        val fit = photos.filter { p ->
-            p.id !in hidden && when (mode) {
-                "any" -> true
-                "near" -> playNear(p.ts) != null
-                else -> playNear(p.ts)?.second == true
-            }
-        }
-        val picked = Moments.pick(fit, r.to - r.from, { t -> playNear(t)?.second == true }, ::closeness)
-        return JSONArray(picked.map { p ->
-            JSONObject().put("id", p.id).put("ts", p.ts * 1000).put("w", p.w).put("h", p.h).put("song", playAt(p.ts) ?: JSONObject.NULL)
-        })
     }
 
     // ---- the record, the river, phases ----

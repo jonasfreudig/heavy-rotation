@@ -20,7 +20,6 @@ import app.recordshelf.history.Hidden
 import app.recordshelf.history.History
 import app.recordshelf.history.HistorySync
 import app.recordshelf.history.Junk
-import app.recordshelf.history.Moments
 import app.recordshelf.history.Stats
 import app.recordshelf.history.Years
 import app.recordshelf.lastfm.LastfmClient
@@ -77,12 +76,6 @@ object Core {
 
         /** Lets the user pick where to save a backup ([save], suggesting [name]) or which one to restore. */
         fun pickBackup(save: Boolean, name: String)
-
-        /** Asks Android for the photos (all, or from Android 14 the ones the user picks); then [photosAnswered]. */
-        fun askPhotos()
-
-        /** Opens this app's page in Android's settings (where a permission refused twice can still be given). */
-        fun openAppSettings()
     }
 
     private const val HOUR = 3_600_000L
@@ -395,15 +388,6 @@ object Core {
 
     // ---- TIDAL: exact links and playlists with the user's own TIDAL app ----
     private val tidalExec = serial()
-
-    /** Reading the phone's photo folders for Settings, apart from the stats. */
-    private val photoExec = serial()
-
-    /** The photos for the story of period [id], as the user set them up (Settings → Photos in your stories). */
-    private fun momentsOf(all: Stats, id: String): JSONArray {
-        val r = all.range(id)
-        return all.moments(Photos.taken(ctx, r.from, r.to, prefs.photoFolders), r, prefs.photosMode, prefs.photosHidden)
-    }
     private val tidal by lazy { Tidal(prefs, file("tidal_links.json"), { java.util.Locale.getDefault().country.ifEmpty { "US" } }) }
     @Volatile private var tidalBusy = false
     @Volatile private var tidalError = ""
@@ -782,22 +766,8 @@ object Core {
                 statsExec.execute {
                     val s = shownStats() ?: return@execute
                     val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade)
-                    // Photos you took then, with what was playing: from all your plays, whatever the filter.
-                    if (prefs.storyPhotos) currentStats()?.let { all -> story.put("moments", momentsOf(all, id)) }
                     currentStats()?.let { all -> story.put("concerts", concertsIn(all, all.range(id))) }
                     push("onStory") { story }
-                }
-            }
-            "storyMoments" -> {
-                // Photos taken out of a story, or another choice of which ones: the story's photos picked again.
-                val id = msg.optString("range")
-                val hide = msg.optJSONArray("hide")
-                statsExec.execute {
-                    if (hide != null && hide.length() > 0) prefs.photosHidden = prefs.photosHidden + (0 until hide.length()).map { hide.getLong(it) }
-                    msg.optString("mode").takeIf { it in Moments.MODES }?.let { prefs.photosMode = it }
-                    val all = currentStats() ?: return@execute
-                    push("onStoryMoments") { JSONObject().put("range", id).put("moments", if (prefs.storyPhotos) momentsOf(all, id) else JSONArray()) }
-                    pushState()
                 }
             }
             "saveLastfm" -> {
@@ -922,28 +892,6 @@ object Core {
                 statsExec.execute { push("onConcerts") { concertsPageJson() } }
                 concertsMaybeDue()
             }
-            "photos" -> {
-                prefs.storyPhotos = msg.optBoolean("on")
-                if (prefs.storyPhotos && Photos.access(ctx) == "none") askPhotos()
-                pushState()
-            }
-            "photoPrefs" -> {
-                msg.optString("mode").takeIf { it in Moments.MODES }?.let { prefs.photosMode = it }
-                if (msg.has("folders")) prefs.photoFolders = msg.optJSONArray("folders")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
-                if (msg.optBoolean("unhide")) prefs.photosHidden = emptySet()
-                pushState()
-            }
-            "photoFolders" -> photoExec.execute {
-                val chosen = prefs.photoFolders
-                val list = Photos.folders(ctx)
-                push("onPhotoFolders") {
-                    JSONObject().put("custom", chosen != null).put("folders", JSONArray(list.map { f ->
-                        JSONObject().put("key", f.key).put("count", f.count).put("camera", f.camera).put("on", chosen?.contains(f.key) ?: f.camera)
-                    }))
-                }
-            }
-            "photosChoose" -> askPhotos()
-            "photosSettings" -> main.post { ui?.openAppSettings() }
             "saveDiscogs" -> connectDiscogs(msg.optString("token").trim(), msg.optString("user").trim().removePrefix("@"))
             "discogsDisconnect" -> syncExec.execute {
                 prefs.discogsToken = ""
@@ -1776,16 +1724,6 @@ object Core {
         return concertsJson(concerts().filter { it.date.atStartOfDay(zone).toEpochSecond() in r.from until r.to }.sortedBy { it.date }, s)
     }
 
-    // ---- photos for the story ----
-
-    private fun askPhotos() {
-        prefs.photosAsked = true
-        main.post { ui?.askPhotos() }
-    }
-
-    /** Android answered about the photos. */
-    fun photosAnswered() = pushState()
-
     /** Songs Last.fm finds similar to a song (by its key), for genre playlists: the last 60 asked. */
     private val similar: MutableMap<String, List<Triple<String, String, Double>>> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, List<Triple<String, String, Double>>>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Triple<String, String, Double>>>?) = size > 60
@@ -2503,11 +2441,6 @@ object Core {
             "setlist",
             JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey))
                 .put("user", prefs.setlistUser).put("concerts", concerts().size).put("concertsAt", prefs.concertsAt).put("concertsBusy", concertsBusy).put("concertsError", concertsError),
-        )
-        .put(
-            "photos",
-            JSONObject().put("on", prefs.storyPhotos).put("access", Photos.access(ctx)).put("asked", prefs.photosAsked).put("canChoose", android.os.Build.VERSION.SDK_INT >= 34)
-                .put("mode", prefs.photosMode).put("hidden", prefs.photosHidden.size).put("folders", prefs.photoFolders?.size ?: -1),
         )
         .put("version", BuildConfig.VERSION_NAME)
 

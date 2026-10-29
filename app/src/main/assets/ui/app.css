@@ -630,11 +630,7 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .story .bars i b { display: block; height: 100%; width: 0; background: #fff; }
 .story .bars i.done b { width: 100%; }
 .story .bars i.now b { animation: storyBar var(--dur, 7s) linear forwards; }
-.story.paused .bars i.now b, .story.held .bars i.now b { animation-play-state: paused; }
-.story .story-act { position: absolute; left: 12px; top: calc(var(--inset-top) + 26px); z-index: 4; display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; padding: 0 14px; border-radius: 18px; background: rgba(0, 0, 0, .42); color: #fff; font: 500 13px var(--font); white-space: nowrap; }
-.story .story-act[hidden] { display: none; }
-.story .story-act .i { width: 18px; height: 18px; }
+.story.paused .bars i.now b { animation-play-state: paused; }
 @keyframes storyBar { to { width: 100%; } }
 .story .x { position: absolute; top: calc(var(--inset-top) + 20px); right: 6px; z-index: 4; color: #fff; }
 .slide { position: absolute; inset: 0; padding: calc(var(--inset-top) + 72px) 28px calc(var(--inset-bottom) + 36px); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
@@ -711,15 +707,6 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 
 /* Overlays sit far above the pages, which stack from z 11 up (openPage): sheet 1000, snackbar 1100, story 1200, grain 1500, flying cover 2000. */
 .sheet { position: fixed; inset: 0; z-index: 1000; }
-.sheet.over { z-index: 1300; }
-.mo-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 20px; }
-.mo-th { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; padding: 0; background: var(--md-surface-container-high); }
-.mo-th i { position: absolute; inset: 0; background: center / cover no-repeat; transition: opacity .2s, filter .2s; }
-.mo-th small { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 8px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; }
-.mo-th .off { position: absolute; inset: 0; display: none; place-items: center; color: #fff; }
-.mo-th .off .i { width: 28px; height: 28px; }
-.mo-th.hidden i { opacity: .3; filter: grayscale(1); }
-.mo-th.hidden .off { display: grid; }
 .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .32); }
 .sheet-body {
   position: absolute; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; max-height: calc(90vh - var(--inset-top)); overflow-y: auto;

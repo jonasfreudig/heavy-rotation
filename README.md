@@ -22,8 +22,7 @@ Last.fm, Deezer, MusicBrainz and TIDAL directly, and your data stays on your pho
   plays as dots on a record, when you listen, streaks, new artists, genre drift, obsessions, top 10.
 - **Stats that know your shelf**: the records you own but rarely play, the albums you stream a lot
   but don't own yet, how much of your listening was vinyl.
-- **A story for any period** to tap through, Wrapped-style, in the colors of your top album, with
-  the photos you took then and the song that was playing (if you switch that on; they stay on the phone).
+- **A story for any period** to tap through, Wrapped-style, in the colors of your top album.
 - **Explore**: lost favorites, albums to rediscover, a musical atlas of the artists you play back to
   back, you against everyone on Last.fm, and playlists to send to TIDAL.
 - **Now playing** for the phone: position, controls, the app's queue and the album around the song.
@@ -72,8 +71,6 @@ Every step, and everything the app does, is in [the guide](docs/GUIDE.md).
 - The app only talks to Discogs, Last.fm, Deezer, MusicBrainz, LRCLIB (lyrics), TIDAL and setlist.fm
   (once you connect them) and the servers the covers come from. There's no server of its own, no
   analytics and no crash reporting.
-- Photos in your stories are off until you switch them on; then the app reads the photos you took in
-  a story's days to show them there. They never leave the phone.
 - Notification access is how Android lets an app see what music apps play. Heavy Rotation reads
   the media players of the apps you switch on, never your notifications.
 

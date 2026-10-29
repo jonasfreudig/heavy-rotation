@@ -866,7 +866,6 @@ function openSheet(html) {
   sheetGen++;
   const sh = $('#sheet'), body = $('#sheetBody');
   $('#sheetContent').innerHTML = html;
-  sh.classList.toggle('over', !$('#story').hidden);
   if (sh.hidden || sh.classList.contains('closing')) {
     sh.classList.remove('closing');
     [body, $('#scrim')].forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
@@ -885,7 +884,6 @@ function closeSheet() {
   if (sh.hidden || sh.classList.contains('closing')) return;
   const gen = ++sheetGen;
   sh.classList.add('closing');
-  $('#story').classList.remove('held');
   const body = $('#sheetBody');
   const t = getComputedStyle(body).transform;
   body.animate([{ transform: t === 'none' ? 'none' : t }, { transform: 'translateY(100%)' }], { duration: 220, easing: EASE_IN, fill: 'forwards' });
@@ -5733,54 +5731,6 @@ window.onStory = (s) => {
   storySlides = buildSlides(s);
   showSlide(0);
 };
-/** The story's photos to leave out, and which photos it may show: a sheet over the paused story. */
-const PHOTO_MODES = [['playing', 'Song playing', 'Only photos taken while a song was playing.'],
-  ['near', 'Around music', 'Also photos taken up to 4 hours from music, each with the closest song and how far apart they were.'],
-  ['any', 'Any photo', 'Any photo of those days, the ones with music first.']];
-const photoModeSeg = (id, mode) => `<div class="seg" id="${id}">${PHOTO_MODES.map(([v, l]) => `<button data-v="${v}" class="${v === mode ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-const photoModeHint = (mode) => (PHOTO_MODES.find((x) => x[0] === mode) || PHOTO_MODES[0])[2];
-function openMomentSheet() {
-  const s = STORY;
-  if (!s || !(s.moments || []).length) return;
-  $('#story').classList.add('held');
-  const off = new Set();
-  let mode = (ST.photos || {}).mode || 'playing';
-  const when = (ts) => new Date(ts).toLocaleDateString([], { day: 'numeric', month: 'short' });
-  openSheet(`<div class="sheet-title">Photos in this story</div><p class="body">Tap a photo to leave it out of your stories. Another one takes its place if there is one.</p>
-    <div class="mo-pick">${s.moments.map((m) => `<button class="mo-th" data-mid="${m.id}"><i style="background-image:url('${cssUrl(photoUrl(m))}')"></i><span class="off">${icon('eye-off')}</span><small>${esc(when(m.ts))}</small></button>`).join('')}</div>
-    <div class="row-label"><span>Which photos</span></div>${photoModeSeg('moMode', mode)}<p class="hint" id="moHint">${photoModeHint(mode)}</p>
-    <div class="sheet-actions"><button class="btn text" id="moNo">Cancel</button><button class="btn filled" id="moYes">Done</button></div>`);
-  $('#sheetContent .mo-pick').onclick = (e) => {
-    const b = e.target.closest('[data-mid]');
-    if (!b) return;
-    const id = +b.dataset.mid;
-    if (off.has(id)) off.delete(id); else off.add(id);
-    b.classList.toggle('hidden', off.has(id));
-  };
-  $('#moMode').onclick = (e) => {
-    const b = e.target.closest('[data-v]');
-    if (!b) return;
-    mode = b.dataset.v;
-    $$('#moMode button').forEach((x) => x.classList.toggle('on', x === b));
-    $('#moHint').textContent = photoModeHint(mode);
-  };
-  $('#moNo').onclick = closeSheet;
-  $('#moYes').onclick = () => {
-    closeSheet();
-    if (!off.size && mode === ((ST.photos || {}).mode || 'playing')) return;
-    send({ t: 'storyMoments', range: s.range.id, hide: [...off], mode });
-  };
-}
-window.onStoryMoments = (m) => {
-  if ($('#story').hidden || !STORY || STORY.range.id !== m.range) return;
-  const at = storySlides.findIndex((x) => x.moment);
-  STORY.moments = m.moments;
-  storySlides = buildSlides(STORY);
-  const now = storySlides.findIndex((x) => x.moment);
-  showSlide(now >= 0 ? now : at >= 0 ? at : storyIdx);
-  if (!m.moments.length) toast('No other photos fit this story');
-};
-
 function closeStory() {
   $('#story').hidden = true;
   $('#story').style.transform = '';
@@ -5796,7 +5746,6 @@ function showSlide(i) {
   const sl = storySlides[storyIdx];
   $('#storyBars').innerHTML = storySlides.map((x, k) => `<i class="${k < storyIdx ? 'done' : k === storyIdx && !x.wait ? 'now' : ''}" style="--dur:${x.dur || 7}s"><b></b></i>`).join('');
   $('#storySlide').innerHTML = `<div class="slide ${sl.cls}"><div class="aur bg"><i></i><i></i><i></i></div>${sl.html}</div>`;
-  $('#storyPhotos').hidden = !sl.moment;
   $$('#storySlide [data-fit]').forEach((el) => {
     const big = el.classList.contains('xl') ? 96 : el.classList.contains('pt') ? 40 : 54;
     fitText(el, +el.dataset.fit, big, el.classList.contains('pt') ? 22 : 26);
@@ -5876,15 +5825,6 @@ function storyClock(hours, gh) {
 function singleHtml(cover, seed) {
   const label = cover ? `background-image:url('${cssUrl(cover)}')` : '';
   return `<div class="single in" style="--h:${hue(seed)}"><div class="sv"><i class="lab" style="${label}">${cover ? '' : '<b>45</b>'}</i><i class="hole"></i></div></div>`;
-}
-
-/** A photo of the story's moments: from this phone, through an address only the app answers (the preview brings its own). */
-const photoUrl = (m) => m.src || `https://appassets.androidplatform.net/photo/${m.id}`;
-/** How far from the photo the song was, when it wasn't playing: "2 h before", "40 min after", or null within half an hour. */
-function songGap(sg) {
-  const g = sg.gap || 0, a = Math.abs(g);
-  if (sg.playing || a < 1800) return null;
-  return `${a < 5400 ? `${Math.round(a / 60)} min` : `${Math.round(a / 3600)} h`} ${g > 0 ? 'before' : 'after'}`;
 }
 
 function buildSlides(s) {
@@ -5967,23 +5907,6 @@ function buildSlides(s) {
       <div class="stubs">${cs.slice(0, 3).map((c, i) => { const d = new Date(`${c.date}T12:00:00`); return `<div class="stub in" style="--d:${(0.3 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 5).toFixed(1)}deg"><span class="sd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}</small></span><span class="si"><b>${esc(c.artist)}</b><small>${esc([c.venue, c.city].filter(Boolean).join(' · '))}</small></span></div>`; }).join('')}</div>
       ${cs.length > 3 ? `<p class="p mono small in" ${dly(0.8)}>and ${cs.length - 3} more</p>` : ''}
       ${best && best.after > best.before ? `<p class="p in" ${dly(0.9)}>After ${esc(best.artist)} ${best.venue ? `at ${esc(best.venue)}` : 'live'}, you played them <b>${plural(best.after, 'time')}</b> ${best.running ? 'since' : 'in four weeks'}, against ${best.before} in the four weeks before.</p>` : ''}` });
-  }
-  // Moments: photos you took then, with the song that was playing
-  const ms = s.moments || [];
-  if (ms.length) {
-    const hero = ms.find((m) => m.song && m.song.playing) || ms[0];
-    const when = (ts) => new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-    const sg = hero.song;
-    out.push({ cls: 'deep photo moment', html: `<div class="mo bg"><i class="img" style="background-image:url('${cssUrl(photoUrl(hero))}')"></i><i class="fade"></i></div>
-      <div class="k in">${esc(when(hero.ts))}, ${esc(new Date(hero.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>
-      ${sg ? `<div class="t m in" ${dly(0.15)} data-fit="2">${esc(sg.title)}</div><p class="p in" ${dly(0.3)}>${sg.playing ? `by ${esc(sg.artist)} was playing when you took this.` : songGap(sg) ? `by ${esc(sg.artist)}, the closest song: it started ${songGap(sg)} you took this.` : `by ${esc(sg.artist)}, just around when you took this.`}</p>`
-        : `<div class="t m in" ${dly(0.15)} data-fit="2">A moment of ${esc(name)}</div>`}`, moment: true });
-    const rest = ms.filter((m) => m !== hero).slice(0, 4);
-    if (rest.length >= 2) {
-      const rnd = seededRandom(hue(name) + rest.length);
-      out.push({ cls: 'paper moments', dur: 9, html: `<div class="k in">${esc(name)} in pictures</div><div class="polas n${rest.length}">${rest.map((m, i) => `<figure class="pola in" style="--d:${(0.15 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 7).toFixed(1)}deg">
-        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing || songGap(m.song) ? '' : 'around '}${esc(m.song.title)}</span>${songGap(m.song) ? `<span>${songGap(m.song)}</span>` : ''}` : ''}</figcaption></figure>`).join('')}</div>`, moment: true });
-    }
   }
   // Golden hour, on a sundial
   const gh = s.goldenHour;
@@ -6178,70 +6101,12 @@ function openFixSheet(id) {
   show();
 }
 
-/** Photos in the story: off, waiting for Android's yes, or on (with all photos or the ones you chose). */
-function renderPhotoSettings() {
-  const p = ST.photos || {};
-  let text, btns;
-  if (!p.on) {
-    text = 'Your stories can show photos you took in their days, each with the song that was playing. They stay on your phone: Heavy Rotation only reads them to show them here.';
-    btns = '<button class="btn tonal" data-photos="on">Show my photos</button>';
-  } else if (p.access === 'none') {
-    text = p.asked ? 'Android hasn\'t allowed Heavy Rotation to see your photos yet. If it doesn\'t ask anymore, allow it in Android\'s settings under Permissions → Photos and videos.' : 'Waiting for Android to ask you…';
-    btns = '<button class="btn tonal" data-photos="choose">Ask again</button><button class="btn outlined" data-photos="settings">Android settings</button><button class="btn text" data-photos="off">Turn off</button>';
-  } else {
-    text = p.access === 'some' ? 'On, with the photos you chose: stories show the ones taken in their days, with what was playing.' : 'On: stories show photos you took in their days, with what was playing.';
-    btns = `${p.access === 'some' ? '<button class="btn tonal" data-photos="choose">Choose more photos</button>' : ''}${p.hidden ? `<button class="btn text" data-photos="unhide">Bring back ${plural(p.hidden, 'hidden photo')}</button>` : ''}<button class="btn outlined" data-photos="off">Turn off</button>`;
-  }
-  const opts = p.on && p.access !== 'none';
-  $('#phoText').textContent = text;
-  $('#phoBtns').innerHTML = btns;
-  $('#phoOpts').hidden = !opts;
-  if (!opts) return;
-  $$('#phoMode button').forEach((b) => b.classList.toggle('on', b.dataset.v === (p.mode || 'playing')));
-  $('#phoModeHint').textContent = photoModeHint(p.mode || 'playing');
-  if (!PHOTO_FOLDERS || PHOTO_FOLDERS.access !== p.access) {
-    PHOTO_FOLDERS = { access: p.access, list: null };
-    send({ t: 'photoFolders' });
-  }
-  renderPhotoFolders();
-}
-
-/** The phone's photo folders, as chips: the ones stories take photos from are on. */
-let PHOTO_FOLDERS = null;
-window.onPhotoFolders = (f) => {
-  if (!PHOTO_FOLDERS) return;
-  PHOTO_FOLDERS.list = f.folders;
-  PHOTO_FOLDERS.custom = f.custom;
-  renderPhotoFolders();
-};
-function renderPhotoFolders() {
-  const F = PHOTO_FOLDERS, box = $('#phoFolders');
-  if (!F || !F.list) { box.innerHTML = '<span class="hint">Looking at your folders…</span>'; return; }
-  if (!F.list.length) { box.innerHTML = '<span class="hint">No photos found on this phone.</span>'; return; }
-  const last = (k) => k.split('/').pop();
-  const label = (k) => (F.list.filter((x) => last(x.key) === last(k)).length > 1 ? k : last(k));
-  box.innerHTML = F.list.map((x) => `<button class="chip${x.on ? ' on' : ''}" data-folder="${esc(x.key)}">${esc(label(x.key))} <small>${compact(x.count)}</small></button>`).join('');
-  $('#phoFolderHint').innerHTML = F.custom ? 'The folders you chose. <button class="link-inline" data-folderreset>Back to the camera\'s</button>'
-    : 'The camera\'s folders, no screenshots and nothing saved from other apps. Tap to choose others.';
-}
-function togglePhotoFolder(key) {
-  const F = PHOTO_FOLDERS;
-  const x = F && F.list && F.list.find((f) => f.key === key);
-  if (!x) return;
-  if (x.on && F.list.filter((f) => f.on).length === 1) { toast('Keep at least one folder'); return; }
-  x.on = !x.on;
-  F.custom = true;
-  send({ t: 'photoPrefs', folders: F.list.filter((f) => f.on).map((f) => f.key) });
-  renderPhotoFolders();
-}
-
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
   $$('#ambSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === ambientMode()));
   renderServices();
   renderTidalSettings();
   renderSetlistSettings();
-  renderPhotoSettings();
   renderFixSettings();
   const td = (STATS && STATS.tidy) || {};
   const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
@@ -6578,14 +6443,13 @@ function build() {
   const story = $('#story');
   let downAt = 0, holdTimer = 0;
   story.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('#storyClose, #storyPhotos')) return;
+    if (e.target.closest('#storyClose')) return;
     downAt = performance.now();
     holdTimer = setTimeout(() => story.classList.add('paused'), 220);
   });
   story.addEventListener('pointerup', (e) => {
     clearTimeout(holdTimer);
     if (e.target.closest('#storyClose')) return;
-    if (e.target.closest('#storyPhotos')) { openMomentSheet(); return; }
     const held = performance.now() - downAt > 220;
     story.classList.remove('paused');
     if (held) return;
@@ -6666,33 +6530,9 @@ function build() {
   $('#slUserSave').onclick = () => { send({ t: 'saveSetlistUser', user: $('#slUser').value.trim() }); $('#slUser').blur(); };
   $('#slUserRefresh').onclick = () => send({ t: 'concertsRefresh' });
   $('#slForget').onclick = () => confirmSheet('Remove the setlist.fm key?', 'Artist pages stop showing setlists until you add a key again.', 'Remove', () => send({ t: 'setlistForget' }));
-  $('#phoBtns').onclick = (e) => {
-    const b = e.target.closest('[data-photos]');
-    if (!b) return;
-    const v = b.dataset.photos;
-    if (v === 'on' || v === 'off') send({ t: 'photos', on: v === 'on' });
-    else if (v === 'unhide') send({ t: 'photoPrefs', unhide: true });
-    else send({ t: v === 'choose' ? 'photosChoose' : 'photosSettings' });
-  };
   $('#fxPresets').onchange = (e) => { const id = e.target.dataset.fxp; if (id) send({ t: 'fixPreset', id, on: e.target.checked }); };
   $('#fxRules').onclick = (e) => { const b = e.target.closest('[data-fx]'); if (b) openFixSheet(b.dataset.fx); };
   $('#fxAdd').onclick = () => openFixSheet('');
-  $('#phoMode').onclick = (e) => {
-    const b = e.target.closest('[data-v]');
-    if (!b) return;
-    ST.photos = { ...ST.photos, mode: b.dataset.v };
-    send({ t: 'photoPrefs', mode: b.dataset.v });
-    renderPhotoSettings();
-  };
-  $('#phoOpts').onclick = (e) => {
-    const f = e.target.closest('[data-folder]');
-    if (f) { togglePhotoFolder(f.dataset.folder); return; }
-    if (e.target.closest('[data-folderreset]')) {
-      send({ t: 'photoPrefs', folders: null });
-      PHOTO_FOLDERS = null;
-      renderPhotoSettings();
-    }
-  };
   $('#rankBody').onclick = (e) => {
     const k = e.target.closest('[data-rkind]');
     if (k && RANKS && k.dataset.rkind !== RANKS.kind) {
