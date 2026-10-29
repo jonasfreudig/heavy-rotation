@@ -156,6 +156,13 @@
   </header>
   <div class="page-body" id="genreBody"></div>
 </div>
+<div class="page" id="concertsPage" hidden>
+  <header class="appbar">
+    <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="appbar-title">Concerts</div>
+  </header>
+  <div class="page-body" id="concertsBody"></div>
+</div>
 <div class="page" id="rankPage" hidden>
   <header class="appbar">
     <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
@@ -318,6 +325,11 @@
         </div>
         <div id="slConnected" hidden>
           <p class="body">Artist pages show their recent shows and the songs of their usual set lately, ready as a concert playlist. Tap a show for its setlist.</p>
+          <div class="row-label"><span>Your concerts</span></div>
+          <p class="hint">Your setlist.fm username brings in the shows you marked "I was there" on setlist.fm: on artist pages, in Explore, in your stats and stories.</p>
+          <label class="field"><span>setlist.fm username</span><input type="text" id="slUser" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <div class="btn-row"><button class="btn tonal" id="slUserSave">Save</button><button class="btn text" id="slUserRefresh" hidden>Update now</button></div>
+          <p class="hint" id="slUserStatus"></p>
           <div class="btn-row"><button class="btn outlined" id="slForget">Remove the key</button></div>
         </div>
       </div>
@@ -377,6 +389,16 @@
           <p class="hint">Apps show up here once they play something. Only apps switched on are scrobbled.</p>
         </div>
         <button class="btn text small link" id="phBattery"><svg class="i"><use href="#i-open"/></svg>Battery settings</button>
+      </div>
+    </details>
+    <details class="card acct" id="fxSection">
+      <summary><span class="acct-head"><b>Fix names</b><span class="sub">before they're scrobbled</span><svg class="i chev"><use href="#i-chevron-right"/></svg></span><span class="status-line" id="fxStatus"></span></summary>
+      <div class="acct-body">
+        <p class="body top">Like Pano Scrobbler's edits: songs from the phone and from your records get these fixes before they reach Last.fm. Scrobbles already sent stay as they are.</p>
+        <div id="fxPresets"></div>
+        <div class="row-label"><span>Your own rules</span></div>
+        <div id="fxRules"></div>
+        <button class="btn tonal" id="fxAdd"><svg class="i"><use href="#i-edit"/></svg>Add a rule</button>
       </div>
     </details>
     <div class="card">

@@ -50,6 +50,9 @@ class Stats(
         /** Top lists go this far; the page shows 10 of them unless you ask for 50 or 100. */
         const val TOP_MAX = 100
 
+        /** A concert's afterglow: your plays of the artist this many days before it and after it. */
+        const val AFTERGLOW_DAYS = 28
+
         /** A full top list opened from a page far down it also shows this many places either side of that page's. */
         const val AROUND = 8
 
@@ -84,9 +87,12 @@ class Stats(
         /** Songs listed for the period on an artist or album page. */
         const val RANGE_LIST = 5
 
-        /** A photo is taken "while" a song played up to this long after it started, "around" it within this much. */
+        /**
+         * A photo is taken "while" a song played up to this long after it started, and "around" music when the
+         * closest song started within [NEAR_SEC]: generous, as photos and plays on the same day rarely meet.
+         */
         const val PLAYING_SEC = 7 * 60L
-        const val NEAR_SEC = 45 * 60L
+        const val NEAR_SEC = 4 * 3600L
 
         // You against everyone: what is looked up on Last.fm, and what the lists need.
         const val VS_ARTISTS = 200
@@ -1183,8 +1189,30 @@ class Stats(
         return if (kotlin.math.abs(h.ts[near] - ts) <= NEAR_SEC) near to false else null
     }
 
-    /** What was playing at [ts] (s), as [playNear] finds it, with "playing" telling which of the two it is. */
-    fun playAt(ts: Long): JSONObject? = playNear(ts)?.let { (i, on) -> playJson(i).put("playing", on) }
+    /**
+     * What was playing at [ts] (s), as [playNear] finds it, with "playing" telling which of the two it is and
+     * "gap" how long before [ts] the song started (s; negative: after).
+     */
+    fun playAt(ts: Long): JSONObject? = playNear(ts)?.let { (i, on) -> playJson(i).put("playing", on).put("gap", ts - h.ts[i]) }
+
+    /**
+     * Your plays of [artist] in the [days] days before [day] and in the [days] days after it (the day itself left
+     * out): what a concert did to your listening. Null when the history doesn't reach back that far.
+     */
+    fun aroundDay(artist: String, day: java.time.LocalDate, days: Int = AFTERGLOW_DAYS): Pair<Int, Int>? {
+        val d0 = day.atStartOfDay(zone).toEpochSecond()
+        if (h.size == 0 || d0 - days * 86_400L < historyStart) return null
+        val a = artistIndex[Text.norm(artist)] ?: artistIndex[Text.norm(Artists.main(artist, artistIndex.keys))] ?: return 0 to 0
+        fun count(from: Long, to: Long): Int {
+            var n = 0
+            for (i in h.lowerBound(from) until h.lowerBound(to)) if (h.artist[i] == a) n++
+            return n
+        }
+        return count(d0 - days * 86_400L, d0) to count(d0 + 86_400L, d0 + (days + 1) * 86_400L)
+    }
+
+    /** How close [ts] is to music: 1 while a song plays, less the further the closest song, 0 beyond [NEAR_SEC]. */
+    private fun closeness(ts: Long): Double = playNear(ts)?.let { (i, on) -> if (on) 1.0 else 1.0 - kotlin.math.abs(h.ts[i] - ts).toDouble() / NEAR_SEC } ?: 0.0
 
     /**
      * The photos of [photos] worth showing in the story of [r], with what was playing when each was taken: of the ones
@@ -1198,7 +1226,7 @@ class Stats(
                 else -> playNear(p.ts)?.second == true
             }
         }
-        val picked = Moments.pick(fit, r.to - r.from, { t -> playNear(t)?.second == true }, { t -> playNear(t) != null })
+        val picked = Moments.pick(fit, r.to - r.from, { t -> playNear(t)?.second == true }, ::closeness)
         return JSONArray(picked.map { p ->
             JSONObject().put("id", p.id).put("ts", p.ts * 1000).put("w", p.w).put("h", p.h).put("song", playAt(p.ts) ?: JSONObject.NULL)
         })

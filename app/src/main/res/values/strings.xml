@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Heavy Rotation</string>
+    <string name="widget_name">Now playing</string>
+    <string name="widget_preview_title">The song that plays now</string>
+    <string name="widget_preview_line">Today 12 plays · this week 140</string>
+    <string name="widget_description">What plays now, or the last song you played, with today\'s plays</string>
 </resources>

@@ -48,12 +48,14 @@ class MainActivity : AppCompatActivity(), Core.Ui {
 
     companion object {
         const val EXTRA_OPEN_SPIN = "openSpin"
+        const val EXTRA_OPEN_NOW = "openNow"
     }
 
     private lateinit var web: WebView
     private var pageReady = false
     private var insetsJson = "{\"top\":0,\"bottom\":0,\"ime\":0}"
     private var openSpinWhenReady = false
+    private var openNowWhenReady = false
 
     private val notifLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) Core.backupTo(uri) }
@@ -175,6 +177,11 @@ class MainActivity : AppCompatActivity(), Core.Ui {
         if (i?.getBooleanExtra(EXTRA_OPEN_SPIN, false) == true) {
             i.removeExtra(EXTRA_OPEN_SPIN)
             if (pageReady) push("onOpenSpin", "true") else openSpinWhenReady = true
+        }
+        // From the widget while the phone plays something.
+        if (i?.getBooleanExtra(EXTRA_OPEN_NOW, false) == true) {
+            i.removeExtra(EXTRA_OPEN_NOW)
+            if (pageReady) push("onOpenNow", "true") else openNowWhenReady = true
         }
     }
 
@@ -417,6 +424,10 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 pushTheme()
                 push("onInsets", insetsJson)
                 Core.handle(msg)
+                if (openNowWhenReady) {
+                    openNowWhenReady = false
+                    push("onOpenNow", "true")
+                }
                 if (openSpinWhenReady) {
                     openSpinWhenReady = false
                     push("onOpenSpin", "true")

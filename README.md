@@ -27,7 +27,10 @@ Last.fm, Deezer, MusicBrainz and TIDAL directly, and your data stays on your pho
 - **Explore**: lost favorites, albums to rediscover, a musical atlas of the artists you play back to
   back, you against everyone on Last.fm, and playlists to send to TIDAL.
 - **Now playing** for the phone: position, controls, the app's queue and the album around the song.
-- **Concert playlists** from setlist.fm: what an artist plays lately, or the setlist of one show.
+- **Concerts** from setlist.fm: what an artist plays lately as a playlist, the setlist of one show,
+  and the shows you were at, with what each did to your listening.
+- **Fix names** before they're scrobbled ("Remastered", "feat." and your own rules), and a
+  home-screen widget with what plays now.
 - Material You colors, light and dark, two looks (tinted soft and soft glass), and covers that tilt
   with the phone, holo foil for the records you own.
 

@@ -99,8 +99,15 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a' },
+    setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a', user: 'gieskannenbauer', concerts: 14, concertsAt: Date.now() - 2 * DAY, concertsBusy: false, concertsError: '' },
     photos: { on: true, access: 'all', asked: true, canChoose: true, mode: 'playing', hidden: 0, folders: -1 },
+    fix: { presets: [
+      { id: 'remaster', label: 'Take "Remastered" off songs and albums', example: 'Heroes - 2017 Remaster → Heroes', on: true },
+      { id: 'explicit', label: 'Take "Explicit" and "Clean" off', example: 'Song (Explicit) → Song', on: false },
+      { id: 'feat', label: 'Take "feat. …" off song titles', example: 'Song (feat. Someone) → Song', on: false },
+      { id: 'single', label: 'Take "- Single" and "- EP" off albums', example: 'Heroes - Single → Heroes', on: false },
+      { id: 'topic', label: 'Take "- Topic" off YouTube artists', example: 'Artist - Topic → Artist', on: false }],
+    rules: [{ id: 'r1', field: 'artist', how: 'is', find: 'Beatles, The', to: 'The Beatles', artist: '', on: true }] },
     version: '0.21 (browser preview)',
   };
 
@@ -989,7 +996,7 @@ const Mock = (() => {
   const MOMENT_POOLS = {};
   function fakeMoments(id, from, songs) {
     MOMENT_POOLS[id] = MOMENT_POOLS[id] || songs.map((sg, k) => ({ id: 900 + hashStr(id) % 1000 * 10 + k, src: fakePhoto(hashStr(`${id}-${k}`)), ts: from * 1000 + (2 + k * 3) * DAY + (17 + (k % 5)) * 3600e3, w: 4000, h: 3000,
-      song: k % 4 === 3 ? null : { ...sg, album: '', cover: '', playing: k % 3 !== 1 } }));
+      song: k % 4 === 3 ? null : { ...sg, album: '', cover: '', playing: k % 3 !== 1, gap: k % 3 !== 1 ? 120 : k === 1 ? 1500 : -7900 } }));
     const P = S.photos;
     return MOMENT_POOLS[id].filter((m) => !HIDDEN_PHOTOS.has(m.id) && (P.mode === 'any' || (m.song && (P.mode === 'near' || m.song.playing)))).slice(0, 5);
   }
@@ -1020,6 +1027,23 @@ const Mock = (() => {
     if (m.around && focus >= to) for (let p = Math.max(to, focus - 8); p < Math.min(order.length, focus + 9); p++) rows.push(row(p));
     return { kind: m.kind, total: order.length, focus, rows, range: r, req: m.req };
   }
+  /** The shows you were at, as the app sends them: made up from your artists, with what they did to your listening. */
+  function fakeConcerts() {
+    const L = history();
+    const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const venues = [['Columbiahalle', 'Berlin', 'Germany'], ['Astra Kulturhaus', 'Berlin', 'Germany'], ['Paradiso', 'Amsterdam', 'Netherlands'], ['Huxleys Neue Welt', 'Berlin', 'Germany'], ['Roskilde Festival', 'Roskilde', 'Denmark'], ['Tempodrom', 'Berlin', 'Germany']];
+    const r = rng(77);
+    const out = [];
+    for (let k = 0; k < 14; k++) {
+      const a = k % 7, ts = Date.now() - (9 + k * 41 + Math.floor(r() * 20)) * DAY;
+      const songs = topTrackOf(a).slice(0, 8 + (k % 5)).map((x, i) => ({ title: x.title, plays: x.plays, cover: '', with: '', encore: i >= 7 + (k % 5) - 1 }));
+      const [venue, city, country] = venues[k % venues.length];
+      const before = Math.floor(r() * 14), after = k === 0 ? 3 : Math.floor(before * (0.6 + r() * 3.5)) + (k % 3 === 0 ? 30 : 0);
+      out.push({ id: `c${k}`, date: iso(ts), artist: L.artists[a], venue, city, country, tour: '', url: 'https://www.setlist.fm/', photo: '', songs: k % 6 === 5 ? [] : songs, before, after, running: k === 0 });
+    }
+    return out;
+  }
+  const concertsIn = (r) => (S.setlist.user ? fakeConcerts().filter((c) => { const t = +new Date(`${c.date}T12:00:00`) / 1000; return t >= r.from && t < r.to; }).reverse() : []);
   /** Stand-ins for photos from the phone: soft color fields with a horizon, as SVG. */
   function fakePhoto(seed) {
     const r = rng(seed);
@@ -1381,14 +1405,24 @@ const Mock = (() => {
         case 'openAppInfo': case 'openBattery': toast('(preview) Android settings would open now'); break;
         case 'stats':
           if (!S.history.count) { onStats({ empty: true }); break; }
-          later(250, () => onStats(fakeStats(m.range || '')));
+          later(250, () => { const st = fakeStats(m.range || ''); onStats({ ...st, concerts: concertsIn(st.range) }); });
           break;
-        case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
-        case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), req: m.req })); break;
+        case 'story': later(400, () => { const st = fakeStory(m.range || ''); onStory({ ...st, concerts: concertsIn(st.range) }); }); break;
+        case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), concerts: fakeConcerts().filter((c) => c.artist === m.name), req: m.req })); break;
         case 'setlists': later(700, () => onSetlists(S.setlist.hasKey ? { ...fakeSetlists(m.name), name: m.name, req: m.req } : { name: m.name, req: m.req, needsKey: true })); break;
         case 'saveSetlist': S.setlist = { hasKey: true, builtIn: false, keyHint: `…${m.key.slice(-4)}` }; pushState(); break;
         case 'setlistForget': S.setlist = { hasKey: false, builtIn: false, keyHint: '' }; pushState(); break;
         case 'photos': S.photos.on = m.on; pushState(); break;
+        case 'saveSetlistUser': S.setlist.user = m.user; S.setlist.concerts = m.user ? fakeConcerts().length : 0; pushState(); break;
+        case 'concertsRefresh': toast('(preview) setlist.fm would be asked again'); break;
+        case 'concerts': later(250, () => onConcerts({ user: S.setlist.user, busy: false, error: '', shows: S.setlist.user ? fakeConcerts() : [] })); break;
+        case 'fixPreset': S.fix.presets.forEach((p) => { if (p.id === m.id) p.on = m.on; }); pushState(); break;
+        case 'fixSave': {
+          const r = { ...m.rule, id: m.rule.id || `r${Date.now()}` };
+          S.fix.rules = S.fix.rules.some((x) => x.id === r.id) ? S.fix.rules.map((x) => (x.id === r.id ? r : x)) : [...S.fix.rules, r];
+          pushState(); break;
+        }
+        case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
         case 'photoPrefs':
           if (m.mode) S.photos.mode = m.mode;
           if (m.unhide) { HIDDEN_PHOTOS.clear(); S.photos.hidden = 0; }

@@ -37,6 +37,7 @@ import app.recordshelf.net.Show
 import app.recordshelf.scrobble.ActivityLog
 import app.recordshelf.scrobble.Compare
 import app.recordshelf.scrobble.Durations
+import app.recordshelf.scrobble.FixRules
 import app.recordshelf.scrobble.FlushResult
 import app.recordshelf.scrobble.Listen
 import app.recordshelf.scrobble.PlanTrack
@@ -516,6 +517,24 @@ object Core {
                 Phone.setEnabled(ctx, msg.optString("pkg"), msg.optBoolean("on"))
                 pushState()
             }
+            "fixPreset" -> {
+                val id = msg.optString("id")
+                prefs.fixPresets = if (msg.optBoolean("on")) prefs.fixPresets + id else prefs.fixPresets - id
+                pushState()
+            }
+            "fixSave" -> {
+                val r = FixRules.Rule.fromJson(msg.optJSONObject("rule") ?: JSONObject())
+                if (r.find.isNotEmpty()) {
+                    val rules = FixRules.parse(prefs.fixRules)
+                    val rule = if (r.id.isEmpty()) r.copy(id = UUID.randomUUID().toString()) else r
+                    prefs.fixRules = FixRules.toJson(if (rules.any { it.id == rule.id }) rules.map { if (it.id == rule.id) rule else it } else rules + rule)
+                }
+                pushState()
+            }
+            "fixDelete" -> {
+                prefs.fixRules = FixRules.toJson(FixRules.parse(prefs.fixRules).filter { it.id != msg.optString("id") })
+                pushState()
+            }
             "comparePano" -> syncExec.execute { compareInner() }
             "historyImport" -> {
                 prefs.importPaused = false
@@ -561,6 +580,7 @@ object Core {
                 statsExec.execute {
                     val s = currentStats()
                     val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
+                    concertsOf(j.optString("name").ifEmpty { name }, s).takeIf { it.length() > 0 }?.let { j.put("concerts", it) }
                     push("onArtist") { j.put("req", msg.optInt("req")) }
                     // No photo yet: Deezer may have one; the page comes again if so.
                     val n = j.optString("name")
@@ -621,6 +641,7 @@ object Core {
                 statsExec.execute { push("onSearch") { currentStats()?.search(q) ?: JSONObject().put("q", q) } }
             }
             "explore" -> statsExec.execute {
+                concertsMaybeDue()
                 val s = currentStats()
                 push("onExplore") { s?.explore() ?: JSONObject().put("empty", true) }
                 val missing = s?.exploreNeedingImages().orEmpty()
@@ -763,6 +784,7 @@ object Core {
                     val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade)
                     // Photos you took then, with what was playing: from all your plays, whatever the filter.
                     if (prefs.storyPhotos) currentStats()?.let { all -> story.put("moments", momentsOf(all, id)) }
+                    currentStats()?.let { all -> story.put("concerts", concertsIn(all, all.range(id))) }
                     push("onStory") { story }
                 }
             }
@@ -882,6 +904,23 @@ object Core {
                 setlistCache.clear()
                 setlistfm = null
                 pushState()
+            }
+            "saveSetlistUser" -> {
+                val user = msg.optString("user").trim().removePrefix("@")
+                if (user != prefs.setlistUser) {
+                    prefs.setlistUser = user
+                    prefs.concertsAt = 0
+                    concertList = emptyList()
+                    file("concerts.json").file.delete()
+                }
+                concertsError = ""
+                pushState()
+                if (user.isNotEmpty()) concertExec.execute { fetchConcertsInner() }
+            }
+            "concertsRefresh" -> concertExec.execute { fetchConcertsInner() }
+            "concerts" -> {
+                statsExec.execute { push("onConcerts") { concertsPageJson() } }
+                concertsMaybeDue()
             }
             "photos" -> {
                 prefs.storyPhotos = msg.optBoolean("on")
@@ -1326,7 +1365,7 @@ object Core {
         val sk = prefs.lastfmSession.ifEmpty { return }
         if (item.endMs - now < 15_000) return
         try {
-            c.updateNowPlaying(sk, item.track.toScrobble(item.startMs))
+            c.updateNowPlaying(sk, fixed(item.track.toScrobble(item.startMs)))
         } catch (_: Exception) {
             // Now playing is best effort; the scrobble itself goes through the queue.
         }
@@ -1335,7 +1374,7 @@ object Core {
     private fun enqueue(s: Spin, due: List<SpinItem>) {
         if (due.isEmpty()) return
         val now = System.currentTimeMillis()
-        val added = queue.add(due.map { QueuedScrobble(UUID.randomUUID().toString(), it.track.toScrobble(it.startMs), "vinyl", now) })
+        val added = queue.add(due.map { QueuedScrobble(UUID.randomUUID().toString(), fixed(it.track.toScrobble(it.startMs)), "vinyl", now) })
         added.forEach { activity.add(it, s.cover, "waiting") }
         activity.save()
     }
@@ -1372,12 +1411,15 @@ object Core {
     // ---- phone scrobbling (called on the main thread by PhoneListener) ----
 
     /** A listen on the phone counts. In shadow mode it is only logged, to compare with Pano Scrobbler. */
+    /** [s] with the user's name fixes applied (Settings → Fix names). */
+    private fun fixed(s: Scrobble): Scrobble = FixRules.apply(s, FixRules.active(prefs.fixPresets, FixRules.parse(prefs.fixRules)))
+
     fun phoneScrobble(pkg: String, s: Scrobble) {
         val mode = Phone.mode()
         if (mode == Phone.OFF || !Phone.enabled(pkg)) return
         val app = Phone.label(ctx, pkg)
         scrobExec.execute {
-            val q = QueuedScrobble(UUID.randomUUID().toString(), s, "phone", System.currentTimeMillis())
+            val q = QueuedScrobble(UUID.randomUUID().toString(), fixed(s), "phone", System.currentTimeMillis())
             if (mode == Phone.SHADOW) {
                 activity.add(q, "", "shadow", "", app)
                 activity.save()
@@ -1396,7 +1438,7 @@ object Core {
             val c = lastfm() ?: return@execute
             val sk = prefs.lastfmSession.ifEmpty { return@execute }
             try {
-                c.updateNowPlaying(sk, s)
+                c.updateNowPlaying(sk, fixed(s))
             } catch (_: Exception) {
                 // Best effort, like for records.
             }
@@ -1639,6 +1681,99 @@ object Core {
             .put("typical", JSONArray(Setlists.typical(lately).map { song(it.title, it.cover).put("n", it.shows).put("encore", it.encore) }))
             .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(3).map { show(it) }))
             .put("shows", JSONArray(live.shows.filter { !it.date.isAfter(today) && it.songs.any { s -> !s.tape } }.sortedByDescending { it.date }.take(15).map { show(it) }))
+    }
+
+    // ---- your concerts, from setlist.fm ----
+
+    /** The shows the user marked as attended on setlist.fm (their username in Settings), the newest first; kept in concerts.json. */
+    @Volatile private var concertList: List<Show>? = null
+    @Volatile private var concertsBusy = false
+    @Volatile private var concertsError = ""
+    private val concertExec = serial()
+    private const val CONCERTS_EVERY = 7 * 24 * HOUR
+    private const val CONCERT_PAGES = 50
+
+    private fun concerts(): List<Show> = concertList ?: run {
+        val o = file("concerts.json").read()?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val list = if (o != null && o.optString("user") == prefs.setlistUser) {
+            o.optJSONArray("shows")?.let { a -> (0 until a.length()).mapNotNull { Show.fromJson(a.getJSONObject(it)) } }.orEmpty()
+        } else {
+            emptyList()
+        }
+        list.also { concertList = it }
+    }
+
+    /** Fetched again once a week, when Explore or the concerts page is opened. */
+    private fun concertsMaybeDue() {
+        if (prefs.setlistUser.isNotEmpty() && prefs.setlistKey.isNotEmpty() && System.currentTimeMillis() - prefs.concertsAt > CONCERTS_EVERY) {
+            concertExec.execute { fetchConcertsInner() }
+        }
+    }
+
+    /** All the user's attended shows from setlist.fm, page by page (20 a page, two requests a second). On [concertExec]. */
+    private fun fetchConcertsInner() {
+        val user = prefs.setlistUser
+        if (user.isEmpty() || prefs.setlistKey.isEmpty()) return
+        concertsBusy = true
+        concertsError = ""
+        pushState()
+        try {
+            val c = setlistfm ?: SetlistfmClient(prefs.setlistKey).also { setlistfm = it }
+            val (first, total) = c.attended(user, 1)
+            val all = ArrayList(first)
+            var page = 2
+            while (all.size < total && page <= CONCERT_PAGES) {
+                val more = c.attended(user, page++).first
+                if (more.isEmpty()) break
+                all += more
+            }
+            if (user == prefs.setlistUser) {
+                val list = all.distinctBy { it.id }.sortedByDescending { it.date }
+                concertList = list
+                file("concerts.json").write(JSONObject().put("user", user).put("shows", JSONArray(list.map { it.toJson() })).toString())
+                prefs.concertsAt = System.currentTimeMillis()
+                if (list.isEmpty()) concertsError = "setlist.fm has no concerts for \"$user\". Check the username, and that you marked shows as \"I was there\" on setlist.fm."
+            }
+        } catch (_: SetlistfmClient.KeyRefused) {
+            concertsError = "setlist.fm didn't accept the API key."
+        } catch (_: SetlistfmClient.Busy) {
+            concertsError = "setlist.fm is busy right now. Try again in a minute."
+        } catch (_: Exception) {
+            concertsError = "Couldn't reach setlist.fm. Check your connection."
+        } finally {
+            concertsBusy = false
+            pushState()
+            statsExec.execute { push("onConcerts") { concertsPageJson() } }
+        }
+    }
+
+    /** A concert for the pages: the show, its songs with your plays, and your plays of the artist in the four weeks before and after. */
+    private fun concertJson(c: Show, s: Stats?, plays: Map<String, Int>): JSONObject {
+        val o = JSONObject().put("id", c.id).put("date", c.date.toString()).put("artist", c.artist).put("venue", c.venue).put("city", c.city)
+            .put("country", c.country).put("tour", c.tour).put("url", c.url).put("photo", s?.artistPhoto(c.artist).orEmpty())
+            .put("songs", JSONArray(c.songs.filter { !it.tape }.map { JSONObject().put("title", it.title).put("cover", it.cover).put("with", it.with).put("encore", it.encore).put("plays", plays[Text.normLoose(it.title)] ?: 0) }))
+        s?.aroundDay(c.artist, c.date)?.let { (before, after) ->
+            o.put("before", before).put("after", after).put("running", c.date.plusDays(Stats.AFTERGLOW_DAYS + 1L).isAfter(java.time.LocalDate.now()))
+        }
+        return o
+    }
+
+    private fun concertsJson(list: List<Show>, s: Stats?): JSONArray {
+        val plays = HashMap<String, Map<String, Int>>()
+        return JSONArray(list.map { c -> concertJson(c, s, plays.getOrPut(Text.norm(c.artist)) { s?.songPlays(c.artist).orEmpty() }) })
+    }
+
+    /** The concerts page: every show, newest first. On [statsExec]. */
+    private fun concertsPageJson(): JSONObject = JSONObject().put("user", prefs.setlistUser).put("busy", concertsBusy).put("error", concertsError)
+        .put("shows", concertsJson(concerts(), currentStats()))
+
+    /** The shows of [artist] you were at. */
+    private fun concertsOf(artist: String, s: Stats?): JSONArray = concertsJson(concerts().filter { Text.norm(it.artist) == Text.norm(artist) }, s)
+
+    /** The shows you were at in period [r]. */
+    private fun concertsIn(s: Stats, r: app.recordshelf.history.Range): JSONArray {
+        val zone = java.time.ZoneId.systemDefault()
+        return concertsJson(concerts().filter { it.date.atStartOfDay(zone).toEpochSecond() in r.from until r.to }.sortedBy { it.date }, s)
     }
 
     // ---- photos for the story ----
@@ -1912,7 +2047,7 @@ object Core {
         val id = statsRange
         val shown = shownStats() ?: s
         push("onStats") {
-            shown.compute(shown.range(id)).put("tidy", tidySummary()).put("genre", statsGenre).put("genreOptions", s.genreOptions())
+            shown.compute(shown.range(id)).put("tidy", tidySummary()).put("concerts", concertsIn(s, shown.range(id))).put("genre", statsGenre).put("genreOptions", s.genreOptions())
                 .put("decade", statsDecade).put("decadeOptions", s.decadeOptions())
         }
         // Release years for the decade filter, looked up now and then as the history grows.
@@ -2121,6 +2256,7 @@ object Core {
      * playback reports, an import page), and each one rebuilt the state and the page's cards.
      */
     fun pushState() {
+        if (ready) NowWidget.update(ctx)
         if (ui == null || statePending) return
         statePending = true
         main.postDelayed({
@@ -2141,7 +2277,56 @@ object Core {
         }
     }
 
-    private fun pushActivity() = push("onActivity") { activityJson() }
+    private fun pushActivity() {
+        NowWidget.update(ctx)
+        push("onActivity") { activityJson() }
+    }
+
+    /**
+     * What the home-screen widget shows: the record on the turntable, else the song the phone plays, else the last
+     * one scrobbled; with today's plays and this week's (your history, or this app's scrobbles if more).
+     */
+    fun widgetJson(): JSONObject {
+        val now = System.currentTimeMillis()
+        val o = JSONObject()
+        val s = spin
+        val i = s?.currentIndex(now) ?: -1
+        val phone = Phone.stateJson().optJSONObject("now")
+        val last = activity.last()
+        when {
+            s != null && i >= 0 -> o.put("label", "On the turntable").put("title", s.items[i].track.title).put("artist", s.items[i].track.artist.ifEmpty { s.artist })
+                .put("cover", s.cover).put("open", "spin")
+            phone != null && phone.optBoolean("playing") -> {
+                val key = Text.albumKey(phone.optString("artist"), phone.optString("album"))
+                o.put("label", "Now playing").put("title", phone.optString("title")).put("artist", phone.optString("artist"))
+                    .put("cover", if (nowCover.first == key) nowCover.second else coverOf(phone.optString("artist"), phone.optString("album"))).put("open", "now")
+            }
+            last != null -> o.put("label", "Last played").put("title", last.optString("track")).put("artist", last.optString("artist"))
+                .put("cover", last.optString("cover").ifEmpty { coverOf(last.optString("artist"), last.optString("album")) })
+            else -> o.put("label", "Heavy Rotation").put("title", "Nothing played yet").put("artist", "")
+        }
+        val zone = java.time.ZoneId.systemDefault()
+        val today = java.time.LocalDate.now(zone)
+        val day0 = today.atStartOfDay(zone).toEpochSecond()
+        val week0 = today.with(java.time.DayOfWeek.MONDAY).atStartOfDay(zone).toEpochSecond()
+        val end = now / 1000 + 1
+        val (d, w) = try {
+            maxOf(db.countBetween(day0, end), activity.countSince(day0)) to maxOf(db.countBetween(week0, end), activity.countSince(week0))
+        } catch (_: Exception) {
+            activity.countSince(day0) to activity.countSince(week0)
+        }
+        return o.put("line", "Today ${plays(d)} · this week $w")
+    }
+
+    private fun plays(n: Int) = if (n == 1) "1 play" else "$n plays"
+
+    /** An album's cover as the app knows it: your shelf's copy, else one looked up before. */
+    private fun coverOf(artist: String, album: String): String {
+        if (album.isBlank()) return ""
+        val key = Text.albumKey(artist, album)
+        return collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { it.cover.ifEmpty { it.thumb } }
+            ?: try { db.image(key).orEmpty() } catch (_: Exception) { "" }
+    }
 
     /**
      * The activity log with covers: a record's own, else your shelf's copy of the album, else
@@ -2295,6 +2480,11 @@ object Core {
         .put("queue", JSONObject().put("waiting", queue.size()).put("oldest", queue.oldestTimestamp()).put("error", flushError))
         .put("spin", spinUi?.let { JSONObject(it) } ?: JSONObject.NULL)
         .put("phone", phoneJson())
+        .put(
+            "fix",
+            JSONObject().put("presets", JSONArray(FixRules.PRESETS.map { p -> JSONObject().put("id", p.id).put("label", p.label).put("example", p.example).put("on", p.id in prefs.fixPresets) }))
+                .put("rules", JSONArray(prefs.fixRules)),
+        )
         .put("sleep", SleepTimer.json() ?: JSONObject.NULL)
         .put(
             "history",
@@ -2309,7 +2499,11 @@ object Core {
             JSONObject().put("hasApp", tidal.hasApp).put("builtIn", prefs.tidalBuiltIn).put("loggedIn", tidal.loggedIn).put("busy", tidalBusy).put("error", tidalError)
                 .put("clientHint", hint(prefs.tidalClientId)).put("redirect", TidalClient.REDIRECT),
         )
-        .put("setlist", JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey)))
+        .put(
+            "setlist",
+            JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey))
+                .put("user", prefs.setlistUser).put("concerts", concerts().size).put("concertsAt", prefs.concertsAt).put("concertsBusy", concertsBusy).put("concertsError", concertsError),
+        )
         .put(
             "photos",
             JSONObject().put("on", prefs.storyPhotos).put("access", Photos.access(ctx)).put("asked", prefs.photosAsked).put("canChoose", android.os.Build.VERSION.SDK_INT >= 34)

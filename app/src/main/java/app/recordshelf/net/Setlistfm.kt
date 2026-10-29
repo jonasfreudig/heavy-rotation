@@ -4,6 +4,7 @@ import app.recordshelf.util.Text
 import app.recordshelf.util.arrayOrOne
 import app.recordshelf.util.objects
 import app.recordshelf.util.str
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.time.LocalDate
@@ -17,7 +18,23 @@ data class SetSong(val title: String, val cover: String, val with: String, val t
 data class Show(
     val id: String, val date: LocalDate, val artist: String, val venue: String, val city: String, val country: String,
     val tour: String, val url: String, val songs: List<SetSong>,
-)
+) {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("date", date.toString()).put("artist", artist).put("venue", venue)
+        .put("city", city).put("country", country).put("tour", tour).put("url", url)
+        .put("songs", JSONArray(songs.map { JSONObject().put("t", it.title).put("c", it.cover).put("w", it.with).put("tape", it.tape).put("e", it.encore).put("i", it.info) }))
+
+    companion object {
+        /** A show as [toJson] keeps it; null if it can't be read. */
+        fun fromJson(o: JSONObject): Show? = try {
+            Show(
+                o.str("id"), LocalDate.parse(o.str("date")), o.str("artist"), o.str("venue"), o.str("city"), o.str("country"), o.str("tour"), o.str("url"),
+                o.arrayOrOne("songs").objects().map { SetSong(it.str("t"), it.str("c"), it.str("w"), it.optBoolean("tape"), it.optBoolean("e"), it.str("i")) },
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
 
 /** A song of an artist's usual set lately: in how many of the shows, and where in them (0 opens, 1 closes). */
 data class Typical(val title: String, val shows: Int, val pos: Double, val cover: String, val encore: Boolean)
@@ -58,6 +75,16 @@ class SetlistfmClient(private val key: String, private val base: String = "https
         val all = o.arrayOrOne("artist").objects().filter { it.str("mbid").isNotEmpty() }
         val want = Text.norm(name).removePrefix("the ")
         return all.firstOrNull { Text.norm(it.str("name")).removePrefix("the ") == want }?.let { Artist(it.str("mbid"), it.str("name"), it.str("url")) }
+    }
+
+    /**
+     * Page [page] of the shows [user] marked as attended on setlist.fm, the newest first (20 a page), and how
+     * many there are in all. Nothing when setlist.fm doesn't know the user or they marked none.
+     */
+    fun attended(user: String, page: Int = 1): Pair<List<Show>, Int> {
+        val o = get("/user/" + java.net.URLEncoder.encode(user, "UTF-8").replace("+", "%20") + "/attended", mapOf("p" to page.toString()))
+            ?: return emptyList<Show>() to 0
+        return parse(o) to o.optInt("total")
     }
 
     /** Page [page] of an artist's setlists, the newest first (20 a page, shows to come among them). */

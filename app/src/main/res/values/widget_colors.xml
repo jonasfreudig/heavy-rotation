@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's colors; from Android 12 they follow the wallpaper (values-v31). -->
+<resources>
+    <color name="widget_bg">#FFF7F2FA</color>
+    <color name="widget_text">#FF1D1B20</color>
+    <color name="widget_text2">#FF49454F</color>
+    <color name="widget_accent">#FF6750A4</color>
+</resources>

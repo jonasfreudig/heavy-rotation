@@ -367,6 +367,7 @@ window.onStats = (s) => {
   if (isOpen('settingsPage')) renderSettings();
 };
 window.onOpenSpin = () => { if (ST.spin) { openPage('spinPage'); renderSpin(true); } };
+window.onOpenNow = () => { if ((ST.phone || {}).now) openNow(); };
 window.onTheme = (th) => {
   const root = document.documentElement;
   root.dataset.theme = th.dark ? 'dark' : 'light';
@@ -433,6 +434,7 @@ const PAGE_STATE = {
   albumPage: { get: () => ALBUM, set: (s) => { ALBUM = s; renderAlbum(); } },
   playlistPage: { get: () => [PLAYLIST, TIDALJOB, PLNAME], set: (s) => { [PLAYLIST, TIDALJOB, PLNAME] = s; renderPlaylist(); } },
   rankPage: { get: () => RANKS, set: (s) => { RANKS = s; renderRanks(); } },
+  concertsPage: { get: () => CONCERTS, set: (s) => { CONCERTS = s; renderConcerts(); } },
   vsPage: { get: () => VS, set: (s) => { VS = s; renderVs(); } },
   atlasPage: { get: () => atlasView, set: (s) => { atlasView = s; renderAtlas(); } },
   genrePage: { get: () => GENRE, set: (s) => { GENRE = s; renderGenre(); } },
@@ -2213,9 +2215,10 @@ const INSIGHT_ORDER = ['comeback', 'discovery', 'genreShift', 'albums', 'loop', 
 function highlightsViz(s) {
   // A song on repeat that is also the most played one is said once.
   const loop = (s.insights || []).find((x) => x.kind === 'loop');
-  const list = (s.insights || []).filter((x) => !(x.kind === 'song' && loop && loop.track === x.track && loop.artist === x.artist))
-    .sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6)
-    .map((x) => insightText(x, s.range.kind, s.range.running)).filter(Boolean);
+  const live = liveInsights(s.concerts || [], s.range.kind);
+  const list = live.concat((s.insights || []).filter((x) => !(x.kind === 'song' && loop && loop.track === x.track && loop.artist === x.artist))
+    .sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6 - live.length)
+    .map((x) => insightText(x, s.range.kind, s.range.running)).filter(Boolean));
   if (!list.length) return '';
   return `<div class="viz"><h2>Highlights</h2>${list.map(([ic, text]) => `<div class="hl"><span class="hl-ic">${icon(ic)}</span><span>${text}</span></div>`).join('')}</div>`;
 }
@@ -4706,6 +4709,7 @@ function renderExplore() {
     <div class="xp-tiles">
       <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
+      <button class="xp-tile wide" id="openConcerts">${TICKET_ART}<span><b>Your concerts</b><small>${(ST.setlist || {}).concerts ? `${plural(ST.setlist.concerts, 'show')} you were at, and what they did to your listening` : 'The shows you were at, from setlist.fm'}</small></span></button>
     </div>
     <button class="btn tonal xp-dig" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button>`;
   h += genreMapHtml(x.genreMap);
@@ -4910,6 +4914,99 @@ function renderPlaylist() {
   };
 }
 
+// ---- your concerts, from setlist.fm ----
+
+let CONCERTS = null;
+const CONCERT_BY_ID = {};
+const TICKET_ART = `<svg viewBox="0 0 120 52" aria-hidden="true"><g style="fill:var(--md-surface-container-highest)"><path d="M10 10h66a6 6 0 0 0 12 0h22v32H88a6 6 0 0 0-12 0H10z"/></g>
+  <g style="stroke:var(--md-outline);stroke-width:1.2;fill:none;stroke-dasharray:2 3"><path d="M82 16v20"/></g><g style="fill:var(--md-primary)"><rect x="18" y="18" width="40" height="5" rx="2.5"/><rect x="18" y="28" width="26" height="4" rx="2" opacity=".5"/><circle cx="98" cy="26" r="5"/></g></svg>`;
+function openConcerts() {
+  openPage('concertsPage');
+  if (!CONCERTS) CONCERTS = { loading: true };
+  renderConcerts();
+  send({ t: 'concerts' });
+}
+window.onConcerts = (c) => {
+  CONCERTS = c;
+  if (isOpen('concertsPage')) renderConcerts();
+};
+/** What a concert did to your listening: your plays of the artist in the four weeks after it, and before. */
+function glowText(c) {
+  if (c.after == null || (!c.after && !c.before)) return '';
+  return c.running ? `${plural(c.after, 'play')} of them since, ${c.before} in the four weeks before` : `${plural(c.after, 'play')} of them in the four weeks after, ${c.before} before`;
+}
+/** A concert's row: the date as a stub, then the artist (or, on their own page, the place). */
+function concertRow(c, byArtist) {
+  CONCERT_BY_ID[c.id] = c;
+  const d = new Date(`${c.date}T12:00:00`);
+  const place = [c.venue, c.city].filter(Boolean).join(', ');
+  const glow = glowText(c);
+  const hot = c.after != null && !c.running && c.after >= 5 && c.after >= 2 * c.before;
+  return `<button class="r concert" data-concert="${esc(c.id)}"><span class="cdate"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}</small></span>
+    <span class="t"><b>${esc(byArtist ? place || c.artist : c.artist)}</b><small>${esc(byArtist ? `${d.getFullYear()}${c.songs.length ? ` · ${plural(c.songs.length, 'song')}` : ''}` : place)}</small>${glow ? `<small class="glow${hot ? ' hot' : ''}">${hot ? icon('fire', 'i inl') : ''}${esc(glow)}</small>` : ''}</span>${icon('chevron-right')}</button>`;
+}
+/** On an artist's page: the shows of theirs you were at. */
+function concertsBlock(list) {
+  if (!list || !list.length) return '';
+  return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}, from your setlist.fm. Tap a show for that night's setlist.</span>
+    <div class="rank concerts">${list.map((c) => concertRow(c, true)).join('')}</div></div>`;
+}
+/** The night's setlist as a playlist, with your plays of each song; no setlist: its setlist.fm page. */
+function openConcertPlaylist(c) {
+  if (!c) return;
+  if (!c.songs.length) { openUrl(c.url || 'https://www.setlist.fm/'); return; }
+  openPage('playlistPage');
+  TIDALJOB = null;
+  PLNAME = null;
+  PLAYLIST = {
+    kind: 'setlist', url: c.url,
+    name: `${c.artist} live in ${c.city || c.venue}`,
+    note: `The setlist the night you were there, ${showDate(c.date)}${c.venue ? ` at ${c.venue}` : ''}`,
+    tracks: c.songs.map((x) => ({ artist: c.artist, title: x.title, album: '', plays: x.plays, source: x.plays ? 'core' : 'new', note: songNote(x) })),
+  };
+  renderPlaylist();
+}
+/** Concerts in a Stats period, as highlights. */
+function liveInsights(cs, kind) {
+  if (!cs.length) return [];
+  const link = (c) => `<button class="inline-link" data-artist="${esc(c.artist)}">${esc(c.artist)}</button>`;
+  if (cs.length >= 3) return [['people', `You went to <b>${cs.length} concerts</b>: ${cs.slice(0, 3).map(link).join(', ')}${cs.length > 3 ? ' and more' : ''}.`]];
+  return cs.map((c) => ['people', `You saw ${link(c)} live${c.venue ? ` at ${esc(c.venue)}` : ''}${kind === 'day' ? '' : ` on ${esc(showDate(c.date))}`}${c.after != null && c.after > c.before ? `, then played them <b>${plural(c.after, 'time')}</b> ${c.running ? 'since' : 'in four weeks'}` : ''}.`]);
+}
+function renderConcerts() {
+  const C = CONCERTS, st = ST.setlist || {};
+  if (!C || !isOpen('concertsPage')) return;
+  let h = '';
+  if (!st.hasKey || !st.user) {
+    h = `<div class="empty">${icon('people', 'i big')}<p>${st.hasKey ? 'Add your setlist.fm username' : 'Set up setlist.fm with a free API key, then add your username'} to see the shows you marked "I was there" on setlist.fm.</p>
+      <button class="btn filled" data-go="slSection">Set up setlist.fm</button></div>`;
+  } else if (C.loading || (!(C.shows || []).length && (C.busy || st.concertsBusy))) {
+    h = `<div class="empty"><p>Fetching your concerts from setlist.fm…</p></div><div class="lin inline indet"><i></i></div>`;
+  } else if (!(C.shows || []).length) {
+    h = `<div class="empty"><p>${esc(C.error || st.concertsError || 'No concerts yet.')}</p><button class="btn tonal" id="concertsRefresh">Try again</button></div>`;
+  } else {
+    const shows = C.shows;
+    const artists = {};
+    shows.forEach((c) => { artists[c.artist] = (artists[c.artist] || 0) + 1; });
+    const most = Object.entries(artists).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const first = shows[shows.length - 1].date.slice(0, 4);
+    h = `<div class="rank-hero"><h1>Your concerts</h1><p>${plural(shows.length, 'show')} · ${plural(Object.keys(artists).length, 'artist')} · since ${esc(first)}</p></div>`;
+    const glows = shows.filter((c) => c.after != null && !c.running && c.after >= 5).sort((a, b) => b.after - b.before - (a.after - a.before)).slice(0, 3);
+    if (glows.length) {
+      h += `<div class="viz"><h2>Afterglow</h2><span class="sub">The shows that sent you back to their music most, four weeks after against four weeks before</span>
+        <div class="rank concerts">${glows.map((c) => concertRow(c, false)).join('')}</div></div>`;
+    }
+    if (most.length) h += `<div class="viz"><h2>Seen most</h2><div class="tags">${most.map(([a, n]) => `<button class="chip link" data-artist="${esc(a)}">${esc(a)} <small>${n}×</small></button>`).join('')}</div></div>`;
+    const years = {};
+    shows.forEach((c) => { (years[c.date.slice(0, 4)] = years[c.date.slice(0, 4)] || []).push(c); });
+    Object.keys(years).sort().reverse().forEach((y) => {
+      h += `<h3 class="live-h">${y} · ${plural(years[y].length, 'show')}</h3><div class="rank concerts">${years[y].map((c) => concertRow(c, false)).join('')}</div>`;
+    });
+    h += `<p class="hint">From setlist.fm: the shows ${esc(st.user)} marked "I was there". Tap one for that night's setlist. <button class="link-inline" id="concertsRefresh">Update now</button></p>`;
+  }
+  morph($('#concertsBody'), h);
+}
+
 // ---- a whole top list: the period's songs, albums or artists by plays, the page you came from marked ----
 
 let RANKS = null;
@@ -5109,6 +5206,7 @@ function renderArtist() {
   if (a.albums.length) {
     h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>`;
   }
+  h += concertsBlock(a.concerts);
   h += `<div id="liveSlot">${liveHtml(a.name)}</div>`;
   h += globalTopHtml(a);
   if (a.owned.length) {
@@ -5637,7 +5735,7 @@ window.onStory = (s) => {
 };
 /** The story's photos to leave out, and which photos it may show: a sheet over the paused story. */
 const PHOTO_MODES = [['playing', 'Song playing', 'Only photos taken while a song was playing.'],
-  ['near', 'Around music', 'Also photos taken up to 45 minutes from music; those say what played around then.'],
+  ['near', 'Around music', 'Also photos taken up to 4 hours from music, each with the closest song and how far apart they were.'],
   ['any', 'Any photo', 'Any photo of those days, the ones with music first.']];
 const photoModeSeg = (id, mode) => `<div class="seg" id="${id}">${PHOTO_MODES.map(([v, l]) => `<button data-v="${v}" class="${v === mode ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 const photoModeHint = (mode) => (PHOTO_MODES.find((x) => x[0] === mode) || PHOTO_MODES[0])[2];
@@ -5782,6 +5880,12 @@ function singleHtml(cover, seed) {
 
 /** A photo of the story's moments: from this phone, through an address only the app answers (the preview brings its own). */
 const photoUrl = (m) => m.src || `https://appassets.androidplatform.net/photo/${m.id}`;
+/** How far from the photo the song was, when it wasn't playing: "2 h before", "40 min after", or null within half an hour. */
+function songGap(sg) {
+  const g = sg.gap || 0, a = Math.abs(g);
+  if (sg.playing || a < 1800) return null;
+  return `${a < 5400 ? `${Math.round(a / 60)} min` : `${Math.round(a / 3600)} h`} ${g > 0 ? 'before' : 'after'}`;
+}
 
 function buildSlides(s) {
   const out = [];
@@ -5853,6 +5957,17 @@ function buildSlides(s) {
     out.push({ cls: 'deep', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { owned: album.owned, key: 'story-album' })}</div>
       <div class="t m in" ${dly(0.25)} data-fit="2">${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
   }
+  // On stage: the concerts you went to, as ticket stubs
+  const cs = s.concerts || [];
+  if (cs.length) {
+    const best = cs.filter((c) => c.after != null).sort((a, b) => b.after - a.after)[0];
+    const rnd = seededRandom(hue(name) + cs.length * 13);
+    out.push({ cls: 'paper live', dur: 8, html: `<div class="k in">On stage</div>
+      <div class="t m in" ${dly(0.1)} data-fit="2">${cs.length === 1 ? `You saw ${esc(cs[0].artist)} live` : `${cs.length} concerts`}</div>
+      <div class="stubs">${cs.slice(0, 3).map((c, i) => { const d = new Date(`${c.date}T12:00:00`); return `<div class="stub in" style="--d:${(0.3 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 5).toFixed(1)}deg"><span class="sd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}</small></span><span class="si"><b>${esc(c.artist)}</b><small>${esc([c.venue, c.city].filter(Boolean).join(' · '))}</small></span></div>`; }).join('')}</div>
+      ${cs.length > 3 ? `<p class="p mono small in" ${dly(0.8)}>and ${cs.length - 3} more</p>` : ''}
+      ${best && best.after > best.before ? `<p class="p in" ${dly(0.9)}>After ${esc(best.artist)} ${best.venue ? `at ${esc(best.venue)}` : 'live'}, you played them <b>${plural(best.after, 'time')}</b> ${best.running ? 'since' : 'in four weeks'}, against ${best.before} in the four weeks before.</p>` : ''}` });
+  }
   // Moments: photos you took then, with the song that was playing
   const ms = s.moments || [];
   if (ms.length) {
@@ -5861,13 +5976,13 @@ function buildSlides(s) {
     const sg = hero.song;
     out.push({ cls: 'deep photo moment', html: `<div class="mo bg"><i class="img" style="background-image:url('${cssUrl(photoUrl(hero))}')"></i><i class="fade"></i></div>
       <div class="k in">${esc(when(hero.ts))}, ${esc(new Date(hero.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>
-      ${sg ? `<div class="t m in" ${dly(0.15)} data-fit="2">${esc(sg.title)}</div><p class="p in" ${dly(0.3)}>${sg.playing ? `by ${esc(sg.artist)} was playing when you took this.` : `by ${esc(sg.artist)}, just around when you took this.`}</p>`
+      ${sg ? `<div class="t m in" ${dly(0.15)} data-fit="2">${esc(sg.title)}</div><p class="p in" ${dly(0.3)}>${sg.playing ? `by ${esc(sg.artist)} was playing when you took this.` : songGap(sg) ? `by ${esc(sg.artist)}, the closest song: it started ${songGap(sg)} you took this.` : `by ${esc(sg.artist)}, just around when you took this.`}</p>`
         : `<div class="t m in" ${dly(0.15)} data-fit="2">A moment of ${esc(name)}</div>`}`, moment: true });
     const rest = ms.filter((m) => m !== hero).slice(0, 4);
     if (rest.length >= 2) {
       const rnd = seededRandom(hue(name) + rest.length);
       out.push({ cls: 'paper moments', dur: 9, html: `<div class="k in">${esc(name)} in pictures</div><div class="polas n${rest.length}">${rest.map((m, i) => `<figure class="pola in" style="--d:${(0.15 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 7).toFixed(1)}deg">
-        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing ? '' : 'around '}${esc(m.song.title)}</span>` : ''}</figcaption></figure>`).join('')}</div>`, moment: true });
+        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing || songGap(m.song) ? '' : 'around '}${esc(m.song.title)}</span>${songGap(m.song) ? `<span>${songGap(m.song)}</span>` : ''}` : ''}</figcaption></figure>`).join('')}</div>`, moment: true });
     }
   }
   // Golden hour, on a sundial
@@ -5973,6 +6088,94 @@ function renderSetlistSettings() {
   $('#slSetup').hidden = !!s.hasKey;
   $('#slConnected').hidden = !s.hasKey;
   $('#slForget').hidden = !!s.builtIn;
+  if (document.activeElement !== $('#slUser')) $('#slUser').value = s.user || '';
+  $('#slUserRefresh').hidden = !s.user || !!s.concertsBusy;
+  $('#slUserStatus').textContent = !s.user ? '' : s.concertsBusy ? 'Fetching your concerts from setlist.fm…' : s.concertsError
+    || (s.concerts ? `${plural(s.concerts, 'concert')}, updated ${whenLabel(s.concertsAt)}.` : '');
+}
+
+// ---- fix names before they're scrobbled ----
+
+const FX_FIELD = { artist: 'Artist', title: 'Song', album: 'Album' };
+const FX_HOW = { is: 'is', contains: 'contains', matches: 'matches' };
+/** One name through one rule, as the app does it (scrobble/FixRules.kt). */
+function fxApply(v, r) {
+  if (!r.find || !v) return v;
+  let out = v;
+  if (r.how === 'is') out = v.trim().toLowerCase() === r.find.trim().toLowerCase() ? r.to : v;
+  else if (r.how === 'contains') out = v.split(new RegExp(r.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')).join(r.to);
+  else { try { out = v.replace(new RegExp(r.find, 'gi'), r.to); } catch (_) { out = v; } }
+  out = out.replace(/\s{2,}/g, ' ').trim();
+  return out || v;
+}
+const fxRuleText = (r) => `${FX_FIELD[r.field] || 'Song'} ${FX_HOW[r.how] || 'contains'} "${r.find}"`;
+const fxToText = (r) => `${r.to ? `→ "${r.to}"` : r.how === 'is' ? '' : '→ taken out'}${r.artist ? ` · only ${r.artist}` : ''}`;
+
+function renderFixSettings() {
+  const f = ST.fix || { presets: [], rules: [] };
+  const on = f.presets.filter((p) => p.on).length + f.rules.filter((r) => r.on !== false).length;
+  $('#fxStatus').innerHTML = statusLine(on ? 'ok' : '', on ? `${on} ${on === 1 ? 'fix' : 'fixes'} on` : 'None on', on ? 'Names are fixed before they\'re scrobbled' : 'Take "Remastered" off titles and the like');
+  $('#fxPresets').innerHTML = f.presets.map((p) => `<label class="switch-row"><span>${esc(p.label)}<small>${esc(p.example)}</small></span><input type="checkbox" data-fxp="${p.id}"${p.on ? ' checked' : ''}><i class="switch"></i></label>`).join('');
+  $('#fxRules').innerHTML = f.rules.length
+    ? `<div class="list">${f.rules.map((r) => `<button class="item fx-rule" data-fx="${esc(r.id)}"><span class="grow"><b>${esc(fxRuleText(r))}</b><small>${esc(fxToText(r))}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`
+    : '<p class="hint">None yet. A rule can rename an artist ("Beatles, The" to "The Beatles"), take "(Live)" off one artist\'s songs, or anything a regular expression can match.</p>';
+}
+
+/** A sheet to add or change a rule, tried on your recent scrobbles. */
+function openFixSheet(id) {
+  const f = ST.fix || { rules: [] };
+  const old = f.rules.find((r) => r.id === id);
+  const r = { id: '', field: 'title', how: 'contains', find: '', to: '', artist: '', on: true, ...(old || {}) };
+  const seen = new Set();
+  const recent = ACT.slice().sort((a, b) => b.ts - a.ts).filter((e) => { const k = `${e.artist}|${e.track}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 4);
+  let sample = recent[0] || null;
+  const seg = (sid, map, v) => `<div class="seg small" id="${sid}">${Object.entries(map).map(([k, l]) => `<button data-v="${k}" class="${k === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  openSheet(`<div class="sheet-title">${old ? 'Change the rule' : 'A new rule'}</div>
+    <div class="row-label"><span>Look at the</span></div>${seg('fxField', FX_FIELD, r.field)}
+    <div class="row-label"><span>When it</span></div>${seg('fxHow', { is: 'is', contains: 'contains', matches: 'matches (regex)' }, r.how)}
+    <label class="field"><span>Text</span><input type="text" id="fxFind" autocapitalize="off" spellcheck="false" value="${esc(r.find)}"></label>
+    <label class="field"><span id="fxToLabel">Change it to</span><input type="text" id="fxTo" autocapitalize="off" spellcheck="false" value="${esc(r.to)}"></label>
+    <label class="field"><span>Only for this artist (optional)</span><input type="text" id="fxArtist" autocapitalize="off" spellcheck="false" value="${esc(r.artist)}"></label>
+    ${recent.length ? `<div class="row-label"><span>Try it on</span></div><div class="chips" id="fxRecent">${recent.map((e, i) => `<button class="chip${i === 0 ? ' on' : ''}" data-fxs="${i}">${esc(e.track)} <small>${esc(e.artist)}</small></button>`).join('')}</div>` : ''}
+    <div class="fx-try" id="fxTry"></div>
+    <div class="sheet-actions">${old ? '<button class="btn text" id="fxDel">Delete</button>' : ''}<button class="btn text" id="fxNo">Cancel</button><button class="btn filled" id="fxYes">Save</button></div>`);
+  const read = () => ({ ...r, field: $('#fxField .on').dataset.v, how: $('#fxHow .on').dataset.v, find: $('#fxFind').value, to: $('#fxTo').value, artist: $('#fxArtist').value.trim() });
+  const show = () => {
+    const x = read();
+    $('#fxToLabel').textContent = x.how === 'is' ? 'Change it to' : 'Change it to (empty: take it out)';
+    if (!sample) { $('#fxTry').innerHTML = ''; return; }
+    const before = { artist: sample.artist, title: sample.track, album: sample.album || '' }[x.field];
+    const applies = !x.artist || x.artist.toLowerCase() === String(sample.artist).trim().toLowerCase();
+    const after = applies ? fxApply(before, x) : before;
+    $('#fxTry').innerHTML = !before ? `<small>That scrobble has no ${FX_FIELD[x.field].toLowerCase()} name.</small>`
+      : after === before ? `<span>${esc(before)}</span><small>${x.find ? 'stays as it is' : 'Type what to look for'}</small>` : `<span><s>${esc(before)}</s></span><b>${esc(after)}</b>`;
+  };
+  $('#fxField').onclick = $('#fxHow').onclick = (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    $$(`#${e.currentTarget.id} button`).forEach((x) => x.classList.toggle('on', x === b));
+    show();
+  };
+  ['fxFind', 'fxTo', 'fxArtist'].forEach((k) => $('#' + k).addEventListener('input', show));
+  if ($('#fxRecent')) $('#fxRecent').onclick = (e) => {
+    const b = e.target.closest('[data-fxs]');
+    if (!b) return;
+    sample = recent[+b.dataset.fxs];
+    $$('#fxRecent .chip').forEach((x) => x.classList.toggle('on', x === b));
+    if (!$('#fxFind').value) $('#fxFind').value = { artist: sample.artist, title: sample.track, album: sample.album || '' }[read().field];
+    show();
+  };
+  $('#fxNo').onclick = closeSheet;
+  if ($('#fxDel')) $('#fxDel').onclick = () => { send({ t: 'fixDelete', id: r.id }); closeSheet(); };
+  $('#fxYes').onclick = () => {
+    const x = read();
+    if (!x.find.trim()) { toast('Type what to look for'); return; }
+    if (x.how === 'is' && !x.to.trim()) { toast('Say what the name should become'); return; }
+    if (x.how === 'matches') { try { new RegExp(x.find); } catch (_) { toast('That isn\'t a regular expression the app can read'); return; } }
+    send({ t: 'fixSave', rule: x });
+    closeSheet();
+  };
+  show();
 }
 
 /** Photos in the story: off, waiting for Android's yes, or on (with all photos or the ones you chose). */
@@ -6039,6 +6242,7 @@ function renderSettings() {
   renderTidalSettings();
   renderSetlistSettings();
   renderPhotoSettings();
+  renderFixSettings();
   const td = (STATS && STATS.tidy) || {};
   const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
   $('#tidyStatus').textContent = td.hiddenPlays ? `${plural(td.hiddenPlays, 'play')} hidden from your stats. ${more}`
@@ -6173,6 +6377,8 @@ function build() {
     if (ar) { openArtist(ar.dataset.artist); return; }
     const show = e.target.closest('[data-show]');
     if (show) { openLivePlaylist(+show.dataset.show); return; }
+    const cc = e.target.closest('[data-concert]');
+    if (cc) { openConcertPlaylist(CONCERT_BY_ID[cc.dataset.concert]); return; }
     if (e.target.closest('[data-livepl]')) { openLivePlaylist(-1); return; }
     const go = e.target.closest('[data-go]');
     if (go) { openSettings(go.dataset.go); return; }
@@ -6326,6 +6532,10 @@ function build() {
   $('#exploreBody').onclick = (e) => {
     if (e.target.closest('#exploreGoStats')) showTab('stats');
     if (e.target.closest('#openVs')) openVs();
+    if (e.target.closest('#openConcerts')) openConcerts();
+  };
+  $('#concertsBody').onclick = (e) => {
+    if (e.target.closest('#concertsRefresh')) send({ t: 'concertsRefresh' });
   };
   $('#svcChips').onclick = (e) => {
     const c = e.target.closest('[data-svc]');
@@ -6453,6 +6663,8 @@ function build() {
     send({ t: 'saveSetlist', key });
     $('#slKey').value = '';
   };
+  $('#slUserSave').onclick = () => { send({ t: 'saveSetlistUser', user: $('#slUser').value.trim() }); $('#slUser').blur(); };
+  $('#slUserRefresh').onclick = () => send({ t: 'concertsRefresh' });
   $('#slForget').onclick = () => confirmSheet('Remove the setlist.fm key?', 'Artist pages stop showing setlists until you add a key again.', 'Remove', () => send({ t: 'setlistForget' }));
   $('#phoBtns').onclick = (e) => {
     const b = e.target.closest('[data-photos]');
@@ -6462,6 +6674,9 @@ function build() {
     else if (v === 'unhide') send({ t: 'photoPrefs', unhide: true });
     else send({ t: v === 'choose' ? 'photosChoose' : 'photosSettings' });
   };
+  $('#fxPresets').onchange = (e) => { const id = e.target.dataset.fxp; if (id) send({ t: 'fixPreset', id, on: e.target.checked }); };
+  $('#fxRules').onclick = (e) => { const b = e.target.closest('[data-fx]'); if (b) openFixSheet(b.dataset.fx); };
+  $('#fxAdd').onclick = () => openFixSheet('');
   $('#phoMode').onclick = (e) => {
     const b = e.target.closest('[data-v]');
     if (!b) return;

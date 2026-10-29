@@ -196,6 +196,14 @@ class ActivityLog(private val file: JsonFile, private val max: Int = 2500) {
         entries.lastOrNull { it.str("id") == id }?.put("status", status)?.put("msg", msg)
     }
 
+    /** The latest scrobble logged (not one only shadowed), or null. */
+    @Synchronized
+    fun last(): JSONObject? = entries.filter { it.str("status") != "shadow" }.maxByOrNull { it.optLong("ts") }
+
+    /** How many scrobbles were logged from [fromSec] (shadowed ones not counted). */
+    @Synchronized
+    fun countSince(fromSec: Long): Int = entries.count { it.optLong("ts") >= fromSec && it.str("status") != "shadow" && it.str("status") != "ignored" }
+
     @Synchronized
     fun save() = file.write(JSONArray(entries).toString())
 

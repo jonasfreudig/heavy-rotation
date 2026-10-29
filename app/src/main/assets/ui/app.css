@@ -459,6 +459,26 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .rank-hero h1 { margin: 0; font: 700 26px/32px var(--font); }
 .rank-hero p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; }
 .pl-txt { flex: 1; min-width: 0; }
+.concerts .r { grid-template-columns: 40px 1fr auto; }
+.concerts .r > .i { width: 18px; height: 18px; color: var(--md-on-surface-variant); }
+.cdate { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 40px; padding: 4px 0; border-radius: 10px; background: var(--md-secondary-container); color: var(--md-on-secondary-container); line-height: 1; }
+.cdate b { font: 650 17px/20px var(--font); }
+.cdate small { font: 500 10px/12px var(--font); text-transform: uppercase; letter-spacing: .06em; }
+.concerts .t small.glow { color: var(--md-on-surface-variant); white-space: normal; }
+.concerts .t small.glow.hot { color: var(--md-primary); }
+.xp-tile.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; }
+.xp-tile.wide svg { width: 96px; height: 42px; margin: 0; flex: none; }
+.xp-tile.wide > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fx-rule { width: 100%; text-align: left; }
+.sheet .seg + .row-label { margin-top: 14px; }
+#concertsBody .live-h { margin: 24px 4px 8px; }
+.fx-rule > .i { flex: none; color: var(--md-on-surface-variant); }
+#fxAdd { margin-top: 12px; }
+.fx-try { display: flex; flex-direction: column; gap: 2px; min-height: 44px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--md-surface-container-high); font-size: 14px; }
+.fx-try:empty { display: none; }
+.fx-try small { color: var(--md-on-surface-variant); font-size: 12px; }
+.fx-try s { color: var(--md-on-surface-variant); }
+.fx-try b { font-weight: 600; color: var(--md-primary); }
 .pl-edit { flex: none; align-self: flex-start; }
 .covers { display: flex; gap: 10px; overflow-x: auto; margin: 4px -16px 0; padding: 0 16px 4px; scrollbar-width: none; }
 .covers::-webkit-scrollbar { display: none; }

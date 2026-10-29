@@ -79,13 +79,13 @@ class ConcertsAndMomentsTest {
         val walk = Photo(300, t0 + 20 * day, 3000, 4000)
         val beach = Photo(400, t0 + 20 * day + 3600, 3000, 4000)
         val playing = { t: Long -> t in (t0 + 3 * day + 300)..(t0 + 3 * day + 700) || t == walk.ts }
-        val near = { t: Long -> playing(t) || t == beach.ts }
+        val near = { t: Long -> if (playing(t) || t == beach.ts) 1.0 else 0.0 }
         val picked = Moments.pick(gig + quiet + walk + beach, 30 * day, playing, near, max = 3)
         assertEquals(3, picked.size)
         assertTrue("the gig's photo is one taken while a song played", picked[0].id in 103L..105L)
         assertTrue("walk and beach are an hour apart: only the one with music", walk in picked && beach !in picked)
         assertEquals("in the order they were taken", picked.sortedBy { it.ts }, picked)
-        assertEquals(emptyList<Photo>(), Moments.pick(emptyList(), day, { false }, { false }))
+        assertEquals(emptyList<Photo>(), Moments.pick(emptyList(), day, { false }, { 0.0 }))
     }
 
     @Test

@@ -66,6 +66,19 @@ With no record spinning, the card at the top of the Shelf shows what a music app
 playing (TIDAL and the like): the song, the app, its cover (from your shelf or Deezer) and how
 far it is; tap it for the song's page.
 
+**Fix names** (Settings → Scrobbling) changes names before they're scrobbled, like Pano Scrobbler's
+edits, for the phone and for records alike: ready-made fixes to switch on ("Remastered",
+"Explicit", "feat. …", "- Single", YouTube's "- Topic") and your own rules. A rule looks at the
+artist, the song or the album: when it **is** a text the whole name becomes another, when it
+**contains** one (or a regular expression **matches** part of it) that part is replaced or taken
+out, optionally only for one artist. The rule sheet tries it on your recent scrobbles. Scrobbles
+already sent stay as they are; Last.fm can only be edited on its website.
+
+**The widget** (long-press the home screen → Widgets → Heavy Rotation): what plays now, on the
+turntable or the phone, else the last song you played, with its cover and today's and this
+week's plays, in your wallpaper's colors. Tap it for the app (the record or Now playing page
+while something plays).
+
 ### 6. TIDAL (optional: exact links and playlists)
 
 Without TIDAL, the TIDAL buttons open TIDAL's search. Connected, they open the exact song, album or
@@ -130,7 +143,8 @@ month, quarter or year. What the tab shows for the chosen period:
   (Settings → Stats and listening), it also shows photos you took in those days: one full-screen
   with the song that was playing as you took it, then a few more as prints, spread over the
   period. By default only photos taken while a song was playing count; **Which photos** can also
-  take ones from up to 45 minutes around music, or any photo. **From these folders** lists the
+  take ones from up to 4 hours around music (each with the closest song, and how long before or
+  after it started; the closer, the likelier a photo is picked), or any photo. **From these folders** lists the
   phone's photo folders: the camera's are on (no screenshots, nothing saved from other apps), tap
   others to add them. **Change photos** on a story's photo leaves photos out (another one takes
   their place) and changes which photos count; Settings brings hidden ones back. They never leave
@@ -224,6 +238,13 @@ still be missing.
 To set it up: log in to [setlist.fm](https://www.setlist.fm) (a free account), open its
 [API settings](https://www.setlist.fm/settings/api) and apply for a key (free for personal,
 non-commercial use; any application name will do), then paste it in Settings → setlist.fm.
+
+**Your concerts**: add your setlist.fm username there too, and the shows you marked "I was there"
+on setlist.fm come in (again once a week, or with **Update now**). They show on the artist's
+page (**You saw them live**), in Explore (**Your concerts**: every show by year, the artists you
+saw most, and the **afterglow**, the shows that sent you back to an artist's music most: your
+plays of them in the four weeks after against the four weeks before), in the Stats highlights of
+the period and as ticket stubs in its story. Tap a show for that night's setlist as a playlist.
 
 Artist photos come from Deezer's public catalog (no account needed), looked up once per artist
 and kept on the phone; they show on artist pages, in Top 10 and Explore, and in the story.

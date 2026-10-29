@@ -41,20 +41,26 @@ object Moments {
 
     /**
      * Up to [max] of [photos], taken over a period [spanSec] long, in the order they were taken. [playing] tells
-     * whether a song was under way at a time, [near] whether anything was played around then.
+     * whether a song was under way at a time, [near] how close to music it was (1 playing, down to 0 for none).
      */
-    fun pick(photos: List<Photo>, spanSec: Long, playing: (Long) -> Boolean, near: (Long) -> Boolean, max: Int = MAX): List<Photo> {
+    fun pick(photos: List<Photo>, spanSec: Long, playing: (Long) -> Boolean, near: (Long) -> Double, max: Int = MAX): List<Photo> {
         if (photos.isEmpty() || max <= 0) return emptyList()
         val bursts = ArrayList<MutableList<Photo>>()
         for (p in photos.sortedBy { it.ts }) {
             if (bursts.isNotEmpty() && p.ts - bursts.last().last().ts <= BURST_SEC) bursts.last() += p else bursts += mutableListOf(p)
         }
-        // Each moment's photo: one taken while a song played if there is one, else the middle one.
+        // Each moment's photo: one taken while a song played if there is one, else the one closest to music, else
+        // the middle one. Moments with a song playing count most, then the closer to music the more.
         val moments = bursts.map { b ->
             val withSong = b.filter { playing(it.ts) }
-            val from = withSong.ifEmpty { b }
-            val music = if (withSong.isNotEmpty()) 3.0 else if (b.any { near(it.ts) }) 1.5 else 0.0
-            from[from.size / 2] to music + minOf(2.0, b.size / 4.0)
+            val closest = b.maxBy { near(it.ts) }
+            val photo = when {
+                withSong.isNotEmpty() -> withSong[withSong.size / 2]
+                near(closest.ts) > 0 -> closest
+                else -> b[b.size / 2]
+            }
+            val music = if (withSong.isNotEmpty()) 3.0 else 2.0 * near(closest.ts)
+            photo to music + minOf(2.0, b.size / 4.0)
         }
         val gap = maxOf(GAP_MIN, spanSec / (max * 3))
         val chosen = ArrayList<Photo>()

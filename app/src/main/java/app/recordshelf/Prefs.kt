@@ -135,6 +135,22 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getBoolean("photosAsked", false)
         set(v) = app.edit().putBoolean("photosAsked", v).apply()
 
+    /** The user's setlist.fm username, for the concerts they marked as attended there, and when those were last fetched (ms). */
+    var setlistUser: String
+        get() = app.getString("setlistUser", "").orEmpty()
+        set(v) = app.edit().putString("setlistUser", v).apply()
+    var concertsAt: Long
+        get() = app.getLong("concertsAt", 0)
+        set(v) = app.edit().putLong("concertsAt", v).apply()
+
+    /** Names fixed before they're scrobbled (scrobble/FixRules): the ready-made fixes switched on, and the user's own rules. */
+    var fixPresets: Set<String>
+        get() = app.getString("fixPresets", "").orEmpty().split(',').filter { it.isNotBlank() }.toSet()
+        set(v) = app.edit().putString("fixPresets", v.joinToString(",")).apply()
+    var fixRules: String
+        get() = app.getString("fixRules", "[]") ?: "[]"
+        set(v) = app.edit().putString("fixRules", v).apply()
+
     /** Which photos stories show (one of Moments.MODES): by default only ones taken while a song played. */
     var photosMode: String
         get() = app.getString("photosMode", null)?.takeIf { it in Moments.MODES } ?: "playing"
