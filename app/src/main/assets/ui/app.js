@@ -5308,7 +5308,7 @@ function tabSwipe(page) {
     if (!body || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
     if (e.target.closest('.tix, .covers, .xcards, .chip-row, .na-row, canvas[data-record], input, textarea')) return;
     if (e.clientX < 24 || e.clientX > window.innerWidth - 24) return;
-    s = { x: e.clientX, y: e.clientY, t: performance.now(), body, on: false, dx: 0 };
+    s = { x: e.clientX, y: e.clientY, t: performance.now(), body, on: false, dx: 0, frame: 0 };
   }, { passive: true });
   page.addEventListener('pointermove', (e) => {
     if (!s || !e.isPrimary) return;
@@ -5317,32 +5317,44 @@ function tabSwipe(page) {
       if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
       if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
       s.on = true;
+      // Its own layer while it moves: the cards' soft shadows are painted once, not on every frame.
+      s.body.style.willChange = 'transform';
     }
     s.dx = dx;
-    // No tab that way: it only gives a little.
-    const free = tabNext(page, dx < 0 ? 1 : -1);
-    s.body.style.transform = `translateX(${(free ? dx : dx * 0.22).toFixed(1)}px)`;
+    // One move a frame, however often the finger reports.
+    if (s.frame) return;
+    const st = s;
+    st.frame = requestAnimationFrame(() => {
+      st.frame = 0;
+      if (s !== st) return;
+      // No tab that way: it only gives a little.
+      const free = tabNext(page, st.dx < 0 ? 1 : -1);
+      st.body.style.transform = `translateX(${(free ? st.dx : st.dx * 0.22).toFixed(1)}px)`;
+    });
   }, { passive: true });
   const end = (e) => {
     const st = s;
     s = null;
     if (!st || !st.on) return;
+    if (st.frame) cancelAnimationFrame(st.frame);
     swipedAt = Date.now();
     const dir = st.dx < 0 ? 1 : -1, next = tabNext(page, dir);
     const fast = Math.abs(st.dx) / Math.max(1, performance.now() - st.t) > 0.45;
+    const settle = (el, from) => {
+      el.style.willChange = 'transform';
+      el.style.transform = '';
+      el.animate([{ transform: `translateX(${from}px)`, opacity: from === st.dx ? 1 : 0.35 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: EASE_OUT })
+        .onfinish = () => { el.style.willChange = ''; };
+    };
     if (next && e.type === 'pointerup' && (Math.abs(st.dx) > page.clientWidth * 0.26 || fast)) {
-      const w = page.clientWidth;
-      const out = st.body.animate([{ transform: `translateX(${st.dx}px)`, opacity: 1 }, { transform: `translateX(${-dir * w * 0.6}px)`, opacity: 0 }], { duration: 140, easing: EASE_IN, fill: 'forwards' });
-      out.onfinish = () => {
-        out.cancel();
-        st.body.style.transform = '';
-        setPageTab(page.id, next);
-        const fresh = page.querySelector('.atab-body');
-        if (fresh) fresh.animate([{ transform: `translateX(${dir * w * 0.35}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: EASE_OUT });
-      };
-    } else {
-      st.body.animate([{ transform: `translateX(${st.dx}px)` }, { transform: 'none' }], { duration: 200, easing: EASE_OUT });
+      // The next tab at once, coming in from the side the finger left: no waiting for the old one to slide away.
       st.body.style.transform = '';
+      st.body.style.willChange = '';
+      setPageTab(page.id, next);
+      const fresh = page.querySelector('.atab-body');
+      if (fresh) settle(fresh, Math.round(dir * Math.min(page.clientWidth * 0.3, 120)));
+    } else {
+      settle(st.body, st.dx);
     }
   };
   page.addEventListener('pointerup', end);
