@@ -5286,6 +5286,71 @@ function setPageTab(pageId, t) {
     setTimeout(() => { delete page.dataset.quiet; }, 120);
   }
 }
+/** The tab next to the open one on [page] ([dir] 1: right, -1: left), or null. */
+function tabNext(page, dir) {
+  const tabs = { artistPage: ARTIST_TABS, albumPage: ALBUM_TABS, genrePage: GENRE_TABS }[page.id];
+  const st = PAGE_STATE[page.id] && PAGE_STATE[page.id].get();
+  if (!tabs || !st || !page.querySelector('.atabs')) return null;
+  const i = Math.max(0, tabs.findIndex(([k]) => k === st.tab));
+  const n = tabs[i + dir];
+  return n ? n[0] : null;
+}
+/**
+ * Swiping sideways on a page in tabs opens the tab next to it: the open one follows the finger and slides away, the
+ * next comes in from that side. Rows that scroll sideways and a zoomed record keep their own swipes, and the screen's
+ * edges stay Android's (back).
+ */
+function tabSwipe(page) {
+  let s = null, swipedAt = 0;
+  page.addEventListener('pointerdown', (e) => {
+    s = null;
+    const body = e.target.closest('.atab-body');
+    if (!body || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (e.target.closest('.tix, .covers, .xcards, .chip-row, .na-row, canvas[data-record], input, textarea')) return;
+    if (e.clientX < 24 || e.clientX > window.innerWidth - 24) return;
+    s = { x: e.clientX, y: e.clientY, t: performance.now(), body, on: false, dx: 0 };
+  }, { passive: true });
+  page.addEventListener('pointermove', (e) => {
+    if (!s || !e.isPrimary) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
+      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+      s.on = true;
+    }
+    s.dx = dx;
+    // No tab that way: it only gives a little.
+    const free = tabNext(page, dx < 0 ? 1 : -1);
+    s.body.style.transform = `translateX(${(free ? dx : dx * 0.22).toFixed(1)}px)`;
+  }, { passive: true });
+  const end = (e) => {
+    const st = s;
+    s = null;
+    if (!st || !st.on) return;
+    swipedAt = Date.now();
+    const dir = st.dx < 0 ? 1 : -1, next = tabNext(page, dir);
+    const fast = Math.abs(st.dx) / Math.max(1, performance.now() - st.t) > 0.45;
+    if (next && e.type === 'pointerup' && (Math.abs(st.dx) > page.clientWidth * 0.26 || fast)) {
+      const w = page.clientWidth;
+      const out = st.body.animate([{ transform: `translateX(${st.dx}px)`, opacity: 1 }, { transform: `translateX(${-dir * w * 0.6}px)`, opacity: 0 }], { duration: 140, easing: EASE_IN, fill: 'forwards' });
+      out.onfinish = () => {
+        out.cancel();
+        st.body.style.transform = '';
+        setPageTab(page.id, next);
+        const fresh = page.querySelector('.atab-body');
+        if (fresh) fresh.animate([{ transform: `translateX(${dir * w * 0.35}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: EASE_OUT });
+      };
+    } else {
+      st.body.animate([{ transform: `translateX(${st.dx}px)` }, { transform: 'none' }], { duration: 200, easing: EASE_OUT });
+      st.body.style.transform = '';
+    }
+  };
+  page.addEventListener('pointerup', end);
+  page.addEventListener('pointercancel', end);
+  // A swipe that ends on a row isn't a tap on it.
+  page.addEventListener('click', (e) => { if (Date.now() - swipedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
+
 /** The tabs get the page's color behind them once they stick to the top. */
 function syncPageTabs(page) {
   const bar = page.querySelector('.atabs'), anchor = page.querySelector('.tab-anchor');
@@ -6437,7 +6502,11 @@ function build() {
   const artistBody = $('#artistBody');
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
   artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
-  ['artistPage', 'albumPage', 'genrePage'].forEach((id) => { const p = $('#' + id); p.addEventListener('scroll', () => syncPageTabs(p), { passive: true }); });
+  ['artistPage', 'albumPage', 'genrePage'].forEach((id) => {
+    const p = $('#' + id);
+    p.addEventListener('scroll', () => syncPageTabs(p), { passive: true });
+    tabSwipe(p);
+  });
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };

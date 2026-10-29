@@ -383,7 +383,8 @@ discography, their most played songs) and Live (the shows you were at, and what 
 lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
 clicked, its songs over time, the charts). A genre's are Overview (the numbers and the styles in
 it), Artists, Music (albums, songs, records to rediscover, your shelf, decades) and Listening. The
-tabs stay at the top as you scroll. In an artist's Live tab the setlist comes in two columns and
+tabs stay at the top as you scroll, and swiping sideways on the page opens the tab next to the
+open one. In an artist's Live tab the setlist comes in two columns and
 the shows scroll sideways as ticket stubs.
 
 The number of records on the shelf sits next to its title. One line under the title has the sort
