@@ -1107,3 +1107,11 @@ button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padd
 details.more { margin-top: 14px; }
 details.more summary { cursor: pointer; color: var(--md-primary); font-size: 14px; padding: 6px 0; }
 details.more[open] summary { margin-bottom: 6px; }
+
+/* Links inside a line of text, setlists on artist pages */
+.link-inline { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--md-primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.live-next { display: flex; align-items: center; gap: 12px; width: 100%; margin: 6px 0 10px; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--md-secondary-container); color: var(--md-on-secondary-container); text-align: left; font: inherit; cursor: pointer; }
+.live-next .i { width: 22px; height: 22px; flex: none; }
+.live-next span { display: flex; flex-direction: column; gap: 2px; }
+.live-next small { opacity: .8; }
+.live-h { margin: 18px 0 4px; font: 600 15px/20px var(--font); }

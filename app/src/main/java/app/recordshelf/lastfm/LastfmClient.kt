@@ -210,6 +210,18 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
             .map { it.str("name") to (it.str("count").toIntOrNull() ?: 0) }
     }
 
+    /** An album's top tags (name, weight 0..100); empty if Last.fm doesn't know the album. */
+    fun albumTopTags(artist: String, album: String): List<Pair<String, Int>> {
+        val json = try {
+            call("album.getTopTags", mapOf("artist" to artist, "album" to album, "autocorrect" to "1"), signed = false, post = false)
+        } catch (e: LastfmException) {
+            if (e.code == 6) return emptyList()
+            throw e
+        }
+        return json.optJSONObject("toptags")?.arrayOrOne("tag")?.objects().orEmpty()
+            .map { it.str("name") to (it.str("count").toIntOrNull() ?: 0) }
+    }
+
     /** Everyone's all-time listeners and plays of an artist; null if Last.fm doesn't know it. */
     fun artistCounts(artist: String): GlobalCount? =
         info("artist.getInfo", linkedMapOf("artist" to artist))?.optJSONObject("artist")?.optJSONObject("stats")?.let { counts(it) }

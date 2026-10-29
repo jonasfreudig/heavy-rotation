@@ -2,9 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Discogs, Last.fm and MusicBrainz -->
+    <!-- Discogs, Last.fm, MusicBrainz, Deezer, LRCLIB and setlist.fm -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Photos you took, for your story: only once you switch them on in Settings (from Android 14 you may pick which) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!-- "Now spinning" notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

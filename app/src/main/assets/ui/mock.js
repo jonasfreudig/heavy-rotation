@@ -99,6 +99,8 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
+    setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a' },
+    photos: { on: true, access: 'all', asked: true, canChoose: true },
     version: '0.21 (browser preview)',
   };
 
@@ -778,6 +780,8 @@ const Mock = (() => {
       busiestDay: { day: s.range.from * 1000 + 9 * DAY, count: 61 },
       newArtists: { count: s.summary.historyStartsHere ? 0 : s.summary.newArtists, best: x.order.length ? { name: L.artists[x.order[Math.min(6, x.order.length - 1)]], plays: 44, first: s.range.from * 1000 + 2 * DAY } : null },
       loop: s.loops[0] || null, obsession: s.obsessions[0] || null, genres,
+      moments: S.photos.on ? x.topT.slice(0, 5).map((t, k) => ({ id: 900 + k, src: fakePhoto(hashStr(`${id}-${k}`)), ts: s.range.from * 1000 + (2 + k * 5) * DAY + (17 + k) * 3600e3, w: 4000, h: 3000,
+        song: k === 3 ? null : { title: L.titles[t], artist: L.artists[x.trackArtist[t]], album: '', cover: '', playing: k !== 1 } })) : [],
       vinyl: { count: Math.round(n * 0.03), share: 0.03, top: [{ title: 'Rumours', artist: 'Fleetwood Mac', plays: 44, cover: '' }] },
       streak: s.streaks, insights: s.insights,
       first: n ? { track: L.titles[L.t[s.summary.i0]], artist: L.artists[L.a[s.summary.i0]], ts: L.ts[s.summary.i0] } : null,
@@ -918,6 +922,7 @@ const Mock = (() => {
       range: { ...r, plays: c[t] || 0, rank: rankIn(c, t) },
       next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
       album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
+      genres: [GENRES[Math.max(0, genreOf(a))] || 'Indie Rock'],
       global: globalOf(L.titles[t] + L.artists[a], life.plays), globalRank: 2 };
   }
   /** A page's river, as the app works it out: plays per month of its [partOf] parts since its first play. */
@@ -954,7 +959,38 @@ const Mock = (() => {
       info: { title, artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
       range: { ...r, plays: c[a] || 0, rank: rankIn(c, a) },
       trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })),
+      rangeTracks: rangeSongs(a), genres: [GENRES[Math.max(0, genreOf(a))] || 'Indie Rock', 'Jazz'].filter((g, i, x) => x.indexOf(g) === i),
       global: globalOf(title + L.artists[a], life.plays), river: riverOf((i) => L.a[i] === a, (i) => L.t[i], (k) => L.titles[k]) };
+  }
+  /** An artist's songs played in the Stats period, most first, as the app sends them for the page's period block. */
+  function rangeSongs(a) {
+    const L = history();
+    const { c } = rangeCounts((L2, i) => (L2.a[i] === a ? L2.t[i] : -1));
+    delete c[-1];
+    return Object.entries(c).sort((x, y) => y[1] - x[1]).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], plays: v }));
+  }
+  /** setlist.fm's answer for an artist, made up from their songs (one never played, one cover), a show to come. */
+  function fakeSetlists(name) {
+    const L = history();
+    const ai = L.artists.indexOf(name);
+    const mine = ai >= 0 ? topTrackOf(ai) : [];
+    const songs = [...mine.slice(0, 9).map((x) => ({ title: x.title, plays: x.plays, cover: '' })), { title: 'A New One', plays: 0, cover: '' }, { title: 'Heroes', plays: 0, cover: 'David Bowie' }];
+    const cities = [['Columbiahalle', 'Berlin', 'Germany'], ['Olympia', 'Paris', 'France'], ['Paradiso', 'Amsterdam', 'Netherlands'], ['O2 Academy Brixton', 'London', 'United Kingdom'], ['Vega', 'Copenhagen', 'Denmark']];
+    const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const shows = cities.map(([venue, city, country], i) => ({ id: `s${i}`, date: iso(Date.now() - (6 + i * 3) * DAY), venue, city, country, tour: 'The Long Way Round Tour',
+      url: 'https://www.setlist.fm/', songs: songs.filter((_, k) => (k + i) % 6 !== 0).map((x, k, all) => ({ ...x, with: '', encore: k >= all.length - 2 })) }));
+    const typical = songs.slice(0, 8).map((x, k) => ({ ...x, n: 5 - (k % 3), encore: k >= 7 }));
+    return { artist: name, url: 'https://www.setlist.fm/', of: shows.length, typical, shows,
+      upcoming: [{ id: 'u1', date: iso(Date.now() + 16 * DAY), venue: 'Tempodrom', city: 'Berlin', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
+  }
+  /** Stand-ins for photos from the phone: soft color fields with a horizon, as SVG. */
+  function fakePhoto(seed) {
+    const r = rng(seed);
+    const h1 = Math.floor(r() * 360), h2 = (h1 + 40 + Math.floor(r() * 80)) % 360, y = 40 + Math.floor(r() * 30);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${h1} 60% 72%)"/><stop offset="1" stop-color="hsl(${h2} 50% 48%)"/></linearGradient></defs>
+      <rect width="120" height="120" fill="url(#a)"/><circle cx="${30 + Math.floor(r() * 60)}" cy="${y - 14}" r="${8 + Math.floor(r() * 8)}" fill="hsl(${h1} 90% 92%)" opacity=".9"/>
+      <path d="M0 ${y} Q30 ${y - 8} 60 ${y + 2} T120 ${y - 4} V120 H0Z" fill="hsl(${h2} 35% 28%)"/><path d="M0 ${y + 24} Q40 ${y + 14} 80 ${y + 26} T120 ${y + 20} V120 H0Z" fill="hsl(${h2} 30% 18%)"/></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
   function artistLives() {
     const L = history();
@@ -1085,6 +1121,7 @@ const Mock = (() => {
       busiestMonth: { start: +new Date(first.getFullYear(), first.getMonth() + bm, 1), count: mArr[bm] || 0 },
       monthsFrom: +new Date(first.getFullYear(), first.getMonth(), 1), months: mArr, hours, streak: 6 + Math.floor(r() * 6), streakEnd: Date.now() - 52 * DAY,
       range: Object.assign({}, mockRange(statsRange), { plays: Math.round(plays / 8), rank: 2 }),
+      rangeTracks: rangeSongs(ai), rangeAlbums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays / 9), cover: '' }],
       tracks: [0, 1, 2, 3, 4].map((i) => ({ title: L.titles[(ai * 7 + i) % L.titles.length], plays: 60 - i * 9 })),
       albums: [{ title: RECORDS[Math.max(0, ai) % RECORDS.length][1], plays: Math.round(plays * 0.6), cover: '', owned: owned.length > 0 }],
       owned, genres: [GENRES[Math.max(0, genreOf(ai))] || 'Indie Rock'],
@@ -1310,6 +1347,12 @@ const Mock = (() => {
           break;
         case 'story': later(400, () => onStory(fakeStory(m.range || ''))); break;
         case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), req: m.req })); break;
+        case 'setlists': later(700, () => onSetlists(S.setlist.hasKey ? { ...fakeSetlists(m.name), name: m.name, req: m.req } : { name: m.name, req: m.req, needsKey: true })); break;
+        case 'saveSetlist': S.setlist = { hasKey: true, builtIn: false, keyHint: `…${m.key.slice(-4)}` }; pushState(); break;
+        case 'setlistForget': S.setlist = { hasKey: false, builtIn: false, keyHint: '' }; pushState(); break;
+        case 'photos': S.photos.on = m.on; pushState(); break;
+        case 'photosChoose': toast('(preview) Android would ask which photos'); break;
+        case 'photosSettings': toast('(preview) Android settings would open now'); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'phoneControl': {
           if (m.action === 'play' || m.action === 'pause') phonePlaying = m.action === 'play';

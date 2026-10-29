@@ -3,7 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// The app's own Last.fm and TIDAL keys, for builds other people install: they only sign in.
+// The app's own Last.fm, TIDAL and setlist.fm keys, for builds other people install: they only sign in.
 // They come from local.properties, which stays out of git (see README, "Building it yourself");
 // without them, everyone enters their own keys in Settings.
 def localProps = new Properties()
@@ -27,12 +27,13 @@ android {
         applicationId "app.recordshelf"
         minSdk 26
         targetSdk 34
-        versionCode 47
-        versionName "0.47"
+        versionCode 48
+        versionName "0.48"
         buildConfigField 'String', 'LASTFM_KEY', "\"${builtIn('recordshelf.lastfm.key')}\""
         buildConfigField 'String', 'LASTFM_SECRET', "\"${builtIn('recordshelf.lastfm.secret')}\""
         buildConfigField 'String', 'TIDAL_CLIENT_ID', "\"${tidalBuiltIn('recordshelf.tidal.clientId')}\""
         buildConfigField 'String', 'TIDAL_SECRET', "\"${tidalBuiltIn('recordshelf.tidal.secret')}\""
+        buildConfigField 'String', 'SETLISTFM_KEY', "\"${builtIn('recordshelf.setlistfm.key')}\""
     }
 
     signingConfigs {

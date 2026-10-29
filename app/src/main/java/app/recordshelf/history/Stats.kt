@@ -78,6 +78,13 @@ class Stats(
         const val GENRE_ALL_MAX = 300
         const val GENRE_ALSO_MAX = 12
 
+        /** Songs listed for the period on an artist or album page. */
+        const val RANGE_LIST = 5
+
+        /** A photo is taken "while" a song played up to this long after it started, "around" it within this much. */
+        const val PLAYING_SEC = 7 * 60L
+        const val NEAR_SEC = 45 * 60L
+
         // You against everyone: what is looked up on Last.fm, and what the lists need.
         const val VS_ARTISTS = 200
         const val VS_ARTIST_MIN = 3
@@ -1138,6 +1145,52 @@ class Stats(
         return out
     }
 
+    /**
+     * Albums whose own Last.fm tags the genres still need ([have] has them, by [Text.albumKey]): the most played,
+     * as (artist, title, key). Songs without an album and "Various Artists" compilations need none.
+     */
+    fun albumsNeedingTags(have: Set<String>, max: Int = 300, coverage: Double = 0.8): List<Triple<String, String, String>> {
+        val total = albumPlays.sum()
+        val out = ArrayList<Triple<String, String, String>>()
+        var covered = 0L
+        for (al in albumPlays.indices.sortedByDescending { albumPlays[it] }) {
+            if (covered >= coverage * total || out.size >= max || albumPlays[al] == 0) break
+            covered += albumPlays[al]
+            val artist = h.artistNames[h.albumArtist[al]]
+            if (h.albumTitles[al].isBlank() || Text.norm(artist).startsWith("various")) continue
+            if (h.albumKeys[al] !in have) out += Triple(artist, h.albumTitles[al], h.albumKeys[al])
+        }
+        return out
+    }
+
+    /** Your plays of each song by [artist], keyed by [Text.normLoose] of its title (versions added up). */
+    fun songPlays(artist: String): Map<String, Int> {
+        val a = artistIndex[Text.norm(artist)] ?: artistIndex[Text.norm(Artists.main(artist, artistIndex.keys))] ?: return emptyMap()
+        return songsOf(a).mapValues { it.value.second }
+    }
+
+    /**
+     * The play under way at [ts] (s): the last one that started at most [PLAYING_SEC] before, and true. If none,
+     * the nearest within [NEAR_SEC], and false. Null if nothing was played around then.
+     */
+    private fun playNear(ts: Long): Pair<Int, Boolean>? {
+        val i = h.lowerBound(ts + 1) - 1
+        if (i >= 0 && ts - h.ts[i] <= PLAYING_SEC) return i to true
+        val near = listOf(i, i + 1).filter { it in 0 until h.size }.minByOrNull { kotlin.math.abs(h.ts[it] - ts) } ?: return null
+        return if (kotlin.math.abs(h.ts[near] - ts) <= NEAR_SEC) near to false else null
+    }
+
+    /** What was playing at [ts] (s), as [playNear] finds it, with "playing" telling which of the two it is. */
+    fun playAt(ts: Long): JSONObject? = playNear(ts)?.let { (i, on) -> playJson(i).put("playing", on) }
+
+    /** The photos of [photos] worth showing in the story of [r], with what was playing when each was taken. */
+    fun moments(photos: List<Photo>, r: Range): JSONArray {
+        val picked = Moments.pick(photos, r.to - r.from, { t -> playNear(t)?.second == true }, { t -> playNear(t) != null })
+        return JSONArray(picked.map { p ->
+            JSONObject().put("id", p.id).put("ts", p.ts * 1000).put("w", p.w).put("h", p.h).put("song", playAt(p.ts) ?: JSONObject.NULL)
+        })
+    }
+
     // ---- the record, the river, phases ----
 
     /**
@@ -1729,6 +1782,8 @@ class Stats(
         val months = HashMap<Int, Int>()
         val tracks = HashMap<Int, Int>()
         val albums = HashMap<Int, Int>()
+        val rangeTracks = HashMap<Int, Int>()
+        val rangeAlbums = HashMap<Int, Int>()
         val hours = IntArray(24)
         val weeks = HashMap<Long, Int>()
         var days = 0
@@ -1739,6 +1794,10 @@ class Stats(
         for (i in 0 until h.size) {
             if (i in i0 until i1) inRange[h.artist[i]]++
             if (h.artist[i] != a) continue
+            if (i in i0 until i1) {
+                rangeTracks.merge(h.track[i], 1, Int::plus)
+                if (h.album[i] >= 0) rangeAlbums.merge(h.album[i], 1, Int::plus)
+            }
             plays++
             weeks.merge(weekKey(h.ts[i]), 1, Int::plus)
             if (first < 0) first = i
@@ -1782,6 +1841,8 @@ class Stats(
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
+            .put("rangeTracks", JSONArray(rangeTracks.entries.sortedByDescending { it.value }.take(RANGE_LIST).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
+            .put("rangeAlbums", JSONArray(rangeAlbums.entries.sortedByDescending { it.value }.take(3).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)) }))
         // Their albums as a river, over all your time with them.
         pageRiver(h.ts[first], { h.artist[it] == a }, { h.album[it] }, { h.albumTitles[it] })?.let { o.put("river", it) }
         // How you found them, back as far as the history goes, and who they led you to.
@@ -1951,6 +2012,7 @@ class Stats(
             .put("runs", runs)
         if (al >= 0) o.put("album", albumJson(al))
         val artistName = h.artistNames[h.trackArtist[t]]
+        o.put("genres", JSONArray(genres.of(artistName, if (al >= 0) h.albumKeys[al] else null).first.map { Genres.label(it) }))
         globals.track(artistName, h.trackTitles[t])?.let { o.put("global", vsJson(all[t], it)) }
         globals.top(artistName)?.let { top -> o.put("globalRank", top.indexOfFirst { Text.normLoose(it.first) == Text.normLoose(h.trackTitles[t]) } + 1) }
         return o
@@ -1969,12 +2031,14 @@ class Stats(
         val all = IntArray(h.albumTitles.size)
         val inRange = IntArray(h.albumTitles.size)
         val tracks = HashMap<Int, Int>()
+        val rangeTracks = HashMap<Int, Int>()
         for (i in 0 until h.size) {
             val x = h.album[i]
             if (x < 0) continue
             all[x]++
             if (i in i0 until i1) inRange[x]++
             if (x == al) tracks.merge(h.track[i], 1, Int::plus)
+            if (x == al && i in i0 until i1) rangeTracks.merge(h.track[i], 1, Int::plus)
         }
         globals.album(h.artistNames[h.albumArtist[al]], h.albumTitles[al])?.let { o.put("global", vsJson(all[al], it)) }
         // Its songs as a river, over all your time with it.
@@ -1983,6 +2047,8 @@ class Stats(
             .put("rank", rank(all, al)).put("albums", all.count { it > 0 })
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[al]).put("rank", rank(inRange, al)))
             .put("trackList", JSONArray(tracks.entries.sortedByDescending { it.value }.map { (t, c) -> JSONObject().put("title", h.trackTitles[t]).put("plays", c) }))
+            .put("rangeTracks", JSONArray(rangeTracks.entries.sortedByDescending { it.value }.take(RANGE_LIST).map { (t, c) -> JSONObject().put("title", h.trackTitles[t]).put("plays", c) }))
+            .put("genres", JSONArray(genres.of(h.artistNames[h.albumArtist[al]], h.albumKeys[al]).first.map { Genres.label(it) }))
     }
 
     // ---- explore: the long tail, relative to today ----

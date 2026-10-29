@@ -30,6 +30,9 @@ import app.recordshelf.net.DeezerClient
 import app.recordshelf.net.DzArtist
 import app.recordshelf.net.DzRelease
 import app.recordshelf.net.Http
+import app.recordshelf.net.SetlistfmClient
+import app.recordshelf.net.Setlists
+import app.recordshelf.net.Show
 import app.recordshelf.scrobble.ActivityLog
 import app.recordshelf.scrobble.Compare
 import app.recordshelf.scrobble.Durations
@@ -72,6 +75,12 @@ object Core {
 
         /** Lets the user pick where to save a backup ([save], suggesting [name]) or which one to restore. */
         fun pickBackup(save: Boolean, name: String)
+
+        /** Asks Android for the photos (all, or from Android 14 the ones the user picks); then [photosAnswered]. */
+        fun askPhotos()
+
+        /** Opens this app's page in Android's settings (where a permission refused twice can still be given). */
+        fun openAppSettings()
     }
 
     private const val HOUR = 3_600_000L
@@ -577,6 +586,7 @@ object Core {
                         ?: JSONObject().put("missing", true).put("artist", artist).put("title", title)
                     j.put("req", msg.optInt("req"))
                     push(if (isTrack) "onTrack" else "onAlbum") { j }
+                    if (!isTrack && !j.has("missing")) albumTagsFor(j)
                     globalsFor(pageAsks(if (isTrack) GlobalAsk.Kind.TRACK else GlobalAsk.Kind.ALBUM, j), msg)
                     // No cover yet: Last.fm may have one; the page comes again if so.
                     val info = j.optJSONObject(if (isTrack) "album" else "info")
@@ -729,7 +739,13 @@ object Core {
                 val id = msg.optString("range")
                 statsExec.execute {
                     val s = shownStats() ?: return@execute
-                    push("onStory") { s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade) }
+                    val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade)
+                    // Photos you took then, with what was playing: from all your plays, whatever the filter.
+                    if (prefs.storyPhotos) currentStats()?.let { all ->
+                        val r = all.range(id)
+                        story.put("moments", all.moments(Photos.taken(ctx, r.from, r.to), r))
+                    }
+                    push("onStory") { story }
                 }
             }
             "saveLastfm" -> {
@@ -824,6 +840,26 @@ object Core {
                 prefs.lastfmSecret = ""
                 handle(JSONObject().put("t", "lastfmDisconnect"))
             }
+            "setlists" -> setlistsFor(msg.optString("name"), msg.optInt("req"))
+            "saveSetlist" -> {
+                prefs.setlistKey = msg.optString("key").trim()
+                setlistCache.clear()
+                setlistfm = null
+                pushState()
+            }
+            "setlistForget" -> {
+                prefs.setlistKey = ""
+                setlistCache.clear()
+                setlistfm = null
+                pushState()
+            }
+            "photos" -> {
+                prefs.storyPhotos = msg.optBoolean("on")
+                if (prefs.storyPhotos && Photos.access(ctx) == "none") askPhotos()
+                pushState()
+            }
+            "photosChoose" -> askPhotos()
+            "photosSettings" -> main.post { ui?.openAppSettings() }
             "saveDiscogs" -> connectDiscogs(msg.optString("token").trim(), msg.optString("user").trim().removePrefix("@"))
             "discogsDisconnect" -> syncExec.execute {
                 prefs.discogsToken = ""
@@ -1477,6 +1513,99 @@ object Core {
     /** Artists whose tags an artist page asked Last.fm for (once each while the app runs). */
     private val tagsAsked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
 
+    /**
+     * An album page beyond the most played ([j], its tags never looked up): Last.fm's tags for the album now,
+     * weighed with its artist's and your record of it, and the page again with its genres.
+     */
+    private fun albumTagsFor(j: JSONObject) {
+        val c = lastfm() ?: return
+        val info = j.optJSONObject("info") ?: return
+        val key = info.optString("key")
+        val artist = info.optString("artist")
+        val title = info.optString("title")
+        if (key.isEmpty() || key in db.tags().keys || !tagsAsked.add(key)) return
+        historyExec.execute {
+            try {
+                db.saveTags(key, Genres.fromTags(c.albumTopTags(artist, title), artist, title))
+                val kept = db.tags().filterKeys { it == key || it == Genres.artistKey(artist) }
+                val families = Genres(collection, kept).of(artist, key).first
+                if (families.isNotEmpty()) push("onAlbum") { JSONObject(j.toString()).put("genres", JSONArray(families.map { Genres.label(it) })) }
+            } catch (_: Exception) {
+                tagsAsked.remove(key) // offline: next time
+            }
+        }
+    }
+
+    // ---- setlist.fm ----
+
+    /** An artist as setlist.fm knows them, with their shows (the newest first, a few to come among them). */
+    private class Live(val name: String, val url: String, val shows: List<Show>)
+
+    /** setlist.fm's answers by artist ([Text.norm]), with when they came: kept [LIVE_TTL] (null: setlist.fm doesn't know them). */
+    private val setlistCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Live?>>()
+    private const val LIVE_TTL = 12 * HOUR
+
+    /** One client while the key stays, so its two requests a second hold across artists. */
+    @Volatile private var setlistfm: SetlistfmClient? = null
+
+    /** An artist page's setlists: what they play lately and their recent shows, with your plays of each song. On [webExec]. */
+    private fun setlistsFor(name: String, req: Int) {
+        val key = prefs.setlistKey
+        val out = JSONObject().put("name", name).put("req", req)
+        if (key.isEmpty()) return push("onSetlists") { out.put("needsKey", true) }
+        webExec.execute {
+            try {
+                val live = liveFor(name)
+                val plays = currentStats()?.songPlays(name).orEmpty()
+                if (live == null) out.put("unknown", true) else liveJson(live, plays, out)
+            } catch (_: SetlistfmClient.KeyRefused) {
+                out.put("error", "setlist.fm didn't accept the API key. Check it in Settings → setlist.fm.")
+            } catch (_: SetlistfmClient.Busy) {
+                out.put("error", "setlist.fm is busy right now. Try again in a minute.")
+            } catch (_: Exception) {
+                out.put("error", "Couldn't reach setlist.fm. Check your connection.")
+            }
+            push("onSetlists") { out }
+        }
+    }
+
+    private fun liveFor(name: String): Live? {
+        val k = Text.norm(name)
+        setlistCache[k]?.takeIf { System.currentTimeMillis() - it.first < LIVE_TTL }?.let { return it.second }
+        val c = setlistfm ?: SetlistfmClient(prefs.setlistKey).also { setlistfm = it }
+        val live = c.findArtist(name)?.let { a ->
+            val first = c.setlists(a.mbid, 1)
+            // Few recent setlists on the first page (shows to come, ones nobody wrote down yet): the next page too.
+            val shows = if (Setlists.lately(first, java.time.LocalDate.now()).size < 6 && first.size >= 20) first + c.setlists(a.mbid, 2) else first
+            Live(a.name, a.url, shows)
+        }
+        setlistCache[k] = System.currentTimeMillis() to live
+        return live
+    }
+
+    private fun liveJson(live: Live, plays: Map<String, Int>, out: JSONObject) {
+        val today = java.time.LocalDate.now()
+        val lately = Setlists.lately(live.shows, today)
+        fun song(title: String, cover: String) = JSONObject().put("title", title).put("cover", cover).put("plays", plays[Text.normLoose(title)] ?: 0)
+        fun show(s: Show) = JSONObject().put("id", s.id).put("date", s.date.toString()).put("venue", s.venue).put("city", s.city).put("country", s.country)
+            .put("tour", s.tour).put("url", s.url)
+            .put("songs", JSONArray(s.songs.filter { !it.tape }.map { song(it.title, it.cover).put("with", it.with).put("encore", it.encore) }))
+        out.put("artist", live.name).put("url", live.url).put("of", lately.size)
+            .put("typical", JSONArray(Setlists.typical(lately).map { song(it.title, it.cover).put("n", it.shows).put("encore", it.encore) }))
+            .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(3).map { show(it) }))
+            .put("shows", JSONArray(live.shows.filter { !it.date.isAfter(today) && it.songs.any { s -> !s.tape } }.sortedByDescending { it.date }.take(15).map { show(it) }))
+    }
+
+    // ---- photos for the story ----
+
+    private fun askPhotos() {
+        prefs.photosAsked = true
+        main.post { ui?.askPhotos() }
+    }
+
+    /** Android answered about the photos. */
+    fun photosAnswered() = pushState()
+
     /** Songs Last.fm finds similar to a song (by its key), for genre playlists: the last 60 asked. */
     private val similar: MutableMap<String, List<Triple<String, String, Double>>> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, List<Triple<String, String, Double>>>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Triple<String, String, Double>>>?) = size > 60
@@ -1817,15 +1946,23 @@ object Core {
     /** Last.fm tags for the most played artists (weighed with Discogs' styles for those on your shelf). On [historyExec]. */
     private fun fetchTagsInner(c: LastfmClient) {
         val s = currentStats() ?: return
-        // Tags kept by older versions (three, without their weights) are looked up again.
-        val need = s.artistsNeedingTags(db.tags().filterValues { Genres.tagsCurrent(it) }.keys)
-        if (need.isEmpty()) return
-        tagsTotal = need.size
+        // Tags kept by older versions (three, without their weights) are looked up again; then the most played albums' own.
+        val kept = db.tags()
+        val need = s.artistsNeedingTags(kept.filterValues { Genres.tagsCurrent(it) }.keys)
+        val albums = s.albumsNeedingTags(kept.keys)
+        if (need.isEmpty() && albums.isEmpty()) return
+        tagsTotal = need.size + albums.size
         tagsDone = 0
         pushState()
         try {
             for (a in need) {
                 db.saveTags(Genres.artistKey(a), Genres.fromTags(c.artistTopTags(a), a))
+                tagsDone++
+                if (tagsDone % 10 == 0) pushState()
+                Thread.sleep(220)
+            }
+            for ((artist, title, key) in albums) {
+                db.saveTags(key, Genres.fromTags(c.albumTopTags(artist, title), artist, title))
                 tagsDone++
                 if (tagsDone % 10 == 0) pushState()
                 Thread.sleep(220)
@@ -2127,6 +2264,8 @@ object Core {
             JSONObject().put("hasApp", tidal.hasApp).put("builtIn", prefs.tidalBuiltIn).put("loggedIn", tidal.loggedIn).put("busy", tidalBusy).put("error", tidalError)
                 .put("clientHint", hint(prefs.tidalClientId)).put("redirect", TidalClient.REDIRECT),
         )
+        .put("setlist", JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey)))
+        .put("photos", JSONObject().put("on", prefs.storyPhotos).put("access", Photos.access(ctx)).put("asked", prefs.photosAsked).put("canChoose", android.os.Build.VERSION.SDK_INT >= 34))
         .put("version", BuildConfig.VERSION_NAME)
 
     // ---- small persisted maps ----

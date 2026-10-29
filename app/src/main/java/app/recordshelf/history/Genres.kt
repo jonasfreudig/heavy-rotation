@@ -9,23 +9,28 @@ import app.recordshelf.util.Text
  * its Discogs styles, each read within the record's Discogs genres ("Psychedelic" on a Funk /
  * Soul record is psychedelic soul, not rock); the artist's other records on your shelf count a
  * little; the artist's Last.fm tags, cleaned of non-genres like "seen live", count as much as the
- * record. The family with the most weight is the scrobble's genre: one source's slip (Discogs
+ * record, and so do the album's own Last.fm tags when it has some (an artist's electronic album
+ * among their rock ones). The family with the most weight is the scrobble's genre: one source's slip (Discogs
  * filing a jazz record under Hip Hop for its guest rappers) doesn't decide it alone.
  * "Indie", "Indie Rock" and "Garage Rock Revival" all land in Indie & Alternative.
  *
  * Inside each family, the styles and tags themselves are its subgenres ("indie:shoegaze"): a
  * scrobble's subgenre is its weightiest specific one in its family ("Rock" or "Indie" alone tell none).
  */
-class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<String>>) {
+class Genres(collection: List<CollectionItem>, tags: Map<String, List<String>>) {
     enum class Source { DISCOGS, LASTFM, NONE }
 
     /** A scrobble's genre in detail: its family, its style in that family ("" if none is told), and the source most of it came from. */
     class Detail(val family: String, val style: String, val source: Source)
 
-    /** Weighed (family, style) pairs, each set summing to 1: of each record, of each artist you own records of, of each artist's Last.fm tags. */
+    /**
+     * Weighed (family, style) pairs, each set summing to 1: of each record, of each artist you own records of, of each
+     * artist's Last.fm tags, of each album's Last.fm tags.
+     */
     private val byAlbum = HashMap<String, Map<Pair<String, String>, Double>>()
     private val byArtist = HashMap<String, Map<Pair<String, String>, Double>>()
     private val byTags = HashMap<String, Map<Pair<String, String>, Double>>()
+    private val byAlbumTags = HashMap<String, Map<Pair<String, String>, Double>>()
 
     /** How Discogs spells the styles on your shelf ("Post-Punk"), by [key]. */
     private val spelling = HashMap<String, String>()
@@ -40,7 +45,8 @@ class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<Stri
             v.forEach { (p, w) -> sums.merge(p, w, Double::plus) }
         }
         for ((a, sums) in artistSums) votes(sums.toList())?.let { byArtist[a] = it }
-        for ((a, kept) in artistTags) votes(tagVotes(readTags(kept)))?.let { byTags[a] = it }
+        // Kept tags by [artistKey], or by [Text.albumKey] for an album's own.
+        for ((k, kept) in tags) votes(tagVotes(readTags(kept)))?.let { if (isAlbumKey(k)) byAlbumTags[k] = it else byTags[k] = it }
     }
 
     /** All that is known of an artist/album: families by weight, best first, the weight of each (family, style), and each family's main source. */
@@ -50,6 +56,7 @@ class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<Stri
         val a = artistKey(artist)
         val parts = listOfNotNull(
             albumKey?.let { byAlbum[it] }?.let { Triple(it, RECORD_SHARE, Source.DISCOGS) },
+            albumKey?.let { byAlbumTags[it] }?.let { Triple(it, ALBUM_TAGS_SHARE, Source.LASTFM) },
             byArtist[a]?.let { Triple(it, SHELF_SHARE, Source.DISCOGS) },
             byTags[a]?.let { Triple(it, TAGS_SHARE, Source.LASTFM) },
         )
@@ -98,10 +105,11 @@ class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<Stri
     }
 
     companion object {
-        /** How much each source weighs: the record itself, the artist's records on your shelf, the artist's Last.fm tags. */
+        /** How much each source weighs: the record itself, the artist's records on your shelf, the artist's and the album's Last.fm tags. */
         private const val RECORD_SHARE = 2.0
         private const val SHELF_SHARE = 1.0
         private const val TAGS_SHARE = 2.0
+        private const val ALBUM_TAGS_SHARE = 2.0
 
         /** An artist/album's other families show beside its main one from this share of the main one's weight (and this much of all). */
         private const val SHOWN = 0.25
@@ -362,21 +370,25 @@ class Genres(collection: List<CollectionItem>, artistTags: Map<String, List<Stri
 
         fun artistKey(artist: String) = Text.norm(artist)
 
+        /** Whether a key of kept tags is an album's ([Text.albumKey], with its "|") rather than an artist's. */
+        fun isAlbumKey(k: String) = '|' in k
+
         /** The mark before Last.fm tags kept with their weights; older versions kept three, without. */
         private const val TAGS_V = "v2"
         private const val TAGS_MAX = 10
         private const val TAG_MIN = 10
 
         /**
-         * An artist's Last.fm tags (name, weight 0..100, best first) as they are kept: the genre-like ones, up to
-         * [TAGS_MAX] of them, each as "weight:tag" after the mark [TAGS_V].
+         * An artist's or album's Last.fm tags (name, weight 0..100, best first) as they are kept: the genre-like ones, up to
+         * [TAGS_MAX] of them, each as "weight:tag" after the mark [TAGS_V]. Tags that are just the artist's name or the
+         * album's [title] say nothing of the music.
          */
-        fun fromTags(tags: List<Pair<String, Int>>, artist: String): List<String> {
-            val self = key(artist)
+        fun fromTags(tags: List<Pair<String, Int>>, artist: String, title: String = ""): List<String> {
+            val self = setOf(key(artist), key(title), key(Text.normLoose(title)))
             return listOf(TAGS_V) + tags.asSequence()
                 .filter { it.second >= TAG_MIN }
                 .map { key(it.first) to it.second }
-                .filter { (k, _) -> k.length in 2..30 && k !in NOT_GENRES && !YEARS.matches(k) && k != self }
+                .filter { (k, _) -> k.length in 2..30 && k !in NOT_GENRES && !YEARS.matches(k) && k !in self }
                 .distinctBy { it.first }
                 .take(TAGS_MAX)
                 .map { (k, w) -> "$w:$k" }

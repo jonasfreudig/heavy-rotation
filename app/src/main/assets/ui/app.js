@@ -843,7 +843,7 @@ function openSettings(section) {
   renderSettings();
   // Accounts fold away once they're set up; one that needs something, or was asked for, opens.
   const l = ST.lastfm || {}, d = ST.discogs || {}, p = ST.phone || {};
-  const done = { lfSection: !!l.connected && !l.needsAuth, dgSection: !!d.connected, tdSection: true, phSection: (p.mode || 'off') === 'off' || !!p.access };
+  const done = { lfSection: !!l.connected && !l.needsAuth, dgSection: !!d.connected, tdSection: true, slSection: true, phSection: (p.mode || 'off') === 'off' || !!p.access };
   let moved = false;
   $$('#settingsPage details.acct').forEach((el) => {
     const open = el.id === section || !done[el.id];
@@ -3837,6 +3837,20 @@ window.onTrack = (t) => {
   });
 };
 
+/** Genre chips that open their genre's page. */
+const genreChips = (list) => (list && list.length ? `<div class="tags">${list.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : '');
+
+/**
+ * What you played of an artist or album in the Stats period you came from: the page itself is
+ * about all your time with them, this is the period's part ([noun]: "artist" or "album").
+ */
+function periodBlock(r, list, noun, attrs, extra = '') {
+  if (!r || r.kind === 'all' || !r.plays || !list || !list.length) return '';
+  const max = Math.max(1, ...list.map((x) => x.plays));
+  return `<div class="viz"><h2>${esc(periodName(r))}</h2><span class="sub">${plural(r.plays, 'play')}${r.rank ? `, your #${r.rank} ${noun} then` : ''}. The rest of this page is all time.</span>
+    <div class="rank">${list.map((x, i) => `<button class="r" ${attrs(x)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div>${extra}</div>`;
+}
+
 function renderTrack() {
   const t = TRACK;
   if (!t || !isOpen('trackPage')) return;
@@ -3847,13 +3861,14 @@ function renderTrack() {
   let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">·</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
+    ${genreChips(t.genres)}
     ${listenRow('tracks', t.artist, t.title)}</div>`;
   if (t.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (t.missing) h += `<div class="empty"><p>${esc(missingNote())}</p></div>`;
   else {
     const r = t.range || {};
     h += `<div class="tiles">
-      ${tile('Plays', num(t.plays), `#${t.rank} of ${compact(t.tracks)} songs`, '', 'music')}
+      ${tile('All time', num(t.plays), `plays · #${t.rank} of ${compact(t.tracks)} songs`, '', 'music')}
       ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
       ${tile('First heard', esc(monthYear(t.first)), `last played ${esc(dateLabel(t.last))}`, '', 'history')}
       ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)), '', 'fire')}
@@ -3901,6 +3916,7 @@ function renderAlbum() {
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
     ${badgeLine(shelfId)}
+    ${genreChips(a.genres)}
     ${listenRow('albums', a.artist, a.title)}
     ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
     ${shelfId ? `<div class="stats"><button class="chip link" data-rec="${shelfId}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
@@ -3911,7 +3927,7 @@ function renderAlbum() {
   } else {
     const r = a.range || {};
     h += `<div class="tiles">
-      ${tile('Plays', num(a.plays), `#${a.rank} of ${compact(a.albums)} albums`, '', 'music')}
+      ${tile('All time', num(a.plays), `plays · #${a.rank} of ${compact(a.albums)} albums`, '', 'music')}
       ${tile(periodName(r), r.plays ? `#${r.rank}` : '–', r.plays ? plural(r.plays, 'play') : 'no plays', '', 'calendar')}
       ${tile('First heard', esc(monthYear(a.first)), `last played ${esc(dateLabel(a.last))}`, '', 'history')}
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
@@ -3919,6 +3935,7 @@ function renderAlbum() {
     const songs = a.dzInfo && !a.dzInfo.error && a.dzInfo.tracks ? a.dzInfo.tracks.length : 0;
     if (songs) h += `<p class="hint center">Plays count songs, not whole albums: ${num(a.plays)} song plays are about ${a.plays >= songs ? `${num(Math.round(a.plays / songs))} times` : 'less than once'} through its ${plural(songs, 'song')}.</p>`;
     const tl = a.trackList || [];
+    h += periodBlock(r, a.rangeTracks, 'album', (x) => trackAttrs(a.artist, x.title, { album: a.title, cover }));
     h += trackShapeViz(a);
     const tracklist = tracklistHtml(a, cover);
     if (tracklist) h += tracklist;
@@ -4830,8 +4847,9 @@ function renderPlaylist() {
       </ol>
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
-    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? ` · ${esc(t.album)}` : ''}</small></span>${t.source === 'new' ? '<span class="v new-tag">new</span>' : `<span class="v">${t.plays}×</span>`}</button>`).join('')}</div>
-    ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}`;
+    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? ` · ${esc(t.album)}` : ''}${t.note ? ` · ${esc(t.note)}` : ''}</small></span>${t.source === 'new' ? '<span class="v new-tag">new</span>' : `<span class="v">${t.plays}×</span>`}</button>`).join('')}</div>
+    ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}
+    ${p.kind === 'setlist' ? `<p class="hint">"New" are songs you haven't played yet. Setlist from <button class="link-inline" data-url="${esc(p.url || 'https://www.setlist.fm/')}">setlist.fm</button>.</p>` : ''}`;
   wireGenrePlControls();
   $('#plTidalBlock').onclick = (e) => {
     if (e.target.closest('#plTidalLogin')) send({ t: 'tidalLogin' });
@@ -4854,6 +4872,68 @@ function renderPlaylist() {
   };
 }
 
+// ---- setlists from setlist.fm, on artist pages ----
+
+let LIVE = null; // the artist page's setlists: { name, req, loading } until setlist.fm answers
+let liveReq = 0;
+function requestLive(name) {
+  LIVE = { name, loading: true, req: ++liveReq };
+  if ((ST.setlist || {}).hasKey) send({ t: 'setlists', name, req: LIVE.req });
+}
+window.onSetlists = (s) => {
+  if (!LIVE || s.req !== LIVE.req) return;
+  LIVE = { ...s, name: LIVE.name, req: LIVE.req, loading: false };
+  const slot = $('#liveSlot');
+  if (slot && isOpen('artistPage') && ARTIST && norm(ARTIST.name) === norm(LIVE.name)) slot.innerHTML = liveHtml();
+};
+const showDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+const songNote = (x) => [x.cover ? `cover of ${x.cover}` : '', x.with ? `with ${x.with}` : '', x.encore ? 'encore' : ''].filter(Boolean).join(' · ');
+
+/** "On stage lately" for artist [name]: the songs of their usual set lately (as a concert playlist) and their recent shows. */
+function liveHtml(name) {
+  // Back on an earlier artist page: its own setlists (setlist.fm's answers are kept a while in the app).
+  if (name && (!LIVE || norm(LIVE.name) !== norm(name))) requestLive(name);
+  const L = LIVE;
+  if (!L) return '';
+  const head = '<h2>On stage lately</h2>';
+  if (!(ST.setlist || {}).hasKey) {
+    return `<div class="viz live">${head}<span class="sub">Their recent setlists, and what they play lately as a concert playlist, with a free key from setlist.fm.</span>
+      <div class="btn-row"><button class="btn tonal" data-go="slSection">${icon('open')}Set up setlist.fm</button></div></div>`;
+  }
+  if (L.loading) return `<div class="viz live">${head}<span class="sub">Asking setlist.fm…</span><div class="lin inline indet"><i></i></div></div>`;
+  if (L.error) return `<div class="viz live">${head}<p class="hint">${esc(L.error)}</p></div>`;
+  const shows = L.shows || [], typ = L.typical || [], next = (L.upcoming || [])[0];
+  if (L.unknown || (!shows.length && !next)) return '';
+  let h = `<div class="viz live">${head}<span class="sub">${typ.length ? `Their usual set at their last ${plural(L.of, 'show')} with a setlist, in its usual order` : 'Their shows on setlist.fm'}</span>`;
+  if (next) h += `<button class="live-next" data-url="${esc(next.url)}">${icon('calendar')}<span><b>Next: ${esc(showDate(next.date))}</b><small>${esc([next.venue, next.city].filter(Boolean).join(', '))}</small></span></button>`;
+  if (typ.length) {
+    h += `<div class="rank">${typ.map((x, i) => `<button class="r" ${trackAttrs(L.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc([`at ${x.n} of ${L.of}`, songNote(x)].filter(Boolean).join(' · '))}</small></span>${x.plays ? `<span class="v">${num(x.plays)}×</span>` : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
+      <div class="btn-row"><button class="btn filled" data-livepl="usual">${icon('playlist')}Make a concert playlist</button></div>`;
+  }
+  if (shows.length) {
+    h += `<h3 class="live-h">Recent shows</h3><div class="rank">${shows.slice(0, 8).map((s, i) => `<button class="r" data-show="${i}"><span class="t"><b>${esc(showDate(s.date))} · ${esc(s.city || s.venue)}</b><small>${esc([s.venue, s.country].filter(Boolean).join(', '))} · ${plural(s.songs.length, 'song')}</small></span><span class="v">${icon('chevron-right')}</span></button>`).join('')}</div>`;
+  }
+  return `${h}<p class="hint">Setlists from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, written down by fans. "New" are songs you haven't played yet.</p></div>`;
+}
+
+/** A concert playlist: their usual set lately ([i] < 0) or the setlist of show [i]. */
+function openLivePlaylist(i) {
+  const L = LIVE;
+  if (!L || L.loading) return;
+  const s = i >= 0 ? (L.shows || [])[i] : null;
+  const songs = s ? s.songs : L.typical || [];
+  if (!songs.length) return;
+  openPage('playlistPage');
+  TIDALJOB = null;
+  PLAYLIST = {
+    kind: 'setlist', url: s ? s.url : L.url,
+    name: s ? `${L.name} live in ${s.city || s.venue}` : `${L.name} live`,
+    note: s ? `Their setlist on ${showDate(s.date)}${s.venue ? ` at ${s.venue}` : ''}` : `What they played most at their last ${plural(L.of, 'show')}, in their usual order`,
+    tracks: songs.map((x) => ({ artist: L.name, title: x.title, album: '', plays: x.plays, source: x.plays ? 'core' : 'new', note: songNote(x) })),
+  };
+  renderPlaylist();
+}
+
 // ---- one artist ----
 
 let ARTIST = null;
@@ -4862,6 +4942,7 @@ function openArtist(name) {
   openPage('artistPage');
   ARTIST = { name, loading: true, req: ++REQ };
   requestDiscography(name);
+  requestLive(name);
   $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
   send({ t: 'artist', name, range: statsRange, req: ARTIST.req });
 }
@@ -4878,7 +4959,7 @@ function renderArtist() {
   if (!a || a.loading || !isOpen('artistPage')) return;
   if (a.missing) {
     $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow('artists', a.name)}</div><div class="empty small"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>
-      <div id="discoSlot">${discoHtml(a.name)}</div>`;
+      <div id="discoSlot">${discoHtml(a.name)}</div><div id="liveSlot">${liveHtml(a.name)}</div>`;
     return;
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
@@ -4891,11 +4972,14 @@ function renderArtist() {
     ${listenRow('artists', a.name)}
     <p class="hint center">First heard ${esc(dateLabel(a.first.ts))}: ${esc(a.first.track)}</p>
     <div class="tiles">
-      ${tile('Plays', num(a.plays), `on ${plural(a.days, 'day')}`, '', 'music')}
+      ${tile('All time', num(a.plays), `plays on ${plural(a.days, 'day')}`, '', 'music')}
       ${tile(periodName(a.range), a.range.rank ? `#${a.range.rank}` : '–', a.range.plays ? plural(a.range.plays, 'play') : 'no plays', '', 'calendar')}
       ${tile('Busiest month', mo(a.busiestMonth.start), plural(a.busiestMonth.count, 'play'), '', 'chart')}
       ${tile('Longest streak', plural(a.streak, 'day'), a.streak > 1 ? `until ${dateLabel(a.streakEnd)}` : '', '', 'fire')}
     </div>`;
+  const ra = a.rangeAlbums || [];
+  h += periodBlock(a.range, a.rangeTracks, 'artist', (x) => trackAttrs(a.name, x.title),
+    ra.length ? `<p class="hint">Mostly from ${ra.map((x) => `<button class="link-inline" ${albumAttrs(a.name, x.title)}>${esc(x.title)}</button> (${num(x.plays)})`).join(', ')}.</p>` : '');
   h += vsBlock(a.global, esc(a.name));
   h += originHtml(a);
   h += `<div id="discoSlot">${discoHtml(a.name)}</div>`;
@@ -4919,6 +5003,7 @@ function renderArtist() {
   if (a.albums.length) {
     h += `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>`;
   }
+  h += `<div id="liveSlot">${liveHtml(a.name)}</div>`;
   h += globalTopHtml(a);
   if (a.owned.length) {
     h += `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>`;
@@ -5540,6 +5625,9 @@ function singleHtml(cover, seed) {
   return `<div class="single in" style="--h:${hue(seed)}"><div class="sv"><i class="lab" style="${label}">${cover ? '' : '<b>45</b>'}</i><i class="hole"></i></div></div>`;
 }
 
+/** A photo of the story's moments: from this phone, through an address only the app answers (the preview brings its own). */
+const photoUrl = (m) => m.src || `https://appassets.androidplatform.net/photo/${m.id}`;
+
 function buildSlides(s) {
   const out = [];
   const name = periodName(s.range);
@@ -5609,6 +5697,23 @@ function buildSlides(s) {
   if (album) {
     out.push({ cls: 'deep', html: `<div class="k in">${ofThe(s.range.kind, 'Album')}</div><div class="in" ${dly(0.1)}>${holoCover(album.cover, album.title, album.artist, { owned: album.owned, key: 'story-album' })}</div>
       <div class="t m in" ${dly(0.25)} data-fit="2">${esc(album.title)}</div><p class="p in" ${dly(0.4)}>${esc(album.artist)} · ${plural(album.plays, 'play')}${album.owned ? ' · on your shelf' : ''}</p>` });
+  }
+  // Moments: photos you took then, with the song that was playing
+  const ms = s.moments || [];
+  if (ms.length) {
+    const hero = ms.find((m) => m.song && m.song.playing) || ms[0];
+    const when = (ts) => new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+    const sg = hero.song;
+    out.push({ cls: 'deep photo moment', html: `<div class="mo bg"><i class="img" style="background-image:url('${cssUrl(photoUrl(hero))}')"></i><i class="fade"></i></div>
+      <div class="k in">${esc(when(hero.ts))}, ${esc(new Date(hero.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>
+      ${sg ? `<div class="t m in" ${dly(0.15)} data-fit="2">${esc(sg.title)}</div><p class="p in" ${dly(0.3)}>${sg.playing ? `by ${esc(sg.artist)} was playing when you took this.` : `by ${esc(sg.artist)}, just around when you took this.`}</p>`
+        : `<div class="t m in" ${dly(0.15)} data-fit="2">A moment of ${esc(name)}</div>`}` });
+    const rest = ms.filter((m) => m !== hero).slice(0, 4);
+    if (rest.length >= 2) {
+      const rnd = seededRandom(hue(name) + rest.length);
+      out.push({ cls: 'paper moments', dur: 9, html: `<div class="k in">${esc(name)} in pictures</div><div class="polas n${rest.length}">${rest.map((m, i) => `<figure class="pola in" style="--d:${(0.15 + i * 0.2).toFixed(2)}s;--r:${((rnd() - 0.5) * 7).toFixed(1)}deg">
+        <i class="ph" style="background-image:url('${cssUrl(photoUrl(m))}')"></i><figcaption><b>${esc(when(m.ts))}</b>${m.song ? `<span>${m.song.playing ? '' : 'around '}${esc(m.song.title)}</span>` : ''}</figcaption></figure>`).join('')}</div>` });
+    }
   }
   // Golden hour, on a sundial
   const gh = s.goldenHour;
@@ -5706,11 +5811,40 @@ function renderTidalSettings() {
   $('#tdError').textContent = t.error || '';
 }
 
+function renderSetlistSettings() {
+  const s = ST.setlist || {};
+  $('#slStatus').innerHTML = s.hasKey ? statusLine('ok', 'Set up', s.builtIn ? 'Artist pages show their recent setlists' : `API key ${s.keyHint || ''} · artist pages show their recent setlists`)
+    : statusLine('', 'Not set up', 'Recent setlists and concert playlists on artist pages');
+  $('#slSetup').hidden = !!s.hasKey;
+  $('#slConnected').hidden = !s.hasKey;
+  $('#slForget').hidden = !!s.builtIn;
+}
+
+/** Photos in the story: off, waiting for Android's yes, or on (with all photos or the ones you chose). */
+function renderPhotoSettings() {
+  const p = ST.photos || {};
+  let text, btns;
+  if (!p.on) {
+    text = 'Your stories can show photos you took in their days, each with the song that was playing. They stay on your phone: Heavy Rotation only reads them to show them here.';
+    btns = '<button class="btn tonal" data-photos="on">Show my photos</button>';
+  } else if (p.access === 'none') {
+    text = p.asked ? 'Android hasn\'t allowed Heavy Rotation to see your photos yet. If it doesn\'t ask anymore, allow it in Android\'s settings under Permissions → Photos and videos.' : 'Waiting for Android to ask you…';
+    btns = '<button class="btn tonal" data-photos="choose">Ask again</button><button class="btn outlined" data-photos="settings">Android settings</button><button class="btn text" data-photos="off">Turn off</button>';
+  } else {
+    text = p.access === 'some' ? 'On, with the photos you chose: stories show the ones taken in their days, with what was playing.' : 'On: stories show photos you took in their days, with what was playing. Screenshots and pictures saved from other apps are left out.';
+    btns = `${p.access === 'some' ? '<button class="btn tonal" data-photos="choose">Choose more photos</button>' : ''}<button class="btn outlined" data-photos="off">Turn off</button>`;
+  }
+  $('#phoText').textContent = text;
+  $('#phoBtns').innerHTML = btns;
+}
+
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
   $$('#ambSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === ambientMode()));
   renderServices();
   renderTidalSettings();
+  renderSetlistSettings();
+  renderPhotoSettings();
   const td = (STATS && STATS.tidy) || {};
   const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
   $('#tidyStatus').textContent = td.hiddenPlays ? `${plural(td.hiddenPlays, 'play')} hidden from your stats. ${more}`
@@ -5841,6 +5975,9 @@ function build() {
     if (canvas) { if (Date.now() > recGesture.quietUntil) onRecordTap(canvas, e); return; }
     const ar = e.target.closest('[data-artist]');
     if (ar) { openArtist(ar.dataset.artist); return; }
+    const show = e.target.closest('[data-show]');
+    if (show) { openLivePlaylist(+show.dataset.show); return; }
+    if (e.target.closest('[data-livepl]')) { openLivePlaylist(-1); return; }
     const go = e.target.closest('[data-go]');
     if (go) { openSettings(go.dataset.go); return; }
     const url = e.target.closest('[data-url]');
@@ -6112,6 +6249,20 @@ function build() {
     $('#lfKey').value = '';
     $('#lfSecret').value = '';
     showKeyForm = false;
+  };
+  $('#slSave').onclick = () => {
+    const key = $('#slKey').value.trim();
+    if (key.length < 20) { toast('That looks too short for a setlist.fm API key. Copy it again from setlist.fm.'); return; }
+    send({ t: 'saveSetlist', key });
+    $('#slKey').value = '';
+  };
+  $('#slForget').onclick = () => confirmSheet('Remove the setlist.fm key?', 'Artist pages stop showing setlists until you add a key again.', 'Remove', () => send({ t: 'setlistForget' }));
+  $('#phoBtns').onclick = (e) => {
+    const b = e.target.closest('[data-photos]');
+    if (!b) return;
+    const v = b.dataset.photos;
+    if (v === 'on' || v === 'off') send({ t: 'photos', on: v === 'on' });
+    else send({ t: v === 'choose' ? 'photosChoose' : 'photosSettings' });
   };
   $('#lfCheck').onclick = () => send({ t: 'lastfmCheck' });
   $('#lfReopen').onclick = () => send({ t: 'lastfmConnect' });

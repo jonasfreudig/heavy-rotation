@@ -643,3 +643,17 @@ html.locked .page { overflow: hidden; }
 .na-item small { display: block; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; }
 .na-item .v { text-align: right; font: 500 13px 'DM Mono', monospace; }
 .na-item .v small { font-size: 10px; }
+
+/* The story's moments: a photo you took, full-bleed, then a few more as prints */
+.slide .mo { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.slide .mo i { position: absolute; inset: 0; }
+.slide .mo .img { background: center / cover no-repeat; animation: kenburns 14s ease-out forwards; }
+.slide .mo .fade { background: linear-gradient(180deg, rgba(0, 0, 0, .28) 0%, transparent 22%, transparent 42%, color-mix(in srgb, var(--bg) 94%, transparent) 86%); }
+.slide .polas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; margin-top: 18px; }
+.slide .polas.n3 .pola:first-child { grid-column: 1 / -1; width: 60%; justify-self: center; }
+.slide .pola { margin: 0; padding: 7px 7px 9px; background: #fbf8f1; border-radius: 3px; box-shadow: 0 6px 18px rgba(31, 27, 22, .18), 0 1px 3px rgba(31, 27, 22, .2); rotate: var(--r, 0deg); min-width: 0; }
+.slide .pola .ph { display: block; aspect-ratio: 1; background: #d9d0c0 center / cover no-repeat; }
+.slide .pola figcaption { display: flex; flex-direction: column; gap: 1px; padding: 7px 2px 0; font: 500 11px/14px var(--mono); color: #3a332b; }
+.slide .pola figcaption b { font-weight: 600; }
+.slide .pola figcaption span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .slide .mo .img { animation: none; } }

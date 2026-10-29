@@ -11,15 +11,17 @@ The debug APK (`app/build/outputs/apk/debug/app-debug.apk`) installs as **Heavy 
 
 ## The app's own keys (for builds you share)
 
-So that people only sign in, a build can carry its own Last.fm API account and TIDAL app. Create
-them (the Last.fm and TIDAL steps above, under "If the app asks…") and put them in
-`local.properties` in the project folder, which stays out of git:
+So that people only sign in, a build can carry its own Last.fm API account and TIDAL app, and a
+setlist.fm API key. Create them (the Last.fm and TIDAL steps above, under "If the app asks…"; the
+setlist.fm key under API in your setlist.fm settings) and put them in `local.properties` in the
+project folder, which stays out of git:
 
 ```properties
 recordshelf.lastfm.key=...
 recordshelf.lastfm.secret=...
 recordshelf.tidal.clientId=...
 recordshelf.tidal.secret=...
+recordshelf.setlistfm.key=...
 ```
 
 Leave them out and everyone enters their own in Settings. Keys inside an APK can be dug out, as
@@ -111,3 +113,6 @@ documented format.
   non-commercial; songs found are kept 30 days; production approval for shared builds (above).
 - **Deezer** and **MusicBrainz**: public catalog lookups, kept within their rate limits (Deezer 50
   requests in 5 seconds, MusicBrainz 1 a second).
+- **setlist.fm** ([API](https://api.setlist.fm/docs/1.0/index.html)): free for non-commercial
+  projects, with a key; at most 2 requests a second, answers kept 12 hours; setlists link back to
+  setlist.fm on artist pages and concert playlists.

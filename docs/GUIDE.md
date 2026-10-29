@@ -126,7 +126,13 @@ month, quarter or year. What the tab shows for the chosen period:
   full-screen in two colors, the top 5 with photos, song of the period as a 7" single spinning at
   45, the album as a moving cover, your golden hour on a sundial, one star per new artist, a song
   on repeat, your genres as a cloud of words, vinyl, your longest streak as a row of days, and a
-  summary printed like the back of a record sleeve.
+  summary printed like the back of a record sleeve. With **Photos in your stories** switched on
+  (Settings → Stats and listening), it also shows photos you took in those days: one full-screen
+  with the song that was playing as you took it, then a few more as prints. They come from your
+  phone's camera folders (no screenshots, nothing saved from other apps), favoring moments when
+  music was playing, spread over the period. They never leave the phone. Google Photos can't be
+  used for this: since 2025 Google lets apps see only photos the user picks by hand, not a stretch
+  of time, so only photos still on the phone show up.
 - **Totals**: plays, hours (about 3.5 minutes a track), artists and new artists, each with the
   change against the period before. For a period still running (this week, this month) it
   compares with the same stretch of the previous one: Monday to Wednesday against last Monday to
@@ -148,9 +154,11 @@ month, quarter or year. What the tab shows for the chosen period:
 - **Phases**: plays of your most played artists as ridges, ordered by when they peaked.
 - **New artists**: artists heard for the first time, per day, week or month. The stretch where
   your Last.fm history starts is grayed out, since everything is new there.
-- **Genre drift**: how your genres shift over time. Records you own (and their artists) get their
-  Discogs styles; everything else gets the artist's Last.fm tags, with non-genres like "seen live"
-  removed. The six biggest genres keep their colors whatever range you pick.
+- **Genre drift**: how your genres shift over time. Every play gets one genre, weighed from the
+  Discogs styles of the record (if you own it), your other records by the artist, the artist's
+  Last.fm tags and, for your most played albums, the album's own Last.fm tags (an artist's
+  electronic album among their rock ones), with non-genres like "seen live" removed. The six
+  biggest genres keep their colors whatever range you pick.
 - **Obsessions**: a track played at least 7 times in one week, and songs played back to back
   several times in a row.
 - **On your shelf, rarely played**: your records, least played first.
@@ -183,12 +191,31 @@ since you first played it, stronger for more plays), **plays per month** as a sm
 its peak marked, and **around the clock**: the 24 hours as a ring around the cover, longer wedges
 for the hours you play it most. Tap any of them for the numbers.
 
+These pages are about all your time with that artist, album or song, whatever period the Stats
+tab is on. Opened from a period other than All, they add that period: a tile with its plays and
+rank, and on artist and album pages the songs you played most then.
+
+Album and song pages show their genres too: the album's own when Last.fm knows them (looked up
+when you open it, if it isn't among your most played), else the artist's.
+
 Artist pages show the whole **discography** from Deezer's catalog: albums, EPs, singles and
 compilations, with editions folded together ("Romance" and its deluxe edition are one record).
 Each shows your plays, a foil star if it's on your shelf, "New" for the last two months, and dims
 what you haven't heard; filter by Played, Not heard yet or On your shelf. Tap one for its album
 page: for any album, played or not, it shows the tracklist with your plays per song, the year and
 the label. Discographies are kept on the phone for a week, so new releases show up.
+
+**On stage lately** (artist pages, with setlist.fm set up): the songs of the artist's usual set at
+their recent shows, in their usual order (songs played at about a third of the shows or more,
+encore songs last), with your plays of each and "new" for the ones you haven't heard, plus their
+next show if one is listed and their recent shows. **Make a concert playlist** turns the usual set
+into a playlist; tap a show for a playlist of that night's setlist. Both go to TIDAL or the copy
+list like every playlist. Setlists are written down by fans on setlist.fm, so recent shows can
+still be missing.
+
+To set it up: log in to [setlist.fm](https://www.setlist.fm) (a free account), open its
+[API settings](https://www.setlist.fm/settings/api) and apply for a key (free for personal,
+non-commercial use; any application name will do), then paste it in Settings → setlist.fm.
 
 Artist photos come from Deezer's public catalog (no account needed), looked up once per artist
 and kept on the phone; they show on artist pages, in Top 10 and Explore, and in the story.

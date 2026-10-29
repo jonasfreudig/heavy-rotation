@@ -123,6 +123,21 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getBoolean("importPaused", false)
         set(v) = app.edit().putBoolean("importPaused", v).apply()
 
+    /** Photos you took in the story's period, with what was playing (Settings → Stats and listening), and whether Android was asked. */
+    var storyPhotos: Boolean
+        get() = app.getBoolean("storyPhotos", false)
+        set(v) = app.edit().putBoolean("storyPhotos", v).apply()
+    var photosAsked: Boolean
+        get() = app.getBoolean("photosAsked", false)
+        set(v) = app.edit().putBoolean("photosAsked", v).apply()
+
+    /** The setlist.fm API key: the user's own, or the app's own if the build has one. */
+    private val ownSetlist get() = s(sec, "setlistKey").isNotEmpty()
+    val setlistBuiltIn get() = !ownSetlist && BuildConfig.SETLISTFM_KEY.isNotEmpty()
+    var setlistKey: String
+        get() = if (ownSetlist) s(sec, "setlistKey") else BuildConfig.SETLISTFM_KEY
+        set(v) = put(sec, "setlistKey", v)
+
     /** Whether the user entered their own Last.fm key; otherwise the app's own (if the build has one) is used. */
     private val ownLastfm get() = s(sec, "lastfmKey").isNotEmpty()
 
