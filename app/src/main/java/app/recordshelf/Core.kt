@@ -814,6 +814,7 @@ object Core {
                 val url = msg.optString("url")
                 if (url.startsWith("https://")) paletteExec.execute { paletteInner(url) }
             }
+            "playlistCovers" -> historyExec.execute { playlistCovers(msg) }
             "tidy" -> statsExec.execute { push("onTidy") { tidy() ?: JSONObject().put("empty", true) } }
             "hide", "unhide" -> {
                 // One item, or several in "items" ("Hide all"), so the history is rebuilt once.
@@ -2404,6 +2405,34 @@ object Core {
             else JSONObject().put("kind", "newReleases").put("name", "New releases").put("note", "What your artists put out lately")
                 .put("tracks", pickJson(tracks))
         }
+    }
+
+    /**
+     * Pictures for the songs of a playlist that have none (songs you haven't played, a setlist): the cover of
+     * the album named, else of the album Deezer has the song on, else the artist's photo. Each is kept, so it
+     * is asked for once. On [historyExec].
+     */
+    private fun playlistCovers(msg: JSONObject) {
+        val items = msg.optJSONArray("items") ?: return
+        val images = db.images()
+        val out = JSONObject()
+        fun cached(key: String, look: () -> String?): String = images[key] ?: look().orEmpty().also { db.saveImage(key, it) }
+        try {
+            for (i in 0 until minOf(items.length(), 60)) {
+                val o = items.getJSONObject(i)
+                val artist = o.optString("artist")
+                val title = o.optString("title")
+                val album = o.optString("album")
+                if (artist.isEmpty() || title.isEmpty()) continue
+                var url = if (album.isNotEmpty()) cached(Text.albumKey(artist, album)) { deezer.albumCover(artist, album) } else ""
+                if (url.isEmpty()) url = cached("song:" + Text.albumKey(artist, title)) { deezer.trackCover(artist, title) }
+                if (url.isEmpty()) url = cached(Stats.photoKey(artist)) { deezer.artistPhoto(artist) }
+                if (url.isNotEmpty()) out.put("$artist|$title", url)
+            }
+        } catch (_: Exception) {
+            // Offline or Deezer over its quota: what was found so far.
+        }
+        push("onPlaylistCovers") { JSONObject().put("q", msg.optString("q")).put("covers", out) }
     }
 
     /** Playlist songs as JSON, each with a picture: its album's cover, or else its artist's photo if one is known. */

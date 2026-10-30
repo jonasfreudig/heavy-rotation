@@ -67,6 +67,23 @@ class DiscographyTest {
     }
 
     @Test
+    fun aSongYouHaventPlayedGetsItsAlbumsCover() {
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                if (r.path == "/search/track") Res(
+                    200,
+                    """{"data":[{"title":"Laidu","artist":{"name":"Someone Else"},"album":{"cover_big":"https://wrong"}},
+                    {"title":"Laïdu","artist":{"name":"Rokia Traoré"},"album":{"cover_big":"https://right"}}]}""",
+                ) else Res(404, "")
+            }
+            assertEquals("https://right", DeezerClient(server.base).trackCover("Rokia Traoré", "Laïdu"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun anEditionMatchesItsAlbumButAnotherAlbumDoesNot() {
         assertEquals(true, app.recordshelf.net.sameButEdition("rumours super deluxe", "rumours"))
         assertEquals(true, app.recordshelf.net.sameButEdition("ok computer", "ok computer 2017 remaster"))

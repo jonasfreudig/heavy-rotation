@@ -1623,6 +1623,7 @@ const Mock = (() => {
             later(600, step);
           } else later(250, () => onVs(fakeVs()));
           break;
+        case 'playlistCovers': later(300, () => onPlaylistCovers({ q: m.q, covers: {} })); break;
         case 'playlist':
           if (m.kind === 'genre') {
             // Songs from the made-up log, a few "new" ones mixed in, as many as asked.

@@ -5519,6 +5519,21 @@ window.onPlaylist = (p) => {
   PLAYLIST = p;
   renderPlaylist();
 };
+/** Asks the app once for pictures of the playlist's songs that have none; they fill in when they come. */
+function askPlaylistCovers(p) {
+  if (!p || !p.tracks || p.coversAsked) return;
+  const need = p.tracks.filter((t) => !t.cover);
+  if (!need.length) return;
+  p.coversAsked = `pl${++REQ}`;
+  send({ t: 'playlistCovers', q: p.coversAsked, items: need.map((t) => ({ artist: t.artist, title: t.title, album: t.album || '' })) });
+}
+window.onPlaylistCovers = (r) => {
+  const p = PLAYLIST;
+  if (!p || p.coversAsked !== r.q) return;
+  let any = false;
+  p.tracks.forEach((t) => { const c = r.covers[`${t.artist}|${t.title}`]; if (!t.cover && c) { t.cover = c; any = true; } });
+  if (any && isOpen('playlistPage')) renderPlaylist();
+};
 const playlistText = (p) => p.tracks.map((t) => `${t.artist} - ${t.title}`).join('\n');
 
 /** A sheet to name the playlist and say what it is, for TIDAL and for sharing. */
@@ -5570,6 +5585,7 @@ window.onTidalJob = (j) => {
 function renderPlaylist() {
   const p = PLAYLIST;
   if (!p || !isOpen('playlistPage')) return;
+  if (!p.loading) askPlaylistCovers(p);
   const body = $('#playlistBody');
   if (p.loading && p.kind === 'genre') {
     body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(plTitle(p))}</h1><p>Mixing ${p.size} songs…</p></div></div>${genrePlControls(p)}<div class="lin inline indet"><i></i></div>`;

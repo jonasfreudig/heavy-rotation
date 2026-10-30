@@ -73,6 +73,17 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
     /** A square photo (500 px) of the artist with this name; null if Deezer has none. */
     fun artistPhoto(name: String): String? = findArtist(name)?.photo?.ifEmpty { null }
 
+    /** The cover of the album song [title] by [artist] is on, as Deezer has it; null if it doesn't know the song. */
+    fun trackCover(artist: String, title: String): String? {
+        val want = Text.normLoose(title)
+        val who = Text.norm(artist).removePrefix("the ")
+        val data = get("/search/track?q=${q("artist:\"$artist\" track:\"$title\"")}&limit=15").optJSONArray("data") ?: return null
+        return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
+            val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
+            Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
+        }?.optJSONObject("album")?.optString("cover_big")?.takeIf { it.startsWith("https://") }
+    }
+
     /** Artists without a photo come with an empty image id: ".../images/artist//500x500-...". */
     private fun hasPhoto(url: String) = url.startsWith("https://") && !url.contains("/artist//")
 

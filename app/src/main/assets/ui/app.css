@@ -471,8 +471,10 @@ button.tile .delta { align-self: flex-start; }
 .atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .26s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
 .atabs .seg { margin: 0; }
 /* Stuck to the top, the tabs sit on a fade of the page's color that comes in softly, like the top bar's. */
-.atabs::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -22px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .25s;
-  background: linear-gradient(180deg, var(--atabs-bg) 0%, var(--atabs-bg) calc(100% - 34px), transparent 100%); }
+/* Stuck, they sit on one block of the page's color from the very top of the screen down past them: nothing of
+   the page shows through above the tabs, under the top bar or the status bar. */
+.atabs::before { content: ''; position: absolute; left: 0; right: 0; top: calc(-1 * (var(--inset-top) + 72px)); bottom: -14px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .25s;
+  background: linear-gradient(180deg, var(--atabs-bg) 0%, var(--atabs-bg) calc(100% - 14px), transparent 100%); }
 .atabs.stuck::before { opacity: 1; }
 .page.bar-gone .atabs { top: var(--inset-top); }
 .atab-body { position: relative; display: flow-root; min-height: 60vh; touch-action: pan-y; }
