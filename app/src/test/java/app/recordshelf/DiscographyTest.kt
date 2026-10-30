@@ -67,6 +67,27 @@ class DiscographyTest {
     }
 
     @Test
+    fun anEditionMatchesItsAlbumButAnotherAlbumDoesNot() {
+        assertEquals(true, app.recordshelf.net.sameButEdition("rumours super deluxe", "rumours"))
+        assertEquals(true, app.recordshelf.net.sameButEdition("ok computer", "ok computer 2017 remaster"))
+        assertEquals("Blue Train isn't Blue", false, app.recordshelf.net.sameButEdition("blue train", "blue"))
+        assertEquals(false, app.recordshelf.net.sameButEdition("a", "a deluxe"))
+    }
+
+    @Test
+    fun aBusyServiceIsAskedAgainAfterAPause() {
+        var calls = 0
+        val waits = mutableListOf<Long>()
+        val r = app.recordshelf.net.Http.retryBusy(sleep = { waits += it }) {
+            calls++
+            if (calls < 3) app.recordshelf.net.HttpResponse(429, "", if (calls == 1) mapOf("Retry-After" to listOf("2")) else emptyMap())
+            else app.recordshelf.net.HttpResponse(200, "ok", emptyMap())
+        }
+        assertEquals(200, r.code)
+        assertEquals("Retry-After first, then two seconds", listOf(2000L, 2000L), waits)
+    }
+
+    @Test
     fun deezerReleasesAndAlbums() {
         val server = MiniHttp().start()
         try {

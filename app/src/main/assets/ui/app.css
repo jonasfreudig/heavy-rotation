@@ -1367,7 +1367,23 @@ details.more[open] summary { margin-bottom: 6px; }
 .sheet-actions.col .btn { justify-content: flex-start; }
 /* The lyrics' heading with the switch that keeps the screen on. */
 .lyr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.lyr-head .chip { height: 30px; margin: 0; font-size: 12.5px; }
+.lyr-head .chip { height: 30px; margin: 0 0 0 auto; font-size: 12.5px; }
+.lyr-head .lyr-big { flex: none; }
+
+/* Lyrics over the whole screen: a sheet from under the top bar, the song in one row above the words. */
+.lyr-mini { display: none; }
+#nowPage.lyr-full .np-lyrics { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; top: calc(var(--inset-top) + 56px); margin: 0; display: flex; flex-direction: column;
+  padding: 14px 18px calc(var(--inset-bottom) + 12px); border-radius: 24px 24px 0 0; background: var(--md-surface-container); animation: lyrUp .32s cubic-bezier(.2, 0, 0, 1); }
+#nowPage.lyr-full .lyr-mini { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--md-outline-variant); }
+#nowPage.lyr-full .lyr-mini .cover { width: 44px; height: 44px; border-radius: 8px; flex: none; }
+#nowPage.lyr-full .lyr-mini > span { flex: 1; min-width: 0; }
+#nowPage.lyr-full .lyr-mini b { display: block; font: 600 15px/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#nowPage.lyr-full .lyr-mini small { display: block; font-size: 12.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#nowPage.lyr-full .np-lyrics .lyr-lines { flex: 1; min-height: 0; max-height: none; }
+#nowPage.lyr-full .np-lyrics .lyr-lines.synced { padding: 35vh 0; }
+#nowPage.lyr-full .lyr-lines.synced p { font-size: 26px; line-height: 1.28; }
+@keyframes lyrUp { from { transform: translateY(40px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #nowPage.lyr-full .np-lyrics { animation: none; } }
 
 /* Your chart: each place with how it moved since the period before, and where it stood then. */
 .ch-sub { margin-top: 10px; }

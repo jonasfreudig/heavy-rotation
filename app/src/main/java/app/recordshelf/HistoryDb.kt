@@ -160,6 +160,11 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), Ba
     fun image(albumKey: String): String? =
         readableDatabase.rawQuery("SELECT url FROM album_images WHERE album = ?", arrayOf(albumKey)).use { c -> if (c.moveToFirst()) c.getString(0) else null }
 
+    /** Forgets the lookups that found no picture before [before] (ms), so they are tried again. */
+    fun dropMissedImages(before: Long) {
+        writableDatabase.execSQL("DELETE FROM album_images WHERE url = '' AND fetched < ?", arrayOf(before))
+    }
+
     /** Forgets looked-up pictures whose address contains [host], so they are looked up again elsewhere. */
     fun dropImagesFrom(host: String) {
         writableDatabase.execSQL("DELETE FROM album_images WHERE url LIKE ?", arrayOf("%$host%"))

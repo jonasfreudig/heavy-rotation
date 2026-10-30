@@ -414,6 +414,8 @@ window.onBack = () => {
   if (!(mine && fx.kind === 'page' && pageStack.length && t.el === $('#' + pageStack[pageStack.length - 1]))) backSettle(fx, true);
   if (!$('#story').hidden) { closeStory(); return true; }
   if (sheetOpen()) { closeSheet(); return true; }
+  // Lyrics over the whole screen: back makes them small again first.
+  if (lyrFull && pageStack[pageStack.length - 1] === 'nowPage') { setLyrFull(false); return true; }
   if (pageStack.length) { closePage(mine && fx.kind === 'page' ? fx : null); return true; }
   if (searching()) { closeSearch(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
@@ -1277,6 +1279,8 @@ function renderShelfEmpty() {
 let NOWALB = { q: '', data: null };
 let nowSig = '';
 function openNow() {
+  lyrFull = false;
+  $('#nowPage').classList.remove('lyr-full');
   openPage('nowPage');
   nowSig = '';
   renderNow();
@@ -1394,7 +1398,27 @@ function syncAwake() {
   awake = want;
   send({ t: 'keepAwake', on: want });
 }
-const lyricsHead = () => `<div class="lyr-head"><h2>Lyrics</h2><button class="chip lyr-awake${lyricsAwake() ? ' on' : ''}" data-lyrawake aria-pressed="${lyricsAwake()}">${icon('sun', 'i small')}Keep the screen on</button></div>`;
+const lyricsHead = () => `<div class="lyr-head"><h2>Lyrics</h2><button class="chip lyr-awake${lyricsAwake() ? ' on' : ''}" data-lyrawake aria-pressed="${lyricsAwake()}">${icon('sun', 'i small')}Keep the screen on</button>
+  <button class="icon-btn small lyr-big" data-lyrfull aria-label="${lyrFull ? 'Smaller lyrics' : 'Lyrics over the whole screen'}" aria-pressed="${lyrFull}">${icon(lyrFull ? 'down' : 'up')}</button></div>`;
+/** Whether the lyrics fill Now playing, with the song in a small row above them. */
+let lyrFull = false;
+function setLyrFull(on) {
+  lyrFull = on;
+  $('#nowPage').classList.toggle('lyr-full', on);
+  const n = (ST.phone || {}).now, box = $('#npLyrics');
+  if (!n || !box) return;
+  box.innerHTML = lyricsHtml((n.media || {}).canSeek);
+  lyrAt = -2;
+  syncLyrics();
+}
+/** The song in one row over the lyrics when they fill the screen: cover, title, artist, play and pause. */
+function lyricsMini() {
+  const n = (ST.phone || {}).now;
+  if (!lyrFull || !n) return '';
+  const m = n.media || {}, playing = m.playing ?? n.playing;
+  const pp = n.media && m.canPlay !== false ? `<button class="icon-btn np-ctl" data-np="${playing ? 'pause' : 'play'}" aria-label="${playing ? 'Pause' : 'Play'}">${icon(playing ? 'pause' : 'play')}</button>` : '';
+  return `<div class="lyr-mini">${coverHtml(n.cover, n.album || n.title, n.artist, 'tiny')}<span><b>${esc(n.title)}</b><small>${esc(n.artist)}</small></span>${pp}</div>`;
+}
 /** The lyrics of the song on the phone, asked for once per song (for Now playing and the bar). */
 function ensureLyrics(n) {
   const lq = `${n.artist}|${n.title}`;
@@ -1411,10 +1435,10 @@ function lyricsHtml(canSeek) {
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
   if (LYR.lines && LYR.lines.length) {
-    return `${lyricsHead()}<span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
+    return `${lyricsMini()}${lyricsHead()}<span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
       <div class="lyr-lines synced">${LYR.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
   }
-  return `${lyricsHead()}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
+  return `${lyricsMini()}${lyricsHead()}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
 }
 window.onLyrics = (d) => {
   if (d.q !== LYR.q) return;
@@ -1693,7 +1717,7 @@ function renderSearch() {
   const q = SEARCH.q.trim();
   const body = $('#searchBody');
   if (!q) {
-    body.innerHTML = `<div class="search-hint">${icon('search', 'i big')}<p>Your records first, then every artist, album and song you've played.</p></div>`;
+    body.innerHTML = `<div class="search-hint">${icon('search', 'i big')}<p>Your records first, then every artist, album, song and genre you've played.</p></div>`;
     return;
   }
   const r = SEARCH.res && SEARCH.res.q === SEARCH.q ? SEARCH.res : null;
@@ -1706,10 +1730,12 @@ function renderSearch() {
   const artists = (r && r.artists) || [], albums = ((r && r.albums) || []).filter((a) => !a.owned), tracks = (r && r.tracks) || [];
   const artistsHtml = sec('Artists', artists.length, `<div class="rank">${artists.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
   const albumsHtml = sec('Albums', albums.length, `<div class="rank">${albums.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)}${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, ${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
+  const genres = (r && r.genres) || [];
+  const genresHtml = sec('Genres', genres.length, `<div class="chips search-genres">${genres.map((g) => `<button class="chip link" data-genre="${esc(g.key)}" data-glabel="${esc(g.label)}">${esc(g.label)}<small class="n">${compact(g.plays)}</small></button>`).join('')}</div>`);
   const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v cnt">${compact(t.plays)}×</span></button>`).join('')}</div>`);
   // On the shelf your records come first; elsewhere what you played does.
-  const parts = tab === 'shelf' ? [shelfHtml, artistsHtml, albumsHtml, tracksHtml] : [artistsHtml, albumsHtml, tracksHtml, shelfHtml];
-  const none = !owned.length && r && !artists.length && !albums.length && !tracks.length;
+  const parts = tab === 'shelf' ? [shelfHtml, genresHtml, artistsHtml, albumsHtml, tracksHtml] : [genresHtml, artistsHtml, albumsHtml, tracksHtml, shelfHtml];
+  const none = !owned.length && r && !artists.length && !albums.length && !tracks.length && !genres.length;
   body.innerHTML = parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`) + (none ? `<div class="search-hint"><p>Nothing matches “${esc(q)}”.</p></div>` : '');
 }
 
@@ -2041,7 +2067,7 @@ function renderPhoneCard() {
   if (!p.mode || p.mode === 'off') {
     if (!dismissed('phoneIntro')) {
       h = `<div class="card tonal"><div class="card-title">${icon('phone')}Scrobble this phone too</div>
-        <p>Heavy Rotation can take over from Pano Scrobbler. Start with shadow mode: it only logs what it would scrobble, so you can compare it with Pano first.</p>
+        <p>Already using another scrobbler and not sure about this one? Start with shadow mode: it only logs what it would scrobble, and you can check it against what reached Last.fm before you switch.</p>
         <div class="btn-row"><button class="btn filled" data-go="phSection">Set up</button><button class="btn tonal" id="phIntroNo">Not now</button></div></div>`;
     }
   } else if (!p.access) {
@@ -2060,9 +2086,9 @@ function renderPhoneCard() {
       h = `<div class="listen-line">${icon('phone')}<span>Waiting for music on this phone</span>${mode}</div>`;
     }
     if (p.mode === 'shadow') {
-      const sum = CMP ? `${caughtPct(CMP)}% of what Pano sent to Last.fm was caught here; ${plural(CMP.onlyTheirs.length, 'track')} missed. Checked ${ago(CMP.at)}.`
-        : 'After a day or two of listening, compare what Heavy Rotation logged with what Pano sent to Last.fm.';
-      h += `<div class="card"><div class="card-title">${icon('compare')}Compare with Pano</div><p>${esc(sum)}</p>
+      const sum = CMP ? `${caughtPct(CMP)}% of what reached Last.fm was caught here; ${plural(CMP.onlyTheirs.length, 'track')} missed. Checked ${ago(CMP.at)}.`
+        : 'After a day or two of listening, compare what Heavy Rotation logged with what reached Last.fm.';
+      h += `<div class="card"><div class="card-title">${icon('compare')}Compare with Last.fm</div><p>${esc(sum)}</p>
         <div class="btn-row"><button class="btn tonal" id="cmpOpen">${CMP ? 'See comparison' : 'Compare now'}</button></div></div>`;
     }
     if (p.mode === 'on' && p.pano) {
@@ -2109,7 +2135,7 @@ function renderCompare() {
     const pct = caughtPct(c);
     let verdict = '';
     if (theirs < 30) verdict = 'Still a small sample. Listen a bit more for a clear picture.';
-    else if (pct >= 97 && c.onlyTheirs.length <= 3) verdict = 'Looks ready: switch phone scrobbling to On and turn off Pano.';
+    else if (pct >= 97 && c.onlyTheirs.length <= 3) verdict = 'Looks ready: switch phone scrobbling to On and turn off your other scrobbler.';
     else verdict = 'Look at the missed tracks below before switching.';
     h += `<div class="card cmp-head"><div class="big">${pct}%</div>
       <p>of ${plural(theirs, 'scrobble')} on Last.fm since ${esc(whenLabel(c.from * 1000))} were also caught here.</p>
@@ -2123,12 +2149,12 @@ function renderCompare() {
     const row = (x, sub) => `<div class="cmp-row"><span class="t">${esc(dayLabel(x.ts * 1000))}<br>${esc(fmtTime(x.ts * 1000))}</span><span class="w"><div>${esc(x.title)} by ${esc(x.artist)}</div>${sub ? `<small>${esc(sub)}</small>` : ''}</span></div>`;
     if (c.onlyTheirs.length) {
       h += `<div class="section-head"><h2>Only on Last.fm</h2></div>
-        <p class="hint">Pano (or another scrobbler) sent these; Heavy Rotation didn't log them. Was the app switched on here, or the track skipped early?</p>
+        <p class="hint">Your other scrobbler sent these; Heavy Rotation didn't log them. Was the app switched on here, or the track skipped early?</p>
         <div class="list">${c.onlyTheirs.slice().sort((a, b) => b.ts - a.ts).map((x) => row(x)).join('')}</div>`;
     }
     if (c.renamed.length) {
       h += `<div class="section-head"><h2>Named differently</h2></div>
-        <p class="hint">Same time, different names. Pano may clean up titles with its edit rules.</p>
+        <p class="hint">Same time, different names. Your other scrobbler may clean up titles with its own rules.</p>
         <div class="list">${c.renamed.slice().sort((a, b) => b.ours.ts - a.ours.ts).map((r) => row(r.theirs, `here: ${r.ours.title} by ${r.ours.artist}`)).join('')}</div>`;
     }
     if (c.onlyOurs.length) {
@@ -2164,8 +2190,8 @@ function renderPhoneSettings() {
   else st = statusLine('ok', mode === 'shadow' ? 'Shadow mode: logging only' : 'Scrobbling this phone', p.now ? `${p.now.app}: ${p.now.title}` : 'Waiting for music');
   $('#phStatus').innerHTML = st;
   $('#phHint').textContent = {
-    off: 'Pano Scrobbler (or nothing) takes care of the phone.',
-    shadow: 'Logs what it would scrobble without sending anything. Keep Pano running, listen for a day or two, then compare on the Activity tab.',
+    off: 'Another scrobbler (or nothing) takes care of the phone.',
+    shadow: 'Logs what it would scrobble without sending anything. Keep your other scrobbler running, listen for a day or two, then compare on the Activity tab.',
     on: 'Scrobbles what plays on this phone, with now playing and the same offline queue as your records.',
   }[mode];
   $('#phAccess').hidden = mode === 'off' || !!p.access;
@@ -5820,10 +5846,15 @@ function liveHtml(name) {
   }
   if (L.loading) return `<div class="viz live">${head}<span class="sub">Asking setlist.fm…</span><div class="lin inline indet"><i></i></div></div>`;
   if (L.error) return `<div class="viz live">${head}<p class="hint">${esc(L.error)}</p></div>`;
-  const shows = L.shows || [], typ = L.typical || [], next = (L.upcoming || [])[0];
-  if (L.unknown || (!shows.length && !next)) return '';
+  const shows = L.shows || [], typ = L.typical || [], soon = L.upcoming || [];
+  if (L.unknown || (!shows.length && !soon.length)) return '';
   let h = `<div class="viz live">${head}<span class="sub">${typ.length ? `Their usual set at their last ${plural(L.of, 'show')} with a setlist, in its usual order` : 'Their shows on setlist.fm'}</span>`;
-  if (next) h += `<button class="live-next" data-url="${esc(next.url)}">${icon('calendar')}<span><b>Next: ${esc(showDate(next.date))}</b><small>${esc([next.venue, next.city].filter(Boolean).join(', '))}</small></span></button>`;
+  // Shows to come, as far as fans have added them on setlist.fm: each opens its page there.
+  if (soon.length === 1 || (soon.length && !pageTabs())) {
+    h += `<h3 class="live-h">Coming up</h3>${soon.slice(0, pageTabs() ? 1 : 5).map((s) => `<button class="live-next" data-url="${esc(s.url)}">${icon('calendar')}<span><b>${esc(showDate(s.date))}</b><small>${esc([s.venue, s.city, s.country].filter(Boolean).join(', '))}</small></span></button>`).join('')}`;
+  } else if (soon.length) {
+    h += `<h3 class="live-h">Coming up</h3><div class="tix soon">${soon.map((s) => ticketHtml(s.date, s.city || s.venue, [s.city ? s.venue : '', s.country].filter(Boolean).join(', '), `data-url="${esc(s.url)}"`)).join('')}</div>`;
+  }
   const plays = (x) => (x.plays ? `<span class="v cnt">${num(x.plays)}×</span>` : '<span class="v new-tag">new</span>');
   if (typ.length && pageTabs()) {
     // In tabs: the set in two columns, top to bottom, then the next column.
@@ -5838,7 +5869,7 @@ function liveHtml(name) {
   } else if (shows.length) {
     h += `<h3 class="live-h">Recent shows</h3><div class="rank">${shows.slice(0, 8).map((s, i) => `<button class="r" data-show="${i}"><span class="t"><b>${esc(showDate(s.date))}, ${esc(s.city || s.venue)}</b><small>${esc([s.venue, s.country].filter(Boolean).join(', '))}, ${plural(s.songs.length, 'song')}</small></span><span class="v">${icon('chevron-right')}</span></button>`).join('')}</div>`;
   }
-  return `${h}<p class="hint">Setlists from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, written down by fans. "New" are songs you haven't played yet.</p></div>`;
+  return `${h}<p class="hint">Setlists and dates to come from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, added by fans, so a show not listed there yet won't show here. "New" are songs you haven't played yet.</p></div>`;
 }
 
 /** A concert playlist: their usual set lately ([i] < 0) or the setlist of show [i]. */
@@ -7883,6 +7914,7 @@ function build() {
       if (n) { ensureLyrics(n); const box = $('#npLyrics'); if (box) box.innerHTML = lyricsHtml((n.media || {}).canSeek); }
       return;
     }
+    if (e.target.closest('[data-lyrfull]')) { setLyrFull(!lyrFull); return; }
     const la = e.target.closest('[data-lyrawake]');
     if (la) {
       const on = !lyricsAwake();

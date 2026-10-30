@@ -23,8 +23,8 @@ of its own in between, and your data stays on your phone.
   ("last night"), or to have just finished. Tracks are timed from their real lengths, Last.fm shows "now
   playing" while a side spins, the next side is one more tap, and all of it works offline.
 - The phone is scrobbled too: TIDAL, Spotify or any other music app, by Last.fm's rules (half the
-  track or 4 minutes). Shadow mode logs plays without sending them, so you can compare it with Pano
-  Scrobbler first.
+  track or 4 minutes). If you already use another scrobbler, shadow mode logs plays
+  without sending them, so you can check it works for you before you switch.
 - Stats cover a day, a week, a month, a year or all time, and each period is compared with the one
   before: your plays as dots on a record, the period day by day as a calendar with your streaks, who
   you played when, new artists, songs on repeat, genre drift, decades and a top 10.

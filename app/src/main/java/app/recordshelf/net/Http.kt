@@ -18,6 +18,39 @@ object Http {
 
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
+    /** Spaces the calls to one service at least [gapMs] apart, across all threads (its rate limit). */
+    class Pace(private val gapMs: Long) {
+        private var next = 0L
+
+        fun await() {
+            val wait: Long
+            synchronized(this) {
+                val now = System.currentTimeMillis()
+                val at = maxOf(now, next)
+                next = at + gapMs
+                wait = at - now
+            }
+            if (wait > 0) Thread.sleep(wait)
+        }
+    }
+
+    /**
+     * [call] again after a pause while the service says it gets too many requests ([busy]: a 429 by default),
+     * up to [tries] times in all: as long as its Retry-After says (10 s at most), else 1, then 2 seconds. The
+     * last answer is returned either way.
+     */
+    fun retryBusy(tries: Int = 3, busy: (HttpResponse) -> Boolean = { it.code == 429 }, sleep: (Long) -> Unit = { Thread.sleep(it) }, call: () -> HttpResponse): HttpResponse {
+        var r = call()
+        for (k in 1 until tries) {
+            if (!busy(r)) return r
+            val after = r.header("Retry-After")?.trim()?.toLongOrNull()?.times(1000)
+            if (after != null && after > 10_000) return r
+            sleep(after ?: (1000L shl (k - 1)))
+            r = call()
+        }
+        return r
+    }
+
     fun form(params: Map<String, String>): String = params.entries.joinToString("&") { enc(it.key) + "=" + enc(it.value) }
 
     fun get(url: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 20_000) =

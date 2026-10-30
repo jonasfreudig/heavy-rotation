@@ -308,7 +308,11 @@ const Mock = (() => {
       .map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], plays: tp[t] }));
     const albums = COLL.filter((r) => hit(`${r.title} ${r.artist}`)).slice(0, 6)
       .map((r) => ({ title: r.title, artist: r.artist, plays: r.plays || 0, cover: r.cover || r.thumb || '', owned: true }));
-    return { q, artists, albums, tracks };
+    // Genres by name: a few made-up ones, as the app's families and styles would come.
+    const G = [['indie', 'Indie', 920], ['indie:indie rock', 'Indie Rock', 410], ['rock', 'Rock', 640], ['electronic', 'Electronic', 2321], ['jazz', 'Jazz', 380], ['punk:post-punk', 'Post-Punk', 520], ['pop:dream pop', 'Dream Pop', 300]];
+    const gw = String(q).toLowerCase().split(/\s+/).filter(Boolean);
+    const genres = G.filter(([, l]) => gw.every((w) => l.toLowerCase().includes(w))).map(([key, label, plays]) => ({ key, label, plays }));
+    return { q, artists, albums, tracks, genres };
   }
   const lowerBound = (arr, v) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; } return lo; };
   const dayIdx = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60e3) / DAY);
@@ -1070,7 +1074,9 @@ const Mock = (() => {
       url: 'https://www.setlist.fm/', songs: songs.filter((_, k) => (k + i) % 6 !== 0).map((x, k, all) => ({ ...x, with: '', encore: k >= all.length - 2 })) }));
     const typical = songs.slice(0, 8).map((x, k) => ({ ...x, n: 5 - (k % 3), encore: k >= 7 }));
     return { artist: name, url: 'https://www.setlist.fm/', of: shows.length, typical, shows,
-      upcoming: [{ id: 'u1', date: iso(Date.now() + 16 * DAY), venue: 'Tempodrom', city: 'Berlin', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
+      upcoming: [{ id: 'u1', date: iso(Date.now() + 16 * DAY), venue: 'Tempodrom', city: 'Berlin', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] },
+        { id: 'u2', date: iso(Date.now() + 19 * DAY), venue: 'Gloria', city: 'Cologne', country: 'Germany', tour: '', url: 'https://www.setlist.fm/', songs: [] },
+        { id: 'u3', date: iso(Date.now() + 23 * DAY), venue: 'Paradiso', city: 'Amsterdam', country: 'Netherlands', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
   }
   /** A whole top list, as the app sends it: places from..from+n, and the few around the page's own if it's further down. */
   function fakeRankList(m) {

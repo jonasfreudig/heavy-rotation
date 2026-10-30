@@ -1741,7 +1741,7 @@ class Stats(
     fun search(query: String, max: Int = 6): JSONObject {
         val q = Text.norm(query)
         val out = JSONObject().put("q", query)
-        if (q.isEmpty()) return out.put("artists", JSONArray()).put("albums", JSONArray()).put("tracks", JSONArray())
+        if (q.isEmpty()) return out.put("artists", JSONArray()).put("albums", JSONArray()).put("tracks", JSONArray()).put("genres", JSONArray())
         val words = q.split(' ')
         val p = allPlays
         fun best(n: Int, plays: IntArray, name: (Int) -> String, hay: (Int) -> String): List<Int> =
@@ -1755,6 +1755,21 @@ class Stats(
             .put("artists", JSONArray(artists.map { JSONObject().put("name", h.artistNames[it]).put("plays", p.artist[it]).put("photo", artistPhoto(h.artistNames[it])) }))
             .put("albums", JSONArray(albums.map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", p.album[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
             .put("tracks", JSONArray(tracks.map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", p.track[it]) }))
+            .put("genres", JSONArray(searchGenres(words, max)))
+    }
+
+    /** Genres and styles you played whose name holds every word, the most played first. */
+    private fun searchGenres(words: List<String>, max: Int): List<JSONObject> {
+        val all = ArrayList<JSONObject>()
+        val fams = genreOptions(60, 60)
+        for (i in 0 until fams.length()) {
+            val f = fams.getJSONObject(i)
+            all += f
+            f.optJSONArray("subs")?.let { s -> for (k in 0 until s.length()) all += s.getJSONObject(k) }
+        }
+        return all.filter { g -> Text.norm(g.optString("label")).let { l -> words.all { l.contains(it) } } }
+            .sortedByDescending { it.optInt("plays") }.take(max)
+            .map { JSONObject().put("key", it.optString("key")).put("label", it.optString("label")).put("plays", it.optInt("plays")) }
     }
 
     // ---- insights and personality ----

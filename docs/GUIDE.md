@@ -44,7 +44,7 @@ still waiting to be sent are not in it either.
 Allow notifications when the app asks (on your first scrobble). The "Now spinning" notification
 shows the current track with a countdown and has two buttons, Stop and "Flip to side B".
 
-### 5. Phone scrobbling (replacing Pano Scrobbler)
+### 5. Phone scrobbling
 
 1. Gear → Phone scrobbling → Shadow.
 2. Tap Allow notification access and switch Heavy Rotation on. Android calls this notification
@@ -54,14 +54,16 @@ shows the current track with a countdown and has two buttons, Stop and "Flip to 
      from an APK file), open App info (a button in the app), tap ⋮ at the top right, choose Allow
      restricted settings, then try again.
 3. TIDAL is switched on by default. Other apps appear in the list once they play something.
-4. Keep Pano running and listen as usual for a day or two. In shadow mode Heavy Rotation only logs
-   what it would scrobble (marked "Shadow" in Activity) and sends nothing.
-5. Open Activity (the clock button at the top) and tap Compare with Pano. It reads what reached Last.fm since shadow mode
-   started and shows how much Heavy Rotation caught, what only Pano scrobbled, what only Heavy
-   Rotation would have scrobbled, and tracks the two apps named differently.
-6. When you're happy with the result, switch Phone scrobbling to On and turn off Pano's scrobbling
-   (or uninstall Pano). Otherwise every track is scrobbled twice; the app shows a warning while Pano
-   is installed.
+4. If you already use another scrobbler, keep it running and listen as usual for a day or two. In
+   shadow mode Heavy Rotation only logs what it would scrobble (marked "Shadow" in Activity) and
+   sends nothing.
+5. Open Activity (the clock button at the top) and tap Compare with Last.fm. It reads what reached
+   Last.fm since shadow mode started and shows how much Heavy Rotation caught, what only the other
+   scrobbler sent, what only Heavy Rotation would have scrobbled, and tracks the two named
+   differently.
+6. When you're happy with the result, switch Phone scrobbling to On and turn off the other
+   scrobbler. Otherwise every track is scrobbled twice; with Pano Scrobbler installed, the app shows
+   a warning.
 
 Heavy Rotation follows Last.fm's rules. A track counts once it has played for half its length or 4
 minutes, whichever comes first, and only if it is longer than 30 seconds. Only time spent actually
@@ -74,8 +76,8 @@ When no record is spinning, the card at the top of the Shelf shows what a music 
 (TIDAL, for example) is playing: the song, the app, the cover (from your shelf or from Deezer) and
 the progress. Tap it for the song's page.
 
-Fix names (Settings → Scrobbling) changes names before they are scrobbled, like Pano Scrobbler's
-edits, for the phone and for records alike. It has ready-made fixes you can switch on
+Fix names (Settings → Scrobbling) changes names before they are scrobbled, for the phone and for
+records alike. It has ready-made fixes you can switch on
 ("Remastered", "Explicit", "feat. …", "- Single", YouTube's "- Topic") and your own rules. A rule
 looks at the artist, the song or the album. With "is", a name that equals the given text is
 replaced as a whole. With "contains", or "matches" for a regular expression, the matching part is
@@ -277,7 +279,8 @@ up.
 With setlist.fm set up, artist pages have "On stage lately": the songs of the artist's usual set at
 their recent shows, in their usual order (songs played at about a third of the shows or more,
 encore songs last), with your plays of each and "new" for the ones you haven't heard. It also lists
-their next show, if one is listed, and their recent shows. Tapping Make a concert playlist turns the
+their shows coming up (as far as fans have added them on setlist.fm; tap one for its page there) and
+their recent shows. Tapping Make a concert playlist turns the
 usual set into a playlist; tap a show for a playlist of that night's setlist. Both go to TIDAL or
 through Copy list, like every playlist. Fans write the setlists on setlist.fm, so recent shows can
 still be missing.
@@ -304,7 +307,8 @@ or from Deezer, looked up once and kept on the phone.
 #### Search
 
 The round button next to the tabs searches your records (by title, artist, label, year or style)
-and every artist, album and song in your listening history, most played first. On the shelf your
+and every artist, album, song and genre (styles too) in your listening history, most played first;
+a genre opens its page. On the shelf your
 records come first; on the other tabs what you played comes first. Every word you type has to match
 somewhere, so "fire strokes" finds Room on Fire.
 
@@ -520,7 +524,9 @@ the playlist's or mix's name) when the app shares its queue, and the whole album
 with how much of the album is left (tracklists from Deezer), and the song's lyrics from LRCLIB.
 Timed lyrics light up line by line as the song goes (tap a line to jump there). While the lyrics of a
 playing song are open, the screen stays on; switch Keep the screen on off, on the lyrics, to let it
-turn off as usual. Tap the app's name to open the app on
+turn off as usual. The arrow next to it lets the lyrics take over the screen, bigger, with the song
+in one row above them (cover, title, play and pause); the arrow or back makes them small again. Tap
+the app's name to open the app on
 its own player screen. Apps that work with Android Auto usually share their queue. The chart button
 at the top opens the song's stats.
 

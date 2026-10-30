@@ -33,14 +33,14 @@ class LrclibClient(private val base: String = "https://lrclib.net/api") {
         if (durSec > 0) p["duration"] = durSec.toString()
         var failed: Exception? = null
         try {
-            val r = Http.get("$base/get?" + Http.form(p), timeoutMs = 10_000)
+            val r = Http.retryBusy { Http.get("$base/get?" + Http.form(p), timeoutMs = 10_000) }
             if (r.code == 200) parse(JSONObject(r.body))?.let { return it }
             else if (r.code != 404) failed = IOException("LRCLIB answered ${r.code}")
         } catch (e: Exception) {
             failed = e
         }
         val s = try {
-            Http.get("$base/search?" + Http.form(mapOf("track_name" to title, "artist_name" to artist)), timeoutMs = 15_000)
+            Http.retryBusy { Http.get("$base/search?" + Http.form(mapOf("track_name" to title, "artist_name" to artist)), timeoutMs = 15_000) }
         } catch (e: Exception) {
             throw failed ?: e
         }

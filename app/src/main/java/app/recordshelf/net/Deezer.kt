@@ -39,7 +39,11 @@ data class DzAlbum(
 class DeezerClient(private val base: String = "https://api.deezer.com") {
 
     private fun get(path: String): JSONObject {
-        val r = Http.get(base + path)
+        // Deezer allows 50 requests in 5 seconds, and says it's over its quota with a 200 and error code 4.
+        val r = Http.retryBusy(busy = { it.code == 429 || (it.code == 200 && it.body.contains("\"code\":4,")) }) {
+            PACE.await()
+            Http.get(base + path)
+        }
         if (r.code !in 200..299) throw IOException("Deezer answered ${r.code}")
         val o = JSONObject(r.body)
         // Deezer reports errors (like its request quota) with status 200.
@@ -109,11 +113,13 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
         val who = Text.norm(artist).removePrefix("the ")
         fun pick(query: String): JSONObject? {
             val data = get("/search/album?q=${q(query)}&limit=25").optJSONArray("data") ?: return null
-            val hits = (0 until data.length()).map { data.getJSONObject(it) }.filter {
+            val theirs = (0 until data.length()).map { data.getJSONObject(it) }.filter {
                 val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
-                Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
+                a == who || who.startsWith("$a ") || a.startsWith("$who ")
             }
-            return bestRelease(hits)
+            // The same title; else the same one with an edition's words added or left out ("Rumours Super Deluxe").
+            return bestRelease(theirs.filter { Text.normLoose(it.optString("title")) == want })
+                ?: bestRelease(theirs.filter { sameButEdition(Text.normLoose(it.optString("title")), want) })
         }
         return pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title")
     }
@@ -130,6 +136,26 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
             (0 until (tracks?.length() ?: 0)).map { tracks!!.getJSONObject(it).let { t -> t.optString("title") to t.optInt("duration") } },
         )
     }
+
+    companion object {
+        private val PACE = Http.Pace(110L)
+    }
+}
+
+/** Words that only name an edition of an album, not another album. */
+private val EDITION = setOf(
+    "deluxe", "super", "edition", "expanded", "remaster", "remastered", "anniversary", "version", "bonus", "tracks",
+    "special", "collector", "collectors", "mono", "stereo", "reissue", "complete", "legacy", "edit", "mix", "the",
+)
+
+/** A year or an ordinal ("2011", "50th"). */
+private val YEARISH = Regex("""\d{1,4}(th|st|nd|rd)?""")
+
+/** Whether titles [a] and [b] (both loose) are one album, the longer only adding edition words or a year. */
+internal fun sameButEdition(a: String, b: String): Boolean {
+    val (short, long) = if (a.length <= b.length) a to b else b to a
+    if (short.length < 2 || !long.startsWith("$short ")) return false
+    return long.removePrefix(short).trim().split(' ').all { it in EDITION || it.matches(YEARISH) }
 }
 
 /** Of releases with the same name, the one a record is: the album over an EP over a single, then the most tracks. */

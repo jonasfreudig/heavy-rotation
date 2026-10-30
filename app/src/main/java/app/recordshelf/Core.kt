@@ -429,6 +429,8 @@ object Core {
             historyExec.execute {
                 // Covers once fetched from Last.fm go (its terms leave artwork out); Deezer's come instead.
                 db.dropImagesFrom("lastfm")
+                // Covers and photos none was found for: tried again after a month (Deezer adds and renames).
+                db.dropMissedImages(System.currentTimeMillis() - 30 * 24 * HOUR)
                 // Lookups used to take a same-named single's cover for the album; those come again as pages need them.
                 if (!prefs.coversRechecked) {
                     db.dropImagesFrom("dzcdn")
@@ -585,6 +587,9 @@ object Core {
                     // No photo yet: Deezer may have one; the page comes again if so.
                     val n = j.optString("name")
                     if (j.optString("photo").isEmpty() && Stats.photoKey(n) !in db.images().keys) historyExec.execute { fetchPhotosInner(listOf(n)) { handle(msg) } }
+                    // Covers of the albums their songs are on, for the top tracks and the song cards.
+                    val covers = missingCovers(j, db.images().keys, n)
+                    if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
                     // Everyone's counts on Last.fm, for "you vs everyone"; the page comes again.
                     globalsFor(pageAsks(GlobalAsk.Kind.ARTIST, j), msg)
                     // No genres (tags are looked up ahead only for your most played): Last.fm's tags for them now,
@@ -740,6 +745,9 @@ object Core {
                     val tried = db.images().keys
                     val missing = need.filter { Stats.photoKey(it) !in tried }
                     if (missing.isNotEmpty()) historyExec.execute { fetchPhotosInner(missing) { handle(msg) } }
+                    // Covers of its albums and songs, also the ones you hardly play that nothing else looked up.
+                    val covers = missingCovers(j, tried)
+                    if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
                 }
             }
             "discography" -> {
@@ -1701,7 +1709,7 @@ object Core {
             .put("songs", JSONArray(s.songs.filter { !it.tape }.map { song(it.title, it.cover).put("with", it.with).put("encore", it.encore) }))
         out.put("artist", live.name).put("url", live.url).put("of", lately.size)
             .put("typical", JSONArray(Setlists.typical(lately).map { song(it.title, it.cover).put("n", it.shows).put("encore", it.encore) }))
-            .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(3).map { show(it) }))
+            .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(12).map { show(it) }))
             .put("shows", JSONArray(live.shows.filter { !it.date.isAfter(today) && it.songs.any { s -> !s.tape } }.sortedByDescending { it.date }.take(15).map { show(it) }))
     }
 
@@ -2388,7 +2396,7 @@ object Core {
                 a.tracks.map { (t, _) -> Pick(r.optString("artist"), t, a.title, 0, "new", r.optString("cover").ifEmpty { a.cover }) }
             } catch (_: Exception) {
                 null
-            }.also { Thread.sleep(120) } // Deezer allows 50 requests in 5 seconds
+            }
         }
         val tracks = (0 until (per.maxOfOrNull { it.size } ?: 0)).flatMap { k -> per.mapNotNull { it.getOrNull(k) } }.distinctBy { it.key }.take(NEW_MIX_SIZE)
         push("onPlaylist") {
@@ -2529,6 +2537,34 @@ object Core {
     }
 
     /**
+     * The albums named anywhere in page [j] that show no cover and weren't looked up yet ([tried]), as
+     * (artist, album, key): an album ({title, artist, cover}) or a song's album ({album, artist, cover}). A song
+     * or album without an artist of its own is [artist]'s. The first [max] of them.
+     */
+    private fun missingCovers(j: JSONObject, tried: Set<String>, artist: String = "", max: Int = 40): List<Triple<String, String, String>> {
+        val out = LinkedHashMap<String, Triple<String, String, String>>()
+        fun walk(v: Any?, depth: Int) {
+            if (depth > 6 || out.size >= max) return
+            when (v) {
+                is JSONArray -> for (i in 0 until v.length()) walk(v.opt(i), depth + 1)
+                is JSONObject -> {
+                    if (v.has("cover") && v.optString("cover").isEmpty()) {
+                        val album = if (v.has("album")) v.opt("album") as? String ?: "" else v.optString("title")
+                        val who = v.optString("artist").ifEmpty { artist }
+                        if (album.isNotEmpty() && who.isNotEmpty()) {
+                            val key = Text.albumKey(who, album)
+                            if (key !in tried) out.putIfAbsent(key, Triple(who, album, key))
+                        }
+                    }
+                    for (k in v.keys()) walk(v.opt(k), depth + 1)
+                }
+            }
+        }
+        walk(j, 0)
+        return out.values.toList()
+    }
+
+    /**
      * Covers of albums that aren't on your shelf, from Deezer (Last.fm's terms leave its artwork
      * out of what apps may show). "" is kept when there is none. On [historyExec].
      */
@@ -2540,7 +2576,6 @@ object Core {
             try {
                 db.saveImage(key, deezer.albumCover(artist, album).orEmpty())
                 any = true
-                Thread.sleep(120) // Deezer allows 50 requests in 5 seconds
             } catch (_: Exception) {
                 break
             }
@@ -2558,7 +2593,6 @@ object Core {
             try {
                 db.saveImage(key, deezer.artistPhoto(n).orEmpty())
                 any = true
-                Thread.sleep(120) // Deezer allows 50 requests in 5 seconds
             } catch (_: Exception) {
                 break // offline or over the quota: next time
             }

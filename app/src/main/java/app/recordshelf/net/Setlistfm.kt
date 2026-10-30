@@ -47,16 +47,15 @@ class SetlistfmClient(private val key: String, private val base: String = "https
     class KeyRefused : IOException("setlist.fm didn't accept the key")
     class Busy : IOException("setlist.fm is busy")
 
-    private var lastCall = 0L
-
-    /** A page of setlist.fm's answer; null when it has nothing for it (it says 404 then). */
+    /**
+     * A page of setlist.fm's answer; null when it has nothing for it (it says 404 then). Paced to its two requests
+     * a second; a "too many" answer is tried again after a pause before it counts as busy.
+     */
     private fun get(path: String, params: Map<String, String>): JSONObject? {
-        synchronized(this) {
-            val wait = lastCall + GAP_MS - System.currentTimeMillis()
-            if (wait > 0) Thread.sleep(wait)
-            lastCall = System.currentTimeMillis()
+        val r = Http.retryBusy {
+            PACE.await()
+            Http.get("$base$path?" + Http.form(params), mapOf("x-api-key" to key, "Accept-Language" to "en"))
         }
-        val r = Http.get("$base$path?" + Http.form(params), mapOf("x-api-key" to key, "Accept-Language" to "en"))
         return when (r.code) {
             200 -> JSONObject(r.body)
             404 -> null
@@ -91,7 +90,8 @@ class SetlistfmClient(private val key: String, private val base: String = "https
     fun setlists(mbid: String, page: Int = 1): List<Show> = get("/artist/$mbid/setlists", mapOf("p" to page.toString()))?.let { parse(it) }.orEmpty()
 
     companion object {
-        private const val GAP_MS = 600L
+        /** One pace for every client: the limit is per key, and a new key's client shouldn't start a burst. */
+        private val PACE = Http.Pace(600L)
         private val DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy")
 
         /** The setlists of one page of setlist.fm's answer. */
