@@ -421,6 +421,7 @@ const Mock = (() => {
     return { current, currentFrom, longest: best, longestFrom: best ? dayMs(bestStart) : 0, longestTo: best ? dayMs(bestEnd) : 0, artists };
   }
 
+  const lastPlace = (k) => (k % 6 === 2 ? 0 : Math.max(1, k + 1 + ((k * 7) % 5) - 2));
   /** The period as a calendar: plays per day (per month for all time), the days of new artists and of songs on repeat (see Stats.calendar). */
   function calendarOf(r, i0, i1, fresh, repeatAt) {
     const L = history();
@@ -584,7 +585,7 @@ const Mock = (() => {
     };
     // New artists, who they are (see Stats.newArtists).
     const freshAll = order.filter((a) => L.first[a] >= r.from * 1000 && L.first[a] < r.to * 1000 && L.first[a] >= L.start + 14 * DAY);
-    const found = freshAll.slice(0, 60).map((a) => ({ name: L.artists[a], first: L.first[a], plays: Math.round(ac[a] * 1.4), here: ac[a], from: L.artists[(a * 7 + 3) % L.artists.length], photo: '' }));
+    const found = freshAll.slice(0, 60).map((a) => ({ name: L.artists[a], first: L.first[a], plays: Math.round(ac[a] * 1.4), here: ac[a], from: L.artists[(a * 7 + 3) % L.artists.length], photo: '', genre: ['Post-Punk', 'Indie Rock', 'Art Punk'][a % 3] }));
     const tc = counts(i0, i1, (L2, i) => L2.t[i]);
     const topT = ranked(tc).slice(0, 10);
     const trackArtist = {};
@@ -607,8 +608,9 @@ const Mock = (() => {
       rarely: { items: coll.slice().sort((x, y) => x.plays - y.plays).slice(0, 8).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', plays: 0, last: c.plays ? Date.now() - (60 + c.plays) * DAY : 0 })), owned: coll.length, unplayed: 5, neverPlayed: 2 },
       wishlist: [['Tame Impala', 'Lonerism', 212, 12], ['Khruangbin', 'Mordechai', 164, 10], ['Shame', 'Food for Worms', 131, 10], ['Little Simz', 'Sometimes I Might Be Introvert', 96, 14]]
         .map(([artist, album, plays, tracks]) => ({ artist, album, plays, tracks, last: Date.now() - 9 * DAY, key: '', image: '', search: 'https://www.discogs.com/search/?type=master&q=' + encodeURIComponent(artist + ' ' + album) })),
-      top: { artists: order.slice(0, 100).map((a) => ({ name: L.artists[a], plays: ac[a] })), albums: topAlbums,
-        tracks: topT.map((t) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t] })) },
+      // Where each stood the period before, made up (see Stats.top): 0 means it wasn't played then.
+      top: { compared: r.kind !== 'all' && r.kind !== 'day', artists: order.slice(0, 100).map((a, k) => ({ name: L.artists[a], plays: ac[a], last: lastPlace(k) })), albums: topAlbums.map((x, k) => ({ ...x, last: lastPlace(k + 1) })),
+        tracks: topT.map((t, k) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t], album: '', cover: '', last: lastPlace(k + 2) })) },
     };
     out.calendar = calendarOf(r, i0, i1, freshAll, out.obsessions.map((o) => o.week + 2 * DAY).concat(out.loops.map((l) => l.at)));
     // insights and personality, from the numbers above
@@ -1493,7 +1495,7 @@ const Mock = (() => {
           later(500, () => onLyrics({ q: m.q, synced: lrc, plain: words.filter(Boolean).join('\n'), instrumental: false }));
           break;
         }
-        case 'tilt': break;
+        case 'tilt': case 'keepAwake': break;
         case 'palette': {
           // Made-up colors from the address, as if read from the picture.
           const h = hashStr(m.url) % 360;

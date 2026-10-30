@@ -154,3 +154,8 @@
 /* The page's own place in a whole top list. */
 :root[data-look] .ranks > .r.here { background: color-mix(in srgb, var(--md-primary) 16%, transparent); box-shadow: inset 3px 0 0 var(--md-primary); }
 :root[data-look] .ranks > .rank-gap { background: transparent; }
+
+/* The bar with what plays now takes the bottom bar's look. */
+:root[data-look="soft"] .npb { background: var(--soft); box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l); }
+:root[data-look="glass"] .npb { background: color-mix(in srgb, var(--md-surface) 80%, transparent); box-shadow: 0 14px 34px var(--drop), inset 1px 1px 0 var(--hi); }
+:root[data-look] .ch-r { background: transparent; }

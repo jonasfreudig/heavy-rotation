@@ -77,4 +77,16 @@ class HabitsTest {
         val ob = t.compute(t.range("m2026-05")).getJSONArray("obsessions").getJSONObject(0)
         assertEquals("C", ob.getString("album"))
     }
+
+    @Test
+    fun theChartSaysWhereEachStoodThePeriodBefore() {
+        val s = stats()
+        val top = s.compute(s.range("m2026-04")).getJSONObject("top")
+        assertEquals(true, top.getBoolean("compared"))
+        val artists = rows(top, "artists")
+        assertEquals("Newbie", artists[0].getString("name"))
+        assertEquals("not played in March", 0, artists[0].getInt("last"))
+        assertEquals("second in March, after Wave", 2, artists.first { it.getString("name") == "Steady" }.getInt("last"))
+        assertEquals("all time has nothing before it", false, s.compute(s.range("all")).getJSONObject("top").getBoolean("compared"))
+    }
 }

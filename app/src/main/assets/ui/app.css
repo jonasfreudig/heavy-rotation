@@ -1342,3 +1342,163 @@ details.more[open] summary { margin-bottom: 6px; }
 /* The lyrics' heading with the switch that keeps the screen on. */
 .lyr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lyr-head .chip { height: 30px; margin: 0; font-size: 12.5px; }
+
+/* Your chart: each place with how it moved since the period before, and where it stood then. */
+.ch-sub { margin-top: 10px; }
+.ch-rows { display: grid; gap: 2px; margin-top: 4px; border-radius: 16px; overflow: hidden; }
+.ch-r { display: grid; grid-template-columns: 28px 44px 42px minmax(0, 1fr) 30px; gap: 9px; align-items: center; width: 100%; padding: 9px 12px; text-align: left; color: inherit;
+  background: color-mix(in srgb, var(--md-on-surface) 4%, transparent); }
+.ch-r.plain { grid-template-columns: 28px 42px minmax(0, 1fr); }
+.ch-n { font: 700 23px/1 var(--display, var(--font)); text-align: center; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.ch-r.one { background: linear-gradient(100deg, color-mix(in srgb, var(--md-primary) 20%, transparent), color-mix(in srgb, var(--md-on-surface) 4%, transparent)); }
+.ch-r.one .ch-n { font-size: 32px; color: var(--md-primary); }
+.ch-r .cover { width: 42px; height: 42px; border-radius: 8px; }
+.ch-r .cover.round { border-radius: 50%; }
+.ch-r .t b { display: block; font: 500 15px/19px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-r .t small { display: block; font: 400 12px/16px var(--mono, var(--font)); color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mv { justify-self: center; padding: 3px 7px; border-radius: 999px; font: 600 11px/14px var(--mono, var(--font)); white-space: nowrap; }
+.mv.up { background: color-mix(in srgb, var(--a3) 18%, transparent); color: color-mix(in srgb, var(--a3) 75%, var(--md-on-surface)); }
+.mv.down { background: color-mix(in srgb, var(--a8) 16%, transparent); color: color-mix(in srgb, var(--a8) 80%, var(--md-on-surface)); }
+.mv.new { background: var(--md-primary); color: var(--md-on-primary); }
+.mv.same { color: var(--md-on-surface-variant); }
+.ch-lw { text-align: right; font: 400 10.5px/13px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.ch-lw b { display: block; font: 600 15px/19px var(--display, var(--font)); color: var(--md-on-surface); }
+
+/* Your lineup: the period's artists as a festival bill, in the colors of its top album. */
+.lineup { position: relative; margin-top: 10px; padding: 26px 18px 22px; border-radius: 18px; overflow: hidden; text-align: center; color: #fbf3e4;
+  background: radial-gradient(120% 70% at 50% 0%, hsl(var(--l1) 70% 45%), transparent 70%), radial-gradient(90% 60% at 100% 100%, hsl(var(--l2) 80% 50% / .8), transparent 70%),
+    linear-gradient(170deg, hsl(calc(var(--l1) + 240) 55% 22%), hsl(calc(var(--l1) + 210) 60% 11%)); box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.lineup::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-radial-gradient(circle at 50% 120%, transparent 0 18px, rgba(255, 255, 255, .035) 18px 19px); }
+.lineup button { color: inherit; padding: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; }
+.lu-k { font: 500 11px/1 var(--mono, var(--font)); letter-spacing: .32em; text-transform: uppercase; opacity: .85; }
+.lu-d { margin-top: 6px; font: italic 600 15px/1.2 var(--display, var(--font)); opacity: .92; }
+.lu-head { margin: 16px 0 6px; font-family: var(--display, var(--font)); font-weight: 800; line-height: .95; text-transform: uppercase; letter-spacing: -.02em;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; color: #ffe08a; text-shadow: 0 3px 0 rgba(0, 0, 0, .25); overflow-wrap: anywhere; }
+.lu-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; margin-top: 8px; font-family: var(--display, var(--font)); text-transform: uppercase; }
+.lu-row.b { font-size: 24px; font-weight: 750; line-height: 1.08; }
+.lu-row.m { font-size: 17px; font-weight: 650; }
+.lu-row.s { font: 500 11.5px/1.55 var(--mono, var(--font)); letter-spacing: .06em; opacity: .88; }
+.lu-row i { font-style: normal; opacity: .5; }
+.lu-foot { margin-top: 18px; padding-top: 12px; border-top: 1px dashed rgba(251, 243, 228, .4); font: 500 11px/1.5 var(--mono, var(--font)); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
+
+/* The period in covers: one wall, each cover as big as its plays. */
+.cover-wall { position: relative; aspect-ratio: 1; max-height: 420px; margin: 4px auto 0; border-radius: 14px; overflow: hidden; }
+.cover-wall > button { position: absolute; padding: 1px; }
+.cover-wall .cover { width: 100%; height: 100%; border-radius: 3px; }
+.cover-wall small { position: absolute; left: 6px; right: 6px; bottom: 5px; font: 500 10.5px/13px var(--mono, var(--font)); color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .75); text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cover-wall .big small { font: 600 13px/16px var(--display, var(--font)); }
+
+/* New artists as cards to collect; the ones you kept playing are foil. */
+.tcards { display: flex; gap: 12px; overflow-x: auto; margin: 6px -16px 4px; padding: 6px 16px 14px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.tcards::-webkit-scrollbar { display: none; }
+.tcard { position: relative; flex: none; width: 150px; padding: 8px; border-radius: 14px; text-align: left; color: #2a2238; scroll-snap-align: start; overflow: hidden;
+  background: linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 16px rgba(0, 0, 0, .18), inset 0 0 0 1.5px rgba(0, 0, 0, .08); }
+.tc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 0 2px 6px; }
+.tc-top b { font: 700 13.5px/16px var(--display, var(--font)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-top small { flex: none; font: 600 10px/1 var(--mono, var(--font)); opacity: .6; }
+.tc-img { position: relative; display: block; height: 116px; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .12); }
+.tc-img .na-face { width: 100%; height: 100%; border-radius: 0; font-size: 44px; }
+.tc-type { display: inline-block; max-width: 100%; margin: 7px 2px 4px; padding: 2px 7px; border-radius: 999px; background: #2a2238; color: #fff8ec; font: 600 9.5px/13px var(--mono, var(--font));
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-st { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; margin-top: 4px; padding: 4px 2px 0; border-top: 1px solid rgba(0, 0, 0, .12); font: 400 10px/14px var(--mono, var(--font)); }
+.tc-st b { display: block; font: 700 15px/18px var(--display, var(--font)); }
+.tc-from { display: block; margin-top: 6px; padding: 0 2px; font: italic 500 11px/14px var(--display, var(--font)); opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcard.foil { box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
+.tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: color-dodge; opacity: .5;
+  background: linear-gradient(115deg, transparent 20%, hsl(190 90% 70% / .7) 35%, hsl(300 90% 75% / .7) 45%, hsl(50 95% 70% / .7) 55%, transparent 70%); }
+
+/* A genre page's top: its records in a crate, or on a picture disc. */
+.genre-hero.with-art { text-align: center; }
+.genre-hero.with-art .crumb { justify-content: center; }
+.g-crate { position: relative; height: 196px; margin: 4px auto 14px; max-width: 360px; }
+.g-rec { position: absolute; left: 50%; bottom: 14px; width: 136px; height: 136px; margin-left: -68px; padding: 0; transform-origin: 50% 100%;
+  transform: translateX(var(--dx)) rotate(var(--rot)) scale(var(--sc)); animation: gRec .6s cubic-bezier(.2, 0, 0, 1) both; }
+.g-rec .cover { width: 100%; height: 100%; border-radius: 6px; box-shadow: 0 10px 22px rgba(0, 0, 0, .35); }
+@keyframes gRec { from { transform: translateX(0) translateY(60px) rotate(0) scale(.9); opacity: 0; } }
+.g-crate::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; z-index: 6; height: 52px; border-radius: 8px 8px 14px 14px; pointer-events: none;
+  background: linear-gradient(180deg, #a2703f, #6e4522); box-shadow: inset 0 3px 0 rgba(255, 255, 255, .18), 0 8px 18px rgba(0, 0, 0, .3); }
+.g-tab { position: absolute; left: 50%; bottom: 14px; z-index: 7; max-width: 70%; transform: translateX(-50%); padding: 3px 10px; border-radius: 4px; background: #f3e6c8; color: #3b2a14;
+  font: 600 10.5px/14px var(--mono, var(--font)); letter-spacing: .14em; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-disc { position: relative; width: 236px; height: 236px; margin: 6px auto 14px; border-radius: 50%; overflow: hidden; box-shadow: 0 14px 34px rgba(0, 0, 0, .35); will-change: transform; }
+.g-mos { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.g-mos .cover { width: 100%; height: 100%; border-radius: 0; }
+.g-disc::before { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: 50%;
+  background: repeating-radial-gradient(circle, rgba(0, 0, 0, .22) 0 1px, rgba(255, 255, 255, .05) 1px 3px), radial-gradient(circle, transparent 40%, rgba(0, 0, 0, .35) 100%); }
+.g-disc::after { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 50%;
+  background: conic-gradient(from 30deg, transparent 0 20%, rgba(255, 255, 255, .22) 25%, transparent 32% 70%, rgba(255, 255, 255, .15) 76%, transparent 82%); }
+.g-lbl { position: absolute; z-index: 3; left: 50%; top: 50%; width: 88px; height: 88px; margin: -44px 0 0 -44px; border-radius: 50%; display: grid; place-items: center; text-align: center;
+  background: radial-gradient(circle, #fff 0 4px, transparent 5px), var(--tint, var(--md-primary)); color: #fff; box-shadow: 0 0 0 3px rgba(0, 0, 0, .25); }
+.g-lbl span { margin-top: -26px; padding: 0 10px; font: 700 11.5px/13px var(--display, var(--font)); overflow-wrap: anywhere; }
+
+/* In the bar: the bottom bar grows into a pill with what plays above the tabs and the search circle. */
+.npb { position: fixed; left: 14px; right: 14px; bottom: calc(var(--inset-bottom) + 10px); z-index: 5; height: 136px; padding: 10px 12px 0; box-sizing: border-box; border-radius: 32px;
+  display: flex; align-items: flex-start; gap: 8px; background: color-mix(in srgb, var(--md-surface-container-highest) 97%, var(--md-primary));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .18), inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+body.np-bar-on { --nav-h: 146px; }
+body.np-bar-on .navbar, body.np-bar-on .search-fab { background: transparent !important; box-shadow: none !important; }
+body.np-bar-on .search-fab { transform: scale(.86); background: color-mix(in srgb, var(--md-on-surface) 7%, transparent) !important; }
+body.np-bar-on .bottom-fade { height: calc(var(--inset-bottom) + 190px); }
+body.searching .npb { display: none; }
+.npb-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; height: 46px; padding: 0; text-align: left; color: inherit; }
+.npb-open .cover { flex: none; width: 46px; height: 46px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
+.npb-open .t { min-width: 0; }
+.npb-open b { display: block; font: 600 15px/19px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.npb-open b.lyr { font: italic 600 16.5px/20px var(--display, var(--font)); letter-spacing: -.01em; animation: lyrIn .35s cubic-bezier(.2, 0, 0, 1); }
+@keyframes lyrIn { from { opacity: 0; transform: translateY(6px); } }
+.npb-open small { display: block; font: 400 12px/16px var(--mono, var(--font)); color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.npb-btn { flex: none; width: 42px; height: 42px; margin-top: 2px; border-radius: 50%; display: grid; place-items: center; }
+.npb-btn .i { width: 22px; height: 22px; }
+.npb-ly { color: var(--md-on-surface-variant); }
+.npb-ly.on { color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 14%, transparent); }
+.npb-pp { background: var(--md-primary); color: var(--md-on-primary); }
+.npb-prog { position: absolute; left: 24px; right: 24px; top: 64px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--md-on-surface) 12%, transparent); }
+.npb-prog i { display: block; height: 100%; width: 0; border-radius: 1px; background: var(--md-primary); transition: width 1s linear; }
+
+/* On the shelf, away from the shelf: a small pill by the title and a thin line of progress at the top. */
+.np-top { display: inline-flex; align-items: center; gap: 7px; max-width: 160px; margin-left: 10px; padding: 4px 11px 4px 4px; border-radius: 999px; vertical-align: middle;
+  background: color-mix(in srgb, var(--md-primary) 12%, transparent); color: var(--md-on-surface); font: 500 12px/16px var(--mono, var(--font)); letter-spacing: 0; }
+.np-top span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-tdisc { flex: none; position: relative; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; background: repeating-radial-gradient(circle, #111 0 1px, #262626 1px 2px); }
+.np-tdisc::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: hsl(var(--h) 70% 55%); }
+.np-tdisc img { position: absolute; inset: 6px; z-index: 1; width: 10px; height: 10px; border-radius: 50%; object-fit: cover; }
+.np-top.playing .np-tdisc { animation: spin33 3.6s linear infinite; }
+.np-topline { position: fixed; left: 0; right: 0; top: var(--inset-top); z-index: 30; height: 2px; pointer-events: none; }
+.np-topline i { display: block; height: 100%; width: 0; background: var(--md-primary); transition: width 1s linear; }
+
+/* The concerts page: the latest stubs fanned out on top, the afterglow as bars, each year a wall of stubs. */
+.concerts-hero { text-align: center; padding-top: 4px; }
+.cf { position: relative; height: 112px; margin: 6px auto 10px; }
+.cf-tk { position: absolute; left: 50%; top: 18px; display: flex; width: 172px; height: 64px; margin-left: -86px; border-radius: 10px; text-align: left; color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--md-primary) 16%, var(--md-surface-container-high)); box-shadow: 0 8px 18px rgba(0, 0, 0, .18); transform: translateX(var(--x)) rotate(var(--r));
+  animation: cfIn .6s cubic-bezier(.2, 0, 0, 1) both; }
+.cf-tk:last-child { z-index: 2; }
+@keyframes cfIn { from { transform: translateY(30px) rotate(0); opacity: 0; } }
+.cf-tk .tkd, .glow-tk .tkd { flex: none; width: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-right: 2px dashed color-mix(in srgb, var(--md-on-surface) 18%, transparent); }
+.cf-tk .tkd b, .glow-tk .tkd b { font: 650 22px/1 var(--display, var(--font)); }
+.cf-tk .tkd small, .glow-tk .tkd small { margin-top: 3px; font: 500 10px/1 var(--mono, var(--font)); text-transform: uppercase; letter-spacing: .06em; color: var(--md-on-surface-variant); }
+.cf-tk .tki { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 6px 10px; min-width: 0; }
+.cf-tk .tki b { font: 600 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-tk .tki small { font-size: 11.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glows { display: grid; gap: 10px; margin-top: 6px; }
+.glow-tk { display: flex; align-items: stretch; width: 100%; min-height: 92px; border-radius: 12px; text-align: left; color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--md-primary) 11%, var(--md-surface-container-high)); }
+.glow-tk .gt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; }
+.glow-tk .gt > b { font: 600 16px/20px var(--font); }
+.glow-tk .gt > small { font-size: 12.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glow-tk .gb { position: relative; display: block; height: 18px; margin-top: 2px; border-radius: 4px; background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); overflow: hidden; }
+.glow-tk .gb i { position: absolute; left: 0; top: 0; bottom: 0; min-width: 3px; border-radius: 4px; }
+.glow-tk .gb i.b { background: color-mix(in srgb, var(--md-on-surface) 22%, transparent); }
+.glow-tk .gb i.a { background: var(--md-primary); }
+.glow-tk .gb em { position: relative; padding-left: 7px; font: 500 11.5px/18px var(--mono, var(--font)); font-style: normal; color: var(--md-on-surface); }
+.glow-tk .gx { flex: none; align-self: center; padding: 0 14px 0 4px; font: 700 26px/1 var(--display, var(--font)); color: var(--md-primary); }
+.tix.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; overflow: visible; margin: 6px 0 0; padding: 0; }
+.tix.grid .tk { width: auto; min-height: 78px; }
+.tk .tki b { font-size: 14.5px; }
+.tk .tki small { font-size: 12px; }
+.tk-glow { align-self: flex-start; margin-top: 3px; padding: 2px 7px; border-radius: 999px; font: 500 10.5px/14px var(--mono, var(--font)); color: var(--md-on-surface-variant);
+  background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.tk-glow.hot { color: var(--tint-text, var(--md-primary)); background: color-mix(in srgb, var(--tint-text, var(--md-primary)) 14%, transparent); }
+.tk-glow .i { width: 12px; height: 12px; vertical-align: -1px; margin-right: 2px; }
+/* The whole top list: the places in the display face. */
+.ranks .r .n { font: 650 16px/1 var(--display, var(--font)); color: var(--md-on-surface); text-align: center; }

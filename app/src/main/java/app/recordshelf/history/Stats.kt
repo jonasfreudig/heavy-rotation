@@ -273,7 +273,7 @@ class Stats(
             .put("loops", loops(i0, i1))
             .put("rarely", rarelyPlayed(i0, i1))
             .put("wishlist", wishlist(i0, i1))
-            .put("top", top(i0, i1, TOP_MAX))
+            .put("top", top(i0, i1, TOP_MAX, prev?.let { h.lowerBound(it.from) } ?: -1, prev?.let { h.lowerBound(it.to) } ?: -1))
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
@@ -610,6 +610,7 @@ class Stats(
         val found = fresh.sortedWith(compareByDescending<Int> { plays[it] }.thenBy { firstTs[it] }).take(60).map { a ->
             JSONObject().put("name", h.artistNames[a]).put("first", firstTs[a] * 1000).put("plays", plays[a]).put("here", here[a])
                 .put("from", if (from[a] >= 0) h.artistNames[from[a]] else "").put("photo", artistPhoto(h.artistNames[a]))
+                .put("genre", genres.detail(h.artistNames[a], null)?.let { d -> if (d.style.isNotEmpty()) genres.styleLabel(d.style) else Genres.label(d.family) } ?: "")
         }
         return JSONObject().put("unit", b.unit.id).put("buckets", buckets)
             .put("found", JSONArray(found)).put("count", fresh.size).put("kept", fresh.count { plays[it] >= KEPT_PLAYS })
@@ -1574,19 +1575,32 @@ class Stats(
         return o.put("weeksFrom", weekStart(w0)).put("weeks", JSONArray((w0..w1).map { weeks[it] ?: 0 }))
     }
 
-    fun top(i0: Int, i1: Int, max: Int): JSONObject {
-        val ap = IntArray(h.artistNames.size)
-        val tp = IntArray(h.trackTitles.size)
-        val lp = IntArray(h.albumTitles.size)
-        for (i in i0 until i1) {
-            ap[h.artist[i]]++
-            tp[h.track[i]]++
-            if (h.album[i] >= 0) lp[h.album[i]]++
+    /**
+     * The most played artists, songs and albums between [i0] and [i1], [max] of each. With the period before
+     * ([p0] until [p1]), each says where it stood then ("last": its place, 0 when it wasn't played), for the chart.
+     */
+    fun top(i0: Int, i1: Int, max: Int, p0: Int = -1, p1: Int = -1): JSONObject {
+        fun count(a: Int, b: Int): Triple<IntArray, IntArray, IntArray> {
+            val ap = IntArray(h.artistNames.size)
+            val tp = IntArray(h.trackTitles.size)
+            val lp = IntArray(h.albumTitles.size)
+            for (i in a until b) {
+                ap[h.artist[i]]++
+                tp[h.track[i]]++
+                if (h.album[i] >= 0) lp[h.album[i]]++
+            }
+            return Triple(ap, tp, lp)
         }
+        fun ranked(p: IntArray) = p.indices.filter { p[it] > 0 }.sortedByDescending { p[it] }
+        val (ap, tp, lp) = count(i0, i1)
+        // Where each stood the period before: its place in that period's list.
+        val last = if (p0 in 0..p1) count(p0, p1).toList().map { p -> HashMap<Int, Int>().also { m -> ranked(p).forEachIndexed { k, x -> m[x] = k + 1 } } } else null
+        fun JSONObject.lastOf(k: Int, x: Int) = if (last != null) put("last", last[k][x] ?: 0) else this
         return JSONObject()
-            .put("artists", JSONArray(ap.indices.filter { ap[it] > 0 }.sortedByDescending { ap[it] }.take(max).map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("photo", artistPhoto(h.artistNames[it])) }))
-            .put("tracks", JSONArray(tp.indices.filter { tp[it] > 0 }.sortedByDescending { tp[it] }.take(max).map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]) }))
-            .put("albums", JSONArray(lp.indices.filter { lp[it] > 0 }.sortedByDescending { lp[it] }.take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", owned(it) != null) }))
+            .put("compared", last != null)
+            .put("artists", JSONArray(ranked(ap).take(max).map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("photo", artistPhoto(h.artistNames[it])).lastOf(0, it) }))
+            .put("tracks", JSONArray(ranked(tp).take(max).map { JSONObject().put("title", h.trackTitles[it]).put("artist", h.artistNames[h.trackArtist[it]]).put("plays", tp[it]).put("album", albumOf(it)).put("cover", trackAlbum[it].let { al -> if (al >= 0) cover(al) else "" }).lastOf(1, it) }))
+            .put("albums", JSONArray(ranked(lp).take(max).map { JSONObject().put("title", h.albumTitles[it]).put("artist", h.artistNames[h.albumArtist[it]]).put("plays", lp[it]).put("cover", cover(it)).put("owned", owned(it) != null).lastOf(2, it) }))
     }
 
     /**

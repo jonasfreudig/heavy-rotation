@@ -35,8 +35,9 @@ of its own in between, and your data stays on your phone.
 - Stats comes as full-size blocks, as short cards that open full size, or as the classic long page.
   Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
   between, and each can be one long page instead.
-- A Now playing page for the phone shows the position, the controls, the music app's queue and the
-  album the song is on.
+- A Now playing page for the phone shows the position, the controls, the music app's queue, the
+  album the song is on and the lyrics. What plays can also sit in the bottom bar, with the line being
+  sung.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the
   setlist of one show, and the shows you were at, with what each did to your listening.
 - The Fix names setting cleans up names before they're scrobbled ("Remastered", "feat." and your

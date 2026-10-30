@@ -194,8 +194,9 @@ time per month, quarter or year. These are the blocks for the chosen period:
   curve and a word for how you played them: new (first played in this period), steady (most of the
   days or weeks with music), a wave (half their plays within a quarter of the period) or now and
   then.
-- New artists shows the artists you heard for the first time, with their faces, the day you found
-  them and what played right before. All opens every one of them. More like them looks for artists
+- New artists shows the artists you heard for the first time as cards to collect: their photo,
+  genre and plays, the day you found them and what played right before. The ones you kept playing
+  (ten plays or more) are foil. All opens every one of them as a list. More like them looks for artists
   you haven't played that are like your new ones, the way the suggestions on Explore are found, with
   the reasons and Not for me.
 - Genre drift shows how your genres shift over time. Every play gets one genre, weighed from the
@@ -210,7 +211,12 @@ time per month, quarter or year. These are the blocks for the chosen period:
 - "On your shelf, rarely played" lists your records, least played first.
 - Wishlist ideas lists albums you play a lot, across several different tracks, that aren't on your
   shelf. Tap one to search Discogs.
-- Top 10 lists your ten most played artists, albums and tracks.
+- In covers is a wall of the albums you played, each cover as big as its plays.
+- Your lineup is the period's artists as a festival poster, in the colors of the top album: the most
+  played artist is the headliner, and the names get smaller down the bill.
+- Your chart has your most played songs, albums and artists like a hit parade: each with how it
+  moved since the period before (up, down, new or the same) and where it stood then ("was 3"). All
+  time has nothing to compare with, so it is a plain top 10. Classic keeps the plain top 10 too.
 - Your taste, at the end, looks at all of your history, whatever the period: the musical atlas, you
   vs everyone, your concerts and the genre map.
 
@@ -267,10 +273,11 @@ non-commercial use; any application name will do), then paste the key in Setting
 To bring in your own concerts, add your setlist.fm username there too. The shows you marked "I was
 there" on setlist.fm come in, and are fetched again once a week or when you tap Update now. They
 show on the artist's page under "You saw them live", under Your taste on the Stats tab, in the
-period's Highlights, and as ticket stubs in the period's story. "Your concerts" has every show by
-year, the artists you saw most, and the afterglow: the shows that sent you back to an artist's
-music most, measured as your plays of them in the four weeks after the show against the four weeks
-before. Tap a show for that night's setlist as a playlist.
+period's Highlights, and as ticket stubs in the period's story. "Your concerts" opens with your
+latest stubs fanned out, then the afterglow: the shows that sent you back to an artist's music
+most, as bars of your plays of them in the four weeks before and after the show. Below come the
+artists you saw most and every show by year, as ticket stubs. Tap a show for that night's setlist
+as a playlist.
 
 Artist photos come from Deezer's public catalog (no account needed). Each is looked up once and kept
 on the phone; they show on artist pages, in Top 10 and Explore, and in the story.
@@ -294,7 +301,9 @@ and its biggest day. Below come your top artists (with photos), albums and songs
 the artists and albums of that genre you loved and haven't played for half a year or more;
 "Everyone in …", every artist you played in it; when its music came out; its listening barcode,
 plays per month and hours; and the records on your shelf with that genre or style. "Full stats for
-…" opens the Stats tab for that genre.
+…" opens the Stats tab for that genre. The page takes the colors of the genre's most played album,
+and Settings → Look → Genre pages puts its top albums at the top: standing in a record crate, on a
+picture disc that turns as you scroll, or nothing (Plain).
 
 #### Your musical atlas
 
@@ -468,9 +477,14 @@ button, and three views: the grid of covers, big covers two to a row with year a
 list with year, label, format, two styles and plays.
 
 What is playing right now, on the turntable or in a music app on the phone, shows as a sleeve with
-the record half out of it, turning while it plays. Settings → Look → Now playing puts it On the
-shelf (a line at the top, with the progress) or In the corner (the record peeking out above the
-search button, on every tab). Tap it for Now spinning or, for the phone, Now playing. Now playing
+the record half out of it, turning while it plays. Settings → Look → Now playing puts it in one of
+three places. On the shelf is a line at the top of the shelf, with the progress; on Stats and
+Explore a small pill next to the title shows the song with its record turning, and a thin line at
+the very top shows how far it is. In the corner is the record peeking out above the search button,
+on every tab. In the bar grows the bottom bar into a bigger pill with the cover, the song, play and
+pause and the progress, above the tabs; its lyrics button swaps the song's name for the line being
+sung, one line at a time, and the screen stays on while it shows them. Tap any of them for Now
+spinning or, for the phone, Now playing. Now playing
 has the song's exact position (drag to seek), play/pause and skip, what the app plays next (with
 the playlist's or mix's name) when the app shares its queue, and the whole album the song is on,
 with how much of the album is left (tracklists from Deezer), and the song's lyrics from LRCLIB.
