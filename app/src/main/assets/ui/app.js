@@ -4146,13 +4146,11 @@ function renderGenre() {
       P.decades = `<div class="viz"><h2>Decades</h2><span class="sub">When your ${esc(g.label)} came out</span><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
     }
     P.life = lifeCharts(g, 'it', '', g.label + g.label);
-    if (pageExtras()) {
-      P.lineup = lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
-        { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` });
-      const c = g.calendar || {};
-      P.year = (c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
-        ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : '';
-    }
+    P.lineup = lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
+      { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` });
+    const c = g.calendar || {};
+    P.year = (c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
+      ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : '';
     P.shelf = shelfHtml;
     h += tabbedHtml('genrePage', g.tab, GENRE_TABS, GENRE_LONG, P);
   }
@@ -4245,7 +4243,7 @@ function renderTrack() {
     <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
     h += vsBlock(t.global, 'it', t.globalRank ? ` It's ${esc(t.artist)}'s #${t.globalRank} most played song there.` : '');
     h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
-    if (pageExtras()) h += chartRunViz(t);
+    h += chartRunViz(t);
     h += sitsViz(t);
     if (t.next && t.next.length) {
       h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
@@ -5901,7 +5899,7 @@ function renderArtist() {
     const more = a.tracks.length > 5 ? `<div class="btn-row top-more"><button class="btn text small" data-ttoggle>${artistTopOpen ? 'Show top 5' : `Show all ${a.tracks.length}`}</button></div>` : '';
     P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="ch-rows">${rows}</div>${more}</div>`;
   }
-  P.cards = pageExtras() ? songCards(a) : '';
+  P.cards = songCards(a);
   P.concerts = concertsBlock(a.concerts);
   P.live = `<div id="liveSlot">${liveHtml(a.name)}</div>`;
   P.global = globalTopHtml(a);
@@ -7018,8 +7016,6 @@ function coverWallViz(s) {
 
 // ---- genre pages: their records at the top, fanned out or on a picture disc (Settings → Look) ----
 
-/** Song charts, song cards, and a genre's lineup and calendar on the pages (Settings → Look → Extras on pages). */
-const pageExtras = () => { try { return localStorage.getItem('pageExtras') !== 'off'; } catch (_) { return true; } };
 const genreHead = () => { try { const v = localStorage.getItem('genreHead'); return v === 'disc' || v === 'plain' ? v : 'crate'; } catch (_) { return 'crate'; } };
 /** The top of a genre page: its most played albums fanned out, or printed on a picture disc. */
 function genreArt(g) {
@@ -7754,7 +7750,6 @@ function renderSettings() {
   $$('#mainSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (mainCompact() ? 'compact' : 'long')));
   $$('#statsSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === statsView()));
   $$('#genreHeadSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === genreHead()));
-  $$('#extrasSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (pageExtras() ? 'on' : 'off')));
   const dv = ST.discover || {};
   $('#discoverSw').checked = dv.on !== false;
   $('#dvNo').hidden = !dv.no;
@@ -8289,15 +8284,6 @@ function build() {
     try { localStorage.setItem('mainLayout', b.dataset.v); } catch (_) { /* preview without storage */ }
     renderSettings();
     renderExplore();
-  };
-  $('#extrasSeg').onclick = (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    try { localStorage.setItem('pageExtras', b.dataset.v); } catch (_) { /* preview without storage */ }
-    renderSettings();
-    renderArtist();
-    renderTrack();
-    renderGenre();
   };
   $('#genreHeadSeg').onclick = (e) => {
     const b = e.target.closest('button');

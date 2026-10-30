@@ -316,8 +316,7 @@ hours; and the records on your shelf with that genre or style. "Full stats for
 and Settings → Look → Genre pages puts its top albums at the top: fanned out (Covers), on a picture
 disc that turns as you scroll, or nothing (Plain). A genre page also has its lineup, its artists as a festival
 bill with the most played on top, and its year: the last twelve months day by day, darker on days
-with more of it. Settings → Look → Extras on pages hides the chart run, the cards, the lineup and the
-year.
+with more of it.
 
 #### Your musical atlas
 
