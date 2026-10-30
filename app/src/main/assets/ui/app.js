@@ -2361,7 +2361,7 @@ function deltaHtml(cur, prev, kind, running) {
   return `<span class="delta"${running ? ` title="${esc(`against ${vsWord({ kind, running })}`)}"` : ''}>${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(vs)}</span>`;
 }
 const tile = (label, value, sub, delta, ic, attrs) => {
-  const inner = `<span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}`;
+  const inner = `<span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b${String(value).length > 6 ? ' class="long"' : ''}>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}`;
   return attrs ? `<button class="tile go" ${attrs}>${inner}<i class="tile-go">${icon('chevron-right')}</i></button>` : `<div class="tile">${inner}</div>`;
 };
 /** A tile's way into the whole top list of [kind] in period [range], with the page's own song, album or artist marked there. */
@@ -5866,10 +5866,12 @@ const layoutPref = (key) => { try { return localStorage.getItem(key) !== 'long';
 const pageTabs = () => layoutPref('pageLayout');
 const mainCompact = () => layoutPref('mainLayout');
 /** Each place's tabs ([key, label, its parts]) and the long page's order of the same parts. */
-const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs', 'origin']], ['listening', 'Listening', ['river', 'life', 'record']],
-  ['music', 'Music', ['tracks', 'shelf', 'disco', 'global']], ['live', 'Live', ['concerts', 'live']]];
+// You and them on one tab (the numbers, the charts, how it began), their music on the next, then the stage.
+const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'life', 'origin', 'vs', 'record']],
+  ['music', 'Music', ['tracks', 'river', 'disco', 'shelf', 'global']], ['live', 'Live', ['concerts', 'live']]];
 const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'concerts', 'live', 'global', 'shelf'];
-const ALBUM_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs']], ['songs', 'Songs', ['shape', 'songs']], ['listening', 'Listening', ['clicked', 'river', 'life']]];
+// The album and you on one tab, its songs on the other.
+const ALBUM_TABS = [['overview', 'Overview', ['tiles', 'period', 'clicked', 'life', 'vs']], ['songs', 'Songs', ['songs', 'shape', 'river']]];
 const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river', 'life'];
 const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside', 'life']], ['music', 'Music', ['artists', 'albums', 'songs', 'everyone', 'lost', 'decades', 'shelf']]];
 const GENRE_LONG = ['tiles', 'inside', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'shelf'];

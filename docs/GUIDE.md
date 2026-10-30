@@ -473,11 +473,11 @@ Tinted soft style the tabs take a calm shade of it too. Choose Your records, Wal
 Material You colors) or Off in Settings → Look → Background color.
 
 Artist, album and genre pages come in tabs, each a screen or two long; Settings → Look → Pages
-switches them to One long page. An artist's tabs are Overview (the numbers, the period, you vs
-everyone, how you found them), Listening (the charts), Music (top tracks, your shelf, the
-discography, their most played songs) and Live (the shows you were at, and what they play
-lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
-clicked, its songs over time, the charts). A genre's are Overview (the numbers, the styles in it and
+switches them to One long page. An artist's tabs are Overview (the numbers, the period, the charts,
+how you found them, you vs everyone), Music (top tracks, their albums over time, the discography,
+your shelf, their most played songs) and Live (the shows you were at, and what they play lately).
+An album's are Overview (the numbers, the period, when it clicked, the charts, you vs everyone) and
+Songs (the tracklist, track by track and its songs over time). A genre's are Overview (the numbers, the styles in it and
 the charts) and Music (its artists, albums and songs, records to rediscover, decades and your
 shelf). The
 tabs stay at the top as you scroll. Swipe sideways to move to the next tab: the tabs lie side by

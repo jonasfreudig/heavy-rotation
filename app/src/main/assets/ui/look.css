@@ -32,6 +32,7 @@
 .artist-hero h1.fit { font-family: var(--display); font-weight: 800; text-transform: none; font-style: italic; letter-spacing: -.025em; font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; }
 .tile b, .sum-nums b { font-family: var(--display); font-weight: 600; letter-spacing: -.02em; font-variation-settings: 'SOFT' 40, 'opsz' 72; }
 .tile b { font-size: 33px; }
+.tile b.long { font-size: 26px; }
 #pLabel { font-family: var(--display); font-weight: 600; font-size: 32px; line-height: 38px; letter-spacing: -.01em; font-variation-settings: 'SOFT' 50, 'opsz' 72; }
 .story-card h2, .story .t { font-family: var(--display); font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; }
 .tile .tl, .count, .side, .k, .story-card .k, .hero .meta, .rec small, .xcard small, .rank .n, .rank .v, .rank .t small, .track .pos, .track .dur, .xl, .chip .n, .dur { font-family: var(--mono); }
