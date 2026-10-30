@@ -658,6 +658,8 @@ function backTarget() {
   const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
   if (!$('#story').hidden) return { el: $('#story'), kind: 'page', under: top ? [top] : homeLayers() };
   if (sheetOpen()) return { el: $('#sheetBody'), kind: 'sheet' };
+  // Lyrics over the whole screen: a swipe moves them down, like a sheet, and back makes them small again.
+  if (lyrFull && top && top.id === 'nowPage' && $('#npLyrics')) return { el: $('#npLyrics'), kind: 'sheet' };
   if (top) {
     const prev = pageStack.length > 1 ? $('#' + pageStack[pageStack.length - 2]) : null;
     // The same kind of page right under it is this very element, which back fills with the earlier
@@ -1406,6 +1408,8 @@ function setLyrFull(on) {
   lyrFull = on;
   $('#nowPage').classList.toggle('lyr-full', on);
   const n = (ST.phone || {}).now, box = $('#npLyrics');
+  // Where a back swipe left it: back in its place in the page.
+  if (box) for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) box.style[k] = '';
   if (!n || !box) return;
   box.innerHTML = lyricsHtml((n.media || {}).canSeek);
   lyrAt = -2;

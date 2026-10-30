@@ -8,7 +8,7 @@ Hiii! Heavy Rotation has been a very fun project to work on so far - and I hope 
 I wanted one place for my records and everything else I
 listen to: put a record on, tap once, and have it count next to what the phone plays, then see what
 it all adds up to and what cool stats I can get out of it. 
-It grew into much more than that, and there will probably more changes in the future. I
+It grew into much more than that, and there will probably be more changes in the future. I
 hope it turns out to be useful for you too!
 
 Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of covers and
