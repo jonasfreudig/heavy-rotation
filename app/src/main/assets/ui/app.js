@@ -5970,8 +5970,9 @@ const thin = (s) => s.summary.days < 4;
 
 /**
  * Every block of the Stats tab: its name (in Arrange), the periods it is for (all but the day, unless said), and how it
- * draws itself full size from the stats [s] ('' when it has nothing to show). [classic]: how it looked up to 0.58, for
- * the Classic page (Settings → Look → Stats). What a block says as a card is in CARDS.
+ * draws itself full size from the stats [s] ('' when it has nothing to show). [page]: how it draws itself opened on its
+ * own page from a card, with all it has. [classic]: how it looked up to 0.58, for the Classic page (Settings → Look →
+ * Stats). What a block says as a card is in CARDS.
  */
 const SPAN = ['week', 'month', 'year', '12m', 'all'];
 const BLOCKS = {
@@ -5995,10 +5996,11 @@ const BLOCKS = {
   who: {
     name: 'Who you played when',
     html: (s) => (thin(s) ? '' : whoViz(s)),
+    page: (s) => (thin(s) ? '' : whoViz(s, 16)),
     classic: (s) => (thin(s) ? '' : (s.range.kind === 'week' ? '' : habitsViz(s.habits)) + pulseViz(s.pulse)),
   },
-  newArtists: { name: 'New artists', html: newArtistsView, classic: (s) => newArtistsViz(s.newArtists) },
-  repeat: { name: 'On repeat', html: onRepeatViz, classic: (s) => obsessionsViz(s.obsessions, s.loops) },
+  newArtists: { name: 'New artists', html: newArtistsView, page: (s) => newArtistsView(s, true), classic: (s) => newArtistsViz(s.newArtists) },
+  repeat: { name: 'On repeat', html: onRepeatViz, page: (s) => onRepeatViz(s, true), classic: (s) => obsessionsViz(s.obsessions, s.loops) },
   genres: { name: 'Genre drift', html: (s) => (thin(s) ? '' : genreViz(s.genres)) },
   decades: { name: 'Decades', html: decadesView, classic: (s) => decadesViz(s.decades) },
   rarely: { name: 'Rarely played records', html: (s) => rarelyViz(s.rarely) },
@@ -6020,16 +6022,16 @@ const DEFAULT_ORDER = {
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
 const statsGroup = (s) => (s && s.range && s.range.kind === 'day' ? 'day' : 'span');
-/** Stats as cards, full size or the classic page (Settings → Look); before that choice, as Explore was set. */
+/** Stats full size, as cards or as the classic page (Settings → Look); before that choice, as Explore was set, else full size. */
 function statsView() {
   try {
     const v = localStorage.getItem('statsView');
     if (v === 'cards' || v === 'full' || v === 'long') return v;
-    const was = localStorage.getItem('mainLayout') === 'long' ? 'long' : 'cards';
+    const was = localStorage.getItem('mainLayout') === 'long' ? 'long' : 'full';
     localStorage.setItem('statsView', was);
     return was;
   } catch (_) {
-    return 'cards';
+    return 'full';
   }
 }
 /** How [id] draws itself in [view]: the classic page keeps the blocks' old forms. */
@@ -6253,7 +6255,8 @@ function openBlock(id) {
 function renderBlock() {
   if (!BLOCK || !isOpen('blockPage') || !STATS || STATS.empty) return;
   $('#blockTitle').textContent = periodName(STATS.range);
-  const h = BLOCKS[BLOCK] && (BLOCKS[BLOCK].kinds || SPAN).includes(STATS.range.kind) ? BLOCKS[BLOCK].html(STATS) : '';
+  const b = BLOCKS[BLOCK];
+  const h = b && (b.kinds || SPAN).includes(STATS.range.kind) ? (b.page || b.html)(STATS) : '';
   morph($('#blockBody'), h || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
   drawRecords();
 }
@@ -6403,9 +6406,9 @@ function whoRows(s, n) {
   });
   return { hb, B, unitWord, spanWords, rows: out };
 }
-/** Who you played when: a row per top artist in the order they peaked, with how you played them and their curve. */
-function whoViz(s) {
-  const W = whoRows(s, 10);
+/** Who you played when: a row per top artist ([n] at most) in the order they peaked, with how you played them and their curve. */
+function whoViz(s, n = 10) {
+  const W = whoRows(s, n);
   if (!W) return '';
   const max = Math.max(1, ...W.rows.flatMap((r) => r.counts));
   const steady = W.rows.filter((r) => r.kind === 'steady').sort((a, b) => b.present - a.present)[0];
@@ -6417,13 +6420,21 @@ function whoViz(s) {
     <div class="who-ax"><span>${esc(periodLabel(W.hb.starts[0], W.hb.unit, true))}</span><span>${esc(periodLabel(W.hb.starts[W.B - 1], W.hb.unit, true))}</span></div>${rows}
     ${words ? `<div class="readout">${words}</div>` : ''}</div>`;
 }
-/** The period's new artists with their faces and what you played right before, and the way to more like them. */
-function newArtistsView(s) {
+/**
+ * The period's new artists with their faces and what you played right before, and the way to more like them. [page]:
+ * opened on its own page, every one of them as a row, most played first.
+ */
+function newArtistsView(s, page) {
   const na = s.newArtists || {}, found = na.found || [];
   if (s.summary.historyStartsHere && !na.count) return `<div class="viz"><h2>New artists</h2><span class="sub">Your history starts ${esc(inPeriod(s.range))}, so every artist is new here.</span></div>`;
   if (!na.count) return `<div class="viz"><h2>New artists</h2><span class="sub">No first listens ${esc(inPeriod(s.range))}: you stuck with the artists you knew.</span></div>`;
-  const faces = found.slice(0, 12).map((f) => `<button class="na-find" data-artist="${esc(f.name)}">${artistFace(f)}<b>${esc(f.name)}</b><small>${esc(shortDate(f.first))}</small>${f.from ? `<small>after ${esc(f.from)}</small>` : ''}</button>`).join('');
   const like = discoverOn() && found.length ? `<button class="btn tonal" data-likethem>${icon('explore')}More like them</button>` : '';
+  if (page) {
+    const more = na.count > found.length ? `<p class="hint">The ${found.length} played most since; ${num(na.count - found.length)} more you heard only now and then.</p>` : '';
+    return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}. Most played first, with what played right before you found them.</span>
+      ${like ? `<div class="btn-row">${like}</div>` : ''}<div class="na-list">${found.map((f) => `<button class="na-item" data-artist="${esc(f.name)}">${artistFace(f)}<span class="t"><b>${esc(f.name)}</b><small>first played ${esc(dateLabel(f.first))}${f.from ? `, after ${esc(f.from)}` : ''}</small></span><span class="v">${num(f.plays)}<small>${f.plays === 1 ? 'play' : 'plays'}</small></span></button>`).join('')}</div>${more}</div>`;
+  }
+  const faces = found.slice(0, 12).map((f) => `<button class="na-find" data-artist="${esc(f.name)}">${artistFace(f)}<b>${esc(f.name)}</b><small>${esc(shortDate(f.first))}</small>${f.from ? `<small>after ${esc(f.from)}</small>` : ''}</button>`).join('');
   const all = found.length > 1 ? `<button class="btn text" data-newlist>${icon('view-list')}All ${num(na.count)}</button>` : '';
   return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}. Under each, the day you found them and what played right before.</span>
     ${faces ? `<div class="na-row">${faces}</div>` : ''}${like || all ? `<div class="btn-row">${like}${all}</div>` : ''}</div>`;
@@ -6440,8 +6451,8 @@ function repeatList(s) {
   return [...m.values()].sort((a, b) => Math.max(b.week, b.run) - Math.max(a.week, a.run));
 }
 const repeatWords = (x) => [x.week ? `${x.week} in one week` : '', x.run ? `${x.run} in a row` : ''].filter(Boolean).join(', ');
-function onRepeatViz(s) {
-  const list = repeatList(s).slice(0, 8);
+function onRepeatViz(s, page) {
+  const list = repeatList(s).slice(0, page ? 40 : 8);
   if (!list.length) return '';
   return `<div class="viz"><h2>On repeat</h2><span class="sub">Songs you played again and again: seven times or more in one week, or back to back</span><div class="rank">${list.map((x) =>
     `<button class="r with-cover" ${trackAttrs(x.artist, x.track, { album: x.album, cover: x.cover })}>${coverHtml(x.cover, x.album || x.track, x.artist, 'tiny')}<span class="t"><b>${esc(x.track)}</b><small>${esc(x.artist)}, ${x.week ? 'week of ' : ''}${esc(shortDate(x.at))}</small></span><span class="rp">${esc(repeatWords(x))}</span></button>`).join('')}</div></div>`;

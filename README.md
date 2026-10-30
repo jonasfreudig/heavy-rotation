@@ -32,7 +32,7 @@ of its own in between, and your data stays on your phone.
   find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
   releases by your artists. It also has lost favorites, albums to rediscover and playlists to send
   to TIDAL.
-- Stats comes as short cards that open full size, as full-size blocks, or as the classic long page.
+- Stats comes as full-size blocks, as short cards that open full size, or as the classic long page.
   Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
   between, and each can be one long page instead.
 - A Now playing page for the phone shows the position, the controls, the music app's queue and the

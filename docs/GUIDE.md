@@ -136,12 +136,13 @@ music.
 
 Settings → Look → Stats picks how a week, month, year or all time looks:
 
-- Cards, the default, keeps the page short. Days and streaks, who you played when, new artists,
-  songs on repeat and decades come as cards, one under the other. Each card says in one sentence
-  what it found ("30 days in a row", "Air steady, Fontaines D.C. in a wave") and has a small picture
-  you can read at that size. Tap a card and its block opens full size on its own page, for the same
-  period. The bigger charts stay full size on the page.
-- Full size shows every block full size on the page.
+- Full size, the default, shows every block full size on the page.
+- Cards keeps the page short. Days and streaks, who you played when, new artists, songs on repeat
+  and decades come as cards, one under the other. Each card says in one sentence what it found ("30
+  days in a row", "Air steady, Fontaines D.C. in a wave") and has a small picture you can read at
+  that size. Tap a card and its block opens on its own page for the same period, with all it has:
+  every new artist, every song on repeat, up to 16 artists in who you played when. The bigger
+  charts stay full size on the page.
 - Classic is the long page as it was up to version 0.58, with streaks, phases, habits, new artists,
   decades and obsessions in their first forms.
 
