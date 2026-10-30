@@ -6204,16 +6204,25 @@ function warmTabs(host) {
   if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 800 }); else setTimeout(go, 200);
 }
 
-/** The tabs get the page's color behind them once they stick to the top. */
+/**
+ * The tabs get the page's color behind them once they stick to the top. An observer tells when their anchor
+ * passes the top of the screen, set up once per anchor: measuring on every scroll event made the phone lay
+ * out the page again and again while it flung, and the tabs lagged and jumped.
+ */
 function syncPageTabs(host) {
   const bar = host.querySelector('.atabs'), anchor = host.querySelector('.tab-anchor');
-  if (!bar || !anchor) return;
-  // Where they'd be without sticking (their anchor) against where they stick: measured so, the top bar sliding in or out doesn't matter.
-  const top = parseFloat(getComputedStyle(bar).top) || 0;
-  const sc = hostScroller(host);
-  const from = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;
-  // A pixel of slack: a tab change scrolls to exactly where they stick, and rounding flipped them back and forth.
-  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - from < top + 1);
+  if (!bar || !anchor || host._tabAnchor === anchor) return;
+  if (host._tabIO) host._tabIO.disconnect();
+  host._tabAnchor = anchor;
+  // Where they stick (the status bar's height), and a pixel of slack: a tab change scrolls to exactly there.
+  const top = (parseFloat(getComputedStyle(bar).top) || 0) + 1;
+  const root = hostScroller(host) === document.scrollingElement ? null : host;
+  host._tabIO = new IntersectionObserver(([e]) => {
+    const rootTop = e.rootBounds ? e.rootBounds.top : top;
+    const b = host.querySelector('.atabs');
+    if (b) b.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < rootTop + 1);
+  }, { root, rootMargin: `-${top}px 0px 0px 0px`, threshold: 0 });
+  host._tabIO.observe(anchor);
 }
 
 // ---- tidy up: videos, app sounds and clips out of the stats ----
@@ -8101,7 +8110,6 @@ function build() {
   $('#genrePage').addEventListener('scroll', () => { if (!discFrame) discFrame = requestAnimationFrame(() => { discFrame = 0; turnGenreDisc(); }); }, { passive: true });
   ['artistPage', 'albumPage', 'genrePage'].forEach((id) => {
     const p = $('#' + id);
-    p.addEventListener('scroll', () => syncPageTabs(p), { passive: true });
     tabSwipe(p);
   });
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));

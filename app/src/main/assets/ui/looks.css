@@ -147,7 +147,6 @@
 :root[data-look="soft"] .atabs { --atabs-bg: var(--soft); }
 /* Glass: the block behind stuck tabs is frosted, and they float on it as a pill, like the bottom bar. */
 :root[data-look="glass"] .atabs { --atabs-bg: color-mix(in srgb, var(--md-surface) 98%, transparent); }
-:root[data-look="glass"] .atabs .seg { transition: background .25s, box-shadow .25s; }
 :root[data-look="glass"] .atabs.stuck .seg { background: color-mix(in srgb, var(--md-surface) 97%, transparent); box-shadow: 0 8px 24px var(--drop), inset 1px 1px 0 var(--hi); }
 
 /* The page's own place in a whole top list. */
