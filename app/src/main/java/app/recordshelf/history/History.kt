@@ -20,6 +20,11 @@ class History private constructor(
     val albumTitles: Array<String>,
     val albumArtist: IntArray,
     val albumKeys: Array<String>,
+    /**
+     * The other artist credited on a play, -1 for none: ROSALÍA on Fontaines D.C.'s "Where Is Gone?". Their page and the
+     * top artist lists count the play for them too; everything that splits your plays between artists uses [artist].
+     */
+    val also: IntArray,
 ) {
     val size get() = ts.size
 
@@ -30,7 +35,7 @@ class History private constructor(
     /** The scrobbles [keep] picks (by index), as a history of their own: one genre's music, say. */
     fun filter(keep: (Int) -> Boolean): History {
         val b = Builder()
-        for (i in 0 until size) if (keep(i)) b.add(ts[i], artistNames[artist[i]], trackTitles[track[i]], if (album[i] >= 0) albumTitles[album[i]] else "")
+        for (i in 0 until size) if (keep(i)) b.add(ts[i], artistNames[artist[i]], trackTitles[track[i]], if (album[i] >= 0) albumTitles[album[i]] else "", if (also[i] >= 0) artistNames[also[i]] else "")
         return b.build().also { it.hiddenPlays = hiddenPlays }
     }
 
@@ -50,6 +55,7 @@ class History private constructor(
         private val artist = IntArrayList()
         private val track = IntArrayList()
         private val album = IntArrayList()
+        private val also = IntArrayList()
         private val artistIds = HashMap<String, Int>()
         private val artistNames = ArrayList<String>()
         private val trackIds = HashMap<String, Int>()
@@ -67,8 +73,8 @@ class History private constructor(
         private val albumKeyOf = HashMap<String, String>()
         private fun norm(s: String) = norms.getOrPut(s) { Text.norm(s) }
 
-        /** Adds one scrobble; oldest first is fastest, but any order works. */
-        fun add(t: Long, artistName: String, title: String, albumTitle: String) {
+        /** Adds one scrobble; oldest first is fastest, but any order works. [alsoName]: another artist credited on it. */
+        fun add(t: Long, artistName: String, title: String, albumTitle: String, alsoName: String = "") {
             if (ts.size > 0 && t < ts[ts.size - 1]) sorted = false
             val aKey = norm(artistName)
             val a = artistIds.getOrPut(aKey) { artistNames += artistName; artistNames.size - 1 }
@@ -86,6 +92,8 @@ class History private constructor(
             artist.add(a)
             track.add(tr)
             album.add(al)
+            val other = if (alsoName.isBlank()) -1 else norm(alsoName).let { k -> if (k == aKey) -1 else artistIds.getOrPut(k) { artistNames += alsoName; artistNames.size - 1 } }
+            also.add(other)
         }
 
         fun build(): History {
@@ -93,16 +101,18 @@ class History private constructor(
             var arA = artist.toArray()
             var trA = track.toArray()
             var alA = album.toArray()
+            var soA = also.toArray()
             if (!sorted) {
                 val order = tsA.indices.sortedBy { tsA[it] }
                 tsA = LongArray(order.size) { tsA[order[it]] }
                 arA = IntArray(order.size) { arA[order[it]] }
                 trA = IntArray(order.size) { trA[order[it]] }
                 alA = IntArray(order.size) { alA[order[it]] }
+                soA = IntArray(order.size) { soA[order[it]] }
             }
             return History(
                 tsA, arA, trA, alA, artistNames.toTypedArray(), trackTitles.toTypedArray(), trackArtist.toArray(),
-                albumTitles.toTypedArray(), albumArtist.toArray(), albumKeys.toTypedArray(),
+                albumTitles.toTypedArray(), albumArtist.toArray(), albumKeys.toTypedArray(), soA,
             )
         }
     }
@@ -113,20 +123,34 @@ class History private constructor(
          * and leaving out what the user [hidden] (matched by the credited or the main artist).
          */
         fun from(store: HistoryStore, hidden: Hidden = Hidden.NONE): History {
-            // Every credited name with its plays, so a collaboration can count for the one of its artists you play most.
+            // Every credited name with its plays, and who plays on which album under their own name, so a
+            // collaboration counts for the artist whose album it is on, else the one of them you play most.
             val raw = HashMap<String, Int>()
-            store.forEach { _, a, _, _ -> raw.merge(a, 1, Int::plus) }
+            val pairs = HashSet<String>()
+            store.forEach { _, a, _, al ->
+                raw.merge(a, 1, Int::plus)
+                if (al.isNotBlank()) pairs += a + "\u0000" + al
+            }
             val plays = HashMap<String, Int>()
             for ((a, n) in raw) plays.merge(Text.norm(a), n, Int::plus)
             val solo = plays.keys
-            val main = HashMap<String, String>()
+            val onAlbum = HashMap<String, HashSet<String>>()
+            for (p in pairs) {
+                val k = p.indexOf('\u0000')
+                onAlbum.getOrPut(Text.norm(p.substring(k + 1))) { HashSet() } += Text.norm(p.substring(0, k))
+            }
+            val credits = HashMap<String, Pair<String, String>>()
             val b = Builder()
             var skipped = 0
             // Nothing hidden (the usual case): no need to look each play up.
             val any = hidden.artists.isNotEmpty() || hidden.tracks.isNotEmpty()
             store.forEach { t, a, tr, al ->
-                val m = main.getOrPut(a) { Artists.main(a, solo, plays) }
-                if (any && (hidden.hides(m, tr) || hidden.hides(a, tr))) skipped++ else b.add(t, m, tr, al)
+                val c = credits.getOrPut(a + "\u0000" + al) {
+                    val there = if (al.isBlank()) null else onAlbum[Text.norm(al)]
+                    Artists.credit(a, solo, plays) { there != null && it in there }
+                }
+                val m = c.first
+                if (any && (hidden.hides(m, tr) || hidden.hides(a, tr))) skipped++ else b.add(t, m, tr, al, c.second)
             }
             return b.build().also { it.hiddenPlays = skipped }
         }
@@ -147,18 +171,36 @@ object Artists {
      * first: "ROSALÍA, Fontaines D.C." counts for Fontaines D.C. when you play them and not her. Bands
      * like "Earth, Wind & Fire" or "Simon and Garfunkel", none of whose parts plays alone, stay whole.
      */
-    fun main(raw: String, solo: Set<String>, plays: Map<String, Int> = emptyMap()): String {
-        feat.find(raw)?.let { m ->
-            val head = raw.substring(0, m.range.first).trim()
-            if (head.isNotEmpty()) return main(head, solo, plays)
-        }
+    fun main(raw: String, solo: Set<String>, plays: Map<String, Int> = emptyMap()): String = credit(raw, solo, plays).first
+
+    /** The names in a credit, split at every separator ("A, B & C" is three). */
+    private fun names(raw: String): List<String> {
         var names = listOf(raw)
         for (sep in SEPARATORS) names = names.flatMap { it.split(sep, ignoreCase = true) }
-        names = names.map { it.trim() }.filter { it.isNotEmpty() }
-        if (names.size < 2) return raw
+        return names.map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    /**
+     * Who a play counts for ([main], as above) and the other artist credited on it ("" for none), who gets it too where
+     * only their own plays matter. [onAlbum]: whether a name (normalized) plays under its own name on this play's album;
+     * that one is the main artist, as it is their record ("Where Is Gone?" on a Fontaines D.C. album, ROSALÍA on it).
+     */
+    fun credit(raw: String, solo: Set<String>, plays: Map<String, Int> = emptyMap(), onAlbum: (String) -> Boolean = { false }): Pair<String, String> {
+        feat.find(raw)?.let { m ->
+            val head = raw.substring(0, m.range.first).trim()
+            if (head.isNotEmpty()) {
+                val (main, also) = credit(head, solo, plays, onAlbum)
+                val guest = names(raw.substring(m.range.last + 1).trim().removeSuffix(")")).firstOrNull().orEmpty()
+                return main to also.ifEmpty { guest }
+            }
+        }
+        val names = names(raw)
+        if (names.size < 2) return raw to ""
         val known = names.withIndex().filter { Text.norm(it.value) in solo }
-        if (known.isEmpty()) return raw
-        return known.maxWith(compareBy<IndexedValue<String>> { plays[Text.norm(it.value)] ?: 0 }.thenByDescending { it.index }).value
+        if (known.isEmpty()) return raw to ""
+        val main = known.firstOrNull { onAlbum(Text.norm(it.value)) }
+            ?: known.maxWith(compareBy<IndexedValue<String>> { plays[Text.norm(it.value)] ?: 0 }.thenByDescending { it.index })
+        return main.value to (names.withIndex().firstOrNull { it.index != main.index }?.value ?: "")
     }
 }
 

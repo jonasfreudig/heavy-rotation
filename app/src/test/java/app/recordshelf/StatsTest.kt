@@ -314,7 +314,32 @@ class StatsTest {
             ),
         )
         val h = History.from(store)
-        assertEquals(1, h.artistNames.size)
+        // The play counts for Fontaines D.C.; ROSALÍA is credited on it too, for her own page and the top artists.
+        assertEquals(listOf("Fontaines D.C.", "Fontaines D.C."), (0 until h.size).map { h.artistNames[h.artist[it]] })
+        assertEquals("ROSALÍA", h.artistNames[h.also[1]])
+        assertEquals(-1, h.also[0])
+    }
+
+    @Test
+    fun aCollaborationIsTheirsWhoseAlbumItIsOn() {
+        // ROSALÍA played more on her own, but the song is on Fontaines D.C.'s album: theirs, with her credited too.
+        val store = app.recordshelf.history.MemoryStore()
+        store.insert(
+            (1..3).map { app.recordshelf.lastfm.RecentTrack("Fontaines D.C.", "Song $it", "Romance", 100L + it) } +
+                (1..9).map { app.recordshelf.lastfm.RecentTrack("ROSALÍA", "Tema $it", "Motomami", 200L + it) } +
+                listOf(app.recordshelf.lastfm.RecentTrack("ROSALÍA, Fontaines D.C.", "Where Is Gone?", "Romance", 300)),
+        )
+        val h = History.from(store)
+        val last = h.size - 1
+        assertEquals("Fontaines D.C.", h.artistNames[h.artist[last]])
+        assertEquals("ROSALÍA", h.artistNames[h.also[last]])
+        val s = Stats(h, utc, 1000)
+        val top = s.top(0, h.size, 10).getJSONArray("artists")
+        assertEquals("both count it in the top artists", 10, (0 until top.length()).first { top.getJSONObject(it).getString("name") == "ROSALÍA" }.let { top.getJSONObject(it).getInt("plays") })
+        assertEquals(4, (0 until top.length()).first { top.getJSONObject(it).getString("name") == "Fontaines D.C." }.let { top.getJSONObject(it).getInt("plays") })
+        assertEquals("her page has the song", 10, s.artist("ROSALÍA", s.range("all"))!!.getInt("plays"))
+        // Without the album, the one played most on their own.
+        assertEquals("ROSALÍA" to "Fontaines D.C.", app.recordshelf.history.Artists.credit("ROSALÍA, Fontaines D.C.", setOf("rosalia", "fontaines d c"), mapOf("rosalia" to 9, "fontaines d c" to 3)))
     }
 
     @Test

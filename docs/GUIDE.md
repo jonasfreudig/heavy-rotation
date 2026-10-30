@@ -215,7 +215,8 @@ time per month, quarter or year. These are the blocks for the chosen period:
 - In covers is a wall of the albums you played, each cover as big as its plays.
 - Your lineup is the period's artists as a festival poster, in the colors of the top album: the most
   played artist is the headliner, and the names get smaller down the bill.
-- Your chart has your most played songs, albums and artists like a hit parade: each with how it
+- Your chart has your most played songs, albums and artists like a hit parade (swipe sideways on
+  the list to move between them, here and on the whole list): each with how it
   moved since the period before (up, down, new or the same) and where it stood then ("was 3"). All
   time has nothing to compare with, so it is a plain top 10. Classic keeps the plain top 10 too.
 - Your taste, at the end, looks at all of your history, whatever the period: the musical atlas, you
@@ -444,10 +445,13 @@ hide button at the top of an artist's page hides the whole artist. Hidden plays 
 pages. Nothing changes on Last.fm, because apps can't delete scrobbles there. To delete them on
 Last.fm too, open a hidden track (↗) and delete its scrobbles from your library on the website.
 
-Features and collaborations count for one of their artists: anything "feat." goes to the first name,
-and "A, B", "A & B", "A with B" and the like go to whichever of them you also play on their own (the
-one you play most if several are). "ROSALÍA, Fontaines D.C." counts for Fontaines D.C. when you
-play them and not her, and "Earth, Wind & Fire" stays one band.
+Features and collaborations count for both artists where that adds up: on each one's page, in the
+top artist lists and in search. Where a play can only go to one of them (the river, the colors on
+your record, shares of your listening), it goes to the main artist: for "feat." the first name; for
+"A, B", "A & B", "A with B" and the like, the one whose album the song is on (they have songs of
+their own on it), else the one you play most on their own. "ROSALÍA, Fontaines D.C." on a Fontaines
+D.C. album is theirs, with ROSALÍA credited too, and "Earth, Wind & Fire", none of whose names you
+play alone, stays one band.
 
 Days, weeks and hours are in the phone's local time.
 

@@ -1233,7 +1233,7 @@ class Stats(
         val a = artistIndex[Text.norm(artist)] ?: artistIndex[Text.norm(Artists.main(artist, artistIndex.keys))] ?: return 0 to 0
         fun count(from: Long, to: Long): Int {
             var n = 0
-            for (i in h.lowerBound(from) until h.lowerBound(to)) if (h.artist[i] == a) n++
+            for (i in h.lowerBound(from) until h.lowerBound(to)) if (h.artist[i] == a || h.also[i] == a) n++
             return n
         }
         return count(d0 - days * 86_400L, d0) to count(d0 + 86_400L, d0 + (days + 1) * 86_400L)
@@ -1586,6 +1586,7 @@ class Stats(
             val lp = IntArray(h.albumTitles.size)
             for (i in a until b) {
                 ap[h.artist[i]]++
+                if (h.also[i] >= 0) ap[h.also[i]]++
                 tp[h.track[i]]++
                 if (h.album[i] >= 0) lp[h.album[i]]++
             }
@@ -1622,7 +1623,10 @@ class Stats(
             else -> { x -> h.trackTitles[x] }
         }
         val counts = IntArray(when (kind) { "albums" -> h.albumTitles.size; "artists" -> h.artistNames.size; else -> h.trackTitles.size })
-        for (i in i0 until i1) of(i).let { if (it >= 0) counts[it]++ }
+        for (i in i0 until i1) {
+            of(i).let { if (it >= 0) counts[it]++ }
+            if (kind == "artists" && h.also[i] >= 0) counts[h.also[i]]++
+        }
         val order = counts.indices.filter { counts[it] > 0 }.sortedWith(compareByDescending<Int> { counts[it] }.thenBy { name(it).lowercase() })
         val ranks = IntArray(order.size)
         for (p in order.indices) ranks[p] = if (p > 0 && counts[order[p]] == counts[order[p - 1]]) ranks[p - 1] else p + 1
@@ -1658,6 +1662,7 @@ class Stats(
         val lp = IntArray(h.albumTitles.size)
         for (i in 0 until h.size) {
             ap[h.artist[i]]++
+            if (h.also[i] >= 0) ap[h.also[i]]++
             tp[h.track[i]]++
             if (h.album[i] >= 0) lp[h.album[i]]++
         }
@@ -1932,8 +1937,12 @@ class Stats(
         val allTime = IntArray(h.artistNames.size)
         for (i in 0 until h.size) {
             allTime[h.artist[i]]++
-            if (i in i0 until i1) inRange[h.artist[i]]++
-            if (h.artist[i] != a) continue
+            if (h.also[i] >= 0) allTime[h.also[i]]++
+            if (i in i0 until i1) {
+                inRange[h.artist[i]]++
+                if (h.also[i] >= 0) inRange[h.also[i]]++
+            }
+            if (h.artist[i] != a && h.also[i] != a) continue
             if (i in i0 until i1) {
                 rangeTracks.merge(h.track[i], 1, Int::plus)
                 if (h.album[i] >= 0) rangeAlbums.merge(h.album[i], 1, Int::plus)
@@ -1985,7 +1994,7 @@ class Stats(
             .put("rangeTracks", JSONArray(rangeTracks.entries.sortedByDescending { it.value }.take(RANGE_LIST).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
             .put("rangeAlbums", JSONArray(rangeAlbums.entries.sortedByDescending { it.value }.take(3).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)) }))
         // Their albums as a river, over all your time with them.
-        pageRiver(h.ts[first], { h.artist[it] == a }, { h.album[it] }, { h.albumTitles[it] })?.let { o.put("river", it) }
+        pageRiver(h.ts[first], { h.artist[it] == a || h.also[it] == a }, { h.album[it] }, { h.albumTitles[it] })?.let { o.put("river", it) }
         // How you found them, back as far as the history goes, and who they led you to.
         val chain = JSONArray()
         var p = origins.second[a]

@@ -1503,3 +1503,5 @@ body.searching .npb { display: none; }
 .npb.lyr-mode .npb-open b.lyr { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 16px; line-height: 19px; }
 .npb.lyr-mode .npb-open { height: auto; min-height: 46px; }
 .npb.lyr-mode .npb-ly { width: 36px; height: 36px; margin-top: 5px; }
+/* Top lists take sideways flicks themselves (listSwipe) and leave up and down to scrolling. */
+.ch-rows, #topSeg ~ .rank, .ranks { touch-action: pan-y; }

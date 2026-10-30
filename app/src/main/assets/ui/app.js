@@ -6664,6 +6664,33 @@ function tasteHtml() {
 
 // ---- the chart, the lineup and the period in covers ----
 
+/**
+ * A sideways flick on a list ([rows] in [host]) moves to the tab beside its own in [seg] (songs, albums, artists), as a tap
+ * on that tab would, and the new list comes in from that side.
+ */
+function listSwipe(host, rows, seg) {
+  let s = null, swiped = 0;
+  host.addEventListener('pointerdown', (e) => { s = e.isPrimary && e.target.closest(rows) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; }, { passive: true });
+  host.addEventListener('pointercancel', () => { s = null; });
+  host.addEventListener('pointerup', (e) => {
+    const st = s;
+    s = null;
+    if (!st || !e.isPrimary) return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.6 || performance.now() - st.t > 800) return;
+    const bs = [...host.querySelectorAll(`${seg} button`)], at = bs.findIndex((b) => b.classList.contains('on'));
+    const next = at < 0 ? null : bs[at + (dx < 0 ? 1 : -1)];
+    if (!next) return;
+    swiped = Date.now();
+    next.click();
+    requestAnimationFrame(() => {
+      const r = host.querySelector(rows);
+      if (r) r.animate([{ transform: `translateX(${dx < 0 ? 48 : -48}px)`, opacity: 0.2 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: EASE_OUT });
+    });
+  });
+  // The flick doesn't also open the row it started on.
+  host.addEventListener('click', (e) => { if (Date.now() - swiped < 400 && e.target.closest(rows)) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
 /** "▲ 3", "▼ 2", "NEW", "=" for a place now ([rank]) against before ([last], 0: not played then). */
 function moveHtml(rank, last) {
   if (!last) return '<span class="mv new">NEW</span>';
@@ -7700,6 +7727,10 @@ function build() {
   };
   statsBody.onclick = statsClick;
   blockBody.onclick = statsClick;
+  // Swipe sideways on a top list for the next kind: songs, albums, artists.
+  listSwipe(statsBody, '.ch-rows, #topSeg ~ .rank', '#topSeg');
+  listSwipe(blockBody, '.ch-rows, #topSeg ~ .rank', '#topSeg');
+  listSwipe($('#rankBody'), '.ranks', '#rankSeg');
   statsBody.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.block) openBlock(e.target.dataset.block); });
   const artistBody = $('#artistBody');
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
