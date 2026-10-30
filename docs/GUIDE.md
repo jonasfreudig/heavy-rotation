@@ -239,10 +239,11 @@ them. Choose the services under Settings → Listen on; YouTube Music, Apple Mus
 available too. Spotify opens in its app; TIDAL opens its search page, which lists the match first.
 
 Song, album and artist pages take their colors from the cover or the artist's photo: a glow behind
-the header, and charts in that color. Each has a listening barcode (one line per week since you
-first played it, stronger for more plays), plays per month as a smooth curve with its peak marked,
-and "around the clock", the 24 hours as a ring around the cover with longer wedges for the hours
-you play it most. Tap any of them for the numbers.
+the header, and charts in that color. Plays over time shows plays per month as a smooth curve with
+its peak marked, and under it, on the same time axis, a barcode with one line per week since you
+first played it, stronger for more plays. Tap it for a week and its month: the week lights up in the
+barcode and the month in the curve. "Around the clock" has the 24 hours as a ring around the cover,
+with longer wedges for the hours you play it most; tap a wedge for its plays.
 
 These pages cover all your time with that artist, album or song, whatever period the Stats tab is
 on. Opened from a period other than All, they add that period: a tile with its plays and rank, and
@@ -259,7 +260,9 @@ you open the page, if the album isn't among your most played), otherwise the art
 Artist pages show the whole discography from Deezer's catalog: albums, EPs, singles and
 compilations, with editions folded together ("Romance" and its deluxe edition are one record). Each
 title shows your plays, a foil star if it's on your shelf and "New" for the last two months; titles
-you haven't heard are dimmed. Filter by Played, Not heard yet or On your shelf. Tap a title for its
+you haven't heard are dimmed. Records of theirs you played that Deezer doesn't list, such as a live
+album, come last under Also played. Filter by Most played (everything you played in one row, most
+played first), Not heard yet or On your shelf. Tap a title for its
 album page, which works for any album, played or not, and shows the tracklist with your plays per
 song, the year and the label. Discographies are kept on the phone for a week, so new releases show
 up.
@@ -305,8 +308,8 @@ of the genre charts on the Stats tab. Each opens that genre's page. It shows how
 listening the genre makes up and where it ranks, its plays and artists, since when you've played it
 and its biggest day. Below come your top artists (with photos), albums and songs in it; Rediscover,
 the artists and albums of that genre you loved and haven't played for half a year or more;
-"Everyone in …", every artist you played in it; when its music came out; its listening barcode,
-plays per month and hours; and the records on your shelf with that genre or style. "Full stats for
+"Everyone in …", every artist you played in it; when its music came out; its plays over time and
+hours; and the records on your shelf with that genre or style. "Full stats for
 …" opens the Stats tab for that genre. The page takes the colors of the genre's most played album,
 and Settings → Look → Genre pages puts its top albums at the top: fanned out (Covers), on a picture
 disc that turns as you scroll, or nothing (Plain).
@@ -371,7 +374,8 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 Explore is for music to play next. It comes in rows: each list is one row you scroll sideways, with
 its playlist next to the heading. Tap a heading, or the All card at the end of its row, for the
 whole list (up to 100), with more about each: when you last played an artist, when they were big
-for you, how many plays. At the top sit the discovery mix and Crate dig. Then come the suggestions
+for you, how many plays. At the top sit the mixes, side by side: the discovery mix, Crate dig, New
+releases (the songs of what your artists put out lately, from Deezer) and On this day. Then come the suggestions
 for you and new releases by your artists, and then the lists to rediscover. In the whole list of On
 this day, tap a year for that day's stats. With Settings → Look → Explore set to One long page, the
 lists come one after the other, full size. The views of your whole history (the atlas, you vs
@@ -470,7 +474,7 @@ Material You colors) or Off in Settings → Look → Background color.
 
 Artist, album and genre pages come in tabs, each a screen or two long; Settings → Look → Pages
 switches them to One long page. An artist's tabs are Overview (the numbers, the period, you vs
-everyone, how you found them), Listening (the charts), Music (top tracks, albums, your shelf, the
+everyone, how you found them), Listening (the charts), Music (top tracks, your shelf, the
 discography, their most played songs) and Live (the shows you were at, and what they play
 lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
 clicked, its songs over time, the charts). A genre's are Overview (the numbers, the styles in it and

@@ -93,6 +93,11 @@ class Prefs(ctx: Context) : TidalStore {
     var sleepAt: Long
         get() = app.getLong("sleepAt", 0)
         set(v) = app.edit().putLong("sleepAt", v).apply()
+    /** Looked-up covers were fetched again once, when lookups began to prefer an album over its single. */
+    var coversRechecked: Boolean
+        get() = app.getBoolean("coversRechecked", false)
+        set(v) = app.edit().putBoolean("coversRechecked", v).apply()
+
     var sleepSong: Boolean
         get() = app.getBoolean("sleepSong", false)
         set(v) = app.edit().putBoolean("sleepSong", v).apply()

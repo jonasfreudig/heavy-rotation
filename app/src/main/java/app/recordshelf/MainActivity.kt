@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -18,6 +19,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
 import android.util.TypedValue
+import android.view.ContextThemeWrapper
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -354,9 +356,22 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     /**
      * Material 3 color roles of the current theme. On Android 12+ the theme follows the
      * wallpaper (dynamic color); older versions get the Material baseline.
+     *
+     * Light or dark comes from the setting itself. The activity's own configuration can't be
+     * trusted for it: the first WebView of a fresh process (after an update, say) resets it
+     * to the system's mode, so a dark choice on a light phone came out light.
      */
     private fun palette(): JSONObject {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val night = Configuration.UI_MODE_NIGHT_MASK
+        val dark = when (Core.prefs.theme) {
+            "dark" -> true
+            "light" -> false
+            else -> (Resources.getSystem().configuration.uiMode and night) == Configuration.UI_MODE_NIGHT_YES
+        }
+        val cfg = Configuration(resources.configuration).apply {
+            uiMode = (uiMode and night.inv()) or (if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+        }
+        val themed = ContextThemeWrapper(createConfigurationContext(cfg), R.style.Theme_RecordShelf)
         val roles = mapOf(
             "primary" to "colorPrimary", "on-primary" to "colorOnPrimary",
             "primary-container" to "colorPrimaryContainer", "on-primary-container" to "colorOnPrimaryContainer",
@@ -377,8 +392,8 @@ class MainActivity : AppCompatActivity(), Core.Ui {
         val tv = TypedValue()
         for ((role, attr) in roles) {
             val id = resources.getIdentifier(attr, "attr", packageName)
-            if (id != 0 && theme.resolveAttribute(id, tv, true)) {
-                val color = if (tv.resourceId != 0) getColor(tv.resourceId) else tv.data
+            if (id != 0 && themed.theme.resolveAttribute(id, tv, true)) {
+                val color = if (tv.resourceId != 0) themed.getColor(tv.resourceId) else tv.data
                 c.put(role, String.format("#%06x", color and 0xffffff))
             }
         }

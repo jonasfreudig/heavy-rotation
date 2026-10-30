@@ -1621,6 +1621,10 @@ const Mock = (() => {
             const arts = fakeDiscover().artists;
             const tracks = Array.from({ length: m.size || 30 }, (_, i) => ({ artist: arts[(i + (m.seed % 5)) % arts.length].name, title: i < arts.length ? 'Their Best-Known Song' : 'The Second Most Played', album: '', plays: 0, source: 'new' }));
             later(700, () => onPlaylist({ kind: 'discover', seed: m.seed, size: m.size, reach: discReach, name: 'Discovery mix', note: "Songs you haven't played, by artists your listening points to", tracks }));
+          } else if (m.kind === 'newReleases') {
+            const rel = (fakeDiscover().releases || []).filter((r) => new Date(r.date) <= Date.now());
+            const tracks = Array.from({ length: 24 }, (_, i) => { const r = rel[i % Math.max(1, rel.length)] || { artist: 'Wet Leg', title: 'Moisturizer' }; return { artist: r.artist, title: `Track ${Math.floor(i / Math.max(1, rel.length)) + 1}`, album: r.title, plays: 0, source: 'new' }; });
+            later(900, () => onPlaylist({ kind: 'newReleases', name: 'New releases', note: 'What your artists put out lately', tracks }));
           } else if (m.kind === 'artistBest') {
             const tracks = ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'].map((title) => ({ artist: m.artist, title, album: '', plays: 0, source: 'new' }));
             later(400, () => onPlaylist({ kind: 'artistBest', artist: m.artist, name: `Best of ${m.artist}`, note: 'Their most played songs on Last.fm', tracks }));

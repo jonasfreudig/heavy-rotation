@@ -99,16 +99,21 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
     fun albumCover(artist: String, title: String): String? =
         searchAlbum(artist, title)?.let { it.optString("cover_big").ifEmpty { it.optString("cover_xl") } }?.takeIf { it.startsWith("https://") }
 
-    /** Deezer's search hit for the album, matched the way a music app names it; null if none. */
+    /**
+     * Deezer's search hit for the album, matched the way a music app names it; null if none.
+     * A title track often came out as a single first, so of the same name the album wins, then
+     * an EP, then whatever has the most tracks.
+     */
     private fun searchAlbum(artist: String, title: String): JSONObject? {
         val want = Text.normLoose(title)
         val who = Text.norm(artist).removePrefix("the ")
         fun pick(query: String): JSONObject? {
             val data = get("/search/album?q=${q(query)}&limit=25").optJSONArray("data") ?: return null
-            return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
+            val hits = (0 until data.length()).map { data.getJSONObject(it) }.filter {
                 val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
                 Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
             }
+            return bestRelease(hits)
         }
         return pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title")
     }
@@ -126,3 +131,13 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
         )
     }
 }
+
+/** Of releases with the same name, the one a record is: the album over an EP over a single, then the most tracks. */
+internal fun bestRelease(hits: List<JSONObject>): JSONObject? =
+    hits.withIndex().minWithOrNull(
+        compareBy<IndexedValue<JSONObject>>(
+            { when (it.value.optString("record_type")) { "album" -> 0; "ep" -> 1; "single" -> 3; else -> 2 } },
+            { -it.value.optInt("nb_tracks") },
+            { it.index },
+        ),
+    )?.value

@@ -429,6 +429,11 @@ object Core {
             historyExec.execute {
                 // Covers once fetched from Last.fm go (its terms leave artwork out); Deezer's come instead.
                 db.dropImagesFrom("lastfm")
+                // Lookups used to take a same-named single's cover for the album; those come again as pages need them.
+                if (!prefs.coversRechecked) {
+                    db.dropImagesFrom("dzcdn")
+                    prefs.coversRechecked = true
+                }
                 histCount = db.count()
                 // Settings back without their history (Android's cloud backup leaves the database out): import again.
                 if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
@@ -720,6 +725,7 @@ object Core {
                 if (msg.optString("kind") == "genre") return@execute genrePlaylist(s, msg)
                 if (msg.optString("kind") == "discover") return@execute discoverExec.execute { discoverMix(msg) }
                 if (msg.optString("kind") == "artistBest") return@execute discoverExec.execute { artistBest(msg) }
+                if (msg.optString("kind") == "newReleases") return@execute webExec.execute { newReleasesMix() }
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
             "genre" -> {
@@ -2357,12 +2363,38 @@ object Core {
     }
 
     /** An artist's best-known songs on Last.fm, as a playlist to start with them. On [discoverExec]. */
+    private val NEW_MIX_SIZE = 60
+
     private fun artistBest(msg: JSONObject) {
         val name = msg.optString("artist")
         val songs = topsOf(lastfm(), name).orEmpty()
         push("onPlaylist") {
             JSONObject().put("kind", "artistBest").put("artist", name).put("name", "Best of $name").put("note", "Their most played songs on Last.fm")
                 .put("tracks", JSONArray(songs.map { Pick(name, it, "", 0, "new").toJson() }))
+        }
+    }
+
+    /**
+     * The songs of what your artists released lately (For you's "New from your artists", those already out),
+     * from Deezer's tracklists, one release after the other in turn so no record comes in a block. On [webExec].
+     */
+    private fun newReleasesMix() {
+        val today = java.time.LocalDate.now().toString()
+        val rel = synchronized(dstore) { dstore.optJSONArray("releases")?.let { JSONArray(it.toString()) } } ?: JSONArray()
+        val out = (0 until rel.length()).map { rel.getJSONObject(it) }.filter { it.optString("date") <= today && it.optLong("id") > 0 }
+        val per = out.mapNotNull { r ->
+            try {
+                val a = deezer.album(r.optLong("id"))
+                a.tracks.map { (t, _) -> Pick(r.optString("artist"), t, a.title, 0, "new") }
+            } catch (_: Exception) {
+                null
+            }.also { Thread.sleep(120) } // Deezer allows 50 requests in 5 seconds
+        }
+        val tracks = (0 until (per.maxOfOrNull { it.size } ?: 0)).flatMap { k -> per.mapNotNull { it.getOrNull(k) } }.distinctBy { it.key }.take(NEW_MIX_SIZE)
+        push("onPlaylist") {
+            if (tracks.isEmpty()) JSONObject().put("kind", "newReleases").put("empty", true)
+            else JSONObject().put("kind", "newReleases").put("name", "New releases").put("note", "What your artists put out lately")
+                .put("tracks", JSONArray(tracks.map { it.toJson() }))
         }
     }
 

@@ -3528,31 +3528,101 @@ function clockRing(hours, img, seed) {
   return `<svg class="ring" viewBox="0 0 240 240">${center}<g class="wedges">${wedges}</g>${ticks}</svg>`;
 }
 
-/** Every week since the first play as one thin line, stronger for more plays: a barcode of the habit. */
-function barcodeViz(x, what) {
-  const w = x.weeks || [];
-  if (w.length < 3) return '';
+/**
+ * Plays over time in one chart on a shared time axis: plays per month as a line, and under it the barcode, one
+ * line per week. A tap picks the week under the finger in the barcode and its month in the line (onTimePointer).
+ */
+function timeViz(x, what) {
+  const w = x.weeks || [], m = x.months || [];
+  if (w.length < 3 && m.length < 2) return '';
   const g = Math.max(1, Math.ceil(w.length / 120));
   const bins = [];
   for (let i = 0; i < w.length; i += g) bins.push(w.slice(i, i + g).reduce((a, b) => a + b, 0));
-  const max = Math.max(1, ...bins);
-  return `<div class="viz"><h2>Your listening barcode</h2><span class="sub">One line per ${g === 1 ? 'week' : `${g} weeks`} since you first played ${what}: the stronger, the more plays</span>
-    <div class="barcode">${bins.map((v, i) => `<i data-col="aw" data-i="${i}" data-g="${g}" style="opacity:${v ? (0.28 + 0.72 * Math.sqrt(v / max)).toFixed(2) : 0.07}"></i>`).join('')}</div>
-    <div class="xl"><span>${esc(monthYear(x.weeksFrom))}</span><span>now</span></div><div class="readout">Tap a line for its week.</div></div>`;
+  const span = timeSpan(x);
+  const f = (t) => Math.min(1, Math.max(0, (t - span.t0) / (span.t1 - span.t0)));
+  let line = '';
+  if (m.length > 1) {
+    const W = 320, H = 112, max = Math.max(1, ...m);
+    const y = (v) => H - 2 - (v / max) * (H - 10);
+    const pts = m.map((v, i) => [f((span.month(i) + span.month(i + 1)) / 2) * W, y(v)]);
+    const path = smoothPath(pts);
+    const id = `ag${++svgSeq}`;
+    let peak = 0;
+    m.forEach((v, i) => { if (v > m[peak]) peak = i; });
+    const px = (pts[peak][0] / W) * 100, py = (pts[peak][1] / H) * 100;
+    line = `<div class="area"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tint);stop-opacity:.55"/><stop offset="1" style="stop-color:var(--tint);stop-opacity:0"/></linearGradient></defs>
+      <path d="${path} L${pts[pts.length - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z" fill="url(#${id})"/>
+      <path d="${path}" fill="none" style="stroke:var(--tint)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
+      <i class="peak" style="left:${px}%;top:${py}%"></i>
+      <span class="peak-label${px > 62 ? ' end' : px < 20 ? ' start' : ''}" style="left:${px}%;top:${py}%">${esc(new Date(span.month(peak)).toLocaleDateString([], { month: 'short', year: 'numeric' }))}: ${num(m[peak])}</span></div>`;
+  }
+  const bmax = Math.max(1, ...bins);
+  const bars = bins.length >= 3 ? `<div class="bars">${bins.map((v, i) => {
+    const a = f(span.week(i * g)) * 100, b = f(span.week(Math.min(w.length, (i + 1) * g))) * 100;
+    return `<i data-i="${i}" style="left:${a.toFixed(2)}%;width:calc(${(b - a).toFixed(2)}% - 1px);opacity:${v ? (0.28 + 0.72 * Math.sqrt(v / bmax)).toFixed(2) : 0.07}"></i>`;
+  }).join('')}</div>` : '';
+  // A few month labels, spread out; "now" closes the axis.
+  const step = Math.max(1, Math.ceil(m.length / 4));
+  const labels = m.map((v, i) => i).filter((i) => i % step === 0 && f(span.month(i)) < 0.86).map((i) => {
+    const fx = f(Math.max(span.t0, span.month(i)));
+    return `<span class="${fx < 0.06 ? 'start' : ''}" style="left:${(fx * 100).toFixed(1)}%">${esc(new Date(span.month(i)).toLocaleDateString([], { month: 'short', year: '2-digit' }))}</span>`;
+  }).join('');
+  const parts = [line ? 'The line is plays per month' : '', bars ? `each barcode line ${g === 1 ? 'a week' : `${g} weeks`}, stronger for more plays` : ''].filter(Boolean);
+  return `<div class="viz"><h2>Plays over time</h2><span class="sub">Since you first played ${what}. ${parts.join('; ').replace(/^e/, 'E')}.</span>
+    <div class="tl" data-g="${g}">${line}${bars}<i class="band"></i><i class="hit" data-tl="1"></i></div>
+    <div class="tl-x">${labels}<span class="end">now</span></div><div class="readout">Tap for a week and its month.</div></div>`;
 }
 
-/** The charts of a song, an album or an artist page: barcode, plays per month, and the clock ring around [img]. */
+/** The time axis of [x]'s charts: from its first week or month, whichever is earlier, to now, with week and month starts. */
+function timeSpan(x) {
+  const w0 = new Date(x.weeksFrom || x.monthsFrom), m0 = new Date(x.monthsFrom || x.weeksFrom);
+  // Calendar arithmetic, so a DST change doesn't move a week or a month.
+  const week = (k) => +new Date(w0.getFullYear(), w0.getMonth(), w0.getDate() + k * 7);
+  const month = (i) => +new Date(m0.getFullYear(), m0.getMonth() + i, 1);
+  const t0 = Math.min(+w0, +m0);
+  const t1 = Math.max(Date.now(), week((x.weeks || []).length), t0 + 864e5);
+  return { t0, t1, week, month };
+}
+
+/** A tap on the plays-over-time chart: the week under the finger lights up in the barcode, its month in the line. */
+function onTimePointer(e, el, data) {
+  const r = el.getBoundingClientRect();
+  const span = timeSpan(data);
+  const t = span.t0 + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (span.t1 - span.t0);
+  const tl = el.closest('.tl'), g = +tl.dataset.g || 1, w = data.weeks || [], m = data.months || [];
+  const f = (x) => Math.min(1, Math.max(0, (x - span.t0) / (span.t1 - span.t0))) * 100;
+  const day = (ms) => new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  let wi = -1, mi = -1;
+  for (let k = 0; k < w.length; k += g) if (span.week(k) <= t) wi = k / g;
+  for (let i = 0; i < m.length; i++) if (span.month(i) <= t) mi = i;
+  const parts = [];
+  tl.querySelectorAll('.bars i.sel').forEach((x) => x.classList.remove('sel'));
+  const bar = wi >= 0 && tl.querySelector(`.bars i[data-i="${wi}"]`);
+  if (bar) {
+    bar.classList.add('sel');
+    const n = w.slice(wi * g, wi * g + g).reduce((a, b) => a + b, 0);
+    // The last day of a stretch: half a day before the next one starts, whatever DST does.
+    const label = g === 1 ? `Week of ${esc(day(span.week(wi)))}` : `${esc(day(span.week(wi * g)))} to ${esc(day(span.week((wi + 1) * g) - 432e5))}`;
+    parts.push(`${label}: <b>${plural(n, 'play')}</b>`);
+  }
+  const band = tl.querySelector('.band');
+  if (mi >= 0 && m.length > 1) {
+    const a = f(span.month(mi)), b = f(span.month(mi + 1));
+    band.style.left = `${a}%`;
+    band.style.width = `${b - a}%`;
+    band.style.display = 'block';
+    parts.push(`${esc(new Date(span.month(mi)).toLocaleDateString([], { month: 'long', year: 'numeric' }))}: <b>${plural(m[mi], 'play')}</b>`);
+  }
+  if (parts.length) tl.closest('.viz').querySelector('.readout').innerHTML = parts.join('. ');
+}
+
+/** The charts of a song, an album or an artist page: plays over time, and the clock ring around [img]. */
 function lifeCharts(x, what, img, seed) {
-  const mDate = (i) => { const d = new Date(x.monthsFrom); d.setMonth(d.getMonth() + i); return d; };
-  const step = Math.max(1, Math.ceil(x.months.length / 4));
-  const labels = x.months.map((v, i) => mDate(i)).filter((d, i) => i % step === 0).map((d) => d.toLocaleDateString([], { month: 'short', year: '2-digit' }));
   let peak = 0;
   x.hours.forEach((v, i) => { if (v > x.hours[peak]) peak = i; });
   const mood = peak >= 5 && peak < 10 ? 'a morning thing' : peak >= 10 && peak < 17 ? 'for the daytime' : peak >= 17 && peak < 22 ? 'an evening thing' : 'for the night';
-  const area = x.months.length > 1 ? `<div class="viz"><h2>Plays per month</h2><span class="sub">Since you first played ${what}</span>
-      ${areaViz(x.months, { col: 'am', peakLabel: (i) => `${esc(mDate(i).toLocaleDateString([], { month: 'short', year: 'numeric' }))}: ${num(x.months[i])}` })}
-      <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div><div class="readout">Tap a month.</div></div>` : '';
-  return barcodeViz(x, what) + area + `<div class="viz"><h2>Around the clock</h2><span class="sub">When you play ${what}, hour by hour, midnight on top</span>
+  return timeViz(x, what) + `<div class="viz"><h2>Around the clock</h2><span class="sub">When you play ${what}, hour by hour, midnight on top</span>
       ${clockRing(x.hours, img, seed)}<div class="readout">Mostly around <b>${pad(peak)}:00</b>: ${mood}.</div></div>`;
 }
 
@@ -3593,30 +3663,48 @@ window.onDiscography = (d) => {
 
 const isNew = (date) => !!date && Date.now() - Date.parse(date) < 60 * 864e5;
 function discoCard(x, artist) {
-  return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-cover="${esc(x.cover)}" data-dz="${x.id}">
+  return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-cover="${esc(x.cover)}"${x.id ? ` data-dz="${x.id}"` : ''}>
     <span class="dcover">${coverHtml(x.cover, x.title, artist)}${x.owned ? '<i class="owned-mark" aria-label="On your shelf"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11"/><circle class="g" cx="12" cy="12" r="7.6"/><circle class="l" cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg></i>' : ''}${isNew(x.date) ? '<i class="new">New</i>' : ''}</span>
     <b>${esc(x.title)}</b><small>${x.year || ''}${x.editions > 1 ? `, ${x.editions} editions` : ''}</small>
     <small class="meta">${x.plays ? plural(x.plays, 'play') : 'not heard yet'}</small></button>`;
 }
 
-/** The Discography section of an artist page: albums, EPs, singles and compilations, filterable. */
+/** The albums of theirs you played, most played first, for when Deezer has no discography of them. */
+function playedAlbumsHtml(name, note = '') {
+  const al = ARTIST && norm(ARTIST.name) === norm(name) ? ARTIST.albums || [] : [];
+  if (!al.length) return note ? `<div class="viz disco"><h2>Discography</h2><p class="hint">${note}</p></div>` : '';
+  return `<div class="viz"><h2>Albums you played</h2>${note ? `<span class="sub">${note}</span>` : ''}<div class="rank">${al.map((x) => `<button class="r with-cover" ${albumAttrs(name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v cnt">${num(x.plays)}×</span></button>`).join('')}</div></div>`;
+}
+
+/**
+ * The Discography section of an artist page: albums, EPs, singles and compilations with your plays, filterable.
+ * Played, each kind goes most played first. Records of theirs you played that Deezer doesn't list (a live album,
+ * another spelling) come last, so the page needs no separate list of your albums.
+ */
 function discoHtml(name) {
   const d = DISCO[norm(name)];
   if (!d || d.loading) return `<div class="viz disco"><h2>Discography</h2><div class="lin inline indet"><i></i></div><p class="hint">Looking up everything they released…</p></div>`;
-  if (d.error) return `<div class="viz disco"><h2>Discography</h2><p class="hint">${esc(d.error)}</p></div>`;
+  if (d.error) return playedAlbumsHtml(name, esc(d.error));
   const items = d.items || [];
-  if (d.none || !items.length) return '';
+  if (d.none || !items.length) return playedAlbumsHtml(name);
   const played = items.filter((x) => x.plays > 0).length;
   const owned = items.filter((x) => x.owned).length;
   const keep = { played: (x) => x.plays > 0, unheard: (x) => !x.plays, owned: (x) => !!x.owned }[discoFilter] || (() => true);
   const counts = DISCO_TYPES.map(([t, , one]) => [one, items.filter((x) => x.type === t).length]).filter(([, n]) => n).map(([one, n]) => plural(n, one));
-  const chips = [['all', 'All'], ['played', `Played (${played})`], ['unheard', `Not heard yet (${items.length - played})`], ['owned', `On your shelf (${owned})`]]
+  const listed = new Set(items.map((x) => looseKey(x.title)));
+  const others = (ARTIST && norm(ARTIST.name) === norm(name) ? ARTIST.albums || [] : [])
+    .filter((x) => x.plays && !listed.has(looseKey(x.title)))
+    .map((x) => ({ title: x.title, cover: x.cover, plays: x.plays, owned: x.owned, type: 'other' }));
+  const chips = [['all', 'All'], ['played', `Most played (${played + others.length})`], ['unheard', `Not heard yet (${items.length - played})`], ['owned', `On your shelf (${owned})`]]
     .filter(([k]) => k !== 'owned' || owned)
     .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}">${esc(l)}</button>`).join('');
-  const groups = DISCO_TYPES.map(([t, label]) => {
-    const list = items.filter((x) => x.type === t && keep(x));
-    return list.length ? `<h3>${label}</h3><div class="xcards${t === 'single' ? ' small' : ''}">${list.map((x) => discoCard(x, name)).join('')}</div>` : '';
-  }).join('');
+  // Most played: everything of theirs you played in one row, the most played first, whatever kind it is.
+  const groups = discoFilter === 'played'
+    ? ((l) => (l.length ? `<div class="xcards">${l.map((x) => discoCard(x, name)).join('')}</div>` : ''))([...items.filter(keep), ...others].sort((a, b) => b.plays - a.plays))
+    : [...DISCO_TYPES, ['other', 'Also played', '']].map(([t, label]) => {
+      const list = (t === 'other' ? others : items.filter((x) => x.type === t)).filter(keep);
+      return list.length ? `<h3>${label}</h3><div class="xcards${t === 'single' ? ' small' : ''}">${list.map((x) => discoCard(x, name)).join('')}</div>` : '';
+    }).join('');
   return `<div class="viz disco"><div class="xhead"><h2>Discography</h2>${d.artist && d.artist.link ? `<button class="btn text small" data-url="${esc(d.artist.link)}">Deezer${icon('open')}</button>` : ''}</div>
     <span class="sub">${counts.join(', ')}. You've played ${played} of them${owned ? `; ${owned} ${owned === 1 ? 'is' : 'are'} on your shelf` : ''}.</span>
     <div class="chip-row">${chips}</div>${groups || '<p class="hint">Nothing with this filter.</p>'}</div>`;
@@ -5004,6 +5092,9 @@ function discoverWait(d) {
   return `<span class="sub">Looking up who Last.fm's and Deezer's listeners find alike to the artists you play${d && d.total ? `: ${d.done} of ${d.total}` : ''}. This takes a minute the first time.</span>
     <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div>`;
 }
+/** A mix in Explore's top row: three covers stacked, its name and what's in it; a tap makes the playlist [kind]. */
+const mixTile = (kind, covers, title, sub) => `<button class="fy-mix" data-pl="${kind}"><span class="stack">${covers.map(([c, t, a], i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(c, t, a, 'tiny')}</i>`).join('')}</span>
+    <span class="txt"><b>${title}</b><small>${sub}</small></span></button>`;
 const mixCard = (d) => `<button class="fy-mix" data-pl="discover"><span class="stack">${(d.artists || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.photo, a.name, a.name, 'tiny')}</i>`).join('')}</span>
     <span class="txt"><b>Discovery mix</b><small>${d.mix * 2} songs you haven't played, new every Monday</small></span></button>`;
 const reachChips = (d) => `<div class="chips fy-reach">${REACH.map(([v, l]) => `<button class="chip${String(d.reach) === v ? ' on' : ''}" data-reach="${v}">${l}</button>`).join('')}</div>`;
@@ -5138,7 +5229,14 @@ function exploreRows(x, P) {
   const dig = `<button class="fy-mix dig" data-pl="dig"><span class="stack">${(x.lostAlbums || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.cover, a.title, a.artist, 'tiny')}</i>`).join('')}</span>
     <span class="txt"><b>Crate dig</b><small>Songs you played a few times and forgot, shuffled</small></span></button>`;
   const mix = on && d && (d.artists || []).length >= 4 ? mixCard(d) : '';
-  let h = `<div class="mixrow${mix ? '' : ' solo'}">${mix}${dig}</div>`;
+  // More mixes: what your artists put out lately, and what you played on this day in earlier years.
+  const out = ((d && d.releases) || []).filter((r) => new Date(`${r.date}T12:00:00`) <= Date.now());
+  const fresh = on && out.length ? mixTile('newReleases', out.slice(0, 3).map((r) => [r.cover, r.title, r.artist]), 'New releases', `Songs from ${plural(out.length, 'new release')} by your artists`) : '';
+  const otd = (x.onThisDay || []).flatMap((y) => y.tracks || []);
+  const today = otd.length ? mixTile('onThisDay', otd.slice(0, 3).map((t) => [t.cover, t.album || t.title, t.artist]),
+    'On this day', `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`) : '';
+  const cards = [mix, dig, fresh, today].filter(Boolean);
+  let h = `<div class="mixrow${cards.length > 1 ? '' : ' solo'}">${cards.join('')}</div>`;
   if (on) {
     const arts = (d && d.artists) || [];
     const wait = discoverWait(d);
@@ -5388,7 +5486,7 @@ function renderPlaylist() {
       </ol>
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
-    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source !== 'new' ? `<span class="v cnt">${t.plays}×</span>` : p.kind === 'discover' || p.kind === 'artistBest' ? '' : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
+    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source !== 'new' ? `<span class="v cnt">${t.plays}×</span>` : ['discover', 'artistBest', 'newReleases'].includes(p.kind) ? '' : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
     ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}
     ${p.kind === 'discover' ? '<p class="hint">Each artist\'s best-known songs on Last.fm, two at most of each. "Make another" picks other artists and songs; the week\'s mix stays until Monday.</p>' : ''}
     ${p.kind === 'setlist' ? `<p class="hint">"New" are songs you haven't played yet. Setlist from <button class="link-inline" data-url="${esc(p.url || 'https://www.setlist.fm/')}">setlist.fm</button>.</p>` : ''}`;
@@ -5747,7 +5845,6 @@ function renderArtist() {
   if (a.tracks.length) {
     P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="rank">${a.tracks.slice(0, topN('artist')).map((x, i) => `<button class="r" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v cnt">${num(x.plays)}×</span></button>`).join('')}</div>${topMore('artist', a.tracks.length)}</div>`;
   }
-  P.albums = a.albums.length ? `<div class="viz"><h2>Albums</h2><div class="rank">${a.albums.map((x) => `<button class="r with-cover" ${albumAttrs(a.name, x.title)} data-cover="${esc(x.cover)}">${coverHtml(x.cover, x.title, a.name, 'tiny')}<span class="t"><b>${esc(x.title)}</b><small>${x.owned ? 'on your shelf' : ''}</small></span><span class="v">${num(x.plays)}</span></button>`).join('')}</div></div>` : '';
   P.concerts = concertsBlock(a.concerts);
   P.live = `<div id="liveSlot">${liveHtml(a.name)}</div>`;
   P.global = globalTopHtml(a);
@@ -5770,8 +5867,8 @@ const pageTabs = () => layoutPref('pageLayout');
 const mainCompact = () => layoutPref('mainLayout');
 /** Each place's tabs ([key, label, its parts]) and the long page's order of the same parts. */
 const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs', 'origin']], ['listening', 'Listening', ['river', 'life', 'record']],
-  ['music', 'Music', ['tracks', 'albums', 'shelf', 'disco', 'global']], ['live', 'Live', ['concerts', 'live']]];
-const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'albums', 'concerts', 'live', 'global', 'shelf'];
+  ['music', 'Music', ['tracks', 'shelf', 'disco', 'global']], ['live', 'Live', ['concerts', 'live']]];
+const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'concerts', 'live', 'global', 'shelf'];
 const ALBUM_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs']], ['songs', 'Songs', ['shape', 'songs']], ['listening', 'Listening', ['clicked', 'river', 'life']]];
 const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river', 'life'];
 const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside', 'life']], ['music', 'Music', ['artists', 'albums', 'songs', 'everyone', 'lost', 'decades', 'shelf']]];
@@ -7069,6 +7166,8 @@ function onVizPointer(e, data) {
     $('#ro-pulse').innerHTML = pulseText(data.pulse, +ridge.dataset.ridge);
     return;
   }
+  const tlHit = t.closest('[data-tl]');
+  if (tlHit && data) { onTimePointer(e, tlHit, data); return; }
   const col = t.closest('[data-col]');
   if (!col || !data) return;
   col.parentElement.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
@@ -7078,22 +7177,10 @@ function onVizPointer(e, data) {
   else if (col.dataset.col === 'g') $('#ro-g').innerHTML = genreText(data.genres, i);
   else if (col.dataset.col === 'wk') $('#ro-wk').innerHTML = weekText(data.week, i);
   else if (col.dataset.col === 'tl') $('#ro-tl').innerHTML = `${esc(periodLabel(data.timeline.starts[i], data.timeline.unit))}: <b>${plural(data.timeline.counts[i], 'play')}</b>`;
-  else if (col.dataset.col === 'am') {
-    const d = new Date(data.monthsFrom);
-    d.setMonth(d.getMonth() + i);
-    col.closest('.viz').querySelector('.readout').innerHTML = `${esc(d.toLocaleDateString([], { month: 'long', year: 'numeric' }))}: <b>${plural(data.months[i], 'play')}</b>`;
-  } else if (col.dataset.col === 'ah') col.closest('.viz').querySelector('.readout').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
+  else if (col.dataset.col === 'ah') col.closest('.viz').querySelector('.readout').innerHTML = `${pad(i)}:00–${pad(i + 1)}:00: <b>${plural(data.hours[i], 'play')}</b>`;
   else if (col.dataset.col === 'tt') col.closest('.viz').querySelector('.readout').innerHTML = shapeText(data, i);
   else if (col.dataset.col === 'ck') col.closest('.viz').querySelector('.readout').innerHTML = clickedText(data, i);
   else if (col.dataset.col === 'rr') col.closest('.viz').querySelector('.readout').innerHTML = runText(data, i);
-  else if (col.dataset.col === 'aw') {
-    const g = +col.dataset.g || 1;
-    // Calendar days from the first week's Monday, so a DST change doesn't move the dates.
-    const w0 = new Date(data.weeksFrom);
-    const day = (k) => new Date(w0.getFullYear(), w0.getMonth(), w0.getDate() + k).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
-    const n = (data.weeks || []).slice(i * g, i * g + g).reduce((a, b) => a + b, 0);
-    col.closest('.viz').querySelector('.readout').innerHTML = `${g === 1 ? `Week of ${esc(day(i * 7))}` : `${esc(day(i * g * 7))} to ${esc(day((i + 1) * g * 7 - 1))}`}: <b>${plural(n, 'play')}</b>`;
-  }
 }
 
 // ---------- the story: full-screen cards about a period ----------

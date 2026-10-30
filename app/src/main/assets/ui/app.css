@@ -483,7 +483,8 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .mixrow::-webkit-scrollbar { display: none; }
 .mixrow .fy-mix { flex: none; width: min(300px, 82%); margin: 0; scroll-snap-align: start; }
 .mixrow.solo .fy-mix { width: 100%; }
-.fy-mix.dig { background: linear-gradient(135deg, var(--md-secondary-container), var(--md-tertiary-container)); color: var(--md-on-secondary-container); }
+.fy-mix.dig, .fy-mix[data-pl="onThisDay"] { --mix-a: var(--md-secondary); }
+.fy-mix[data-pl="newReleases"] { --mix-a: var(--md-tertiary); --mix-b: var(--md-primary); }
 .xrow { margin-top: 24px; }
 .xrow-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
 .xrow-head h2 { font: 600 20px/26px var(--display, var(--font)); }
@@ -594,13 +595,16 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 #activityBtn .badge { top: 4px; left: auto; right: 2px; }
 /* For you: the discovery mix, suggestions with their reasons, new releases. */
 .fy-mix { display: flex; align-items: center; gap: 14px; width: 100%; margin: 8px 0 12px; padding: 14px; border-radius: 20px; text-align: left;
-  background: linear-gradient(135deg, var(--md-primary-container), var(--md-tertiary-container)); color: var(--md-on-primary-container); }
+  /* The page's own surface, tinted toward the wallpaper colors: a bright container color under light text was hard to read. */
+  --mix-a: var(--md-primary); --mix-b: var(--md-tertiary);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mix-a) 24%, var(--md-surface-container-high)), color-mix(in srgb, var(--mix-b) 12%, var(--md-surface-container-high)));
+  color: var(--md-on-surface); }
 .fy-mix .stack { position: relative; flex: none; width: 66px; height: 66px; }
 .fy-mix .stack i { position: absolute; width: 48px; height: 48px; border-radius: 8px; overflow: hidden; box-shadow: 0 3px 8px rgba(0, 0, 0, .25); }
 .fy-mix .stack .cover { width: 48px; height: 48px; border-radius: 8px; }
 .fy-mix .txt { flex: 1; min-width: 0; }
 .fy-mix b { display: block; font: 600 18px/22px var(--font); }
-.fy-mix small { display: block; font-size: 12px; line-height: 16px; opacity: .85; margin-top: 2px; }
+.fy-mix small { display: block; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); margin-top: 2px; }
 .fy-reach { margin: 10px 0 2px; }
 .fy-list .fy-row { cursor: pointer; }
 .fy-list .fy-row .t small { font-family: var(--font); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -1030,6 +1034,19 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .ring path.sel { stroke: var(--md-on-surface); stroke-width: 1.5; }
 
 /* The listening barcode */
+/* Plays over time: the month line over the week barcode on one time axis; the band and the lit line show a tap. */
+.tl { position: relative; margin-top: 30px; touch-action: pan-y; }
+.tl .area { margin-top: 0; height: 112px; }
+.tl .bars { position: relative; height: 40px; margin-top: 6px; }
+.tl .bars i { position: absolute; top: 0; bottom: 0; min-width: 1px; border-radius: 1px; background: var(--tint); }
+.tl .bars i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+.tl .band { display: none; position: absolute; top: 0; bottom: 0; border-radius: 4px; pointer-events: none;
+  background: color-mix(in srgb, var(--tint) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, transparent); }
+.tl .hit { position: absolute; inset: -8px 0; cursor: pointer; }
+.tl-x { position: relative; height: 15px; margin-top: 6px; font-size: 10px; line-height: 15px; color: var(--md-on-surface-variant); }
+.tl-x span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.tl-x span.start { transform: none; }
+.tl-x span.end { right: 0; transform: none; }
 .barcode { display: flex; align-items: stretch; gap: 1px; height: 64px; margin-top: 14px; touch-action: pan-y; }
 .barcode i { flex: 1; min-width: 1px; border-radius: 1px; background: var(--tint); cursor: pointer; }
 .barcode i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }

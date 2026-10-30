@@ -50,6 +50,23 @@ class DiscographyTest {
     }
 
     @Test
+    fun albumCoverPrefersTheAlbumOverItsSingle() {
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                if (r.path == "/search/album") Res(
+                    200,
+                    """{"data":[{"id":1,"title":"Nobody's Coming To Save You","record_type":"single","nb_tracks":1,"cover_big":"https://single","artist":{"name":"Gurriers"}},
+                    {"id":2,"title":"Nobody's Coming To Save You","record_type":"album","nb_tracks":10,"cover_big":"https://album","artist":{"name":"Gurriers"}}]}""",
+                ) else Res(404, "")
+            }
+            assertEquals("https://album", DeezerClient(server.base).albumCover("Gurriers", "Nobody's Coming to Save You"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun deezerReleasesAndAlbums() {
         val server = MiniHttp().start()
         try {
