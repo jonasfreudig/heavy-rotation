@@ -372,7 +372,12 @@ window.onStats = (s) => {
   $('#statsBody').classList.remove('stale');
   renderStats();
   const look = s && s.range ? [s.range.id, statsGenre, statsDecade].join('|') : '';
-  if (statsLook && look && look !== statsLook) settle($('#statsBody'));
+  if (statsLook && look && look !== statsLook) {
+    // The new period comes in from the side it lies on, the way the old one left.
+    const b = $('#statsBody'), d = statsSlide;
+    statsSlide = 0;
+    if (b.offsetParent) b.animate([{ opacity: 0.3, transform: `translateX(${d * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE_OUT });
+  }
   if (look) statsLook = look;
   if (isOpen('settingsPage')) renderSettings();
 };
@@ -2214,7 +2219,18 @@ function stepPeriod(id, k, historyStart) {
 
 /** The period last asked for: ‹ and › step on from it, as STATS only changes once the answer is in. */
 let statsAsked = '';
+/** Where the period [id] starts ("m2026-10" is October 1), to tell which way a change of period goes. */
+function idStart(id) {
+  const m = /^([dwmy])(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/.exec(id || '');
+  return m ? +new Date(+m[2], m[3] ? +m[3] - 1 : 0, m[4] ? +m[4] : 1) : 0;
+}
+/** Which way the page slides for the period asked for: 1 later, -1 earlier, 0 another kind (it fades). */
+let statsSlide = 0;
 function requestStats(id) {
+  if (id && STATS && STATS.range && !STATS.empty && id !== STATS.range.id) {
+    statsSlide = id[0] === STATS.range.id[0] ? Math.sign(idStart(id) - idStart(STATS.range.id)) : 0;
+    $('#statsBody').style.setProperty('--sx', `${-statsSlide * 20}px`);
+  }
   if (id) statsRange = statsAsked = id;
   if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade }); return; }
   $('#statsBody').classList.add('stale');
@@ -2303,19 +2319,8 @@ function renderPeriod(s) {
   const kind = s.range.kind === '12m' ? 'year' : s.range.kind;
   $$('#periodKind button').forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
   $('#pLabel').textContent = periodName(s.range);
-  $('#pSub').textContent = periodLine(s);
   renderStrip(s);
   renderGenreRow();
-}
-/** "381 plays so far, 30% more than this time last month" */
-function periodLine(s) {
-  const n = (s.summary || {}).scrobbles || 0, before = ((s.summary || {}).prev || {}).scrobbles;
-  let t = `${plural(n, 'play')}${s.range.running && s.range.kind !== 'all' ? ' so far' : ''}`;
-  if (n && before > 0) {
-    const p = Math.round(((n - before) * 100) / before);
-    t += p === 0 ? `, as many as ${vsWord(s.range)}` : `, ${Math.abs(p)}% ${p > 0 ? 'more' : 'fewer'} than ${vsWord(s.range)}`;
-  }
-  return t;
 }
 const stripLabel = (x, kind) => {
   const d = new Date(x.start);
@@ -2352,8 +2357,8 @@ function renderStrip(s) {
 function deltaHtml(cur, prev, kind, running) {
   if (prev == null || !(prev > 0)) return '';
   const p = Math.round(((cur - prev) * 100) / prev);
-  const vs = running ? vsWord({ kind, running }) : lastWord(kind);
-  return `<span class="delta">${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(vs)}</span>`;
+  const vs = lastWord(kind);
+  return `<span class="delta"${running ? ` title="${esc(`against ${vsWord({ kind, running })}`)}"` : ''}>${icon(p >= 0 ? 'trend-up' : 'down-trend')}<b>${p >= 0 ? '+' : ''}${p}%</b>&nbsp;vs ${esc(vs)}</span>`;
 }
 const tile = (label, value, sub, delta, ic, attrs) => {
   const inner = `<span class="tl">${ic ? `<i class="tile-ic">${icon(ic)}</i>` : ''}${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${delta || ''}`;
@@ -4969,6 +4974,8 @@ function renderExplore() {
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
   morph(body, mainCompact() ? exploreRows(x, P) : EXPLORE_LONG.map((k) => P[k] || '').join(''));
+  const mr = $('#exploreBody .mixrow');
+  if (mr && mr.dataset.n !== String(mr.children.length)) { mr.dataset.n = mr.children.length; mr.scrollLeft = 0; }
 }
 
 // ---- for you: music you haven't played, from what your artists point to ----
@@ -5587,6 +5594,7 @@ function renderRanks() {
     if (R.pos < 0 && R.focus[R.kind]) h += `<p class="hint">${R.kind === 'tracks' ? 'This song' : R.kind === 'albums' ? 'This album' : 'This artist'} has no plays in this period.</p>`;
   }
   morph($('#rankBody'), h);
+  if (!R.loading) slideListIn($('#rankBody'), '.ranks');
   if (!R.loading && !R.scrolled) {
     R.scrolled = true;
     const here = $('#rankBody .r.here');
@@ -6732,14 +6740,26 @@ function listSwipe(host, rows, seg) {
     const next = at < 0 ? null : bs[at + (dx < 0 ? 1 : -1)];
     if (!next) return;
     swiped = Date.now();
-    next.click();
-    requestAnimationFrame(() => {
-      const r = host.querySelector(rows);
-      if (r) r.animate([{ transform: `translateX(${dx < 0 ? 48 : -48}px)`, opacity: 0.2 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: EASE_OUT });
-    });
+    const dir = dx < 0 ? 1 : -1;
+    const old = host.querySelector(rows);
+    const out = old && old.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${-dir * 44}px)`, opacity: 0 }], { duration: 130, easing: 'cubic-bezier(.3, 0, .8, .15)', fill: 'forwards' });
+    const go = () => {
+      host._slideIn = dir;
+      next.click();
+      requestAnimationFrame(() => { if (out) out.cancel(); slideListIn(host, rows); });
+    };
+    if (out) out.onfinish = go; else go();
   });
   // The flick doesn't also open the row it started on.
   host.addEventListener('click', (e) => { if (Date.now() - swiped < 400 && e.target.closest(rows)) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
+/** A list that was swiped to comes in from the side it was swiped from, once it is there (it may still be loading). */
+function slideListIn(host, rows) {
+  const r = host._slideIn && host.querySelector(rows);
+  if (!r) return;
+  const dir = host._slideIn;
+  host._slideIn = 0;
+  r.animate([{ transform: `translateX(${dir * 44}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: EASE_OUT });
 }
 /** "▲ 3", "▼ 2", "NEW", "=" for a place now ([rank]) against before ([last], 0: not played then). */
 function moveHtml(rank, last) {

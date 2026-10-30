@@ -610,7 +610,8 @@ const Mock = (() => {
     const topT = ranked(tc).slice(0, 10);
     const trackArtist = {};
     for (let i = i0; i < i1; i++) trackArtist[L.t[i]] = L.a[i];
-    const topAlbums = order.slice(0, 10).map((a, i) => ({ title: RECORDS[a % RECORDS.length][1], artist: L.artists[a], plays: Math.round(ac[a] * 0.7), cover: '', owned: i % 3 !== 2 }));
+    // An artist's own record where the shelf has one, so the demo pairs albums with the right artists.
+    const topAlbums = order.slice(0, 10).map((a, i) => ({ title: (RECORDS.find((x) => x[0] === L.artists[a]) || RECORDS[a % RECORDS.length])[1], artist: L.artists[a], plays: Math.round(ac[a] * 0.7), cover: '', owned: i % 3 !== 2 }));
     const out = {
       range: r, summary: sm, record: rec,
       timeline: { unit: b60.unit, starts: b60.starts, counts: tlc, avg: Math.round((tlc.reduce((x, y) => x + y, 0) / tlc.length) * 10) / 10 },

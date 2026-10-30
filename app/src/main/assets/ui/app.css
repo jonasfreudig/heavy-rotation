@@ -391,6 +391,9 @@ input[type=datetime-local] { color-scheme: inherit; }
 /* ---- stats ---- */
 #statsBody, #reviewBody { transition: opacity .2s; }
 #statsBody.stale, #reviewBody.stale { opacity: .5; }
+/* A period asked for: the page eases out toward where the old one goes, until the new one slides in (onStats). */
+#statsBody { transition: opacity .18s, transform .18s cubic-bezier(.3, 0, .8, .15); }
+#statsBody.stale { opacity: .3; transform: translateX(var(--sx, 0)); }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .tile { background: var(--md-surface-container-low); border-radius: 16px; padding: 12px 16px; min-width: 0; }
 .tile span { display: block; color: var(--md-on-surface-variant); font-size: 13px; }
@@ -744,7 +747,7 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 
 /* period picker */
 .period { margin-top: 4px; }
-.tile .delta { display: inline-flex; align-items: center; gap: 2px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
+.tile .delta { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile .delta .i { width: 14px; height: 14px; }
 .tile .delta b { display: inline; font: 500 12px/16px var(--font); color: var(--md-on-surface); }
 

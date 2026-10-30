@@ -52,8 +52,10 @@ of its own in between, and your data stays on your phone.
 | Your shelf | A record, ready to scrobble | A month, compared with the last |
 | <img src="docs/screenshots/day.jpg" width="240" alt="One day"> | <img src="docs/screenshots/story.jpg" width="240" alt="The story"> | <img src="docs/screenshots/shelf-dark.jpg" width="240" alt="The shelf in the dark"> |
 | A day, for a handful of songs | The story | In the dark |
+| <img src="docs/screenshots/covers.jpg" width="240" alt="A month in covers"> | <img src="docs/screenshots/artist.jpg" width="240" alt="An artist"> | <img src="docs/screenshots/explore.jpg" width="240" alt="Explore"> |
+| A month in covers | An artist | Explore |
 
-The screenshots show the app's demo data, with placeholder covers.
+The screenshots show the app's demo data, with real covers and artist photos from Deezer.
 
 ## Get it
 
