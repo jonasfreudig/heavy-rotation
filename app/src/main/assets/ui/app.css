@@ -400,7 +400,9 @@ input[type=datetime-local] { color-scheme: inherit; }
 .tile b { display: block; font: 400 28px/36px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile b.long { font-size: 23px; }
 .tile small { display: block; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-button.tile { position: relative; display: block; width: 100%; text-align: left; font: inherit; color: inherit; border: 0; }
+/* A button centers what's in it; a tile that opens something starts at its top like the others. */
+button.tile { position: relative; display: flex; flex-direction: column; justify-content: flex-start; width: 100%; text-align: left; font: inherit; color: inherit; border: 0; }
+button.tile .delta { align-self: flex-start; }
 .tile .tile-go { position: absolute; right: 8px; top: 12px; color: var(--md-on-surface-variant); opacity: .7; }
 .tile .tile-go .i { width: 18px; height: 18px; }
 .tile.go .tl { padding-right: 18px; }
@@ -1042,14 +1044,14 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 
 /* The listening barcode */
 /* Plays over time: the month line over the week barcode on one time axis; the band and the lit line show a tap. */
-.tl { position: relative; margin-top: 30px; touch-action: pan-y; }
-.tl .area { margin-top: 0; height: 112px; }
-.tl .bars { position: relative; height: 40px; margin-top: 6px; }
-.tl .bars i { position: absolute; top: 0; bottom: 0; min-width: 1px; border-radius: 1px; background: var(--tint); }
-.tl .bars i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
-.tl .band { display: none; position: absolute; top: 0; bottom: 0; border-radius: 4px; pointer-events: none;
+.tline { position: relative; margin-top: 30px; touch-action: pan-y; }
+.tline .area { margin-top: 0; height: 112px; }
+.tline .bars { position: relative; height: 40px; margin-top: 6px; }
+.tline .bars i { position: absolute; top: 0; bottom: 0; min-width: 1px; border-radius: 1px; background: var(--tint); }
+.tline .bars i.sel { opacity: 1 !important; box-shadow: 0 0 0 1.5px var(--md-on-surface); }
+.tline .band { display: none; position: absolute; top: 0; bottom: 0; border-radius: 4px; pointer-events: none;
   background: color-mix(in srgb, var(--tint) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, transparent); }
-.tl .hit { position: absolute; inset: -8px 0; cursor: pointer; }
+.tline .hit { position: absolute; inset: -8px 0; cursor: pointer; }
 .tl-x { position: relative; height: 15px; margin-top: 6px; font-size: 10px; line-height: 15px; color: var(--md-on-surface-variant); }
 .tl-x span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
 .tl-x span.start { transform: none; }
@@ -1431,6 +1433,34 @@ details.more[open] summary { margin-bottom: 6px; }
 .tcard.foil { box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
 .tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
   background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
+
+/* Song cards: a cover in the frame, a tier by plays, and the way to the next one. */
+.tcard.song .tc-img .cover { width: 100%; height: 100%; border-radius: 0; }
+.tc-goal { display: block; margin-top: 6px; padding: 0 2px; }
+.tc-goal small { display: block; font: 500 10px/13px var(--mono, var(--font)); opacity: .7; margin-top: 3px; }
+.tc-bar { display: block; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, .12); overflow: hidden; }
+.tc-bar i { display: block; height: 100%; border-radius: 2px; background: #2a2238; }
+.tcard.bronze { background: linear-gradient(160deg, #f6e2cf, #dfb894); }
+.tcard.bronze .tc-type { background: #8a5a30; }
+.tcard.silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); box-shadow: 0 6px 16px rgba(0, 0, 0, .2), inset 0 0 0 2px #aeb4c0; }
+.tcard.silver .tc-type { background: #5d6472; }
+.tcard.gold { background: linear-gradient(160deg, #fff3c9, #e9c766); box-shadow: 0 6px 18px rgba(160, 120, 20, .35), inset 0 0 0 2px hsl(45 80% 55%); }
+.tcard.gold .tc-type { background: #8a6610; }
+.tcard.holo { background: linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
+.tcard.holo::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
+  background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
+.tcard.holo .tc-type { background: linear-gradient(90deg, #6a4bd8, #d64b9a); }
+
+/* A song's chart run: places on a log scale, #1 on top. */
+.chart-run { position: relative; height: 128px; margin-top: 22px; touch-action: pan-y; }
+.chart-run svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.chart-run .cr-g { position: absolute; left: 0; transform: translateY(-50%); font: 400 10px/14px var(--mono, var(--font)); color: var(--md-on-surface-variant); opacity: .7; pointer-events: none; }
+.chart-run .cr-g::after { content: ''; position: absolute; left: 30px; width: calc(100vw - 96px); max-width: 300px; top: 7px; border-top: 1px dashed var(--md-outline-variant); }
+.chart-run .cr-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--tint); pointer-events: none; }
+.chart-run .cr-dot.top { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--tint) 30%, transparent); }
+.chart-run .hits { position: absolute; inset: 0; display: flex; }
+.chart-run .hits div { flex: 1; cursor: pointer; }
+.chart-run .hits div.sel { background: linear-gradient(to bottom, color-mix(in srgb, var(--tint) 22%, transparent), transparent); border-radius: 4px; }
 
 /* A genre page's top: its records in a crate, or on a picture disc. */
 .genre-hero.with-art { text-align: center; }

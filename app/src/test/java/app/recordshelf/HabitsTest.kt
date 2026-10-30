@@ -27,6 +27,22 @@ class HabitsTest {
     private fun rows(o: JSONObject, key: String) = o.getJSONArray(key).let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
 
     @Test
+    fun songChartRunPlacesItEachMonth() {
+        val b = History.Builder()
+        // June: A three times, B once. July: B twice, A once. August: nothing. September: A alone.
+        repeat(3) { b.add(at(2026, 6, 2) + it * 3_600L, "X", "A", "Al") }
+        b.add(at(2026, 6, 9), "Y", "B", "Bl")
+        repeat(2) { b.add(at(2026, 7, 2) + it * 3_600L, "Y", "B", "Bl") }
+        b.add(at(2026, 7, 9), "X", "A", "Al")
+        b.add(at(2026, 9, 2), "X", "A", "Al")
+        val s = Stats(b.build(), ZoneId.of("UTC"), at(2026, 10, 27))
+        val t = s.track("X", "A", s.range("all"))!!.getJSONObject("chart")
+        val ranks = t.getJSONArray("ranks").let { r -> (0 until r.length()).map { r.getInt(it) } }
+        assertEquals("June to October: first, second, not played, first, not played", listOf(1, 2, 0, 1, 0), ranks)
+        assertEquals(3, t.getJSONArray("plays").getInt(0))
+    }
+
+    @Test
     fun steadyHabitsComeFirstAndWavesShow() {
         val s = stats()
         val hb = s.compute(s.range("y2026")).getJSONObject("habits")

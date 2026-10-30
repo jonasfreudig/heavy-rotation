@@ -3570,7 +3570,7 @@ function timeViz(x, what) {
   }).join('');
   const parts = [line ? 'The line is plays per month' : '', bars ? `each barcode line ${g === 1 ? 'a week' : `${g} weeks`}, stronger for more plays` : ''].filter(Boolean);
   return `<div class="viz"><h2>Plays over time</h2><span class="sub">Since you first played ${what}. ${parts.join('; ').replace(/^e/, 'E')}.</span>
-    <div class="tl" data-g="${g}">${line}${bars}<i class="band"></i><i class="hit" data-tl="1"></i></div>
+    <div class="tline" data-g="${g}">${line}${bars}<i class="band"></i><i class="hit" data-tl="1"></i></div>
     <div class="tl-x">${labels}<span class="end">now</span></div><div class="readout">Tap for a week and its month.</div></div>`;
 }
 
@@ -3590,7 +3590,7 @@ function onTimePointer(e, el, data) {
   const r = el.getBoundingClientRect();
   const span = timeSpan(data);
   const t = span.t0 + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (span.t1 - span.t0);
-  const tl = el.closest('.tl'), g = +tl.dataset.g || 1, w = data.weeks || [], m = data.months || [];
+  const tl = el.closest('.tline'), g = +tl.dataset.g || 1, w = data.weeks || [], m = data.months || [];
   const f = (x) => Math.min(1, Math.max(0, (x - span.t0) / (span.t1 - span.t0))) * 100;
   const day = (ms) => new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   let wi = -1, mi = -1;
@@ -3625,6 +3625,41 @@ function lifeCharts(x, what, img, seed) {
   return timeViz(x, what) + `<div class="viz"><h2>Around the clock</h2><span class="sub">When you play ${what}, hour by hour, midnight on top</span>
       ${clockRing(x.hours, img, seed)}<div class="readout">Mostly around <b>${pad(peak)}:00</b>: ${mood}.</div></div>`;
 }
+
+/**
+ * A song's run in your charts: its place among all songs each month since its first play, number 1 on top (on a
+ * log scale, so the top places get room). Months it wasn't played leave a gap. Tap a month for its place.
+ */
+function chartRunViz(t) {
+  const c = t.chart || {}, r = c.ranks || [];
+  if (r.filter((v) => v > 0).length < 2) return '';
+  const W = 320, H = 120, n = r.length;
+  const worst = Math.max(10, ...r);
+  const x = (i) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+  const y = (v) => 6 + (Math.log(v) / Math.log(worst)) * (H - 14);
+  // One line per stretch of months in a row.
+  const runs = [];
+  r.forEach((v, i) => { if (v > 0) { if (!r[i - 1]) runs.push([]); runs[runs.length - 1].push([x(i), y(v)]); } });
+  const lines = runs.map((pts) => (pts.length > 1 ? `<path d="${smoothPath(pts)}" fill="none" style="stroke:var(--tint)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>` : '')).join('');
+  const dots = r.map((v, i) => (v > 0 ? `<i class="cr-dot${v === Math.min(...r.filter((q) => q > 0)) ? ' top' : ''}" style="left:${((x(i) / W) * 100).toFixed(2)}%;top:${((y(v) / H) * 100).toFixed(2)}%"></i>` : '')).join('');
+  const best = Math.min(...r.filter((v) => v > 0));
+  const bestAt = r.indexOf(best);
+  const mDate = (i) => { const d = new Date(c.from); d.setMonth(d.getMonth() + i); return d; };
+  const top10 = r.filter((v) => v > 0 && v <= 10).length;
+  const guides = [1, 10, 100, 1000].filter((v) => v <= worst).map((v) => `<span class="cr-g" style="top:${((y(v) / H) * 100).toFixed(2)}%">#${v}</span>`).join('');
+  const step = Math.max(1, Math.ceil(n / 4));
+  const labels = r.map((v, i) => i).filter((i) => i % step === 0).map((i) => `<span>${esc(mDate(i).toLocaleDateString([], { month: 'short', year: '2-digit' }))}</span>`).join('');
+  return `<div class="viz"><h2>Its chart run</h2><span class="sub">Its place among all the songs you played, month by month. Highest: <b>#${best}</b> in ${esc(mDate(bestAt).toLocaleDateString([], { month: 'long', year: 'numeric' }))}${top10 ? `; ${plural(top10, 'month')} in your top 10` : ''}.</span>
+    <div class="chart-run"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${guides}${dots}
+      <div class="hits">${r.map((v, i) => `<div data-col="cr" data-i="${i}"></div>`).join('')}</div></div>
+    <div class="xl">${labels}</div><div class="readout">Tap a month for its place.</div></div>`;
+}
+const chartRunText = (t, i) => {
+  const c = t.chart, d = new Date(c.from);
+  d.setMonth(d.getMonth() + i);
+  const m = esc(d.toLocaleDateString([], { month: 'long', year: 'numeric' }));
+  return c.ranks[i] ? `${m}: <b>#${c.ranks[i]}</b>, ${plural(c.plays[i], 'play')}` : `${m}: not played`;
+};
 
 /** Shrinks a heading until it fits in [lines] lines and its longest word fits the width (long artist names). */
 function fitText(el, lines = 3, max = 40, min = 18) {
@@ -4111,6 +4146,13 @@ function renderGenre() {
       P.decades = `<div class="viz"><h2>Decades</h2><span class="sub">When your ${esc(g.label)} came out</span><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
     }
     P.life = lifeCharts(g, 'it', '', g.label + g.label);
+    if (pageExtras()) {
+      P.lineup = lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
+        { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` });
+      const c = g.calendar || {};
+      P.year = (c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
+        ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : '';
+    }
     P.shelf = shelfHtml;
     h += tabbedHtml('genrePage', g.tab, GENRE_TABS, GENRE_LONG, P);
   }
@@ -4203,6 +4245,7 @@ function renderTrack() {
     <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
     h += vsBlock(t.global, 'it', t.globalRank ? ` It's ${esc(t.artist)}'s #${t.globalRank} most played song there.` : '');
     h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
+    if (pageExtras()) h += chartRunViz(t);
     h += sitsViz(t);
     if (t.next && t.next.length) {
       h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
@@ -5858,6 +5901,7 @@ function renderArtist() {
     const more = a.tracks.length > 5 ? `<div class="btn-row top-more"><button class="btn text small" data-ttoggle>${artistTopOpen ? 'Show top 5' : `Show all ${a.tracks.length}`}</button></div>` : '';
     P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="ch-rows">${rows}</div>${more}</div>`;
   }
+  P.cards = pageExtras() ? songCards(a) : '';
   P.concerts = concertsBlock(a.concerts);
   P.live = `<div id="liveSlot">${liveHtml(a.name)}</div>`;
   P.global = globalTopHtml(a);
@@ -5882,13 +5926,13 @@ const mainCompact = () => layoutPref('mainLayout');
 /** Each place's tabs ([key, label, its parts]) and the long page's order of the same parts. */
 // You and them on one tab (the numbers, the charts, how it began), their music on the next, then the stage.
 const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'life', 'origin', 'vs', 'record']],
-  ['music', 'Music', ['tracks', 'river', 'disco', 'shelf', 'global']], ['live', 'Live', ['concerts', 'live']]];
-const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'concerts', 'live', 'global', 'shelf'];
+  ['music', 'Music', ['tracks', 'cards', 'river', 'disco', 'shelf', 'global']], ['live', 'Live', ['concerts', 'live']]];
+const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'cards', 'concerts', 'live', 'global', 'shelf'];
 // The album and you on one tab, its songs on the other.
 const ALBUM_TABS = [['overview', 'Overview', ['tiles', 'period', 'clicked', 'life', 'vs']], ['songs', 'Songs', ['songs', 'shape', 'river']]];
 const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river', 'life'];
-const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside', 'life']], ['music', 'Music', ['artists', 'albums', 'songs', 'everyone', 'lost', 'decades', 'shelf']]];
-const GENRE_LONG = ['tiles', 'inside', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'shelf'];
+const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside', 'life', 'year']], ['music', 'Music', ['lineup', 'artists', 'albums', 'songs', 'everyone', 'lost', 'decades', 'shelf']]];
+const GENRE_LONG = ['tiles', 'inside', 'lineup', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'year', 'shelf'];
 /** Explore as one long page: its parts in this order. */
 const EXPLORE_LONG = ['dig', 'foryou', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay'];
 
@@ -6000,7 +6044,7 @@ function tabTap(host, key) {
   tabGo(host, track, s.keys.indexOf(key) - s.keys.indexOf(s.open), key, 0, 0, 280);
 }
 /** Rows that scroll sideways, charts you scrub, a zoomed record and fields keep their own drags. */
-const SWIPE_SKIP = '.tix, .covers, .xcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], input, textarea';
+const SWIPE_SKIP = '.tix, .covers, .xcards, .tcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], input, textarea';
 /**
  * Swiping sideways on a place in tabs moves to the tab beside it like turning a page: the tabs sit side by side,
  * already built, and follow the finger; on letting go they slide the rest of the way or spring back. The screen's
@@ -6776,6 +6820,30 @@ function tradingCards(found, count) {
     <span class="tc-st"><span><b>${num(f.plays)}</b>${f.plays === 1 ? 'play' : 'plays'}</span><span><b>${esc(shortDate(f.first))}</b>found</span></span>${f.from ? `<span class="tc-from">after ${esc(f.from)}</span>` : ''}</button>`).join('');
   return cards ? `<div class="tcards">${cards}</div>` : '';
 }
+/** The tiers of a song card by plays: each a goal to play it toward. */
+const CARD_TIERS = [[100, 'holo', 'Holo'], [50, 'gold', 'Gold'], [25, 'silver', 'Silver'], [10, 'bronze', 'Bronze']];
+const cardTier = (plays) => CARD_TIERS.find(([n]) => plays >= n) || [0, 'base', ''];
+/**
+ * An artist's songs as collector cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100, each with how
+ * far it is to the next tier. Songs played fewer than three times stay out.
+ */
+function songCards(a) {
+  const list = (a.tracks || []).filter((x) => x.plays >= 3);
+  if (list.length < 2) return '';
+  const counts = CARD_TIERS.map(([n, k, l]) => [l, list.filter((x) => cardTier(x.plays)[1] === k).length]).filter(([, c]) => c);
+  const cards = list.map((x, i) => {
+    const [, tier, label] = cardTier(x.plays);
+    const next = CARD_TIERS.slice().reverse().find(([n]) => n > x.plays);
+    const from = (CARD_TIERS.slice().reverse().filter(([n]) => n <= x.plays).pop() || [0])[0];
+    const prog = next ? Math.round(((x.plays - from) / (next[0] - from)) * 100) : 100;
+    return `<button class="tcard song ${tier}" ${trackAttrs(a.name, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b><small>${i + 1}/${list.length}</small></span>
+      <span class="tc-img">${coverHtml(x.cover, x.album || x.title, a.name)}</span>${label ? `<span class="tc-type">${label}</span>` : ''}
+      <span class="tc-st"><span><b>${num(x.plays)}</b>${x.plays === 1 ? 'play' : 'plays'}</span><span><b>${x.first ? esc(shortDate(x.first)) : '–'}</b>first</span></span>
+      <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${prog}%"></i></span><small>${plural(next[0] - x.plays, 'play')} to ${next[2].toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
+  }).join('');
+  return `<div class="viz"><h2>Your cards</h2><span class="sub">Their songs as cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100.${counts.length ? ` You hold ${counts.map(([l, c]) => `${c} ${l.toLowerCase()}`).join(', ')}.` : ''}</span>
+    <div class="tcards">${cards}</div></div>`;
+}
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
   const m = new Map();
@@ -6917,7 +6985,7 @@ function chartViz(s) {
     ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}<button class="btn text" ${rankAttrs(topKind, statsRange)} data-rshown="1">${icon('view-list')}The whole list</button></div>` : ''}</div>`;
 }
 /** The period's artists as a festival bill: the most played on top, the names smaller down the poster. */
-function lineupViz(s) {
+function lineupViz(s, o = {}) {
   const a = ((s.top || {}).artists || []).slice(0, 19);
   if (a.length < 4) return '';
   const al = (s.top.albums || []).find((x) => x.cover) || {};
@@ -6926,10 +6994,12 @@ function lineupViz(s) {
   const name = (x) => `<button data-artist="${esc(x.name)}">${esc(x.name)}</button>`;
   const row = (list, cls) => (list.length ? `<div class="lu-row ${cls}">${list.map((x, i) => `${i ? '<i>/</i>' : ''}${name(x)}`).join('')}</div>` : '');
   const head = a[0].name;
-  const fs = Math.max(28, Math.min(56, Math.round(600 / Math.max(6, head.length))));
+  // Capitals in the display face run about .7 em wide: a short headliner still fits on one line.
+  const fs = Math.max(26, Math.min(52, Math.round(400 / Math.max(6, head.length))));
   const sm = s.summary || {}, na = (s.newArtists || {}).count || 0;
-  const when = s.range.kind === 'all' ? 'all of your history' : s.range.kind === 'day' && s.range.running ? 'your day today' : `your ${periodName(s.range)}`;
-  return `<div class="viz lineup-viz"><h2>Your lineup</h2><span class="sub">The ${s.range.kind === 'all' ? 'artists of all time' : `${periodWord(s.range.kind)}'s artists`} as a festival bill: the more you played them, the bigger the name</span>
+  const when = o.when || (s.range.kind === 'all' ? 'all of your history' : s.range.kind === 'day' && s.range.running ? 'your day today' : `your ${periodName(s.range)}`);
+  const sub = o.sub || `The ${s.range.kind === 'all' ? 'artists of all time' : `${periodWord(s.range.kind)}'s artists`} as a festival bill: the more you played them, the bigger the name`;
+  return `<div class="viz lineup-viz"><h2>${esc(o.title || 'Your lineup')}</h2><span class="sub">${sub}</span>
     <div class="lineup" style="--l1:${h1.toFixed(0)};--l2:${((h1 + 300) % 360).toFixed(0)}"><div class="lu-k">Heavy Rotation presents</div><div class="lu-d">${esc(when)}</div>
       <div class="lu-head" style="font-size:${fs}px">${name(a[0])}</div>${row(a.slice(1, 3), 'b')}${row(a.slice(3, 7), 'm')}${row(a.slice(7, 19), 's')}
       <div class="lu-foot">${num(sm.scrobbles)} plays / ${num(sm.artists)} artists${na ? ` / ${plural(na, 'new act')} on the bill` : ''}</div></div></div>`;
@@ -6948,6 +7018,8 @@ function coverWallViz(s) {
 
 // ---- genre pages: their records at the top, fanned out or on a picture disc (Settings → Look) ----
 
+/** Song charts, song cards, and a genre's lineup and calendar on the pages (Settings → Look → Extras on pages). */
+const pageExtras = () => { try { return localStorage.getItem('pageExtras') !== 'off'; } catch (_) { return true; } };
 const genreHead = () => { try { const v = localStorage.getItem('genreHead'); return v === 'disc' || v === 'plain' ? v : 'crate'; } catch (_) { return 'crate'; } };
 /** The top of a genre page: its most played albums fanned out, or printed on a picture disc. */
 function genreArt(g) {
@@ -7213,6 +7285,7 @@ function onVizPointer(e, data) {
   else if (col.dataset.col === 'tt') col.closest('.viz').querySelector('.readout').innerHTML = shapeText(data, i);
   else if (col.dataset.col === 'ck') col.closest('.viz').querySelector('.readout').innerHTML = clickedText(data, i);
   else if (col.dataset.col === 'rr') col.closest('.viz').querySelector('.readout').innerHTML = runText(data, i);
+  else if (col.dataset.col === 'cr') col.closest('.viz').querySelector('.readout').innerHTML = chartRunText(data, i);
 }
 
 // ---------- the story: full-screen cards about a period ----------
@@ -7265,7 +7338,7 @@ function showSlide(i) {
   $('#storyBars').innerHTML = storySlides.map((x, k) => `<i class="${k < storyIdx ? 'done' : k === storyIdx && !x.wait ? 'now' : ''}" style="--dur:${x.dur || 7}s"><b></b></i>`).join('');
   $('#storySlide').innerHTML = `<div class="slide ${sl.cls}"><div class="aur bg"><i></i><i></i><i></i></div>${sl.html}</div>`;
   $$('#storySlide [data-fit]').forEach((el) => {
-    const big = el.classList.contains('xl') ? 96 : el.classList.contains('pt') ? 40 : 54;
+    const big = el.classList.contains('xxl') ? 96 : el.classList.contains('pt') ? 40 : 54;
     fitText(el, +el.dataset.fit, big, el.classList.contains('pt') ? 22 : 26);
   });
   $('#story').classList.remove('paused');
@@ -7355,8 +7428,8 @@ function buildSlides(s) {
   const disc = (cover, hueKey) => `<div class="spinner-disc bg" style="--h:${hue(hueKey)}"><i style="${cover ? `background-image:url('${cssUrl(cover)}')` : ''}"></i></div>`;
   // Intro: a record rising from the bottom of the screen
   out.push({ cls: 'deep intro', dur: 5, html: `${disc(album && album.cover, name)}<div class="k in">${s.range.kind === 'all' ? 'Your whole history' : `Your ${per}`} on Heavy Rotation</div>
-    <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(name)}</div><p class="p in" ${dly(0.35)}>on record.</p>
-    <p class="hint bg in" ${dly(0.9)}>Tap right for next, left for back, hold to pause</p>` });
+    <div class="t xxl in" ${dly(0.15)} data-fit="3">${esc(name)}</div><p class="p in" ${dly(0.35)}>on record.</p>
+    <p class="hint bg in" ${dly(0.9)}>Tap a side to move on or back, hold to pause</p>` });
   // Volume: one huge number and a ticker running across
   let vs = '';
   if (sm.prev && sm.prev.scrobbles > 0) {
@@ -7386,7 +7459,7 @@ function buildSlides(s) {
       ? `<div class="duo bg"><i class="img" style="background-image:url('${cssUrl(a0.cover)}')"></i><i class="lo"></i><i class="hi"></i><i class="fade"></i></div>`
       : `<div class="duo bg none"><b>${esc(String(a0.name).trim().charAt(0).toUpperCase())}</b><i class="fade"></i></div>`;
     out.push({ cls: 'deep photo', html: `${bg}<div class="k in">Your top artist</div>
-      <div class="t xl in" ${dly(0.15)} data-fit="3">${esc(a0.name)}</div><p class="p mono in" ${dly(0.35)}>${plural(a0.plays, 'play')}, ${pct(a0.share)} of everything, on ${plural(a0.days, 'day')}</p>` });
+      <div class="t xxl in" ${dly(0.15)} data-fit="3">${esc(a0.name)}</div><p class="p mono in" ${dly(0.35)}>${plural(a0.plays, 'play')}, ${pct(a0.share)} of everything, on ${plural(a0.days, 'day')}</p>` });
   }
   if ((s.artists || []).length >= 3) {
     out.push({ cls: 'deep', html: `<div class="k in">Your top artists</div><div class="list5">${s.artists.map((x, i) => `<div class="row in" ${dly(0.1 + i * 0.12)}><span class="n">${i + 1}</span>
@@ -7681,6 +7754,7 @@ function renderSettings() {
   $$('#mainSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (mainCompact() ? 'compact' : 'long')));
   $$('#statsSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === statsView()));
   $$('#genreHeadSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === genreHead()));
+  $$('#extrasSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (pageExtras() ? 'on' : 'off')));
   const dv = ST.discover || {};
   $('#discoverSw').checked = dv.on !== false;
   $('#dvNo').hidden = !dv.no;
@@ -8215,6 +8289,15 @@ function build() {
     try { localStorage.setItem('mainLayout', b.dataset.v); } catch (_) { /* preview without storage */ }
     renderSettings();
     renderExplore();
+  };
+  $('#extrasSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('pageExtras', b.dataset.v); } catch (_) { /* preview without storage */ }
+    renderSettings();
+    renderArtist();
+    renderTrack();
+    renderGenre();
   };
   $('#genreHeadSeg').onclick = (e) => {
     const b = e.target.closest('button');

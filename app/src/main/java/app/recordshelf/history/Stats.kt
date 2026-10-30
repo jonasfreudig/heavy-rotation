@@ -883,6 +883,11 @@ class Stats(
             .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, TOP_MAX))
             .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
             .put("decades", s.decades(0, sub.size))
+            .put("calendar", date(nowSec).let { d ->
+                // Twelve whole months, this one the last.
+                val r = Range("g12", "Last 12 months", ms(d.withDayOfMonth(1).minusMonths(11)) / 1000, ms(d.plusDays(1)) / 1000, "12m")
+                s.calendar(r, sub.lowerBound(r.from), sub.size)
+            })
     }
 
     /** The name of a genre or style key from anywhere ("indie", "indie:shoegaze", "Post-Punk"). */
@@ -1980,6 +1985,7 @@ class Stats(
         val inRange = IntArray(h.artistNames.size)
         val months = HashMap<Int, Int>()
         val tracks = HashMap<Int, Int>()
+        val trackFirst = HashMap<Int, Long>()
         val albums = HashMap<Int, Int>()
         val rangeTracks = HashMap<Int, Int>()
         val rangeAlbums = HashMap<Int, Int>()
@@ -2011,6 +2017,7 @@ class Stats(
             val mk = dt.year * 12 + dt.monthValue - 1
             months[mk] = (months[mk] ?: 0) + 1
             tracks[h.track[i]] = (tracks[h.track[i]] ?: 0) + 1
+            trackFirst.putIfAbsent(h.track[i], h.ts[i])
             if (h.album[i] >= 0) albums[h.album[i]] = (albums[h.album[i]] ?: 0) + 1
             hours[hour(h.ts[i])]++
             val d = day(h.ts[i])
@@ -2044,7 +2051,7 @@ class Stats(
             .put("streak", best).put("streakEnd", dayStart(bestEnd) * 1000)
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[a]).put("rank", rank))
             .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(TOP_MAX).map {
-                JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value).put("album", albumOf(it.key))
+                JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value).put("album", albumOf(it.key)).put("first", (trackFirst[it.key] ?: 0L) * 1000)
                     .put("cover", trackAlbum[it.key].let { al -> if (al >= 0) cover(al) else "" })
             }))
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
@@ -2212,6 +2219,7 @@ class Stats(
             }
         }
         if (run >= 2) runs.put(JSONObject().put("n", run).put("at", runAt * 1000))
+        o.put("chart", monthlyChart(t))
         val inSessions = maxOf(1, sitsAll[0] + sitsAll[1] + sitsAll[2])
         val al = trackAlbum[t]
         o.put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
@@ -2228,6 +2236,31 @@ class Stats(
         globals.track(artistName, h.trackTitles[t])?.let { o.put("global", vsJson(all[t], it)) }
         globals.top(artistName)?.let { top -> o.put("globalRank", top.indexOfFirst { Text.normLoose(it.first) == Text.normLoose(h.trackTitles[t]) } + 1) }
         return o
+    }
+
+    /**
+     * Where song [t] stood among all songs in each month since its first play, by plays that month (1 is the most
+     * played; 0: not played that month), with its plays. Ties share a place.
+     */
+    fun monthlyChart(t: Int): JSONObject {
+        fun mk(ts: Long) = date(ts).let { it.year * 12 + it.monthValue - 1 }
+        var m0 = Int.MAX_VALUE
+        for (i in 0 until h.size) if (h.track[i] == t) { m0 = mk(h.ts[i]); break }
+        if (m0 == Int.MAX_VALUE) return JSONObject()
+        val n = mk(nowSec) - m0 + 1
+        val per = Array(n) { HashMap<Int, Int>() }
+        for (i in h.lowerBound(monthStart(m0) / 1000) until h.size) {
+            val k = mk(h.ts[i]) - m0
+            if (k in 0 until n) per[k].merge(h.track[i], 1, Int::plus)
+        }
+        val ranks = IntArray(n)
+        val plays = IntArray(n)
+        for (k in 0 until n) {
+            val c = per[k][t] ?: continue
+            plays[k] = c
+            ranks[k] = 1 + per[k].values.count { it > c }
+        }
+        return JSONObject().put("from", monthStart(m0)).put("ranks", JSONArray(ranks.toList())).put("plays", JSONArray(plays.toList()))
     }
 
     private fun albumJson(al: Int): JSONObject = JSONObject().put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])

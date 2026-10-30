@@ -1005,7 +1005,9 @@ const Mock = (() => {
     if (run >= 2) runs.push({ n: run, at: runAt });
     const inS = Math.max(1, all4[0] + all4[1] + all4[2]);
     Object.assign(sits, { baseOpen: all4[0] / inS, baseClose: all4[2] / inS });
-    return { ...life, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a], sits, runs,
+    // Its place each month: more plays, a higher place (made up from its plays, like the rest).
+    const chart = { from: life.monthsFrom, ranks: life.months.map((v) => (v ? Math.max(1, Math.round(420 / (v * v + 1))) : 0)), plays: life.months };
+    return { ...life, chart, title: L.titles[t], artist: L.artists[a], rank: rankIn(all, t), tracks: Object.keys(all).length, shareOfArtist: life.plays / ap[a], sits, runs,
       range: { ...r, plays: c[t] || 0, rank: rankIn(c, t) },
       next: Object.entries(next).sort((x, y) => y[1].n - x[1].n).slice(0, 5).map(([k, v]) => ({ title: L.titles[k], artist: L.artists[v.a], count: v.n })),
       album: { title: albumOf(a), artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
@@ -1589,7 +1591,13 @@ const Mock = (() => {
           later(200, () => onBadges(b));
           break;
         }
-        case 'genre': later(300, () => onGenre({ ...fakeGenre(m.key), req: m.req })); break;
+        case 'genre': later(300, () => {
+          // Twelve whole months day by day, made up.
+          const g = fakeGenre(m.key), d0 = new Date(); d0.setHours(0, 0, 0, 0); d0.setDate(1); d0.setMonth(d0.getMonth() - 11);
+          const days = Math.round((Date.now() - +d0) / 864e5) + 1;
+          g.calendar = { unit: 'day', start: +d0, days, counts: Array.from({ length: days }, (_, i) => ((i * 7919) % 11 < 4 ? (i * 31) % 9 : 0)) };
+          onGenre({ ...g, req: m.req });
+        }); break;
         case 'atlas': later(500, () => onAtlas(fakeAtlas())); break;
         case 'backupExport': later(700, () => onBackup({ scrobbles: history().ts.length })); break;
         case 'backupImport': later(400, () => onToast('In the app, a file picker opens here')); break;

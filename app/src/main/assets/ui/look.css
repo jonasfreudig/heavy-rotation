@@ -164,11 +164,23 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .slide .k { font: 500 12px/16px var(--mono); letter-spacing: .14em; }
 .slide .t { font-weight: 760; letter-spacing: -.025em; overflow-wrap: normal; }
 .slide .t.huge { font-size: clamp(76px, 27vw, 150px); line-height: .92; font-style: italic; font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; margin: 6px 0 2px; }
-.slide .t.xl { font-size: 96px; line-height: .95; font-style: italic; }
+.slide .t.xxl { font-size: 96px; line-height: .95; font-style: italic; }
+/* The concerts of the period as ticket stubs. */
+.slide .stubs { display: grid; gap: 14px; margin: 22px 0 8px; }
+.slide .stub { display: flex; background: #fbf8f1; color: #1f1b16; border-radius: 8px; rotate: var(--r, 0deg); box-shadow: 0 6px 18px rgba(31, 27, 22, .16), 0 1px 3px rgba(31, 27, 22, .18);
+  -webkit-mask: radial-gradient(circle 8px at 66px 0, #0000 97%, #000) top / 100% 51% no-repeat, radial-gradient(circle 8px at 66px 100%, #0000 97%, #000) bottom / 100% 51% no-repeat;
+  mask: radial-gradient(circle 8px at 66px 0, #0000 97%, #000) top / 100% 51% no-repeat, radial-gradient(circle 8px at 66px 100%, #0000 97%, #000) bottom / 100% 51% no-repeat; }
+.slide .stub .sd { flex: none; width: 66px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0; border-right: 2px dashed rgba(31, 27, 22, .2); }
+.slide .stub .sd b { font: 650 28px/1 var(--display); }
+.slide .stub .sd small { margin-top: 3px; font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.slide .stub .si { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 12px 16px; min-width: 0; }
+.slide .stub .si b { font: 650 19px/23px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slide .stub .si small { font: 400 12px/16px var(--mono); opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slide .p { font-size: 17px; line-height: 25px; }
 .slide .p.mono { font: 400 13px/20px var(--mono); letter-spacing: .04em; text-transform: uppercase; opacity: .85; }
 .slide .p.small { font-size: 12px; text-transform: none; letter-spacing: .02em; margin-top: 12px; }
-.slide .hint { position: absolute; left: 28px; right: 28px; bottom: calc(var(--inset-bottom) + 26px); margin: 0; font: 400 11px/16px var(--mono); letter-spacing: .06em; opacity: .55; z-index: 3; }
+.slide .hint { position: absolute; left: 28px; right: 28px; bottom: calc(var(--inset-bottom) + 26px); width: fit-content; margin: 0 auto; padding: 5px 12px;
+  border-radius: 14px; background: rgb(0 0 0 / .45); color: #f4ecdf; font: 400 11px/16px var(--mono); letter-spacing: .06em; text-align: center; z-index: 3; }
 .slide .badge { left: auto; top: auto; min-width: 0; font-family: var(--mono); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
 .slide.bright.alt { --bg: hsl(var(--s3) calc(66% * var(--ss)) 62%); }
 .slide.bright.alt .aur i:nth-child(1) { background: radial-gradient(closest-side, hsl(var(--s2) calc(80% * var(--ss)) 58%), transparent); }

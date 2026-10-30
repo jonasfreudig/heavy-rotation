@@ -243,7 +243,9 @@ the header, and charts in that color. Plays over time shows plays per month as a
 its peak marked, and under it, on the same time axis, a barcode with one line per week since you
 first played it, stronger for more plays. Tap it for a week and its month: the week lights up in the
 barcode and the month in the curve. "Around the clock" has the 24 hours as a ring around the cover,
-with longer wedges for the hours you play it most; tap a wedge for its plays.
+with longer wedges for the hours you play it most; tap a wedge for its plays. A song's page also has
+its chart run: its place among all the songs you played, month by month, number 1 on top; tap a
+month for its place and plays.
 
 These pages cover all your time with that artist, album or song, whatever period the Stats tab is
 on. Opened from a period other than All, they add that period: a tile with its plays and rank, and
@@ -312,7 +314,10 @@ the artists and albums of that genre you loved and haven't played for half a yea
 hours; and the records on your shelf with that genre or style. "Full stats for
 …" opens the Stats tab for that genre. The page takes the colors of the genre's most played album,
 and Settings → Look → Genre pages puts its top albums at the top: fanned out (Covers), on a picture
-disc that turns as you scroll, or nothing (Plain).
+disc that turns as you scroll, or nothing (Plain). A genre page also has its lineup, its artists as a festival
+bill with the most played on top, and its year: the last twelve months day by day, darker on days
+with more of it. Settings → Look → Extras on pages hides the chart run, the cards, the lineup and the
+year.
 
 #### Your musical atlas
 
@@ -434,7 +439,9 @@ Tap any artist (in the lists, the phases, the record, or on a record page) for t
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays
 lit up on your record, top tracks, their discography, and the records of theirs on your shelf. Top
 tracks look like Your chart on the Stats tab, each song with its album's cover; the first five show,
-and Show all opens the rest.
+and Show all opens the rest. Your cards show their songs as collector cards with the album cover:
+bronze at 10 plays, silver at 25, gold at 50 and holo at 100, each with how many plays it still
+needs for the next tier.
 
 #### Tidy up: videos and app sounds
 
