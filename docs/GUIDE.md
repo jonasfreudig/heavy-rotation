@@ -423,15 +423,18 @@ These lists collect listening that never makes the top lists:
 - On this day shows what you played on today's date in earlier years.
 
 Each list can become a playlist of up to 40 songs. So can Crate dig (songs you played a few times
-and forgot, shuffled anew each time) and Playlist of the top 40, under Top 10 on the Stats tab. On
-a playlist, Copy list puts it on the clipboard as "Artist - Title" lines, which you can paste into
+and forgot, shuffled anew each time) and Playlist of the top 40, under Top 10 on the Stats tab. A
+playlist shows each song with its album's cover (or the artist's photo for songs you haven't played),
+and its first four covers make its picture. On a playlist, Copy list puts it on the clipboard as "Artist - Title" lines, which you can paste into
 TuneMyMusic or Soundiiz (import from text) to send it to TIDAL. Share hands the playlist to any
 app. The pencil next to a playlist's name lets you give it your own name and description; TIDAL
 gets both, and Share puts them above the songs.
 
 Tap any artist (in the lists, the phases, the record, or on a record page) for their own page:
 plays, rank, first play, busiest month, longest streak, plays per month, time of day, their plays
-lit up on your record, top tracks and albums, and the records of theirs on your shelf.
+lit up on your record, top tracks, their discography, and the records of theirs on your shelf. Top
+tracks look like Your chart on the Stats tab, each song with its album's cover; the first five show,
+and Show all opens the rest.
 
 #### Tidy up: videos and app sounds
 

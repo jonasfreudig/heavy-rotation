@@ -9,10 +9,10 @@ import kotlin.random.Random
  * A song for a mixed playlist and where it came from: your favorites in a genre ("core"), songs
  * you often played right next to them ("near"), or songs you never played ("new").
  */
-data class Pick(val artist: String, val title: String, val album: String, val plays: Int, val source: String) {
+data class Pick(val artist: String, val title: String, val album: String, val plays: Int, val source: String, val cover: String = "") {
     val key get() = Text.norm(artist) + "\u0000" + Text.normLoose(title)
 
-    fun toJson(): JSONObject = JSONObject().put("artist", artist).put("title", title).put("album", album).put("plays", plays).put("source", source)
+    fun toJson(): JSONObject = JSONObject().put("artist", artist).put("title", title).put("album", album).put("plays", plays).put("source", source).put("cover", cover)
 }
 
 /**

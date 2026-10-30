@@ -1826,7 +1826,7 @@ object Core {
             val list = app.recordshelf.history.PlaylistMix.mix(core, near, fresh, size, mode, seed)
             push("onPlaylist") {
                 JSONObject().put("kind", "genre").put("key", key).put("label", label).put("size", size).put("mode", mode).put("seed", seed)
-                    .put("name", "$label mix").put("note", note).put("tracks", JSONArray(list.map { it.toJson() }))
+                    .put("name", "$label mix").put("note", note).put("tracks", pickJson(list))
             }
         }
         val c = lastfm()
@@ -2358,7 +2358,7 @@ object Core {
         push("onPlaylist") {
             JSONObject().put("kind", "discover").put("seed", asked).put("size", size).put("reach", prefs.discoverReach)
                 .put("name", "Discovery mix").put("note", "Songs you haven't played, by artists your listening points to")
-                .put("tracks", JSONArray(list.map { it.toJson() }))
+                .put("tracks", pickJson(list))
         }
     }
 
@@ -2370,7 +2370,7 @@ object Core {
         val songs = topsOf(lastfm(), name).orEmpty()
         push("onPlaylist") {
             JSONObject().put("kind", "artistBest").put("artist", name).put("name", "Best of $name").put("note", "Their most played songs on Last.fm")
-                .put("tracks", JSONArray(songs.map { Pick(name, it, "", 0, "new").toJson() }))
+                .put("tracks", pickJson(songs.map { Pick(name, it, "", 0, "new") }))
         }
     }
 
@@ -2385,7 +2385,7 @@ object Core {
         val per = out.mapNotNull { r ->
             try {
                 val a = deezer.album(r.optLong("id"))
-                a.tracks.map { (t, _) -> Pick(r.optString("artist"), t, a.title, 0, "new") }
+                a.tracks.map { (t, _) -> Pick(r.optString("artist"), t, a.title, 0, "new", r.optString("cover").ifEmpty { a.cover }) }
             } catch (_: Exception) {
                 null
             }.also { Thread.sleep(120) } // Deezer allows 50 requests in 5 seconds
@@ -2394,8 +2394,14 @@ object Core {
         push("onPlaylist") {
             if (tracks.isEmpty()) JSONObject().put("kind", "newReleases").put("empty", true)
             else JSONObject().put("kind", "newReleases").put("name", "New releases").put("note", "What your artists put out lately")
-                .put("tracks", JSONArray(tracks.map { it.toJson() }))
+                .put("tracks", pickJson(tracks))
         }
+    }
+
+    /** Playlist songs as JSON, each with a picture: its album's cover, or else its artist's photo if one is known. */
+    private fun pickJson(list: List<Pick>): JSONArray {
+        val images = db.images()
+        return JSONArray(list.map { p -> p.toJson().also { if (p.cover.isEmpty()) it.put("cover", images[Stats.photoKey(p.artist)].orEmpty()) } })
     }
 
     /** Computes and pushes the stats for [statsRange]. On [statsExec]. */

@@ -914,7 +914,10 @@ class Stats(
                 near.merge(t, 1, Int::plus)
             }
         }
-        fun pick(t: Int, source: String) = Pick(h.artistNames[h.trackArtist[t]], h.trackTitles[t], trackAlbum[t].let { if (it >= 0) h.albumTitles[it] else "" }, trackPlays[t], source)
+        fun pick(t: Int, source: String) = Pick(
+            h.artistNames[h.trackArtist[t]], h.trackTitles[t], trackAlbum[t].let { if (it >= 0) h.albumTitles[it] else "" }, trackPlays[t], source,
+            trackAlbum[t].let { if (it >= 0) cover(it) else "" },
+        )
         return core.map { pick(it, "core") } to
             near.entries.filter { it.value >= 2 }.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key }).take(max).map { pick(it.key, "near") }
     }
@@ -2040,7 +2043,10 @@ class Stats(
             .put("hours", JSONArray(hours.toList()))
             .put("streak", best).put("streakEnd", dayStart(bestEnd) * 1000)
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[a]).put("rank", rank))
-            .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(TOP_MAX).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
+            .put("tracks", JSONArray(tracks.entries.sortedByDescending { it.value }.take(TOP_MAX).map {
+                JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value).put("album", albumOf(it.key))
+                    .put("cover", trackAlbum[it.key].let { al -> if (al >= 0) cover(al) else "" })
+            }))
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
             .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))

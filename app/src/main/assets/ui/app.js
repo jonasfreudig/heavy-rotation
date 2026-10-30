@@ -4118,6 +4118,7 @@ function renderGenre() {
   morph($('#genreBody'), h);
   tint($('#genreBody'), (((g.top || {}).albums || []).find((x) => x.cover) || {}).cover || '', (g.family ? g.family.label : g.label) + g.label);
   syncPageTabs($('#genrePage'));
+  warmTabs($('#genrePage'));
 }
 
 /**
@@ -4282,6 +4283,7 @@ function renderAlbum() {
   keepHolo($('#albumBody'), h);
   tint($('#albumBody'), cover, a.title + a.artist);
   syncPageTabs($('#albumPage'));
+  warmTabs($('#albumPage'));
 }
 
 // ---- album and song pages: the album's shape for you, when it clicked, where a song sits, its runs on repeat ----
@@ -5468,7 +5470,10 @@ function renderPlaylist() {
   if (p.loading) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (p.empty || !p.tracks || !p.tracks.length) { body.innerHTML = `<div class="empty">${icon('playlist', 'i big')}<p>No songs for this playlist yet.</p></div>`; return; }
   const about = PLNAME ? PLNAME.note : p.note;
-  body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div class="pl-txt" id="plName"><h1>${esc(plTitle(p))}</h1><p>${about ? `${esc(about)}, ` : ''}${plural(p.tracks.length, 'song')}</p></div>
+  // Its first four different covers as the playlist's picture, once it has that many.
+  const pics = [...new Set(p.tracks.map((t) => t.cover).filter(Boolean))].slice(0, 4);
+  const pic = pics.length === 4 ? `<div class="pl-icon pl-mosaic">${pics.map((c) => `<img src="${esc(c)}" alt="" decoding="async">`).join('')}</div>` : `<div class="pl-icon">${icon('playlist')}</div>`;
+  body.innerHTML = `<div class="pl-head">${pic}<div class="pl-txt" id="plName"><h1>${esc(plTitle(p))}</h1><p>${about ? `${esc(about)}, ` : ''}${plural(p.tracks.length, 'song')}</p></div>
       <button class="icon-btn pl-edit" id="plEdit" aria-label="Name and description">${icon('edit')}</button></div>
     <div class="btn-row">
       <button class="btn filled" id="plCopy">${icon('copy')}Copy list</button>
@@ -5486,7 +5491,7 @@ function renderPlaylist() {
       </ol>
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
-    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source !== 'new' ? `<span class="v cnt">${t.plays}×</span>` : ['discover', 'artistBest', 'newReleases'].includes(p.kind) ? '' : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
+    <div class="rank">${p.tracks.map((t, i) => `<button class="r with-cover pl-r" ${trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover })}><span class="n">${i + 1}</span>${coverHtml(t.cover, t.album || t.title, t.artist, 'tiny')}<span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source !== 'new' ? `<span class="v cnt">${t.plays}×</span>` : ['discover', 'artistBest', 'newReleases'].includes(p.kind) ? '' : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
     ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}
     ${p.kind === 'discover' ? '<p class="hint">Each artist\'s best-known songs on Last.fm, two at most of each. "Make another" picks other artists and songs; the week\'s mix stays until Monday.</p>' : ''}
     ${p.kind === 'setlist' ? `<p class="hint">"New" are songs you haven't played yet. Setlist from <button class="link-inline" data-url="${esc(p.url || 'https://www.setlist.fm/')}">setlist.fm</button>.</p>` : ''}`;
@@ -5774,10 +5779,13 @@ function openLivePlaylist(i) {
 // ---- one artist ----
 
 let ARTIST = null;
+/** Whether an artist page shows all their top tracks (else five); back to five for the next artist. */
+let artistTopOpen = false;
 function openArtist(name) {
   if (!name) return;
   openPage('artistPage');
   ARTIST = { name, loading: true, req: ++REQ };
+  artistTopOpen = false;
   requestDiscography(name);
   requestLive(name);
   $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
@@ -5843,7 +5851,12 @@ function renderArtist() {
   }
   P.tracks = '';
   if (a.tracks.length) {
-    P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="rank">${a.tracks.slice(0, topN('artist')).map((x, i) => `<button class="r" ${trackAttrs(a.name, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v cnt">${num(x.plays)}×</span></button>`).join('')}</div>${topMore('artist', a.tracks.length)}</div>`;
+    // Like Your chart on Stats, with each song's album cover; five first, all of them a tap away.
+    const n = artistTopOpen ? a.tracks.length : 5;
+    const rows = a.tracks.slice(0, n).map((x, i) => `<button class="ch-r plain${i === 0 ? ' one' : ''}" ${trackAttrs(a.name, x.title, { album: x.album, cover: x.cover })}><span class="ch-n">${i + 1}</span>${coverHtml(x.cover, x.album || x.title, a.name)}
+      <span class="t"><b>${esc(x.title)}</b><small>${x.album ? `${esc(x.album)}, ` : ''}${num(x.plays)}×</small></span></button>`).join('');
+    const more = a.tracks.length > 5 ? `<div class="btn-row top-more"><button class="btn text small" data-ttoggle>${artistTopOpen ? 'Show top 5' : `Show all ${a.tracks.length}`}</button></div>` : '';
+    P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="ch-rows">${rows}</div>${more}</div>`;
   }
   P.concerts = concertsBlock(a.concerts);
   P.live = `<div id="liveSlot">${liveHtml(a.name)}</div>`;
@@ -5857,6 +5870,7 @@ function renderArtist() {
   fitText($('#artistBody .fit'));
   drawRecords();
   syncPageTabs($('#artistPage'));
+  warmTabs($('#artistPage'));
 }
 
 // ---- long pages in tabs (Settings → Look): artist, album and genre pages, Stats and Explore; or each as one long page ----
@@ -6054,6 +6068,21 @@ function tabSwipe(host) {
   host.addEventListener('click', (e) => { if (Date.now() - swipedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
+/**
+ * The tabs beside the open one wait hidden, and a hidden picture is neither loaded nor decoded: it would pop in
+ * a frame late as a swipe shows it. So their pictures load and decode now, while nobody looks.
+ */
+function warmTabs(host) {
+  const imgs = host ? host.querySelectorAll('.atab-body:not([data-open]) img:not([data-warm])') : [];
+  if (!imgs.length) return;
+  const go = () => imgs.forEach((i) => {
+    i.dataset.warm = '1';
+    i.loading = 'eager';
+    if (i.decode) i.decode().catch(() => {});
+  });
+  if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 800 }); else setTimeout(go, 200);
+}
+
 /** The tabs get the page's color behind them once they stick to the top. */
 function syncPageTabs(host) {
   const bar = host.querySelector('.atabs'), anchor = host.querySelector('.tab-anchor');
@@ -6062,7 +6091,8 @@ function syncPageTabs(host) {
   const top = parseFloat(getComputedStyle(bar).top) || 0;
   const sc = hostScroller(host);
   const from = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;
-  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - from < top);
+  // A pixel of slack: a tab change scrolls to exactly where they stick, and rounding flipped them back and forth.
+  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - from < top + 1);
 }
 
 // ---- tidy up: videos, app sounds and clips out of the stats ----
@@ -7713,6 +7743,7 @@ function build() {
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
     if (e.target.closest('[data-genremore]')) { openGenreMore(); return; }
+    if (e.target.closest('[data-ttoggle]')) { artistTopOpen = !artistTopOpen; renderArtist(); return; }
     const tn = e.target.closest('[data-topn]');
     if (tn) { const [k, n] = tn.dataset.topn.split(':'); setTopN(k, +n); return; }
     if (e.target.closest('[data-genremap]')) {

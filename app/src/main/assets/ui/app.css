@@ -452,6 +452,8 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .rank .bar { grid-column: 2 / 4; height: 3px; margin: 0; background: transparent; }
 .rank .bar i { background: var(--md-primary); transition: none; }
 .rank .r.with-cover { grid-template-columns: 40px 1fr auto; }
+/* A playlist's songs: number, cover, title. */
+.rank .r.pl-r { grid-template-columns: 22px 40px 1fr auto; }
 .ranks .r { grid-template-columns: 34px 1fr auto; }
 .ranks .r.rc { grid-template-columns: 34px 40px 1fr auto; }
 .ranks .r.rc .bar { grid-column: 3 / 5; }
@@ -475,8 +477,10 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 /* Every tab side by side, a page width apart, clipped by the screen's edges and by the open one's height. The others
    stay hidden until a finger touches down ("live"); the open one alone sets the page's length. */
 .atab-clip { margin: 0 -16px; padding: 0 16px; overflow: clip; overflow-clip-margin: 24px; }
-.atab-track { position: relative; }
-.atab-track.live { will-change: transform; }
+/* Its own layer for good: made and dropped at each swipe, the whole page was painted again twice (a blink). */
+.atab-track { position: relative; will-change: transform; }
+/* Covers on the shelf skip their paint while off screen; in a tab coming in that showed as a blank frame. */
+.atab-body .rec { content-visibility: visible; }
 .atab-body:not([data-open]) { position: absolute; top: 0; left: calc(var(--i) * (100% + 32px)); width: 100%; visibility: hidden; pointer-events: none; }
 .atab-track.live > .atab-body { visibility: visible; }
 /* Explore as rows: each list one sideways row, the two mixes side by side at the top. */
@@ -968,6 +972,8 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .pl-head { display: flex; gap: 16px; align-items: center; margin: 12px 4px 16px; }
 .pl-icon { flex: none; width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; background: var(--md-primary-container); color: var(--md-on-primary-container); }
 .pl-icon .i { width: 32px; height: 32px; }
+.pl-mosaic { grid-template-columns: 1fr 1fr; place-items: stretch; overflow: hidden; box-shadow: 0 6px 16px rgba(0, 0, 0, .25); }
+.pl-mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pl-head h1 { margin: 0; font: 700 24px/30px var(--font); overflow-wrap: anywhere; }
 .pl-head p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; line-height: 18px; }
 #playlistBody > .btn-row { margin: 0 0 12px; }
