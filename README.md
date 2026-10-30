@@ -1,8 +1,13 @@
 # Heavy Rotation
 
-An Android app for your record shelf and everything else you listen to.
+An Android app for your record shelf, everything else you listen to, and what it all adds up to.
 
 ![Heavy Rotation: the shelf, a record, a year as a river of artists, an artist and now playing with its lyrics](docs/screenshots/banner.jpg)
+
+Hi! Heavy Rotation is my passion project. I wanted one place for my records and everything else I
+listen to: put a record on, tap once, and have it count next to what the phone plays, then see what
+it all adds up to. It grew into much more than that, and I've loved every bit of building it. I
+hope it turns out to be useful for you too.
 
 Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of covers and
 scrobbles the records you play to [Last.fm](https://www.last.fm). It scrobbles what plays on your
@@ -26,6 +31,9 @@ of its own in between, and your data stays on your phone.
 - The stats know your shelf. They show the records you own but rarely play, the albums you stream a
   lot but don't own yet, and how much of your listening was vinyl.
 - Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
+- Every artist, album, song and genre has its own page: plays over time, a song's chart run month by
+  month, an artist's songs as collector cards (bronze at 10 plays, up to holo at 100), their
+  discography, and a genre's lineup poster and its year day by day.
 - Under Your taste, Stats also has a musical atlas of the artists you play back to back, you against
   everyone on Last.fm, your concerts and a map of your genres.
 - The Explore tab suggests artists you haven't played yet, from who Last.fm's and Deezer's listeners
@@ -36,8 +44,8 @@ of its own in between, and your data stays on your phone.
   Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
   between, and each can be one long page instead.
 - A Now playing page for the phone shows the position, the controls, the music app's queue, the
-  album the song is on and the lyrics. What plays can also sit in the bottom bar, with the line being
-  sung.
+  album the song is on and the lyrics in time (from LRCLIB). What plays can also sit in the bottom bar,
+  with the line being sung.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the
   setlist of one show, and the shows you were at, with what each did to your listening.
 - The Fix names setting cleans up names before they're scrobbled ("Remastered", "feat." and your
@@ -76,8 +84,9 @@ can watch the Releases page and update the app for you.
 3. Open the Stats tab and tap Import history (about a minute per 20,000 scrobbles).
 4. Optional: to scrobble the phone, set Settings → Phone scrobbling to Shadow and allow
    notification access. Switch it to On once it matches what you expect.
-5. Optional: sign in to TIDAL in Settings → TIDAL for exact links and for playlists that go
-   straight into your TIDAL.
+5. Optional: connect TIDAL in Settings → TIDAL for exact links and for playlists that go straight
+   into your TIDAL. Until TIDAL approves the app, this needs your own free TIDAL developer app (the
+   guide shows how); without it, the TIDAL buttons open TIDAL's search.
 
 [The guide](docs/GUIDE.md) covers every step and everything else the app does.
 
@@ -104,10 +113,15 @@ Heavy Rotation isn't affiliated with any of them.
 
 The fonts Fraunces and DM Mono are under the SIL Open Font License (`app/src/main/assets/ui/fonts`).
 
+## Feedback
+
+I'd love to hear from you: what works, what doesn't, and what you'd like it to do. Open an
+[issue](../../issues) for bugs and ideas alike.
+
 ## How it was made
 
-Heavy Rotation was designed and tested by its author on their own shelf and phone, and written
-with the help of Claude, Anthropic's AI coding assistant.
+I designed Heavy Rotation and tested it on my own shelf and phone, and wrote it with the help of
+Claude, Anthropic's AI coding assistant.
 
 ## Building it yourself
 
