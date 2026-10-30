@@ -558,13 +558,19 @@ function watchBar(scroller, bar, onAway) {
     last = y;
     // Moved by the app (another tab of a page): the bar stays as it is.
     if (el.dataset.quiet) { run = 0; return; }
-    if (y <= 2) {
+    if (y <= 2 || (y < bar.offsetHeight && !bar.classList.contains('back'))) {
       bar.classList.remove('back', 'away');
       run = 0;
     } else if (d) {
       run = Math.sign(d) === Math.sign(run) ? run + d : d;
-      if (run < -BAR_SHOW && y > bar.offsetHeight) { bar.classList.add('back'); bar.classList.remove('away'); }
-      else if (run > BAR_HIDE && bar.classList.contains('back')) bar.classList.add('away');
+      // Only well away from the top: a fling up to the top used to start the bar sliding in from out of view
+      // just before the page brought it back by itself, and it blinked.
+      if (run < -BAR_SHOW && y > bar.offsetHeight * 2) { bar.classList.add('back'); bar.classList.remove('away'); }
+      else if (run > BAR_HIDE && bar.classList.contains('back')) {
+        // Near the top the page shows the bar in its place anyway: it goes back there instead of sliding out of view.
+        if (y < bar.offsetHeight) bar.classList.remove('back', 'away');
+        else bar.classList.add('away');
+      }
     }
     const nowGone = bar.classList.contains('back') ? bar.classList.contains('away') : y > bar.offsetHeight - 8;
     if (nowGone !== gone) { gone = nowGone; if (onAway) onAway(gone); }
