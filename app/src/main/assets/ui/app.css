@@ -468,7 +468,7 @@ button.tile .delta { align-self: flex-start; }
 .rank-hero p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; }
 .pl-txt { flex: 1; min-width: 0; }
 /* Artist pages in tabs: the tabs stick under the top bar (or the top, with the bar gone) */
-.atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .26s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
+.atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .32s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
 .atabs .seg { margin: 0; }
 /* Stuck to the top, the tabs sit on a fade of the page's color that comes in softly, like the top bar's. */
 /* Stuck, they sit on one block of the page's color from the very top of the screen down past them: nothing of

@@ -540,6 +540,8 @@ function openPage(id, how) {
   syncBack();
 }
 
+/** How far (px) to scroll up before the top bar comes back, and down before it goes again. */
+const BAR_SHOW = 48, BAR_HIDE = 24;
 /**
  * Top bars scroll away with the page, like the rest of it. Scrolling up brings them back over the
  * page ("back": held at the top, a soft fade of the page's color behind them) until the page is at
@@ -547,18 +549,22 @@ function openPage(id, how) {
  */
 function watchBar(scroller, bar, onAway) {
   const el = scroller === window ? document.scrollingElement : scroller;
-  let last = 0, gone = false;
+  // [run]: how far the page has gone in one direction without turning back. The bar comes back after a clear
+  // move up and goes after a short one down: a finger that wavers while reading leaves it where it is (it used
+  // to come and go with every few pixels, and stuck tabs jumped with it).
+  let last = 0, run = 0, gone = false;
   scroller.addEventListener('scroll', () => {
     const y = el.scrollTop, d = y - last;
+    last = y;
     // Moved by the app (another tab of a page): the bar stays as it is.
-    if (el.dataset.quiet) { last = y; return; }
+    if (el.dataset.quiet) { run = 0; return; }
     if (y <= 2) {
       bar.classList.remove('back', 'away');
-      last = y;
-    } else if (Math.abs(d) >= 6) {
-      if (d < 0 && y > bar.offsetHeight) { bar.classList.add('back'); bar.classList.remove('away'); }
-      else if (d > 0 && bar.classList.contains('back')) bar.classList.add('away');
-      last = y;
+      run = 0;
+    } else if (d) {
+      run = Math.sign(d) === Math.sign(run) ? run + d : d;
+      if (run < -BAR_SHOW && y > bar.offsetHeight) { bar.classList.add('back'); bar.classList.remove('away'); }
+      else if (run > BAR_HIDE && bar.classList.contains('back')) bar.classList.add('away');
     }
     const nowGone = bar.classList.contains('back') ? bar.classList.contains('away') : y > bar.offsetHeight - 8;
     if (nowGone !== gone) { gone = nowGone; if (onAway) onAway(gone); }
