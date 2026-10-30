@@ -46,20 +46,18 @@
   <section class="tab" id="tab-stats">
     <div id="statsHead"></div>
     <div class="period" id="periodPick" hidden>
-      <div class="pnav">
-        <button class="icon-btn" id="pPrev" aria-label="Previous period"><svg class="i"><use href="#i-chevron-left"/></svg></button>
-        <b id="pLabel"></b>
-        <button class="icon-btn" id="pNext" aria-label="Next period"><svg class="i"><use href="#i-chevron-right"/></svg></button>
-      </div>
-      <div class="ptabs-row">
-        <div class="ptabs" id="periodKind">
+      <div class="ptop">
+        <div class="seg small" id="periodKind">
           <button data-k="day">Day</button><button data-k="week">Week</button><button data-k="month">Month</button><button data-k="year">Year</button><button data-k="all">All</button>
         </div>
         <button class="icon-btn filter-btn" id="statsFilter" aria-label="Stats for one genre or decade"><svg class="i"><use href="#i-tune"/></svg></button>
       </div>
+      <div class="pname" id="pName"><b id="pLabel"></b><small id="pSub"></small></div>
+      <div class="pstrip" id="pStrip" hidden></div>
       <div class="chip-row" id="genreRow" hidden></div>
     </div>
     <div id="statsBody"></div>
+    <div id="statsFoot"></div>
     <p class="credit" id="statsCredit" hidden><button data-url="https://www.last.fm/">Powered by AudioScrobbler from Last.fm</button></p>
   </section>
 

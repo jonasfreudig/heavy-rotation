@@ -119,9 +119,12 @@ phone, 200 per request. A long history takes a few minutes the first time, rough
 import is interrupted, it continues where it stopped the next time you open the app. After that,
 only new scrobbles are fetched, at most every 30 minutes, when you open the app.
 
-The period is the page's title. Step back and forth with ‹ and ›, and pick Day, Week, Month, Year
-or All below the title. A period that is still running is compared with the same stretch of the one
-before ("vs this time last week").
+At the top, pick Day, Week, Month, Year or All, with the filter next to them. Below come the
+period's name and its plays against the period before, and a strip of all the periods of that kind
+since your history began (days: the last 120), each with a bar for its plays: scroll it sideways
+and tap one to go there, or swipe sideways on the period's name to step to the one before or after.
+A period that is still running is compared with the same stretch of the one before ("vs this time
+last week"). How many scrobbles you have and when they were last updated is at the end of the page.
 
 The Day tab is built for a handful of songs. It shows the time you listened, and how that compares
 with your usual for that weekday by the same time of day over the last 8 weeks. Your day appears on
@@ -159,7 +162,8 @@ about.
 The charts adapt to the period: a week or a month is shown per day, a year per week or month, all
 time per month, quarter or year. These are the blocks for the chosen period:
 
-- Your story, the card at the top, is a Wrapped-style story you tap through like Instagram stories:
+- Your story, the slim card at the top with a picture disc of the period's top covers turning, is a
+  Wrapped-style story you tap through like Instagram stories:
   right side forward, left side back, hold to pause. Its colors come from the period's top album
   and drift behind each slide. The slides show total plays with a ticker running across; your
   listening personality (night owl, early bird, loyalist, explorer, on repeat, weekender, crate

@@ -2224,7 +2224,7 @@ function requestStats(id) {
 /** Above the stats: importing, or how fresh the history is. */
 function renderStatsHead() {
   const hs = ST.history || {}, l = ST.lastfm || {};
-  let h = '';
+  let h = '', foot = '';
   if (!l.connected && !(hs.count > 0)) {
     h = `<div class="card warn"><div class="card-title">${icon('chart')}Stats come from Last.fm</div>
       <p>Connect Last.fm, then import your history to see when, what and how you listen.</p>
@@ -2243,10 +2243,12 @@ function renderStatsHead() {
   } else {
     const bits = [`${num(hs.count)} scrobbles`, hs.syncing ? 'updating…' : hs.lastSync ? `updated ${ago(hs.lastSync)}` : ''];
     if (hs.tagsTotal) bits.push(`looking up genres ${hs.tagsDone}/${hs.tagsTotal}`);
-    h = `<button class="listen-line" data-histcheck>${icon('history')}<span>${bits.filter(Boolean).join(', ')}</span></button>`;
+    foot = `<button class="listen-line" data-histcheck>${icon('history')}<span>${bits.filter(Boolean).join(', ')}</span></button>`;
   }
   const slot = $('#statsHead');
   if (slot.dataset.html !== h) { slot.innerHTML = h; slot.dataset.html = h; }
+  const end = $('#statsFoot');
+  if (end.dataset.html !== foot) { end.innerHTML = foot; end.dataset.html = foot; }
   if (hs.done && hs.count > 0 && (!STATS || STATS.empty) && tab === 'stats' && !renderStatsHead.asked) {
     renderStatsHead.asked = true;
     send({ t: 'stats', range: statsRange });
@@ -2290,6 +2292,10 @@ function hcHtml() {
 }
 
 /** Week / Month / Year / All, and ‹ period › to step through them. */
+/**
+ * The top of Stats: Day to All and the filter, the period's name with its plays against the period before, and a
+ * strip of the periods of that kind, each with a bar for its plays, to scroll sideways and tap.
+ */
 function renderPeriod(s) {
   const pick = $('#periodPick');
   pick.hidden = !s || s.empty;
@@ -2297,9 +2303,50 @@ function renderPeriod(s) {
   const kind = s.range.kind === '12m' ? 'year' : s.range.kind;
   $$('#periodKind button').forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
   $('#pLabel').textContent = periodName(s.range);
-  $('#pPrev').disabled = !s.range.prev;
-  $('#pNext').disabled = !s.range.next;
+  $('#pSub').textContent = periodLine(s);
+  renderStrip(s);
   renderGenreRow();
+}
+/** "381 plays so far, 30% more than this time last month" */
+function periodLine(s) {
+  const n = (s.summary || {}).scrobbles || 0, before = ((s.summary || {}).prev || {}).scrobbles;
+  let t = `${plural(n, 'play')}${s.range.running && s.range.kind !== 'all' ? ' so far' : ''}`;
+  if (n && before > 0) {
+    const p = Math.round(((n - before) * 100) / before);
+    t += p === 0 ? `, as many as ${vsWord(s.range)}` : `, ${Math.abs(p)}% ${p > 0 ? 'more' : 'fewer'} than ${vsWord(s.range)}`;
+  }
+  return t;
+}
+const stripLabel = (x, kind) => {
+  const d = new Date(x.start);
+  if (kind === 'day') return `${d.toLocaleDateString([], { weekday: 'narrow' })} ${d.getDate()}`;
+  if (kind === 'week') return `${d.getDate()} ${d.toLocaleDateString([], { month: 'short' })}`;
+  if (kind === 'month') return d.toLocaleDateString([], { month: 'short' });
+  return String(d.getFullYear());
+};
+let stripSig = '';
+/** The periods of the kind on screen as a strip, the chosen one filled and kept in view. */
+function renderStrip(s) {
+  const box = $('#pStrip'), st = s.strip || {}, items = st.items || [];
+  box.hidden = items.length < 2;
+  if (box.hidden) { stripSig = ''; return; }
+  const sig = [st.kind, items[0].id, items.length, items[items.length - 1].plays, s.range.id].join('|');
+  if (sig === stripSig) return;
+  const fresh = !stripSig.startsWith(`${st.kind}|`);
+  stripSig = sig;
+  const max = Math.max(1, ...items.map((x) => x.plays));
+  let h = '', year = null;
+  for (const x of items) {
+    const y = new Date(x.start).getFullYear();
+    if (st.kind !== 'year' && y !== year) { h += `<span class="ps-y" aria-hidden="true">${y}</span>`; year = y; }
+    h += `<button class="ps-c${x.id === s.range.id ? ' on' : ''}" data-period="${x.id}" aria-label="${esc(`${periodLabel(x.start, st.kind)}, ${plural(x.plays, 'play')}`)}"><i style="height:${(3 + (x.plays / max) * 34).toFixed(1)}px"></i><span>${esc(stripLabel(x, st.kind))}</span></button>`;
+  }
+  box.innerHTML = h;
+  // The chosen one in view: in the middle when the kind changed or it is off to a side.
+  const on = box.querySelector('.on');
+  if (on && (fresh || on.offsetLeft < box.scrollLeft || on.offsetLeft + on.offsetWidth > box.scrollLeft + box.clientWidth)) {
+    box.scrollLeft = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2;
+  }
 }
 
 function deltaHtml(cur, prev, kind, running) {
@@ -2318,16 +2365,19 @@ const rankAttrs = (kind, range, f = {}) => `data-ranks="${kind}" data-rrange="${
 function storyCardHtml(s) {
   if (!s.summary.scrobbles) return '';
   const name = periodName(s.range);
-  const al = (s.top.albums || []).find((x) => x.cover) || {};
+  const albums = s.top.albums || [];
+  const al = albums.find((x) => x.cover) || {};
   // The colors the story itself opens with: the top album's, once its palette is known.
   const c = al.cover && TINTS[al.cover];
   const h1 = c ? hexHsl(c.vibrant)[0] : hue(name + ' story');
-  return `<button class="story-card" data-story="${esc(s.range.id)}" style="--s1:${h1.toFixed(0)};--s2:${((h1 + 55) % 360).toFixed(0)}">
-    <div class="spinner-disc" style="--h:${hue(name)}"><i style="${al.cover ? `background-image:url('${cssUrl(al.cover)}')` : ''}"></i></div>
-    <div class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</div>
-    <h2>${esc(name)}, on record</h2>
-    <p>Your top artist, ${ofThe(s.range.kind, 'song')}, listening personality and more.</p>
-    <span class="go">${icon('play')}Play the story</span></button>`;
+  // A picture disc printed with the period's top covers, turning; a plain record before there are any.
+  const four = albums.slice(0, 4);
+  while (four.length && four.length < 4) four.push(four[four.length % Math.max(1, albums.length)]);
+  const disc = four.length ? `<span class="sc-mos">${four.map((x) => coverHtml(x.cover, x.title, x.artist)).join('')}</span>` : '';
+  return `<button class="story-card slim" data-story="${esc(s.range.id)}" style="--s1:${h1.toFixed(0)};--s2:${((h1 + 55) % 360).toFixed(0)};--h:${hue(name)}">
+    <span class="sc-disc" aria-hidden="true">${disc}</span>
+    <span class="sc-t"><span class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</span><b>${esc(name)}, on record</b></span>
+    <span class="sc-go" aria-label="Play the story">${icon('play')}</span></button>`;
 }
 
 /** One observation in words, with its icon. */
@@ -7692,8 +7742,23 @@ function build() {
     const id = pending ? stepPeriod(statsAsked, k, STATS.range.historyStart) : k < 0 ? STATS.range.prev : STATS.range.next;
     if (id) requestStats(id);
   };
-  $('#pPrev').onclick = () => stepStats(-1);
-  $('#pNext').onclick = () => stepStats(1);
+  $('#pStrip').onclick = (e) => {
+    const b = e.target.closest('[data-period]');
+    if (!b) return;
+    $$('#pStrip .on').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    requestStats(b.dataset.period);
+  };
+  // A sideways swipe on the period's name steps to the period before or after.
+  let nameSwipe = null;
+  $('#pName').addEventListener('pointerdown', (e) => { nameSwipe = e.isPrimary ? { x: e.clientX, y: e.clientY } : null; }, { passive: true });
+  $('#pName').addEventListener('pointerup', (e) => {
+    const st = nameSwipe;
+    nameSwipe = null;
+    if (!st) return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.6) stepStats(dx < 0 ? 1 : -1);
+  });
   const statsBody = $('#statsBody');
   statsBody.addEventListener('pointerdown', (e) => onVizPointer(e, STATS));
   statsBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });

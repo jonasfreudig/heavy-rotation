@@ -59,6 +59,9 @@ class Stats(
         /** A new artist you "kept": played this often since. */
         const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
+
+        /** The days the strip at the top of Stats goes back. */
+        const val STRIP_DAYS = 120
         const val WISH_MIN_PLAYS = 8
         const val WISH_MIN_TRACKS = 4
 
@@ -264,6 +267,7 @@ class Stats(
             .put("clock", JSONArray(clock(i0, i1).toList()))
             .put("streaks", streaks(r, i0, i1))
             .put("calendar", calendar(r, i0, i1))
+            .put("strip", strip(r))
             .put("pulse", pulse(r, i0, i1))
             .put("habits", habits(r, i0, i1))
             .put("newArtists", newArtists(r, i0, i1))
@@ -574,6 +578,55 @@ class Stats(
         }
         return out.put("unit", "day").put("start", r.from * 1000).put("days", days).put("counts", JSONArray(counts.toList()))
             .put("newDays", JSONArray(newDays.toList())).put("repeatDays", JSONArray(repeat.filter { it in counts.indices }))
+    }
+
+    /**
+     * Plays per period of [r]'s kind, from the history's first one to now (days: the last [STRIP_DAYS]), each with
+     * its id: the strip of periods at the top of Stats. All time has none.
+     */
+    fun strip(r: Range): JSONObject {
+        val kind = if (r.kind == "12m") "year" else r.kind
+        val out = JSONObject().put("kind", kind)
+        if (h.size == 0 || kind == "all") return out.put("items", JSONArray())
+        val today = date(nowSec)
+        val start = date(historyStart).let { if (kind == "day") maxOf(it, today.minusDays(STRIP_DAYS - 1L)) else it }
+        fun first(d: LocalDate): LocalDate = when (kind) {
+            "day" -> d
+            "week" -> d.minusDays(d.dayOfWeek.value - 1L)
+            "month" -> d.withDayOfMonth(1)
+            else -> d.withDayOfYear(1)
+        }
+        fun next(d: LocalDate): LocalDate = when (kind) {
+            "day" -> d.plusDays(1)
+            "week" -> d.plusWeeks(1)
+            "month" -> d.plusMonths(1)
+            else -> d.plusYears(1)
+        }
+        fun id(d: LocalDate) = when (kind) {
+            "day" -> "d$d"
+            "week" -> "w$d"
+            "month" -> "m" + YearMonth.from(d)
+            else -> "y${d.year}"
+        }
+        // One pass over the plays since the strip's start, a new period only when the day changes.
+        val counts = HashMap<LocalDate, Int>()
+        var lastDay = Long.MIN_VALUE
+        var key = start
+        for (i in h.lowerBound(first(start).atStartOfDay(zone).toEpochSecond()) until h.size) {
+            val d = day(h.ts[i])
+            if (d != lastDay) {
+                lastDay = d
+                key = first(LocalDate.ofEpochDay(d))
+            }
+            counts.merge(key, 1, Int::plus)
+        }
+        val items = JSONArray()
+        var d = first(start)
+        while (!d.isAfter(today)) {
+            items.put(JSONObject().put("id", id(d)).put("start", ms(d)).put("plays", counts[d] ?: 0))
+            d = next(d)
+        }
+        return out.put("items", items)
     }
 
     /** Artists heard for the first time ever, per day, week, month or year of the period. */

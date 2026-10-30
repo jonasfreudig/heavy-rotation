@@ -89,4 +89,16 @@ class HabitsTest {
         assertEquals("second in March, after Wave", 2, artists.first { it.getString("name") == "Steady" }.getInt("last"))
         assertEquals("all time has nothing before it", false, s.compute(s.range("all")).getJSONObject("top").getBoolean("compared"))
     }
+
+    @Test
+    fun theStripHasEveryPeriodSinceTheHistoryStarted() {
+        val s = stats()
+        val months = rows(s.compute(s.range("m2026-04")).getJSONObject("strip"), "items")
+        assertEquals("m2026-01", months.first().getString("id"))
+        assertEquals("m2026-10", months.last().getString("id"))
+        assertEquals(40 + 30 + 1 + 12, months.sumOf { it.getInt("plays") })
+        val weeks = rows(s.compute(s.range("w2026-04-01")).getJSONObject("strip"), "items")
+        assertEquals("w2026-01-05", weeks.first().getString("id"))
+        assertEquals(0, rows(s.compute(s.range("all")).getJSONObject("strip"), "items").size)
+    }
 }

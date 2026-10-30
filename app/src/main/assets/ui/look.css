@@ -440,8 +440,6 @@ body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none
 .acct-body { margin-top: 14px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
 
 /* ---- Stats: the period is the title; Week, Month, Year, All as tabs; one filter button ---- */
-.period .pnav { margin: 4px -8px 0; }
-.ptabs-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .ptabs { flex: 1; display: flex; gap: 2px; margin-left: -10px; }
 .ptabs button { position: relative; padding: 8px 12px 12px; font: 500 15px/20px var(--font); color: var(--md-on-surface-variant); }
 .ptabs button.on { color: var(--md-on-surface); font-weight: 650; }

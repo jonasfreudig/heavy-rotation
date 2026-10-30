@@ -421,6 +421,26 @@ const Mock = (() => {
     return { current, currentFrom, longest: best, longestFrom: best ? dayMs(bestStart) : 0, longestTo: best ? dayMs(bestEnd) : 0, artists };
   }
 
+  /** Plays per period of the range's kind, from the history's start to now (days: the last 120), as Stats.strip. */
+  function stripOf(r) {
+    const L = history();
+    const kind = r.kind === '12m' ? 'year' : r.kind;
+    if (kind === 'all') return { kind, items: [] };
+    const first = (d) => (kind === 'day' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : kind === 'week' ? new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+      : kind === 'month' ? new Date(d.getFullYear(), d.getMonth(), 1) : new Date(d.getFullYear(), 0, 1));
+    const next = (d) => (kind === 'day' ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) : kind === 'week' ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7)
+      : kind === 'month' ? new Date(d.getFullYear(), d.getMonth() + 1, 1) : new Date(d.getFullYear() + 1, 0, 1));
+    const today = first(new Date());
+    const start = first(new Date(kind === 'day' ? Math.max(L.start, Date.now() - 119 * DAY) : L.start));
+    const counts = new Map();
+    for (const ts of L.ts) if (ts >= +start) { const k = +first(new Date(ts)); counts.set(k, (counts.get(k) || 0) + 1); }
+    const p2 = (n) => String(n).padStart(2, '0'), iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    const items = [];
+    for (let d = start; d <= today; d = next(d)) {
+      items.push({ id: kind === 'day' ? `d${iso(d)}` : kind === 'week' ? `w${iso(d)}` : kind === 'month' ? `m${d.getFullYear()}-${p2(d.getMonth() + 1)}` : `y${d.getFullYear()}`, start: +d, plays: counts.get(+d) || 0 });
+    }
+    return { kind, items };
+  }
   const lastPlace = (k) => (k % 6 === 2 ? 0 : Math.max(1, k + 1 + ((k * 7) % 5) - 2));
   /** The period as a calendar: plays per day (per month for all time), the days of new artists and of songs on repeat (see Stats.calendar). */
   function calendarOf(r, i0, i1, fresh, repeatAt) {
@@ -613,6 +633,7 @@ const Mock = (() => {
         tracks: topT.map((t, k) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t], album: '', cover: '', last: lastPlace(k + 2) })) },
     };
     out.calendar = calendarOf(r, i0, i1, freshAll, out.obsessions.map((o) => o.week + 2 * DAY).concat(out.loops.map((l) => l.at)));
+    out.strip = stripOf(r);
     // insights and personality, from the numbers above
     const n = sm.scrobbles;
     const ins = [];
