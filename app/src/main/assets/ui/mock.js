@@ -1471,7 +1471,17 @@ const Mock = (() => {
         case 'dzAlbum': later(250, () => onDzAlbum({ ...fakeDzAlbum(m.id), req: m.req })); break;
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
-        case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'explore': {
+          const x = fakeExplore();
+          later(300, () => onExplore({ ...x, counts: { lost: x.lostArtists.length, lostAlbums: x.lostAlbums.length, regulars: x.regulars.length, oneDay: x.oneDay.length, deepCuts: x.deepCuts.length } }));
+          break;
+        }
+        case 'exploreList': {
+          const x = fakeExplore();
+          const lists = { lost: x.lostArtists, lostAlbums: x.lostAlbums, regulars: x.regulars, oneDay: x.oneDay, deepCuts: x.deepCuts };
+          later(300, () => onExploreList(m.kind === 'onThisDay' ? { kind: m.kind, years: x.onThisDay, req: m.req } : { kind: m.kind, items: lists[m.kind] || [], req: m.req }));
+          break;
+        }
         case 'discover':
           if (!S.discover.on) { later(100, () => onDiscover({ on: false })); break; }
           if (!discLooked) {

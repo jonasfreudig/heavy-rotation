@@ -4840,12 +4840,62 @@ function renderForYou() {
 
 // ---- Explore as rows (Settings → Look): every list one row you scroll sideways ----
 
-/** One row: its heading (with a playlist or "all" button), what it is, and its cards. Empty without cards. */
-const xrow = (title, more, cards, sub = '') => (cards ? `<section class="xrow"><div class="xrow-head"><h2>${title}</h2>${more || ''}</div>${sub ? `<span class="sub">${sub}</span>` : ''}<div class="xcards">${cards}</div></section>` : '');
+/**
+ * One row: its heading (with a playlist or "all" button), what it is, and its cards. Empty without cards. [all]: the
+ * list it opens in full (its heading and an "All" card at the end), with [n] in it when known.
+ */
+const xrow = (title, more, cards, sub = '', all = '', n = 0) => {
+  if (!cards) return '';
+  const head = all ? `<button class="xrow-title" data-xlist="${all}"><h2>${title}</h2>${icon('chevron-right', 'i small')}</button>` : `<h2>${title}</h2>`;
+  const end = all ? `<button class="xcard xall" data-xlist="${all}"><span class="xall-c">${icon('chevron-right')}</span><b>${n ? `All ${num(n)}` : 'All'}</b></button>` : '';
+  return `<section class="xrow"><div class="xrow-head">${head}${more || ''}</div>${sub ? `<span class="sub">${sub}</span>` : ''}<div class="xcards">${cards}${end}</div></section>`;
+};
 const xrowPl = (kind) => `<button class="xrow-more" data-pl="${kind}">${icon('playlist', 'i small')}Playlist</button>`;
 const artistCard = (a, line) => `<button class="xcard round" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${line}</small></button>`;
 const songCard = (t, line) => `<button class="xcard" ${trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover })}>${coverHtml(t.cover, t.album || t.title, t.artist)}<b>${esc(t.title)}</b><small>${esc(t.artist)}</small><small class="meta">${line}</small></button>`;
 const timesPlayed = (n) => (n === 1 ? 'played once' : n === 2 ? 'played twice' : `played ${n} times`);
+/** Explore's lists: their name, what they are, their cards in a row and their rows in full. */
+const albumCard = (a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
+    <small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`;
+const artistRow = (a, line) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${line}</small></span><span class="v">${num(a.plays)}</span></button>`;
+const songRow = (t, line) => `<button class="r with-cover" ${trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover })}>${coverHtml(t.cover, t.album || t.title, t.artist, 'tiny')}<span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${line ? `, ${line}` : ''}</small></span></button>`;
+const XLIST = {
+  lost: { title: 'Lost favorites', sub: 'Played a lot, quiet for half a year or more', cards: (x) => (x.lostArtists || []).map((a) => artistCard(a, `last ${esc(monthYear(a.last))}`)).join(''),
+    rows: (l) => l.items.map((a) => artistRow(a, `last ${esc(monthYear(a.last))}, big in ${esc(monthYear(a.peak.start))}`)).join('') },
+  lostAlbums: { title: 'Albums to rediscover', sub: 'Played through, then left on the shelf', cards: (x) => (x.lostAlbums || []).map(albumCard).join(''),
+    rows: (l) => l.items.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, last ${esc(monthYear(a.last))}</small></span><span class="v">${num(a.plays)}</span></button>`).join('') },
+  regulars: { title: 'Quiet regulars', sub: 'Never on top, always around', cards: (x) => (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''),
+    rows: (l) => l.items.map((a) => artistRow(a, `${a.months} months${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
+  oneDay: { title: 'One-day wonders', sub: 'Played all day once, never again', cards: (x) => (x.oneDay || []).map((a) => artistCard(a, esc(dateLabel(a.first)))).join(''),
+    rows: (l) => l.items.map((a) => artistRow(a, `${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
+  deepCuts: { title: 'Deep cuts', sub: 'Songs by your favorite artists you\'ve hardly played', cards: (x) => (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''),
+    rows: (l) => l.items.map((t) => songRow(t, timesPlayed(t.plays))).join('') },
+  onThisDay: { title: 'On this day', sub: () => `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`,
+    cards: (x) => (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''),
+    rows: (l) => (l.years || []).map((y) => `<h3 class="xlist-year">${y.year}<small>${plural(y.plays, 'play')}</small></h3><div class="rank">${y.tracks.map((t) => songRow(t, t.plays > 1 ? `${t.plays}×` : '')).join('')}</div>`).join('') },
+};
+/** An Explore list in full, as far as it goes (up to 100). */
+let XL = null;
+let xlReq = 0;
+function openXList(kind) {
+  XL = { kind, loading: true, req: ++xlReq };
+  openPage('xlistPage');
+  renderXList();
+  send({ t: 'exploreList', kind, req: xlReq });
+}
+window.onExploreList = (l) => {
+  if (!XL || l.kind !== XL.kind || l.req !== XL.req) return;
+  XL = { ...l, req: XL.req };
+  renderXList();
+};
+function renderXList() {
+  if (!XL || !isOpen('xlistPage')) return;
+  const d = XLIST[XL.kind];
+  const sub = typeof d.sub === 'function' ? d.sub() : d.sub;
+  const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : XL.kind === 'onThisDay' ? d.rows(XL) : `<div class="rank">${d.rows(XL)}</div>`;
+  morph($('#xlistBody'), `<h1 class="page-h">${d.title}</h1><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}.` : ''}</p>
+    <div class="btn-row">${plButton(XL.kind)}</div>${rows}`);
+}
 function exploreRows(x, P) {
   const d = DISCOVER, on = discoverOn();
   const dig = `<button class="fy-mix dig" data-pl="dig"><span class="stack">${(x.lostAlbums || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.cover, a.title, a.artist, 'tiny')}</i>`).join('')}</span>
@@ -4861,14 +4911,9 @@ function exploreRows(x, P) {
         'Artists you haven\'t played that your listening points to. Tap one to see why.');
     if (d) h += xrow('New from your artists', '', releaseCards(d));
   }
-  h += xrow('Lost favorites', xrowPl('lost'), (x.lostArtists || []).map((a) => artistCard(a, `last ${esc(monthYear(a.last))}`)).join(''), 'Played a lot, quiet for half a year or more');
-  h += xrow('Albums to rediscover', xrowPl('lostAlbums'), (x.lostAlbums || []).map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
-    <small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`).join(''), 'Played through, then left on the shelf');
-  h += xrow('Quiet regulars', xrowPl('regulars'), (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''), 'Never on top, always around');
-  h += xrow('One-day wonders', xrowPl('oneDay'), (x.oneDay || []).map((a) => artistCard(a, esc(dateLabel(a.first)))).join(''), 'Played all day once, never again');
-  h += xrow('Deep cuts', xrowPl('deepCuts'), (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''), 'Songs by your favorite artists you\'ve hardly played');
-  const today = esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }));
-  h += xrow('On this day', xrowPl('onThisDay'), (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''), `What you played on ${today} in earlier years`);
+  const n = x.counts || {};
+  for (const k of ['lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts']) h += xrow(XLIST[k].title, xrowPl(k), XLIST[k].cards(x), XLIST[k].sub, k, n[k]);
+  h += xrow(XLIST.onThisDay.title, xrowPl('onThisDay'), XLIST.onThisDay.cards(x), XLIST.onThisDay.sub(), 'onThisDay');
   h += `<section class="xrow"><div class="xrow-head"><h2>Your taste</h2></div>${P.intro}${P.tiles}</section>${P.genreMap}`;
   return h;
 }
@@ -5487,12 +5532,13 @@ const TAB_HOSTS = {
   albumPage: { on: pageTabs, show: (t) => PAGE_STATE.albumPage.set({ ...ALBUM, tab: t }) },
   genrePage: { on: pageTabs, show: (t) => PAGE_STATE.genrePage.set({ ...GENRE, tab: t }) },
 };
-/** What each place shows in tabs now: its tabs in order, the open one, and each one's content (the swipe shows the next one coming). */
+/** What each place shows in tabs now: its tabs in order and the open one. */
 const TAB_SHOWN = {};
 const hostScroller = (host) => (host.classList.contains('page') ? host : document.scrollingElement);
 /**
- * A place's parts [P]: all of them in [long] order, or in tabs the tab bar and the parts of the [open] tab (else the
- * first). [empty]: what an empty tab says; [drop]: empty tabs are left out instead; [tail]: comes after the parts.
+ * A place's parts [P]: all of them in [long] order, or in tabs the tab bar and every tab side by side, the [open] one
+ * (else the first) in view. The others wait hidden beside it, already built, so a swipe only has to move them.
+ * [empty]: what an empty tab says; [drop]: empty tabs are left out instead; [tail]: comes after the parts.
  */
 function tabbedHtml(id, open, tabs, long, P, { empty = '', drop = false, tail = '' } = {}) {
   if (!TAB_HOSTS[id].on()) { TAB_SHOWN[id] = null; return long.map((k) => P[k] || '').join('') + tail; }
@@ -5500,11 +5546,12 @@ function tabbedHtml(id, open, tabs, long, P, { empty = '', drop = false, tail = 
   if (drop) shown = shown.filter((t) => t.html);
   if (!shown.length) { TAB_SHOWN[id] = null; return tail; }
   const cur = shown.find((t) => t.k === open) || shown[0];
-  const html = {};
-  shown.forEach((t) => { html[t.k] = (t.html || empty || '<div class="empty small"><p>Nothing here yet.</p></div>') + tail; });
-  TAB_SHOWN[id] = { keys: shown.map((t) => t.k), open: cur.k, html };
+  const at = shown.indexOf(cur);
+  TAB_SHOWN[id] = { keys: shown.map((t) => t.k), open: cur.k };
+  // The open one is marked by an attribute, not a class: a page's update keeps blocks whose class stays, so no tab is rebuilt.
+  const body = (t, i) => `<div class="atab-body" data-tab="${t.k}" style="--i:${i - at}"${i === at ? ' data-open' : ' aria-hidden="true"'}>${t.html || empty || '<div class="empty small"><p>Nothing here yet.</p></div>'}${tail}</div>`;
   return `<i class="tab-anchor"></i><div class="atabs"><div class="seg small">${shown.map((t) => `<button data-ptab="${t.k}" class="${t.k === cur.k ? 'on' : ''}">${t.l}</button>`).join('')}</div></div>
-    <div class="atab-clip"><div class="atab-body" data-tab="${cur.k}">${html[cur.k]}</div></div>`;
+    <div class="atab-clip"><div class="atab-track">${shown.map(body).join('')}</div></div>`;
 }
 /** Where the scroll is when the tabs sit right where they stick; null without tabs. */
 function tabsTop(host) {
@@ -5533,97 +5580,89 @@ function tabNext(host, dir) {
   return s.keys[s.keys.indexOf(s.open) + dir] || null;
 }
 /**
- * Tab [key]'s content beside the open one ([dir] 1: on its right), at the height it will have once open (right under
- * the tabs when the page is scrolled past them). Made once a swipe.
+ * The tabs beside the open one come into view (still off screen): each at the height it will have once open, right
+ * under the tabs when the page is scrolled past them. Done as a finger touches down, before it's clear it swipes.
  */
-function tabPeek(host, body, dir, key) {
-  const side = dir > 0 ? 'r' : 'l';
-  const had = body.querySelector(`:scope > .atab-peek.${side}`);
-  if (had && had.dataset.key === key) return had;
-  if (had) had.remove();
+function tabsWake(host, track) {
+  if (track.classList.contains('live')) return;
   const y = tabsTop(host), sc = hostScroller(host);
-  const el = document.createElement('div');
-  el.className = `atab-peek ${side}`;
-  el.dataset.key = key;
-  el.style.top = `${y != null ? Math.max(0, sc.scrollTop - y) : 0}px`;
-  el.innerHTML = TAB_SHOWN[host.id].html[key];
-  body.appendChild(el);
-  // What draws itself once it's on the page.
-  el.querySelectorAll('canvas[data-record]').forEach((c) => drawRecord(c));
-  if (el.querySelector('.genre-map')) fitGenreMap();
-  return el;
+  const off = `${y != null ? Math.max(0, sc.scrollTop - y) : 0}px`;
+  track.querySelectorAll(':scope > .atab-body:not([data-open])').forEach((b) => { b.style.top = off; });
+  track.classList.add('live');
 }
-const dropPeeks = (body) => body.querySelectorAll(':scope > .atab-peek').forEach((p) => p.remove());
+function tabsSleep(track) {
+  if (track._sliding) return;
+  track.classList.remove('live');
+  track.style.transform = '';
+  track.querySelectorAll(':scope > .atab-body:not([data-open])').forEach((b) => { b.style.top = ''; });
+}
 /** The space between two tabs side by side: the page's margins on both. */
 const TAB_GAP = 32;
-/** The rest of the way to tab [key], at about the pace the finger left it ([v] px/ms), then that tab is the open one. */
-function tabGo(host, body, dir, key, from, v, ms) {
-  const w = body.offsetWidth + TAB_GAP, to = -dir * w, left = Math.abs(to - from);
+/** The rest of the way to tab [key], [steps] tabs over, at about the pace the finger left it ([v] px/ms); then it's the open one. */
+function tabGo(host, track, steps, key, from, v, ms) {
+  const w = track.offsetWidth + TAB_GAP, to = -steps * w, left = Math.abs(to - from);
   const t = ms || Math.round(Math.min(300, Math.max(150, v > 0.2 ? (left / v) * 1.8 : 120 + (180 * left) / w)));
   host.querySelectorAll('.atabs [data-ptab]').forEach((b) => b.classList.toggle('on', b.dataset.ptab === key));
-  body._sliding = true;
-  body.style.willChange = 'transform';
-  body.style.transform = `translateX(${to}px)`;
-  const a = body.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: t, easing: 'cubic-bezier(.25, .8, .3, 1)' });
+  track._sliding = true;
+  track.style.transform = `translateX(${to}px)`;
+  const a = track.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: t, easing: 'cubic-bezier(.25, .8, .3, 1)' });
   let over = false;
   const land = () => {
     if (over) return;
     over = true;
-    body._sliding = false;
-    // What's on screen becomes the open tab as it is: nothing loads or draws again, and the render after finds it done.
-    const peek = body.querySelector(`:scope > .atab-peek.${dir > 0 ? 'r' : 'l'}`);
-    if (peek && peek.dataset.key === key) { body.replaceChildren(...peek.childNodes); body.dataset.tab = key; } else dropPeeks(body);
-    body.style.transform = '';
-    body.style.willChange = '';
+    track._sliding = false;
+    // The tab already on screen becomes the open one where it is; the render after only changes which one that is.
+    tabsSleep(track);
     openTab(host.id, key);
   };
   a.onfinish = land;
   a.oncancel = land;
   setTimeout(land, t + 250);
 }
-/** Not far enough: back where it was, and the tab beside it goes. */
-function tabBack(body, from) {
-  body.style.transform = '';
-  const a = body.animate([{ transform: `translateX(${from}px)` }, { transform: 'none' }], { duration: 220, easing: EASE_OUT });
-  a.onfinish = a.oncancel = () => { if (!body._sliding) { body.style.willChange = ''; dropPeeks(body); } };
+/** Not far enough: back where it was. */
+function tabBack(track, from) {
+  track.style.transform = '';
+  const a = track.animate([{ transform: `translateX(${from}px)` }, { transform: 'none' }], { duration: 220, easing: EASE_OUT });
+  a.onfinish = a.oncancel = () => tabsSleep(track);
 }
 /** A tap on a tab slides over to it the way a swipe would. */
 function tabTap(host, key) {
-  const s = TAB_SHOWN[host.id], body = host.querySelector('.atab-body');
-  if (!s || !body || body._sliding || key === s.open) return;
+  const s = TAB_SHOWN[host.id], track = host.querySelector('.atab-track');
+  if (!s || !track || track._sliding || key === s.open) return;
   if (!s.keys.includes(key) || matchMedia('(prefers-reduced-motion: reduce)').matches) { openTab(host.id, key); return; }
-  const dir = s.keys.indexOf(key) > s.keys.indexOf(s.open) ? 1 : -1;
-  tabPeek(host, body, dir, key);
-  tabGo(host, body, dir, key, 0, 0, 260);
+  tabsWake(host, track);
+  tabGo(host, track, s.keys.indexOf(key) - s.keys.indexOf(s.open), key, 0, 0, 280);
 }
 /** Rows that scroll sideways, charts you scrub, a zoomed record and fields keep their own drags. */
 const SWIPE_SKIP = '.tix, .covers, .xcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], input, textarea';
 /**
- * Swiping sideways on a place in tabs moves to the tab beside it like turning a page: the open tab follows the finger
- * with the next one coming in next to it, and on letting go it either slides the rest of the way or springs back. The
- * screen's edges stay Android's (back).
+ * Swiping sideways on a place in tabs moves to the tab beside it like turning a page: the tabs sit side by side,
+ * already built, and follow the finger; on letting go they slide the rest of the way or spring back. The screen's
+ * edges stay Android's (back).
  */
 function tabSwipe(host) {
   let s = null, swipedAt = 0;
   host.addEventListener('pointerdown', (e) => {
     s = null;
-    const body = e.target.closest('.atab-body');
-    if (!body || body._sliding || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const body = e.target.closest('.atab-body[data-open]');
+    const track = body && body.parentElement;
+    if (!body || track._sliding || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
     if (e.target.closest(SWIPE_SKIP)) return;
     if (e.clientX < 24 || e.clientX > window.innerWidth - 24) return;
-    s = { x: e.clientX, y: e.clientY, body, on: false, dx: 0, v: 0, t: performance.now(), frame: 0 };
+    s = { x: e.clientX, y: e.clientY, track, on: false, dx: 0, v: 0, t: performance.now(), frame: 0 };
+    // Ready before the finger has gone anywhere: the swipe then only moves what is already there.
+    tabsWake(host, track);
   }, { passive: true });
   host.addEventListener('pointermove', (e) => {
     if (!s || !e.isPrimary) return;
     if (!s.on) {
       const dx = e.clientX - s.x, dy = e.clientY - s.y;
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { tabsSleep(s.track); s = null; return; }
       if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
       s.on = true;
       // It moves from here on, so it doesn't jump by the first 12 px.
       s.x += dx > 0 ? 12 : -12;
       s.t = performance.now();
-      s.body.style.willChange = 'transform';
     }
     const now = performance.now(), d = e.clientX - s.x;
     // How fast it goes, mostly from the last few moves.
@@ -5636,26 +5675,26 @@ function tabSwipe(host) {
     st.frame = requestAnimationFrame(() => {
       st.frame = 0;
       if (s !== st) return;
-      const dir = st.dx < 0 ? 1 : -1, key = tabNext(host, dir);
-      if (key) tabPeek(host, st.body, dir, key);
       // No tab that way: it only gives a little.
-      st.body.style.transform = `translateX(${(key ? st.dx : st.dx * 0.22).toFixed(1)}px)`;
+      const free = tabNext(host, st.dx < 0 ? 1 : -1);
+      st.track.style.transform = `translateX(${(free ? st.dx : st.dx * 0.22).toFixed(1)}px)`;
     });
   }, { passive: true });
   const end = (e) => {
     const st = s;
     s = null;
-    if (!st || !st.on) return;
+    if (!st) return;
+    if (!st.on) { tabsSleep(st.track); return; }
     if (st.frame) cancelAnimationFrame(st.frame);
     swipedAt = Date.now();
-    const body = st.body, w = body.offsetWidth + TAB_GAP;
+    const w = st.track.offsetWidth + TAB_GAP;
     const dir = st.dx < 0 ? 1 : -1, key = tabNext(host, dir);
     const from = key ? st.dx : st.dx * 0.22;
     // Its speed in the swipe's direction: past a third of the way and not flung back, or flung that way.
     const toward = -st.v * dir;
     const go = key && e.type === 'pointerup' && ((Math.abs(st.dx) > w * 0.33 && toward > -0.3) || (toward > 0.35 && Math.abs(st.dx) > 20));
-    if (go) tabGo(host, body, dir, key, from, toward);
-    else tabBack(body, from);
+    if (go) tabGo(host, st.track, dir, key, from, toward);
+    else tabBack(st.track, from);
   };
   host.addEventListener('pointerup', end);
   host.addEventListener('pointercancel', end);
@@ -5775,8 +5814,8 @@ function rarelyViz(r) {
 
 function wishlistViz(w) {
   if (!w || !w.length) return '';
-  return `<div class="viz"><h2>Wishlist ideas</h2><span class="sub">Albums you stream a lot but don't own on vinyl. Tap to look on Discogs.</span><div class="rank">${w.map((x) =>
-    `<button class="r with-cover" data-url="${esc(x.search)}">${coverHtml(x.image, x.album, x.artist, 'tiny')}<span class="t"><b>${esc(x.album)}</b><small>${esc(x.artist)}, ${x.tracks} tracks</small></span><span class="v">${plural(x.plays, 'play')}</span></button>`).join('')}</div></div>`;
+  return `<div class="viz"><h2>Wishlist ideas</h2><span class="sub">Albums you stream a lot but don't own on vinyl. Tap one to look on Discogs.</span><div class="covers">${w.map((x) =>
+    `<button class="rec" data-url="${esc(x.search)}">${coverHtml(x.image, x.album, x.artist)}<b>${esc(x.album)}</b><small>${esc(x.artist)}</small><small class="meta">${plural(x.plays, 'play')}</small></button>`).join('')}</div></div>`;
 }
 
 /** How many rows each top list shows (10, 50 or 100), as you last chose for that list. */
@@ -5924,14 +5963,23 @@ function renderStats() {
     // Tiles next to each other in twos, in the order Arrange gives them; a full-size block between them starts a new pair.
     let h = '', run = [];
     const flush = () => {
-      if (run.length) h += `<div class="stiles">${run.map(([id, x], i) => statTile(id, s, x, run.length % 2 === 1 && i === run.length - 1)).join('')}</div>`;
+      // A tall tile takes two places: the last tile of an odd count fills the row on its own.
+      const cells = run.reduce((n, t) => n + (t[2] ? 2 : 1), 0);
+      const last = run.map((t) => !t[2]).lastIndexOf(true);
+      if (run.length) h += `<div class="stiles">${run.map(([id, x, pair], i) => statTile(id, s, x, cells % 2 === 1 && i === last, pair)).join('')}</div>`;
       run = [];
     };
+    const html = {};
+    ids.forEach((id) => { html[id] = BLOCKS[id].html(s) || ''; });
+    const tile = (id) => lay.small.has(id) && !NEVER_TILE.includes(id) && !!html[id];
+    // Pairs whose blocks are both tiles go in as one, where the first of them is.
+    const pairs = TILE_PAIRS.filter((p) => tile(p[0]) && tile(p[1]));
     for (const id of ids) {
-      const x = BLOCKS[id].html(s) || '';
-      if (!x) continue;
-      if (lay.small.has(id) && !NEVER_TILE.includes(id)) run.push([id, x]);
-      else { flush(); h += x; }
+      if (!html[id]) continue;
+      const pair = pairs.find((p) => p[0] === id || p[1] === id);
+      if (pair) { if (ids.indexOf(id) === Math.min(ids.indexOf(pair[0]), ids.indexOf(pair[1]))) run.push([pair[0], html[pair[0]], pair]); }
+      else if (tile(id)) run.push([id, html[id]]);
+      else { flush(); h += html[id]; }
     }
     flush();
     morph(body, h + arrange);
@@ -5943,7 +5991,9 @@ function renderStats() {
 // ---- Stats tiles: a block in small, opening full size on its own page ----
 
 /** Blocks that start as tiles; Arrange makes any block a tile or full size, except these. */
-const SMALL_DEFAULT = ['streaks', 'pulse', 'habits', 'newArtists', 'decades', 'obsessions', 'rarely', 'wishlist'];
+const SMALL_DEFAULT = ['streaks', 'pulse', 'habits', 'newArtists', 'decades', 'obsessions'];
+/** Tiles that go together as one tall tile when both are tiles: the first one's picture, both on the page it opens. */
+const TILE_PAIRS = [['habits', 'pulse', 'Habits and phases']];
 const NEVER_TILE = ['story', 'numbers', 'tidy', 'highlights', 'today'];
 const tileBig = (n, line) => `<span class="stile-big"><strong>${n}</strong><small>${line}</small></span>`;
 const tileCovers = (list, line) => `<span class="stile-covers">${list.slice(0, 3).map((x) => coverHtml(x.cover || x.image, x.title || x.album, x.artist, 'tiny')).join('')}</span><small class="stile-line">${line}</small>`;
@@ -5956,7 +6006,9 @@ const TILE_SUMMARY = {
   },
   newArtists: (s) => {
     const na = s.newArtists || {};
-    return na.count ? tileBig(num(na.count), `${na.count === 1 ? 'new artist' : 'new artists'}${na.kept ? `, ${num(na.kept)} you kept playing` : ''}`) : tileBig('0', 'new artists: you stuck with the ones you knew');
+    if (!na.count) return tileBig('0', 'new artists: you stuck with the ones you knew');
+    const faces = (na.found || []).slice(0, 5).map((a) => coverHtml(a.photo, a.name, a.name, 'tiny round')).join('');
+    return tileBig(num(na.count), `${na.count === 1 ? 'new artist' : 'new artists'}${na.kept ? `, ${num(na.kept)} you kept playing` : ''}`) + (faces ? `<span class="stile-faces">${faces}</span>` : '');
   },
   obsessions: (s) => {
     const o = (s.obsessions || [])[0], l = (s.loops || [])[0];
@@ -5969,11 +6021,16 @@ const TILE_SUMMARY = {
   },
   wishlist: (s) => ((s.wishlist || []).length ? tileCovers(s.wishlist.map((x) => ({ ...x, title: x.album })), `${plural(s.wishlist.length, 'album')} you stream but don't own`) : ''),
 };
-/** A tile: the block's name and its summary, or a small picture of the block itself (ids left out, nothing in it takes taps). */
-function statTile(id, s, html, wide) {
-  const sum = TILE_SUMMARY[id] && TILE_SUMMARY[id](s);
+/**
+ * A tile: the block's name and its summary, or a small picture of the block itself (ids left out, nothing in it takes
+ * taps). [pair]: two blocks as one tall tile, opening both.
+ */
+function statTile(id, s, html, wide, pair) {
+  const sum = !pair && TILE_SUMMARY[id] && TILE_SUMMARY[id](s);
   const pic = sum || `<span class="stile-thumb" aria-hidden="true">${html.replace(/\sid="[^"]*"/g, '')}</span>`;
-  return `<div class="stile${wide ? ' wide' : ''}${sum ? '' : ' pic'}" role="button" tabindex="0" data-block="${id}"><b class="stile-name">${esc(BLOCKS[id].name)}</b>${pic}</div>`;
+  const name = pair ? pair[2] : BLOCKS[id].name;
+  return `<div class="stile${wide ? ' wide' : ''}${pair ? ' tall' : ''}${sum ? '' : ' pic'}" role="button" tabindex="0" aria-label="${esc(name)}, open" data-block="${pair ? pair.slice(0, 2).join(' ') : id}">
+    <b class="stile-name">${esc(name)}</b><span class="stile-open" aria-hidden="true">${icon('chevron-right')}</span>${pic}</div>`;
 }
 let BLOCK = null;
 function openBlock(id) {
@@ -5984,7 +6041,9 @@ function openBlock(id) {
 function renderBlock() {
   if (!BLOCK || !isOpen('blockPage') || !STATS || STATS.empty) return;
   $('#blockTitle').textContent = periodName(STATS.range);
-  morph($('#blockBody'), BLOCKS[BLOCK].html(STATS) || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
+  // A tall tile opens both of its blocks, one under the other.
+  const h = BLOCK.split(' ').map((id) => (BLOCKS[id] ? BLOCKS[id].html(STATS) : '')).join('');
+  morph($('#blockBody'), h || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
   drawRecords();
 }
 
@@ -6966,7 +7025,11 @@ function build() {
     if (e.target.closest('#openVs')) openVs();
     if (e.target.closest('#openConcerts')) openConcerts();
   };
-  $('#exploreBody').onclick = exploreClick;
+  $('#exploreBody').onclick = (e) => {
+    const xl = e.target.closest('[data-xlist]');
+    if (xl) { openXList(xl.dataset.xlist); return; }
+    exploreClick(e);
+  };
   $('#forYouBody').onclick = exploreClick;
   $('#activityBtn').onclick = () => openPage('activityPage');
   $('#concertsBody').onclick = (e) => {

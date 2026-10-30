@@ -135,9 +135,11 @@ change over the period (the river, phases, genre drift) appear once the period h
 music.
 
 For a week, month, year or all time, the smaller blocks come as tiles, two side by side: streaks,
-phases, habits, new artists, decades, obsessions, rarely played records and wishlist ideas. A tile
-shows a small picture of its chart, or its one number (your longest streak, your biggest obsession).
-Tap it and the block opens full size on its own page, for the same period. The bigger charts stay
+new artists (with the faces of the first few), decades and obsessions, and habits and phases
+together as one tall tile. A tile shows a small picture of its chart, or its one number (your
+longest streak, your biggest obsession), and the arrow in its corner means it opens: tap it and the
+block opens full size on its own page, for the same period. The tall tile opens habits with phases
+under them. Rarely played records and wishlist ideas are rows of covers you scroll sideways. The bigger charts stay
 full size on the page. A day is short, so it has no tiles. Settings → Look → Stats and Explore →
 One long page shows every block full size.
 
@@ -330,7 +332,9 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 #### Explore
 
 Explore comes in rows: each list is one row you scroll sideways, with its playlist next to the
-heading. At the top sit the discovery mix and Crate dig. Then come the suggestions for you and new
+heading. Tap a heading, or the All card at the end of its row, for the whole list (up to 100), with
+more about each: when you last played an artist, when they were big for you, how many plays. At
+the top sit the discovery mix and Crate dig. Then come the suggestions for you and new
 releases by your artists, then the lists to rediscover, and last your taste: the musical atlas,
 you vs everyone, your concerts and the genre map. With Settings → Look → Stats and Explore set to
 One long page, the lists come one after the other, full size.
@@ -428,8 +432,9 @@ discography, their most played songs) and Live (the shows you were at, and what 
 lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
 clicked, its songs over time, the charts). A genre's are Overview (the numbers and the styles in
 it), Artists, Music (albums, songs, records to rediscover, your shelf, decades) and Listening. The
-tabs stay at the top as you scroll. Swipe sideways to move to the next tab: it comes in beside the
-open one as you drag, and slides into place when you let go past a third of the way or flick.
+tabs stay at the top as you scroll. Swipe sideways to move to the next tab: the tabs lie side by
+side, already drawn, so the next one comes in with your finger and slides into place when you let
+go past a third of the way or flick.
 Rows that scroll sideways and charts you can scrub keep their own swipes. In an artist's Live tab
 the setlist comes in two columns and the shows scroll sideways as ticket stubs.
 

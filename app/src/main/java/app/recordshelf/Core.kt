@@ -644,6 +644,17 @@ object Core {
                 val photos = s?.exploreNeedingPhotos().orEmpty()
                 if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
             }
+            "exploreList" -> statsExec.execute {
+                val kind = msg.optString("kind")
+                val s = currentStats()
+                push("onExploreList") { (s?.exploreList(kind) ?: JSONObject().put("kind", kind).put("items", JSONArray())).put("req", msg.optInt("req")) }
+                if (s == null) return@execute
+                // Pictures not looked up yet: the list comes again once they are.
+                val photos = s.listNeedingPhotos(kind).take(60)
+                if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
+                val covers = s.listNeedingImages(kind).take(60)
+                if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
+            }
             "badges" -> statsExec.execute {
                 val j = if (prefs.historyDone) currentStats()?.shelfBadges() else null
                 push("onBadges") { j ?: JSONObject() }

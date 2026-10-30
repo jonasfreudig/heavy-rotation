@@ -26,6 +26,21 @@ class ExploreTest {
     private fun JSONArray.strings(key: String) = objects().map { it.getString(key) }
 
     @Test
+    fun aListOpenedInFullGoesBeyondItsRow() {
+        // 20 artists, 12 plays each in 2024, quiet since: all lost favorites. The row has 15, the full list all 20.
+        val plays = (1..20).flatMap { a -> (0 until 12).map { k -> Play(at(2024, 1, 1 + a) + k * 600L, "Artist $a", "Song $k", "Album $a") } }
+        val s = Stats(history(plays), utc, at(2026, 3, 10))
+        val ex = s.explore()
+        assertEquals(Stats.EXPLORE_MAX, ex.getJSONArray("lostArtists").length())
+        assertEquals(20, ex.getJSONObject("counts").getInt("lost"))
+        val full = s.exploreList("lost").getJSONArray("items")
+        assertEquals(20, full.length())
+        assertTrue(full.objects().all { it.getInt("plays") == 12 && it.has("peak") })
+        assertEquals(20, s.exploreList("lostAlbums").getJSONArray("items").length())
+        assertEquals(0, s.exploreList("nonsense").getJSONArray("items").length())
+    }
+
+    @Test
     fun trackPage() {
         val plays = listOf(
             Play(at(2026, 1, 5, 9), "Fontaines D.C.", "Starburster", "Romance"),
