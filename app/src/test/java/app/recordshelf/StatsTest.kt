@@ -300,6 +300,12 @@ class StatsTest {
         assertEquals("Fela Kuti", app.recordshelf.history.Artists.main("Fela Kuti With Ginger Baker", fela))
         assertEquals("Fela Kuti", app.recordshelf.history.Artists.main("Fela Kuti x Roy Ayers", fela))
         assertEquals("Simon and Garfunkel", app.recordshelf.history.Artists.main("Simon and Garfunkel", fela))
+        // The name you play on its own counts, wherever it stands in the credit; with both played alone, the one played most.
+        val fdc = setOf(app.recordshelf.util.Text.norm("Fontaines D.C."))
+        assertEquals("Fontaines D.C.", app.recordshelf.history.Artists.main("ROSALÍA, Fontaines D.C.", fdc))
+        val both = mapOf(app.recordshelf.util.Text.norm("ROSALÍA") to 3, app.recordshelf.util.Text.norm("Fontaines D.C.") to 500)
+        assertEquals("Fontaines D.C.", app.recordshelf.history.Artists.main("ROSALÍA, Fontaines D.C.", both.keys, both))
+        assertEquals("Earth, Wind & Fire", app.recordshelf.history.Artists.main("Earth, Wind & Fire", fdc))
         val store = app.recordshelf.history.MemoryStore()
         store.insert(
             listOf(

@@ -1000,11 +1000,12 @@ function renderSetup() {
     </div>`;
   }
   if (d.connected && d.error) h += `<div class="card bad"><div class="card-title">${icon('warning')}Couldn't sync</div><p>${esc(d.error)}</p></div>`;
-  $('#setupCards').innerHTML = h;
+  // Only when it changes: a state push comes with every song, and the shelf shouldn't be laid out again for nothing.
+  const slot = $('#setupCards');
+  if (slot.dataset.html !== h) { slot.innerHTML = h; slot.dataset.html = h; }
 }
 
 let spinCardSig = '';
-/** Settings → Look → Now playing: 'line' (a line at the top of the shelf) or 'corner' (a record peeking out above the search). */
 /** Where what plays now shows (Settings → Look → Now playing): on the shelf, in the corner, or in the bottom bar. */
 function nowStyle() {
   try { const v = localStorage.getItem('nowStyle'); return v === 'corner' || v === 'bar' ? v : 'line'; } catch (_) { return 'line'; }
@@ -1093,13 +1094,13 @@ function tickUi() {
   if ($('#scTitle')) {
     $('#scTitle').textContent = it ? it.title : n.next ? n.next.title : sp.album;
     $('#scLabel').textContent = it ? `Now spinning${it.side ? ` ${sideLabel(it.side)}` : ''}, ${fmtDur(left)} left` : n.next ? `Up next at ${fmtTime(n.next.start)}` : 'Now spinning';
-    $('#scBar').style.width = pct + '%';
+    $('#scBar').style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
   }
   if (isOpen('spinPage') && $('#spTitle')) {
     tickTurntable(n, now);
     $('#spTitle').textContent = it ? it.title : n.next ? n.next.title : sp.album;
     $('#spSide').textContent = it ? [it.side ? sideLabel(it.side) : '', `${n.live.indexOf(it) + 1} of ${n.live.length}`].filter(Boolean).join(', ') : n.next ? `Starts at ${fmtTime(n.next.start)}` : '';
-    $('#spBar').style.width = pct + '%';
+    $('#spBar').style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
     $('#spElapsed').textContent = it ? fmtDur((now - it.start) / 1000) : '';
     $('#spLeft').textContent = it ? '−' + fmtDur(left) : '';
     $('#spEnd').textContent = n.end > now ? `ends about ${fmtTime(n.end)}` : '';
@@ -1516,9 +1517,11 @@ function renderNpBar() {
   const sig = [it.title, it.artist, it.cover, it.playing, lyr, !!n && !!n.media && m.canPlay !== false, !!it.spin].join('|');
   if (sig === barSig) { tickNpBar(); return; }
   barSig = sig;
+  // With lyrics on, the line being sung gets the room: no play and pause (it's on Now playing, a tap away).
+  bar.classList.toggle('lyr-mode', lyr);
   bar.innerHTML = `<button class="npb-open" id="npbOpen" aria-label="${esc(`${it.title} by ${it.artist}, open`)}">${coverHtml(it.cover, it.album || it.title, it.artist)}<span class="t"><b id="npbLine">${esc(it.title)}</b><small id="npbSub">${esc(it.artist)}${n ? `, ${esc(n.app)}` : ', on the turntable'}</small></span></button>
     ${n ? `<button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>` : ''}
-    ${n && n.media && m.canPlay !== false ? `<button class="npb-btn npb-pp" id="npbPp" aria-label="${it.playing ? 'Pause' : 'Play'}">${icon(it.playing ? 'pause' : 'play')}</button>` : ''}
+    ${n && n.media && m.canPlay !== false && !lyr ? `<button class="npb-btn npb-pp" id="npbPp" aria-label="${it.playing ? 'Pause' : 'Play'}">${icon(it.playing ? 'pause' : 'play')}</button>` : ''}
     <i class="npb-prog"><i id="npbProg"></i></i>`;
   tickNpBar();
 }
@@ -1544,12 +1547,14 @@ function tickNpBar() {
     if (line && line.textContent !== want) {
       line.textContent = want;
       line.classList.toggle('lyr', !!l);
-      sub.textContent = l ? `${n.title}, ${n.artist}` : `${n.artist}, ${n.app}`;
+      // Only the words while there are some; the song's name and artist come back between songs or without them.
+      sub.hidden = !!l;
+      sub.textContent = `${n.artist}, ${n.app}`;
     }
     if (l && l.next > 0 && it.playing) barTimer = setTimeout(tickNpBar, Math.max(40, l.next / (m.speed || 1)));
   }
   const p = $('#npbProg');
-  if (p) p.style.width = `${pct.toFixed(1)}%`;
+  if (p) p.style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
 }
 /** On the shelf: away from the shelf, a small pill by the page's title, and a thin line of progress at the top. */
 let topSig = '';
@@ -1575,7 +1580,7 @@ function tickNpTop() {
   let pct = 0;
   if (it.spin) { const t = spinNow(it.spin, Date.now()).item; pct = t ? ((Date.now() - t.start) / (t.dur * 1000)) * 100 : 0; }
   else { const n = it.phone, m = n.media || {}, dur = m.dur || n.dur || 0; pct = dur ? (nowPos(n) / dur) * 100 : 0; }
-  line.firstElementChild.style.width = `${Math.min(100, pct).toFixed(1)}%`;
+  line.firstElementChild.style.transform = `scaleX(${(Math.min(100, pct) / 100).toFixed(4)})`;
 }
 /** Opens what plays now: Now spinning for a record, Now playing for the phone. */
 function openPlaying() {
@@ -2029,7 +2034,7 @@ function tickPhone() {
   const listened = n.listened + (n.playing ? Date.now() - n.at : 0);
   // The shelf's now-playing card: how far into the song (listened time stands in for the position).
   const nb = $('#phNowBar');
-  if (nb && n.dur > 0) nb.style.width = `${Math.min(100, (listened / n.dur) * 100)}%`;
+  if (nb && n.dur > 0) nb.style.transform = `scaleX(${Math.min(1, listened / n.dur).toFixed(4)})`;
   const bar = $('#pnBar'), text = $('#pnText');
   if (!bar) return;
   const left = Math.max(0, n.threshold - listened);
@@ -5711,8 +5716,7 @@ const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs', 'origin'
 const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'albums', 'concerts', 'live', 'global', 'shelf'];
 const ALBUM_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs']], ['songs', 'Songs', ['shape', 'songs']], ['listening', 'Listening', ['clicked', 'river', 'life']]];
 const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river', 'life'];
-const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside']], ['artists', 'Artists', ['artists', 'everyone']],
-  ['music', 'Music', ['albums', 'songs', 'lost', 'shelf', 'decades']], ['listening', 'Listening', ['life']]];
+const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside', 'life']], ['music', 'Music', ['artists', 'albums', 'songs', 'everyone', 'lost', 'decades', 'shelf']]];
 const GENRE_LONG = ['tiles', 'inside', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'shelf'];
 /** Explore as one long page: its parts in this order. */
 const EXPLORE_LONG = ['dig', 'foryou', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay'];
@@ -6137,9 +6141,9 @@ const BLOCKS = {
   decades: { name: 'Decades', html: decadesView, classic: (s) => decadesViz(s.decades) },
   rarely: { name: 'Rarely played records', html: (s) => rarelyViz(s.rarely) },
   wishlist: { name: 'Wishlist ideas', html: (s) => wishlistViz(s.wishlist) },
-  covers: { name: 'In covers', html: coverWallViz },
-  lineup: { name: 'Your lineup', html: lineupViz },
-  top: { name: 'Top lists', kinds: ['day', ...SPAN], html: (s) => (s.range.kind === 'day' ? topViz(s.top) : chartViz(s)), classic: (s) => topViz(s.top) },
+  covers: { name: 'In covers', kinds: ['day', ...SPAN], html: coverWallViz },
+  lineup: { name: 'Your lineup', kinds: ['day', ...SPAN], html: lineupViz },
+  top: { name: 'Top lists', kinds: ['day', ...SPAN], html: chartViz, classic: (s) => topViz(s.top) },
   taste: { name: 'Your taste', html: tasteHtml },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
   dayline: { name: 'Your day', kinds: ['day'], html: (s) => daylineViz(s) },
@@ -6150,7 +6154,7 @@ const BLOCKS = {
   dayFacts: { name: 'Streak and vinyl', kinds: ['day'], html: (s) => dayFactsViz(s) },
 };
 const DEFAULT_ORDER = {
-  day: ['today', 'dayline', 'firstLatest', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'top'],
+  day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
   span: ['story', 'numbers', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
@@ -6573,13 +6577,17 @@ function newArtistsView(s, page) {
     return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}. Most played first, with what played right before you found them.</span>
       ${like ? `<div class="btn-row">${like}</div>` : ''}<div class="na-list">${found.map((f) => `<button class="na-item" data-artist="${esc(f.name)}">${artistFace(f)}<span class="t"><b>${esc(f.name)}</b><small>first played ${esc(dateLabel(f.first))}${f.from ? `, after ${esc(f.from)}` : ''}</small></span><span class="v">${num(f.plays)}<small>${f.plays === 1 ? 'play' : 'plays'}</small></span></button>`).join('')}</div>${more}</div>`;
   }
-  const shown = found.slice(0, 12);
-  const faces = shown.map((f, i) => `<button class="tcard${f.plays >= 10 ? ' foil' : ''}" data-artist="${esc(f.name)}"><span class="tc-top"><b>${esc(f.name)}</b><small>${i + 1}/${num(na.count)}</small></span>
-    <span class="tc-img">${artistFace(f)}</span>${f.genre ? `<span class="tc-type">${esc(f.genre)}</span>` : ''}
-    <span class="tc-st"><span><b>${num(f.plays)}</b>${f.plays === 1 ? 'play' : 'plays'}</span><span><b>${esc(shortDate(f.first))}</b>found</span></span>${f.from ? `<span class="tc-from">after ${esc(f.from)}</span>` : ''}</button>`).join('');
+  const faces = tradingCards(found, na.count);
   const all = found.length > 1 ? `<button class="btn text" data-newlist>${icon('view-list')}All ${num(na.count)}</button>` : '';
   return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}, as cards to collect: the day you found each and what played right before. The shiny ones you kept playing.</span>
-    ${faces ? `<div class="tcards">${faces}</div>` : ''}${like || all ? `<div class="btn-row">${like}${all}</div>` : ''}</div>`;
+    ${faces}${like || all ? `<div class="btn-row">${like}${all}</div>` : ''}</div>`;
+}
+/** New artists as cards to collect: photo, genre, plays, the day found and what led there; foil for the ones you kept playing. */
+function tradingCards(found, count) {
+  const cards = found.slice(0, 12).map((f, i) => `<button class="tcard${f.plays >= 10 ? ' foil' : ''}" data-artist="${esc(f.name)}"><span class="tc-top"><b>${esc(f.name)}</b><small>${i + 1}/${num(count)}</small></span>
+    <span class="tc-img">${artistFace(f)}</span>${f.genre ? `<span class="tc-type">${esc(f.genre)}</span>` : ''}
+    <span class="tc-st"><span><b>${num(f.plays)}</b>${f.plays === 1 ? 'play' : 'plays'}</span><span><b>${esc(shortDate(f.first))}</b>found</span></span>${f.from ? `<span class="tc-from">after ${esc(f.from)}</span>` : ''}</button>`).join('');
+  return cards ? `<div class="tcards">${cards}</div>` : '';
 }
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
@@ -6694,7 +6702,7 @@ function lineupViz(s) {
   const head = a[0].name;
   const fs = Math.max(28, Math.min(56, Math.round(600 / Math.max(6, head.length))));
   const sm = s.summary || {}, na = (s.newArtists || {}).count || 0;
-  const when = s.range.kind === 'all' ? 'all of your history' : `your ${periodName(s.range)}`;
+  const when = s.range.kind === 'all' ? 'all of your history' : s.range.kind === 'day' && s.range.running ? 'your day today' : `your ${periodName(s.range)}`;
   return `<div class="viz lineup-viz"><h2>Your lineup</h2><span class="sub">The ${s.range.kind === 'all' ? 'artists of all time' : `${periodWord(s.range.kind)}'s artists`} as a festival bill: the more you played them, the bigger the name</span>
     <div class="lineup" style="--l1:${h1.toFixed(0)};--l2:${((h1 + 300) % 360).toFixed(0)}"><div class="lu-k">Heavy Rotation presents</div><div class="lu-d">${esc(when)}</div>
       <div class="lu-head" style="font-size:${fs}px">${name(a[0])}</div>${row(a.slice(1, 3), 'b')}${row(a.slice(3, 7), 'm')}${row(a.slice(7, 19), 's')}
@@ -6705,16 +6713,17 @@ function coverWallViz(s) {
   const al = ((s.top || {}).albums || []).slice(0, 18);
   if (al.length < 3) return '';
   const boxes = squarify(al.map((x) => ({ v: x.plays, al: x })), 1000, 1000);
-  const title = s.range.kind === 'month' ? `${new Date(s.range.from * 1000).toLocaleDateString([], { month: 'long' })} in covers`
+  const title = s.range.kind === 'day' ? (s.range.running ? 'Today in covers' : `${weekdayOf(s)} in covers`)
+    : s.range.kind === 'month' ? `${new Date(s.range.from * 1000).toLocaleDateString([], { month: 'long' })} in covers`
     : s.range.kind === 'all' ? 'All time in covers' : s.range.kind === 'week' ? 'Your week in covers' : `${periodName(s.range)} in covers`;
   const tiles = boxes.map((b, i) => `<button class="${b.w * b.h > 60000 ? 'big' : ''}" ${albumAttrs(b.al.artist, b.al.title)} data-cover="${esc(b.al.cover)}" style="left:${(b.x / 10).toFixed(2)}%;top:${(b.y / 10).toFixed(2)}%;width:${(b.w / 10).toFixed(2)}%;height:${(b.h / 10).toFixed(2)}%" aria-label="${esc(`${b.al.title} by ${b.al.artist}, ${plural(b.al.plays, 'play')}`)}">${coverHtml(b.al.cover, b.al.title, b.al.artist)}${b.w > 180 && b.h > 140 ? `<small>${esc(b.al.title)}</small>` : ''}</button>`).join('');
   return `<div class="viz"><h2>${esc(title)}</h2><span class="sub">The albums you played, each as big as its plays. Tap one for its page.</span><div class="cover-wall">${tiles}</div></div>`;
 }
 
-// ---- genre pages: their records at the top, in a crate or on a picture disc (Settings → Look) ----
+// ---- genre pages: their records at the top, fanned out or on a picture disc (Settings → Look) ----
 
 const genreHead = () => { try { const v = localStorage.getItem('genreHead'); return v === 'disc' || v === 'plain' ? v : 'crate'; } catch (_) { return 'crate'; } };
-/** The top of a genre page: its most played albums standing in a crate, or printed on a picture disc. */
+/** The top of a genre page: its most played albums fanned out, or printed on a picture disc. */
 function genreArt(g) {
   const al = ((g.top || {}).albums || []).slice(0, 5);
   const style = genreHead();
@@ -6733,7 +6742,7 @@ function genreArt(g) {
   // The middle one in front: the most played.
   const mid = order.indexOf(2);
   if (mid > 0) covers.unshift(covers.splice(mid, 1)[0]);
-  return `<div class="g-crate">${covers.join('')}<b class="g-tab">${esc(g.label)}</b></div>`;
+  return `<div class="g-crate">${covers.join('')}</div>`;
 }
 /** The picture disc turns as the page scrolls. */
 function turnGenreDisc() {
@@ -6828,9 +6837,12 @@ function repeatsViz(s) {
   return `<div class="viz"><h2>On repeat</h2><div class="rank">${rows.join('')}${artists.slice(0, Math.max(1, 3 - rows.length)).join('')}</div></div>`;
 }
 function newTodayViz(s) {
-  const d = s.day;
+  const d = s.day, na = s.newArtists || {};
   if (!d || (!(d.newArtists || []).length && !d.newSongs)) return '';
-  return `<div class="viz"><h2>New ${s.range.running ? 'today' : 'that day'}</h2><span class="sub">First time ever</span><div class="chips">${(d.newArtists || []).map((n) => `<button class="chip" data-artist="${esc(n)}">${icon('people', 'i small')}${esc(n)}</button>`).join('')}
+  // The day's new artists as cards where the stats know them, else by name.
+  const cards = (na.found || []).length ? tradingCards(na.found, na.count) : '';
+  const names = cards ? '' : (d.newArtists || []).map((n) => `<button class="chip" data-artist="${esc(n)}">${icon('people', 'i small')}${esc(n)}</button>`).join('');
+  return `<div class="viz"><h2>New ${s.range.running ? 'today' : 'that day'}</h2><span class="sub">First time ever</span>${cards}<div class="chips">${names}
     ${d.newSongs ? `<span class="chip static">${icon('music', 'i small')}${plural(d.newSongs, 'new song')}</span>` : ''}</div></div>`;
 }
 function onThisDayViz(s) {

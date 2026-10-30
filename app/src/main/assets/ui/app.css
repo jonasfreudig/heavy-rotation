@@ -1405,21 +1405,17 @@ details.more[open] summary { margin-bottom: 6px; }
 .tc-st b { display: block; font: 700 15px/18px var(--display, var(--font)); }
 .tc-from { display: block; margin-top: 6px; padding: 0 2px; font: italic 500 11px/14px var(--display, var(--font)); opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tcard.foil { box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
-.tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: color-dodge; opacity: .5;
-  background: linear-gradient(115deg, transparent 20%, hsl(190 90% 70% / .7) 35%, hsl(300 90% 75% / .7) 45%, hsl(50 95% 70% / .7) 55%, transparent 70%); }
+.tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
+  background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
 
 /* A genre page's top: its records in a crate, or on a picture disc. */
 .genre-hero.with-art { text-align: center; }
 .genre-hero.with-art .crumb { justify-content: center; }
-.g-crate { position: relative; height: 196px; margin: 4px auto 14px; max-width: 360px; }
-.g-rec { position: absolute; left: 50%; bottom: 14px; width: 136px; height: 136px; margin-left: -68px; padding: 0; transform-origin: 50% 100%;
+.g-crate { position: relative; height: 168px; margin: 4px auto 12px; max-width: 360px; }
+.g-rec { position: absolute; left: 50%; bottom: 4px; width: 136px; height: 136px; margin-left: -68px; padding: 0; transform-origin: 50% 100%;
   transform: translateX(var(--dx)) rotate(var(--rot)) scale(var(--sc)); animation: gRec .6s cubic-bezier(.2, 0, 0, 1) both; }
 .g-rec .cover { width: 100%; height: 100%; border-radius: 6px; box-shadow: 0 10px 22px rgba(0, 0, 0, .35); }
-@keyframes gRec { from { transform: translateX(0) translateY(60px) rotate(0) scale(.9); opacity: 0; } }
-.g-crate::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; z-index: 6; height: 52px; border-radius: 8px 8px 14px 14px; pointer-events: none;
-  background: linear-gradient(180deg, #a2703f, #6e4522); box-shadow: inset 0 3px 0 rgba(255, 255, 255, .18), 0 8px 18px rgba(0, 0, 0, .3); }
-.g-tab { position: absolute; left: 50%; bottom: 14px; z-index: 7; max-width: 70%; transform: translateX(-50%); padding: 3px 10px; border-radius: 4px; background: #f3e6c8; color: #3b2a14;
-  font: 600 10.5px/14px var(--mono, var(--font)); letter-spacing: .14em; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes gRec { from { transform: translateX(0) translateY(40px) rotate(0) scale(.9); opacity: 0; } }
 .g-disc { position: relative; width: 236px; height: 236px; margin: 6px auto 14px; border-radius: 50%; overflow: hidden; box-shadow: 0 14px 34px rgba(0, 0, 0, .35); will-change: transform; }
 .g-mos { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
 .g-mos .cover { width: 100%; height: 100%; border-radius: 0; }
@@ -1453,7 +1449,7 @@ body.searching .npb { display: none; }
 .npb-ly.on { color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 14%, transparent); }
 .npb-pp { background: var(--md-primary); color: var(--md-on-primary); }
 .npb-prog { position: absolute; left: 24px; right: 24px; top: 64px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--md-on-surface) 12%, transparent); }
-.npb-prog i { display: block; height: 100%; width: 0; border-radius: 1px; background: var(--md-primary); transition: width 1s linear; }
+.npb-prog i { display: block; height: 100%; width: 100%; border-radius: 1px; background: var(--md-primary); transform: scaleX(0); transform-origin: left; transition: transform 1s linear; }
 
 /* On the shelf, away from the shelf: a small pill by the title and a thin line of progress at the top. */
 .np-top { display: inline-flex; align-items: center; gap: 7px; max-width: 160px; margin-left: 10px; padding: 4px 11px 4px 4px; border-radius: 999px; vertical-align: middle;
@@ -1462,9 +1458,8 @@ body.searching .npb { display: none; }
 .np-tdisc { flex: none; position: relative; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; background: repeating-radial-gradient(circle, #111 0 1px, #262626 1px 2px); }
 .np-tdisc::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: hsl(var(--h) 70% 55%); }
 .np-tdisc img { position: absolute; inset: 6px; z-index: 1; width: 10px; height: 10px; border-radius: 50%; object-fit: cover; }
-.np-top.playing .np-tdisc { animation: spin33 3.6s linear infinite; }
 .np-topline { position: fixed; left: 0; right: 0; top: var(--inset-top); z-index: 30; height: 2px; pointer-events: none; }
-.np-topline i { display: block; height: 100%; width: 0; background: var(--md-primary); transition: width 1s linear; }
+.np-topline i { display: block; height: 100%; width: 100%; background: var(--md-primary); transform: scaleX(0); transform-origin: left; transition: transform 1s linear; }
 
 /* The concerts page: the latest stubs fanned out on top, the afterglow as bars, each year a wall of stubs. */
 .concerts-hero { text-align: center; padding-top: 4px; }
@@ -1502,3 +1497,9 @@ body.searching .npb { display: none; }
 .tk-glow .i { width: 12px; height: 12px; vertical-align: -1px; margin-right: 2px; }
 /* The whole top list: the places in the display face. */
 .ranks .r .n { font: 650 16px/1 var(--display, var(--font)); color: var(--md-on-surface); text-align: center; }
+/* Now spinning's progress as a scale, like every progress line that moves each second. */
+#spBar { width: 100%; transform: scaleX(0); transform-origin: left; transition: transform 1s linear; }
+/* The bar with lyrics on: the line being sung over the whole width, on up to two lines. */
+.npb.lyr-mode .npb-open b.lyr { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 16px; line-height: 19px; }
+.npb.lyr-mode .npb-open { height: auto; min-height: 46px; }
+.npb.lyr-mode .npb-ly { width: 36px; height: 36px; margin-top: 5px; }

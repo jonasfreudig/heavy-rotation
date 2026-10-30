@@ -113,16 +113,19 @@ class History private constructor(
          * and leaving out what the user [hidden] (matched by the credited or the main artist).
          */
         fun from(store: HistoryStore, hidden: Hidden = Hidden.NONE): History {
-            val raw = HashSet<String>()
-            store.forEach { _, a, _, _ -> raw += a }
-            val solo = raw.mapTo(HashSet()) { Text.norm(it) }
+            // Every credited name with its plays, so a collaboration can count for the one of its artists you play most.
+            val raw = HashMap<String, Int>()
+            store.forEach { _, a, _, _ -> raw.merge(a, 1, Int::plus) }
+            val plays = HashMap<String, Int>()
+            for ((a, n) in raw) plays.merge(Text.norm(a), n, Int::plus)
+            val solo = plays.keys
             val main = HashMap<String, String>()
             val b = Builder()
             var skipped = 0
             // Nothing hidden (the usual case): no need to look each play up.
             val any = hidden.artists.isNotEmpty() || hidden.tracks.isNotEmpty()
             store.forEach { t, a, tr, al ->
-                val m = main.getOrPut(a) { Artists.main(a, solo) }
+                val m = main.getOrPut(a) { Artists.main(a, solo, plays) }
                 if (any && (hidden.hides(m, tr) || hidden.hides(a, tr))) skipped++ else b.add(t, m, tr, al)
             }
             return b.build().also { it.hiddenPlays = skipped }
@@ -139,22 +142,23 @@ object Artists {
 
     /**
      * The artist a play counts for. "feat." credits always go to the first name. "A, B", "A & B",
-     * "A and B" and the like go to A only if A is also played on its own ([solo] holds normalized
-     * names), so bands like "Earth, Wind & Fire" or "Simon and Garfunkel" stay whole.
+     * "A and B" and the like go to whichever of the names is also played on its own ([solo] holds
+     * normalized names), the most played one ([plays], by normalized name) when several are, else the
+     * first: "ROSALÍA, Fontaines D.C." counts for Fontaines D.C. when you play them and not her. Bands
+     * like "Earth, Wind & Fire" or "Simon and Garfunkel", none of whose parts plays alone, stay whole.
      */
-    fun main(raw: String, solo: Set<String>): String {
+    fun main(raw: String, solo: Set<String>, plays: Map<String, Int> = emptyMap()): String {
         feat.find(raw)?.let { m ->
             val head = raw.substring(0, m.range.first).trim()
-            if (head.isNotEmpty()) return main(head, solo)
+            if (head.isNotEmpty()) return main(head, solo, plays)
         }
-        for (sep in SEPARATORS) {
-            val i = raw.indexOf(sep, ignoreCase = true)
-            if (i > 0) {
-                val head = raw.substring(0, i).trim()
-                if (Text.norm(head) in solo) return head
-            }
-        }
-        return raw
+        var names = listOf(raw)
+        for (sep in SEPARATORS) names = names.flatMap { it.split(sep, ignoreCase = true) }
+        names = names.map { it.trim() }.filter { it.isNotEmpty() }
+        if (names.size < 2) return raw
+        val known = names.withIndex().filter { Text.norm(it.value) in solo }
+        if (known.isEmpty()) return raw
+        return known.maxWith(compareBy<IndexedValue<String>> { plays[Text.norm(it.value)] ?: 0 }.thenByDescending { it.index }).value
     }
 }
 

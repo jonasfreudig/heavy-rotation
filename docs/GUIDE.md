@@ -127,8 +127,9 @@ The Day tab is built for a handful of songs. It shows the time you listened, and
 with your usual for that weekday by the same time of day over the last 8 weeks. Your day appears on
 a 24-hour strip with its listening sessions: a new session starts after half an hour without music,
 and a session that was one record shows the album or the turntable. Below come the first and latest
-song, what you had on repeat, artists and songs new that day, the same date in other years (tap one
-to see that day), your streak and how much came off vinyl.
+song, the day in covers, what you had on repeat, artists new that day (as cards) and new songs, the
+same date in other years (tap one to see that day), your streak and how much came off vinyl, the
+day's lineup when four artists or more played, and the top 10.
 
 A week shows its seven days, the week before in outline, and each day on a 24-hour strip. Charts of
 change over the period (the river, phases, genre drift) appear once the period has four days with
@@ -302,8 +303,8 @@ the artists and albums of that genre you loved and haven't played for half a yea
 "Everyone in …", every artist you played in it; when its music came out; its listening barcode,
 plays per month and hours; and the records on your shelf with that genre or style. "Full stats for
 …" opens the Stats tab for that genre. The page takes the colors of the genre's most played album,
-and Settings → Look → Genre pages puts its top albums at the top: standing in a record crate, on a
-picture disc that turns as you scroll, or nothing (Plain).
+and Settings → Look → Genre pages puts its top albums at the top: fanned out (Covers), on a picture
+disc that turns as you scroll, or nothing (Plain).
 
 #### Your musical atlas
 
@@ -443,9 +444,10 @@ hide button at the top of an artist's page hides the whole artist. Hidden plays 
 pages. Nothing changes on Last.fm, because apps can't delete scrobbles there. To delete them on
 Last.fm too, open a hidden track (↗) and delete its scrobbles from your library on the website.
 
-Features and collaborations count for the main artist, as long as that artist also appears on their
-own: "Fontaines D.C., ROSALÍA" counts for Fontaines D.C., and anything "feat." goes to the first
-name, but "Earth, Wind & Fire" stays one band.
+Features and collaborations count for one of their artists: anything "feat." goes to the first name,
+and "A, B", "A & B", "A with B" and the like go to whichever of them you also play on their own (the
+one you play most if several are). "ROSALÍA, Fontaines D.C." counts for Fontaines D.C. when you
+play them and not her, and "Earth, Wind & Fire" stays one band.
 
 Days, weeks and hours are in the phone's local time.
 
@@ -463,8 +465,9 @@ switches them to One long page. An artist's tabs are Overview (the numbers, the 
 everyone, how you found them), Listening (the charts), Music (top tracks, albums, your shelf, the
 discography, their most played songs) and Live (the shows you were at, and what they play
 lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
-clicked, its songs over time, the charts). A genre's are Overview (the numbers and the styles in
-it), Artists, Music (albums, songs, records to rediscover, your shelf, decades) and Listening. The
+clicked, its songs over time, the charts). A genre's are Overview (the numbers, the styles in it and
+the charts) and Music (its artists, albums and songs, records to rediscover, decades and your
+shelf). The
 tabs stay at the top as you scroll. Swipe sideways to move to the next tab: the tabs lie side by
 side, already drawn, so the next one comes in with your finger and slides into place when you let
 go past a third of the way or flick.
@@ -482,8 +485,9 @@ three places. On the shelf is a line at the top of the shelf, with the progress;
 Explore a small pill next to the title shows the song with its record turning, and a thin line at
 the very top shows how far it is. In the corner is the record peeking out above the search button,
 on every tab. In the bar grows the bottom bar into a bigger pill with the cover, the song, play and
-pause and the progress, above the tabs; its lyrics button swaps the song's name for the line being
-sung, one line at a time, and the screen stays on while it shows them. Tap any of them for Now
+pause and the progress, above the tabs. Its lyrics button gives the bar to the line being sung, one
+line at a time on up to two lines; play and pause make room for it then (they are on Now playing, a
+tap away), and the screen stays on while the lyrics show. Tap any of them for Now
 spinning or, for the phone, Now playing. Now playing
 has the song's exact position (drag to seek), play/pause and skip, what the app plays next (with
 the playlist's or mix's name) when the app shares its queue, and the whole album the song is on,
