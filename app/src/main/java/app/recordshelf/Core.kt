@@ -714,6 +714,7 @@ object Core {
                 }
             }
             "discoverWhy" -> discoverExec.execute { discoverWhy(msg) }
+            "discoverLike" -> discoverExec.execute { discoverLike(msg) }
             "playlist" -> statsExec.execute {
                 val s = currentStats()
                 if (msg.optString("kind") == "genre") return@execute genrePlaylist(s, msg)
@@ -2064,6 +2065,9 @@ object Core {
 
     /** The suggestions whose genres, songs and photos are looked up ahead, and the songs in the weekly mix. */
     private const val DISCOVER_SHOWN = 20
+
+    /** The new artists "More like them" starts from. */
+    private const val LIKE_SEEDS = 8
     private const val MIX_SIZE = 30
 
     /**
@@ -2279,6 +2283,35 @@ object Core {
             if (v > 0) w.put(n, v) else w.remove(n)
         }
         prefs.discoverWeaker = w.toString()
+    }
+
+    /**
+     * Artists like the ones in [msg]'s "seeds" (a period's new artists, each with its plays) that you haven't played,
+     * the way the suggestions are found for your top artists. On [discoverExec].
+     */
+    private fun discoverLike(msg: JSONObject) {
+        val s = currentStats() ?: return
+        val req = msg.optInt("req")
+        val a = msg.optJSONArray("seeds") ?: JSONArray()
+        val seeds = (0 until a.length()).map { a.getJSONObject(it) }.map { it.optString("name") to maxOf(1.0, it.optDouble("plays", 1.0)) }
+            .filter { it.first.isNotBlank() }.take(LIKE_SEEDS)
+        val c = lastfm()
+        var answered = 0
+        for ((n, _) in seeds) {
+            if (likesFresh(n)) answered++ else if (runCatching { fetchLikes(c, n) }.isSuccess) answered++
+        }
+        val likes = HashMap<String, List<Like>>()
+        synchronized(dstore) {
+            val o = dpart("likes")
+            for ((n, _) in seeds) o.optJSONObject(Text.norm(n))?.optJSONArray("list")?.let { l -> likes[Text.norm(n)] = (0 until l.length()).map { Like.fromJson(l.getJSONObject(it)) } }
+        }
+        val sugg = Discover.suggest(seeds, likes, s::knows, discoverNo().keys().asSequence().toSet(), discoverWeaker(), prefs.discoverReach)
+        for (x in sugg.take(DISCOVER_SHOWN)) genreOf(c, x.name)
+        saveDiscover()
+        push("onDiscoverLike") {
+            JSONObject().put("req", req).put("artists", JSONArray(sugg.map { suggestionJson(it, s) }))
+                .put("error", if (seeds.isNotEmpty() && answered == 0) "Couldn't reach Last.fm and Deezer. Try again once you're online." else "")
+        }
     }
 
     /** Why one artist is suggested, and their best-known songs to start with. On [discoverExec]. */

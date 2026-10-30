@@ -269,6 +269,18 @@ const Mock = (() => {
         if (ts < end) rows.push([ts, ai, tIdx[tk]]);
       }
     }
+    // A few artists found in the last weeks, so a month has new ones (first played that many days ago, then a few plays a day).
+    [['Wet Leg', 26, 14], ['bar italia', 19, 9], ['Yard Act', 12, 6], ['Dry Cleaning', 8, 4], ['Sorry', 5, 2]].forEach(([name, ago, n], j) => {
+      const ai = artists.length;
+      artists.push(name);
+      const d0 = new Date(end - ago * DAY);
+      for (let i = 0; i < n; i++) {
+        const tk = `${ai}:${i % 3}`;
+        if (tIdx[tk] == null) { tIdx[tk] = titles.length; titles.push(`${W1[(j * 3 + i) % W1.length]} ${W2[(j + i * 2) % W2.length]}`); }
+        const ts = +new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + Math.floor(i / 3), 19 + (i % 3));
+        if (ts < end) rows.push([ts, ai, tIdx[tk]]);
+      }
+    });
     rows.sort((x, y) => x[0] - y[0]);
     const first = new Array(artists.length).fill(-1);
     rows.forEach(([ts, ai]) => { if (first[ai] < 0) first[ai] = ts; });
@@ -409,6 +421,26 @@ const Mock = (() => {
     return { current, currentFrom, longest: best, longestFrom: best ? dayMs(bestStart) : 0, longestTo: best ? dayMs(bestEnd) : 0, artists };
   }
 
+  /** The period as a calendar: plays per day (per month for all time), the days of new artists and of songs on repeat (see Stats.calendar). */
+  function calendarOf(r, i0, i1, fresh, repeatAt) {
+    const L = history();
+    if (r.kind === 'day') return { unit: 'day', counts: [] };
+    if (r.kind === 'all') {
+      const s0 = new Date(L.start), first = s0.getFullYear() * 12 + s0.getMonth(), now = new Date();
+      const counts = new Array(now.getFullYear() * 12 + now.getMonth() - first + 1).fill(0);
+      for (let i = i0; i < i1; i++) { const d = new Date(L.ts[i]); counts[d.getFullYear() * 12 + d.getMonth() - first]++; }
+      return { unit: 'month', start: +new Date(s0.getFullYear(), s0.getMonth(), 1), counts };
+    }
+    const from = new Date(r.from * 1000), d0 = dayIdx(r.from * 1000);
+    const days = r.kind === 'week' ? 7 : r.kind === 'month' ? new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate()
+      : r.kind === 'year' ? (new Date(from.getFullYear(), 1, 29).getDate() === 29 ? 366 : 365) : dayIdx(r.to * 1000 - 1) - d0 + 1;
+    const n = Math.max(0, Math.min(days, dayIdx(Math.min(r.to * 1000 - 1, Date.now())) - d0 + 1));
+    const counts = new Array(n).fill(0);
+    for (let i = i0; i < i1; i++) { const k = dayIdx(L.ts[i]) - d0; if (k >= 0 && k < n) counts[k]++; }
+    const within = (list) => [...new Set(list.filter((k) => k >= 0 && k < n))].sort((a, b) => a - b);
+    return { unit: 'day', start: r.from * 1000, days, counts, newDays: within(fresh.map((a) => dayIdx(L.first[a]) - d0)), repeatDays: within(repeatAt.map((ms) => dayIdx(ms) - d0)) };
+  }
+
   /** The day's and the week's own parts, from the made-up history (see Stats.dayDetails and weekDays). */
   function fakeStats(id) {
     const s = fakeStatsBase(id);
@@ -546,7 +578,8 @@ const Mock = (() => {
       unit: b160.unit, starts: b160.starts, active: anyBin.filter(Boolean).length, empty: anyBin.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0),
       rows: hc.map((c, k) => {
         const tot = c.reduce((x, y) => x + y, 0), [pm, pn] = Object.entries(hm[k]).sort((x, y) => y[1] - x[1])[0] || ['0', 0];
-        return { name: L.artists[order[k]], ink: k < 8 ? k : -1, counts: c, present: c.filter((v) => v > 0).length, peakShare: tot ? pn / tot : 0, peakMonth: +new Date(Math.floor(pm / 12), pm % 12, 1), plays: tot };
+        return { name: L.artists[order[k]], ink: k < 8 ? k : -1, counts: c, present: c.filter((v) => v > 0).length, peakShare: tot ? pn / tot : 0, peakMonth: +new Date(Math.floor(pm / 12), pm % 12, 1), plays: tot,
+          first: L.first[order[k]], photo: '' };
       }).sort((x, y) => y.present - x.present),
     };
     // New artists, who they are (see Stats.newArtists).
@@ -569,14 +602,15 @@ const Mock = (() => {
         periods: gc.map((c, k) => { const tot = c.reduce((x, y) => x + y, 0); return { start: b16.starts[k], total: tot, shares: c.map((v) => (tot ? Math.round((v / tot) * 1000) / 1000 : 0)) }; }) },
       clock,
       streaks: streaksOf(r, i0, i1),
-      obsessions: topT.slice(0, 3).filter((t) => tc[t] >= 7).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], week: r.from * 1000 + 3 * DAY, count: Math.min(tc[t], 7 + (t % 9)) })),
-      loops: topT.slice(0, 1).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], run: 5, at: r.from * 1000 + 6 * DAY })),
+      obsessions: topT.slice(0, 3).filter((t) => tc[t] >= 7).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], week: r.from * 1000 + 3 * DAY, count: Math.min(tc[t], 7 + (t % 9)), album: '', cover: '' })),
+      loops: topT.slice(0, 1).map((t) => ({ track: L.titles[t], artist: L.artists[trackArtist[t]], run: 5, at: r.from * 1000 + 6 * DAY, album: '', cover: '' })),
       rarely: { items: coll.slice().sort((x, y) => x.plays - y.plays).slice(0, 8).map((c) => ({ id: c.id, title: c.title, artist: c.artist, cover: '', plays: 0, last: c.plays ? Date.now() - (60 + c.plays) * DAY : 0 })), owned: coll.length, unplayed: 5, neverPlayed: 2 },
       wishlist: [['Tame Impala', 'Lonerism', 212, 12], ['Khruangbin', 'Mordechai', 164, 10], ['Shame', 'Food for Worms', 131, 10], ['Little Simz', 'Sometimes I Might Be Introvert', 96, 14]]
         .map(([artist, album, plays, tracks]) => ({ artist, album, plays, tracks, last: Date.now() - 9 * DAY, key: '', image: '', search: 'https://www.discogs.com/search/?type=master&q=' + encodeURIComponent(artist + ' ' + album) })),
       top: { artists: order.slice(0, 100).map((a) => ({ name: L.artists[a], plays: ac[a] })), albums: topAlbums,
         tracks: topT.map((t) => ({ title: L.titles[t], artist: L.artists[trackArtist[t]], plays: tc[t] })) },
     };
+    out.calendar = calendarOf(r, i0, i1, freshAll, out.obsessions.map((o) => o.week + 2 * DAY).concat(out.loops.map((l) => l.at)));
     // insights and personality, from the numbers above
     const n = sm.scrobbles;
     const ins = [];
@@ -1500,6 +1534,11 @@ const Mock = (() => {
           later(150, () => onDiscover(fakeDiscover()));
           break;
         case 'discoverOn': S.discover.on = m.v; pushState(); later(150, () => onDiscover(m.v ? fakeDiscover() : { on: false })); break;
+        case 'discoverLike': {
+          const seeds = (m.seeds || []).map((x) => x.name);
+          later(1400, () => onDiscoverLike({ req: m.req, error: '', artists: fakeDiscover().artists.slice(4, 12).map((a, i) => ({ ...a, via: '', because: seeds.slice(i % 2, (i % 2) + 2).map((name, j) => ({ name, v: 1 - j * 0.3, like: 0.7 - j * 0.2 })) })) }));
+          break;
+        }
         case 'discoverWhy': {
           const x = fakeDiscover().artists.find((a) => a.name === m.name) || { name: m.name, photo: '', because: [] };
           later(350, () => onDiscoverWhy({ ...x, songs: ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'], known: false, req: m.req }));

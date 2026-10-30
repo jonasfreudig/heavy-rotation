@@ -21,18 +21,20 @@ of its own in between, and your data stays on your phone.
   track or 4 minutes). Shadow mode logs plays without sending them, so you can compare it with Pano
   Scrobbler first.
 - Stats cover a day, a week, a month, a year or all time, and each period is compared with the one
-  before: your plays as dots on a record, when you listen, streaks, new artists, genre drift,
-  obsessions and a top 10.
+  before: your plays as dots on a record, the period day by day as a calendar with your streaks, who
+  you played when, new artists, songs on repeat, genre drift, decades and a top 10.
 - The stats know your shelf. They show the records you own but rarely play, the albums you stream a
   lot but don't own yet, and how much of your listening was vinyl.
 - Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
+- Under Your taste, Stats also has a musical atlas of the artists you play back to back, you against
+  everyone on Last.fm, your concerts and a map of your genres.
 - The Explore tab suggests artists you haven't played yet, from who Last.fm's and Deezer's listeners
   find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
-  releases by your artists. It also has lost favorites, albums to rediscover, a musical atlas of the
-  artists you play back to back, you against everyone on Last.fm, and playlists to send to TIDAL.
-- Explore comes in rows you scroll sideways, and the smaller Stats blocks as tiles that open full
-  size. Artist, album and genre pages come in tabs you swipe between. Each can be one long page
-  instead.
+  releases by your artists. It also has lost favorites, albums to rediscover and playlists to send
+  to TIDAL.
+- Stats comes as short cards that open full size, as full-size blocks, or as the classic long page.
+  Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
+  between, and each can be one long page instead.
 - A Now playing page for the phone shows the position, the controls, the music app's queue and the
   album the song is on.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the

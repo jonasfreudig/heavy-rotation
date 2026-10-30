@@ -263,6 +263,7 @@ class Stats(
             .put("river", river(r, i0, i1))
             .put("clock", JSONArray(clock(i0, i1).toList()))
             .put("streaks", streaks(r, i0, i1))
+            .put("calendar", calendar(r, i0, i1))
             .put("pulse", pulse(r, i0, i1))
             .put("habits", habits(r, i0, i1))
             .put("newArtists", newArtists(r, i0, i1))
@@ -529,6 +530,52 @@ class Stats(
             .put("artists", artists)
     }
 
+    /**
+     * The period as a calendar: plays per day (per month for all time, from the history's first month), the days a new
+     * artist was first played, and the days a song was on repeat (the start of a run back to back, or the day it was
+     * played most in its biggest week). [days]: how many days the period has, those still to come included.
+     */
+    fun calendar(r: Range, i0: Int, i1: Int): JSONObject {
+        val out = JSONObject()
+        if (h.size == 0 || r.kind == "day") return out.put("unit", "day").put("counts", JSONArray())
+        if (r.kind == "all") {
+            val first = monthKey(historyStart)
+            val counts = IntArray(maxOf(1, monthKey(nowSec) - first + 1))
+            for (i in i0 until i1) (monthKey(h.ts[i]) - first).let { if (it in counts.indices) counts[it]++ }
+            return out.put("unit", "month").put("start", monthStart(first)).put("counts", JSONArray(counts.toList()))
+        }
+        val d0 = day(r.from)
+        val start = date(r.from)
+        val days = when (r.kind) {
+            "week" -> 7
+            "month" -> start.lengthOfMonth()
+            "year" -> start.lengthOfYear()
+            else -> (day(r.to - 1) - d0 + 1).toInt()
+        }
+        val counts = IntArray((minOf(day(minOf(r.to - 1, nowSec)), d0 + days - 1) - d0 + 1).toInt().coerceIn(0, days))
+        for (i in i0 until i1) (day(h.ts[i]) - d0).toInt().let { if (it in counts.indices) counts[it]++ }
+        val fresh = firstTs.indices.filter { firstTs[it] in r.from until r.to && firstTs[it] >= historyStart + Atlas.START_GRACE }
+        val newDays = fresh.map { (day(firstTs[it]) - d0).toInt() }.filter { it in counts.indices }.toSortedSet()
+        // Songs on repeat: where each run back to back began, and the busiest day of each song's biggest week.
+        val repeat = sortedSetOf<Int>()
+        val lp = loops(i0, i1)
+        for (k in 0 until lp.length()) repeat += (day(lp.getJSONObject(k).getLong("at") / 1000) - d0).toInt()
+        val ob = obsessions(i0, i1)
+        if (ob.length() > 0) {
+            val want = HashMap<Int, Long>()
+            for (k in 0 until ob.length()) ob.getJSONObject(k).let { o -> trackIndex[Hidden.key(o.getString("artist"), o.getString("track"))]?.let { want[it] = day(o.getLong("week") / 1000) } }
+            val perDay = HashMap<Pair<Int, Long>, Int>()
+            for (i in i0 until i1) {
+                val wk = want[h.track[i]] ?: continue
+                val d = day(h.ts[i])
+                if (d in wk until wk + 7) perDay.merge(h.track[i] to d, 1, Int::plus)
+            }
+            perDay.entries.groupBy { it.key.first }.values.forEach { e -> repeat += (e.maxBy { it.value }.key.second - d0).toInt() }
+        }
+        return out.put("unit", "day").put("start", r.from * 1000).put("days", days).put("counts", JSONArray(counts.toList()))
+            .put("newDays", JSONArray(newDays.toList())).put("repeatDays", JSONArray(repeat.filter { it in counts.indices }))
+    }
+
     /** Artists heard for the first time ever, per day, week, month or year of the period. */
     fun newArtists(r: Range, i0: Int, i1: Int): JSONObject {
         if (h.size == 0 || i1 <= i0) return JSONObject().put("unit", "month").put("buckets", JSONArray())
@@ -596,6 +643,7 @@ class Stats(
             JSONObject().put("name", h.artistNames[top[s]]).put("ink", if (s < TOP_INKS) s else -1)
                 .put("counts", JSONArray(counts[s].toList())).put("present", counts[s].count { it > 0 })
                 .put("peakShare", peak.value.toDouble() / total).put("peakMonth", monthStart(peak.key)).put("plays", total)
+                .put("first", firstTs[top[s]] * 1000).put("photo", artistPhoto(h.artistNames[top[s]]))
         }.sortedByDescending { it.getInt("present") }
         return out.put("unit", b.unit.id).put("starts", b.startsJson()).put("rows", JSONArray(rows))
             .put("active", any.count { it }).put("empty", JSONArray(any.indices.filter { !any[it] }))
@@ -1321,7 +1369,7 @@ class Stats(
         best.entries.sortedByDescending { it.value.second }.take(max).forEach { (tr, wc) ->
             a.put(
                 JSONObject().put("track", h.trackTitles[tr]).put("artist", h.artistNames[h.trackArtist[tr]])
-                    .put("week", dayStart(wc.first) * 1000).put("count", wc.second),
+                    .put("week", dayStart(wc.first) * 1000).put("count", wc.second).put("album", albumOf(tr)).put("cover", trackAlbum[tr].let { if (it >= 0) cover(it) else "" }),
             )
         }
         return a
@@ -1342,6 +1390,7 @@ class Stats(
         return JSONArray(
             best.entries.sortedByDescending { it.value.first }.take(max).map { (tr, v) ->
                 JSONObject().put("track", h.trackTitles[tr]).put("artist", h.artistNames[h.trackArtist[tr]]).put("run", v.first).put("at", v.second * 1000)
+                    .put("album", albumOf(tr)).put("cover", trackAlbum[tr].let { if (it >= 0) cover(it) else "" })
             },
         )
     }
@@ -1948,6 +1997,9 @@ class Stats(
     private val trackIndex: Map<String, Int> by lazy {
         h.trackTitles.indices.associateBy { Hidden.key(h.artistNames[h.trackArtist[it]], h.trackTitles[it]) }
     }
+
+    /** The title of the album [tr] was last scrobbled with, "" if none. */
+    private fun albumOf(tr: Int) = trackAlbum[tr].let { if (it >= 0) h.albumTitles[it] else "" }
 
     /** The album each track was last scrobbled with, -1 if never. */
     private val trackAlbum: IntArray by lazy {

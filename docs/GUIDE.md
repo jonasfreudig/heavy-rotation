@@ -134,18 +134,26 @@ A week shows its seven days, the week before in outline, and each day on a 24-ho
 change over the period (the river, phases, genre drift) appear once the period has four days with
 music.
 
-For a week, month, year or all time, the smaller blocks come as tiles, two side by side: streaks,
-new artists (with the faces of the first few), decades and obsessions, and habits and phases
-together as one tall tile. A tile shows a small picture of its chart, or its one number (your
-longest streak, your biggest obsession), and the arrow in its corner means it opens: tap it and the
-block opens full size on its own page, for the same period. The tall tile opens habits with phases
-under them. Rarely played records and wishlist ideas are rows of covers you scroll sideways. The bigger charts stay
-full size on the page. A day is short, so it has no tiles. Settings → Look → Stats and Explore →
-One long page shows every block full size.
+Settings → Look → Stats picks how a week, month, year or all time looks:
+
+- Cards, the default, keeps the page short. Days and streaks, who you played when, new artists,
+  songs on repeat and decades come as cards, one under the other. Each card says in one sentence
+  what it found ("30 days in a row", "Air steady, Fontaines D.C. in a wave") and has a small picture
+  you can read at that size. Tap a card and its block opens full size on its own page, for the same
+  period. The bigger charts stay full size on the page.
+- Full size shows every block full size on the page.
+- Classic is the long page as it was up to version 0.58, with streaks, phases, habits, new artists,
+  decades and obsessions in their first forms.
+
+A day is short, so it always shows its blocks full size.
 
 "Arrange this page", at the bottom, reorders the blocks (drag the handles), hides the ones you
-don't want, and makes any block a tile or full size (Tile or Full next to its name). The Day tab
-has its own order. The layout goes into backups with the other settings.
+don't want, and in Cards makes any block a card or full size (Card or Full next to its name). The
+Day tab has its own order. The layout goes into backups with the other settings.
+
+The numbers and highlights lead on: tap Plays for listening over time, Artists for the whole list,
+New artists for the new artists, and a highlight for the song, album, artist, day or block it talks
+about.
 The charts adapt to the period: a week or a month is shown per day, a year per week or month, all
 time per month, quarter or year. These are the blocks for the chosen period:
 
@@ -175,22 +183,35 @@ time per month, quarter or year. These are the blocks for the chosen period:
 - The river shows the same over time, split into your top eight artists (in the same colors as on
   the record) stacked on everyone else. Tap it for a day's numbers.
 - "When you listen" shows plays per weekday and hour. Tap a cell for its numbers.
-- Streaks shows your current run of days with music (counted back from today, including days before
-  the period started), the longest run in the period, and artists you played many days in a row.
-- Phases shows plays of your most played artists as ridges, ordered by when they peaked.
-- New artists shows artists heard for the first time, per day, week or month. The stretch where your
-  Last.fm history starts is grayed out, since everything is new there.
+- Days and streaks is the period as a calendar: a box per day, darker for more plays, with your
+  longest run of days with music underlined and dots on the days a new artist or a song on repeat
+  came in. Tap a day for its Day view. A year comes as twelve small months (tap a month's name for
+  that month), all time as a box per month. Below are the longest run, your current one (counted
+  back from today, including days before the period started), and the artists you played most days
+  in a row.
+- Who you played when has a row per top artist, in the order they peaked, with their plays as a
+  curve and a word for how you played them: new (first played in this period), steady (most of the
+  days or weeks with music), a wave (half their plays within a quarter of the period) or now and
+  then.
+- New artists shows the artists you heard for the first time, with their faces, the day you found
+  them and what played right before. All opens every one of them. More like them looks for artists
+  you haven't played that are like your new ones, the way the suggestions on Explore are found, with
+  the reasons and Not for me.
 - Genre drift shows how your genres shift over time. Every play gets one genre, weighed from the
   Discogs styles of the record (if you own it), your other records by the artist, the artist's
   Last.fm tags and, for your most played albums, the album's own Last.fm tags, which catches an
   artist's electronic album among their rock ones. Non-genres like "seen live" are removed. The six
   biggest genres keep their colors whatever range you pick.
-- Obsessions lists tracks played at least 7 times in one week, and songs played back to back
-  several times in a row.
+- On repeat lists the songs you played again and again: seven times or more in one week, or back
+  to back several times in a row.
+- Decades shows when the music you played came out, as one bar from the oldest to the newest. Tap
+  a decade for its share, Stats for that decade alone, and the records from it on your shelf.
 - "On your shelf, rarely played" lists your records, least played first.
 - Wishlist ideas lists albums you play a lot, across several different tracks, that aren't on your
   shelf. Tap one to search Discogs.
 - Top 10 lists your ten most played artists, albums and tracks.
+- Your taste, at the end, looks at all of your history, whatever the period: the musical atlas, you
+  vs everyone, your concerts and the genre map.
 
 #### Songs, albums and artists
 
@@ -244,8 +265,8 @@ non-commercial use; any application name will do), then paste the key in Setting
 
 To bring in your own concerts, add your setlist.fm username there too. The shows you marked "I was
 there" on setlist.fm come in, and are fetched again once a week or when you tap Update now. They
-show on the artist's page under "You saw them live", in Explore, in the period's Highlights on the
-Stats tab, and as ticket stubs in the period's story. In Explore, "Your concerts" has every show by
+show on the artist's page under "You saw them live", under Your taste on the Stats tab, in the
+period's Highlights, and as ticket stubs in the period's story. "Your concerts" has every show by
 year, the artists you saw most, and the afterglow: the shows that sent you back to an artist's
 music most, measured as your plays of them in the four weeks after the show against the four weeks
 before. Tap a show for that night's setlist as a playlist.
@@ -276,8 +297,8 @@ plays per month and hours; and the records on your shelf with that genre or styl
 
 #### Your musical atlas
 
-The Musical atlas tile at the top of the Explore tab opens three views of your whole history, worked
-out from the order of your scrobbles.
+The Musical atlas tile, under Your taste at the end of the Stats tab, opens three views of your
+whole history, worked out from the order of your scrobbles.
 
 - Universe shows your 150 most played artists as stars, sized by plays. Two stars are linked when
   you often play them back to back (in the same listening session, relative to how much you play
@@ -331,13 +352,14 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 
 #### Explore
 
-Explore comes in rows: each list is one row you scroll sideways, with its playlist next to the
-heading. Tap a heading, or the All card at the end of its row, for the whole list (up to 100), with
-more about each: when you last played an artist, when they were big for you, how many plays. At
-the top sit the discovery mix and Crate dig. Then come the suggestions for you and new
-releases by your artists, then the lists to rediscover, and last your taste: the musical atlas,
-you vs everyone, your concerts and the genre map. With Settings → Look → Stats and Explore set to
-One long page, the lists come one after the other, full size.
+Explore is for music to play next. It comes in rows: each list is one row you scroll sideways, with
+its playlist next to the heading. Tap a heading, or the All card at the end of its row, for the
+whole list (up to 100), with more about each: when you last played an artist, when they were big
+for you, how many plays. At the top sit the discovery mix and Crate dig. Then come the suggestions
+for you and new releases by your artists, and then the lists to rediscover. In the whole list of On
+this day, tap a year for that day's stats. With Settings → Look → Explore set to One long page, the
+lists come one after the other, full size. The views of your whole history (the atlas, you vs
+everyone, your concerts and the genre map) are under Your taste at the end of the Stats tab.
 
 #### For you
 
@@ -405,8 +427,9 @@ three lists:
 - "Most played without an album" is probably music, but worth a look.
 - "Hidden" has everything you hid, with Show to bring it back.
 
-You can also hide a single track from an artist's top tracks, or a whole artist with the hide button
-at the top of their page. Hidden plays are left out of all the stats, the story and the artist
+You can also hold any song or artist, on any list, to hide it: a sheet offers to hide the song, or
+everything by the artist. For a song it can also start a Fix names rule with its name filled in. The
+hide button at the top of an artist's page hides the whole artist. Hidden plays are left out of all the stats, the story and the artist
 pages. Nothing changes on Last.fm, because apps can't delete scrobbles there. To delete them on
 Last.fm too, open a hidden track (↗) and delete its scrobbles from your library on the website.
 

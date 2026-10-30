@@ -462,13 +462,17 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 /* Artist pages in tabs: the tabs stick under the top bar (or the top, with the bar gone) */
 .atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .26s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
 .atabs .seg { margin: 0; }
-.atabs.stuck { background: linear-gradient(180deg, var(--atabs-bg) calc(100% - 14px), transparent 100%); }
+/* Stuck to the top, the tabs sit on a fade of the page's color that comes in softly, like the top bar's. */
+.atabs::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -22px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .25s;
+  background: linear-gradient(180deg, var(--atabs-bg) 0%, var(--atabs-bg) calc(100% - 34px), transparent 100%); }
+.atabs.stuck::before { opacity: 1; }
 .page.bar-gone .atabs { top: var(--inset-top); }
 .atab-body { position: relative; display: flow-root; min-height: 60vh; touch-action: pan-y; }
 /* Every tab side by side, a page width apart, clipped by the screen's edges and by the open one's height. The others
    stay hidden until a finger touches down ("live"); the open one alone sets the page's length. */
 .atab-clip { margin: 0 -16px; padding: 0 16px; overflow: clip; overflow-clip-margin: 24px; }
-.atab-track { position: relative; will-change: transform; }
+.atab-track { position: relative; }
+.atab-track.live { will-change: transform; }
 .atab-body:not([data-open]) { position: absolute; top: 0; left: calc(var(--i) * (100% + 32px)); width: 100%; visibility: hidden; pointer-events: none; }
 .atab-track.live > .atab-body { visibility: visible; }
 /* Explore as rows: each list one sideways row, the two mixes side by side at the top. */
@@ -494,32 +498,93 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .xrow .xp-intro { margin: 4px 4px 10px; }
 .xcard.round { width: 100px; }
 .xcard.round .cover { width: 100px; height: 100px; border-radius: 50%; }
-/* Stats tiles: two side by side, a picture of the chart or its one number; tap for full size. */
-.stiles { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 172px; grid-auto-flow: row dense; gap: 10px; margin: 12px 0; }
-.stile.tall { grid-row: span 2; }
-.stile.tall .stile-name { white-space: normal; }
-.stile.tall .stile-thumb { top: 60px; width: 161%; transform: scale(.62); }
-.stile-open { position: absolute; top: 10px; right: 10px; z-index: 1; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+/* Stats as cards: one under the other, a sentence and a small picture each; tap for full size. */
+.scards { display: grid; gap: 10px; margin: 12px 0; }
+.scard { --sc-bg: var(--md-surface-container-low); position: relative; display: block; width: 100%; padding: 14px 16px 16px; border-radius: 22px; text-align: left;
+  color: inherit; background: var(--sc-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.scard-k { display: inline-flex; align-items: center; gap: 6px; color: var(--md-on-surface-variant); font: 500 12px/16px var(--mono, var(--font)); }
+.scard-k .i { width: 16px; height: 16px; }
+.scard-open { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
   background: color-mix(in srgb, var(--md-primary) 14%, transparent); color: var(--md-primary); }
-.stile-open .i { width: 18px; height: 18px; }
-.stile-faces { position: absolute; left: 14px; bottom: 14px; display: flex; }
-.stile-faces .cover { width: 30px; height: 30px; margin-right: -8px; box-shadow: 0 0 0 2px var(--stile-bg); }
-.stile { --stile-bg: var(--md-surface-container-low); position: relative; border-radius: 22px; overflow: hidden; cursor: pointer; text-align: left;
-  background: var(--stile-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
-.stile.wide { grid-column: span 2; }
-.stile-name { position: absolute; left: 14px; right: 42px; top: 12px; z-index: 1; font: 600 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stile-thumb { position: absolute; left: 0; top: 38px; width: 250%; transform: scale(.4); transform-origin: top left; pointer-events: none; }
-.stile.wide .stile-thumb { width: 125%; transform: scale(.8); }
-.stile-thumb > * { margin: 0 !important; box-shadow: none !important; background: transparent !important; }
-.stile-thumb h2, .stile-thumb .sub, .stile-thumb .readout, .stile-thumb .btn-row { display: none !important; }
-.stile.pic::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; pointer-events: none; background: linear-gradient(transparent, var(--stile-bg)); }
-.stile-big { position: absolute; left: 14px; right: 12px; top: 40px; }
-.stile-big strong { display: block; font: 700 40px/44px var(--display, var(--font)); color: var(--md-primary); }
-.stile-big small, .stile-line { display: block; margin-top: 4px; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; }
-.stile-big small { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.stile-covers { position: absolute; left: 14px; top: 42px; display: flex; }
-.stile-covers .cover { width: 56px; height: 56px; border-radius: 8px; margin-right: -14px; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); }
-.stile-line { position: absolute; left: 14px; right: 12px; top: 108px; }
+.scard-open .i { width: 18px; height: 18px; }
+.scard-s { display: block; margin-top: 6px; padding-right: 30px; font: 640 21px/26px var(--display, var(--font)); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.scard-l { display: block; margin-top: 2px; color: var(--md-on-surface-variant); font-size: 12.5px; line-height: 17px; }
+.scard-pic { display: block; margin-top: 12px; }
+.sc-days { display: flex; gap: 3px; height: 26px; padding-bottom: 6px; box-sizing: content-box; }
+.sc-days i { position: relative; flex: 1; min-width: 0; border-radius: 3px; background: color-mix(in srgb, var(--md-primary) var(--v), var(--md-surface-container-high)); }
+.sc-days i.ahead { background: transparent; box-shadow: inset 0 0 0 1px var(--md-outline-variant); }
+.sc-days i.run::after { content: ''; position: absolute; left: -2px; right: -2px; bottom: -6px; height: 2px; background: var(--md-primary); }
+.sc-ridges { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; align-items: end; }
+.sc-ridges span { font: 500 12px/22px var(--mono, var(--font)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-ridges .ridge { height: 22px; }
+.sc-faces { display: flex; }
+.scard .sc-faces > * { flex: none; width: 40px; height: 40px; margin: 0 -8px 0 0; border-radius: 50%; font-size: 15px; box-shadow: 0 0 0 2px var(--sc-bg); }
+.sc-covers { display: flex; align-items: center; gap: 6px; }
+.sc-covers small { margin-left: 6px; color: var(--md-on-surface-variant); font-size: 12px; }
+.sc-bar { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; }
+.sc-cols { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+.sc-cols i { flex: 1; min-width: 0; border-radius: 2px 2px 0 0; background: color-mix(in srgb, var(--md-primary) 70%, transparent); }
+/* A highlight, a number or a link that leads to a block: the block comes in under the bars at the top. */
+[data-blk] { scroll-margin-top: 124px; }
+button.hl { width: 100%; text-align: left; color: inherit; }
+.hl .hl-go { flex: none; width: 18px; height: 18px; margin: 1px 0 0 auto; color: var(--md-on-surface-variant); }
+/* The period day by day: a box per day, darker for more plays, the longest run underlined; a year in small months; all time by month. */
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 9px 6px; margin-top: 4px; }
+.cal .wd, .cal-all .wd { text-align: center; font: 500 11px/14px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.cal .cd { position: relative; height: 38px; padding: 0; border-radius: 9px; color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--md-primary) var(--v, 0%), var(--md-surface-container-high)); }
+.cal .cd.dk { color: var(--md-on-primary); }
+.cal .cd span { position: absolute; left: 6px; top: 5px; font: 500 11px/1 var(--mono, var(--font)); }
+.cal .cd.ahead { background: transparent; box-shadow: inset 0 0 0 1px var(--md-outline-variant); color: var(--md-on-surface-variant); }
+.cal .cd.today { box-shadow: inset 0 0 0 2px var(--md-on-surface); }
+.cal .cd.run::after { content: ''; position: absolute; left: -3px; right: -3px; bottom: -6px; height: 3px; border-radius: 2px; background: var(--md-primary); }
+.cal .cd.rs::after { left: 1px; }
+.cal .cd.re::after { right: 1px; }
+.cal em, .cal-key em { position: absolute; right: 5px; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--md-surface-container-low); }
+.cal em.mn, .cal-key em.mn { top: 5px; background: var(--a3); }
+.cal em.mr, .cal-key em.mr { bottom: 5px; background: var(--a2); }
+.cal-key { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 16px; font-size: 12px; color: var(--md-on-surface-variant); }
+.cal-key span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-key em { position: static; }
+.cal-key .ln { width: 16px; height: 3px; border-radius: 2px; background: var(--md-primary); }
+.cal-year { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
+.cal-mh { padding: 0; font: 500 12px/18px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.cal.cal-mini { gap: 2px; margin-top: 2px; }
+.cal.cal-mini > * { aspect-ratio: 1; padding: 0; border-radius: 2px; background: color-mix(in srgb, var(--md-primary) var(--v, 0%), var(--md-surface-container-high)); }
+.cal.cal-mini > .blank { background: transparent; }
+.cal.cal-mini > .ahead { background: transparent; box-shadow: inset 0 0 0 1px var(--md-outline-variant); }
+.cal.cal-mini > .run { box-shadow: inset 0 0 0 1.5px var(--md-on-surface); }
+.cal-all { display: grid; grid-template-columns: 40px repeat(12, minmax(0, 1fr)); gap: 4px; align-items: center; }
+.cal-all > button:not(.cal-yh) { aspect-ratio: 1; padding: 0; border-radius: 4px; background: color-mix(in srgb, var(--md-primary) var(--v, 0%), var(--md-surface-container-high)); }
+.cal-yh { padding: 0; text-align: left; font: 500 11px/1 var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.cal-artists { margin-top: 14px; }
+.cal-artists > small { display: block; margin-bottom: 2px; color: var(--md-on-surface-variant); font-size: 12px; }
+/* Who you played when: a row per artist in the order they peaked, how you played them, and their curve. */
+.who-ax { display: flex; justify-content: space-between; margin: 0 0 4px 168px; font: 400 11px/14px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.who-r { display: grid; grid-template-columns: 40px 108px 1fr; gap: 10px; align-items: center; width: 100%; padding: 6px 0; text-align: left; color: inherit;
+  border-top: 1px solid color-mix(in srgb, var(--md-outline-variant) 60%, transparent); }
+.who-r .t { min-width: 0; }
+.who-r .t b { display: block; font: 500 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who-r .t small { display: block; font: 400 11px/14px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.ridge { display: block; width: 100%; height: 30px; }
+.k-steady { color: var(--md-primary) !important; }
+.k-wave { color: var(--a2) !important; }
+.k-new { color: var(--a3) !important; }
+.rank .rp { flex: none; max-width: 150px; padding: 4px 10px; border-radius: 999px; text-align: right; background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+  font: 500 11.5px/15px var(--mono, var(--font)); }
+/* Decades as one bar, oldest first and darker toward now. */
+.decbar { display: flex; gap: 2px; height: 30px; margin-top: 4px; border-radius: 10px; overflow: hidden; }
+.decbar > * { position: relative; min-width: 4px; padding: 0; background: color-mix(in srgb, var(--md-primary) calc(var(--k) * 85% + 10%), var(--md-surface-container-high)); }
+.decbar > .on { box-shadow: inset 0 0 0 2px var(--md-on-surface); }
+.decbar span { position: absolute; left: 6px; top: 7px; font: 500 12px/16px var(--mono, var(--font)); color: var(--md-on-surface); }
+.decbar .dk span { color: var(--md-on-primary); }
+.scard .decbar { height: 22px; }
+.scard .decbar span { top: 3px; }
+/* Your taste, at the end of Stats. */
+.stats-taste { margin-top: 28px; }
+.stats-taste > .sub { display: block; margin: 2px 0 10px; }
+button.xlist-year { width: calc(100% - 8px); justify-content: space-between; align-items: center; text-align: left; color: inherit; padding: 0; }
+button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 0; font: inherit; }
 .ar-size { flex: none; margin-right: 6px; min-width: 52px; justify-content: center; }
 .page-h { font: 600 26px/32px var(--display, var(--font)); margin: 4px 4px 4px; }
 #activityBtn { position: relative; }
@@ -864,7 +929,6 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .rank .acts { display: flex; gap: 2px; align-items: center; }
 .rank .whys { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .rank .why { font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 9px; background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); }
-.rank .r.with-act { grid-template-columns: 22px 1fr auto auto; }
 .rank .r.gone, .btn.gone { opacity: .35; pointer-events: none; }
 .icon-btn.small { width: 36px; height: 36px; }
 .icon-btn.small .i { width: 20px; height: 20px; }
@@ -1266,3 +1330,12 @@ details.more[open] summary { margin-bottom: 6px; }
 .live-next span { display: flex; flex-direction: column; gap: 2px; }
 .live-next small { opacity: .8; }
 .live-h { margin: 18px 0 4px; font: 600 15px/20px var(--font); }
+
+/* Your plays of a song, in the accent color. */
+.rank .v.cnt { padding: 2px 8px; border-radius: 999px; font-weight: 600; color: var(--tint-text, var(--md-primary));
+  background: color-mix(in srgb, var(--tint-text, var(--md-primary)) 13%, transparent); }
+/* Songs and artists can be held (see watchLongPress): no text selection or Android menu on them. */
+[data-track], [data-artist] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+/* Actions one under the other in a sheet (a decade, a song held on a list). */
+.sheet-actions.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.sheet-actions.col .btn { justify-content: flex-start; }

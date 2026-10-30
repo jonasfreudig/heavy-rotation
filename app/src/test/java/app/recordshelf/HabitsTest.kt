@@ -48,4 +48,33 @@ class HabitsTest {
         assertEquals(12, newbie.getInt("plays"))
         assertEquals("Wave and Newbie have ten plays or more; Steady was there from the history's first days", 2, na.getInt("kept"))
     }
+
+    @Test
+    fun theCalendarHasEveryDayAndMarksNewArtistsAndRepeats() {
+        val s = stats()
+        val april = s.compute(s.range("m2026-04")).getJSONObject("calendar")
+        assertEquals("day", april.getString("unit"))
+        assertEquals(30, april.getInt("days"))
+        assertEquals(30, april.getJSONArray("counts").length())
+        assertEquals("Gateway and Newbie came on April 1", listOf(0), (0 until april.getJSONArray("newDays").length()).map { april.getJSONArray("newDays").getInt(it) })
+        val all = s.compute(s.range("all")).getJSONObject("calendar")
+        assertEquals("month", all.getString("unit"))
+        val counts = all.getJSONArray("counts")
+        assertEquals(40 + 30 + 1 + 12, (0 until counts.length()).sumOf { counts.getInt(it) })
+
+        // A song four times in a row on May 6, and another seven times in one week, most on May 13.
+        val b = History.Builder()
+        b.add(at(2026, 5, 1), "Someone", "Before", "A")
+        repeat(4) { b.add(at(2026, 5, 6, 20) + it * 240L, "Looper", "Again", "B") }
+        repeat(3) { b.add(at(2026, 5, 12) + it * 3_600L, "Fan", "Favorite", "C") }
+        repeat(4) { b.add(at(2026, 5, 13) + it * 3_600L, "Fan", "Favorite", "C") }
+        val t = Stats(b.build(), ZoneId.of("UTC"), at(2026, 5, 20))
+        val may = t.compute(t.range("m2026-05")).getJSONObject("calendar")
+        assertEquals("only the days so far", 20, may.getJSONArray("counts").length())
+        assertEquals(31, may.getInt("days"))
+        val rep = may.getJSONArray("repeatDays").let { a -> (0 until a.length()).map { a.getInt(it) } }
+        assertEquals(listOf(5, 12), rep)
+        val ob = t.compute(t.range("m2026-05")).getJSONArray("obsessions").getJSONObject(0)
+        assertEquals("C", ob.getString("album"))
+    }
 }
