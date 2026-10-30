@@ -1151,7 +1151,7 @@ function badgeLine(id) {
   const b = id && BADGES[id];
   if (!b || !BADGE[b.k]) return '';
   const [name, , say] = BADGE[b.k];
-  return `<div class="rbadge-line"><span class="rbadge-pill b-${b.k}">${badgeMark(b.k)}<b>${name}</b>: ${esc(say(b))}</span></div>`;
+  return `<div class="rbadge-line"><span class="rbadge-pill b-${b.k}">${badgeMark(b.k)}<b>${name}:</b> ${esc(say(b))}</span></div>`;
 }
 /** Asks again when the history or the shelf changed (and on a new day: two weeks move on). */
 function askBadges() {
@@ -1658,7 +1658,7 @@ function renderSearch() {
   const artists = (r && r.artists) || [], albums = ((r && r.albums) || []).filter((a) => !a.owned), tracks = (r && r.tracks) || [];
   const artistsHtml = sec('Artists', artists.length, `<div class="rank">${artists.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
   const albumsHtml = sec('Albums', albums.length, `<div class="rank">${albums.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)}${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, ${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
-  const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${compact(t.plays)}</span></button>`).join('')}</div>`);
+  const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v cnt">${compact(t.plays)}×</span></button>`).join('')}</div>`);
   // On the shelf your records come first; elsewhere what you played does.
   const parts = tab === 'shelf' ? [shelfHtml, artistsHtml, albumsHtml, tracksHtml] : [artistsHtml, albumsHtml, tracksHtml, shelfHtml];
   const none = !owned.length && r && !artists.length && !albums.length && !tracks.length;
@@ -4080,7 +4080,7 @@ function periodBlock(r, list, noun, attrs, extra = '') {
   if (!r || r.kind === 'all' || !r.plays || !list || !list.length) return '';
   const max = Math.max(1, ...list.map((x) => x.plays));
   return `<div class="viz"><h2>${esc(periodName(r))}</h2><span class="sub">${plural(r.plays, 'play')}${r.rank ? `, your #${r.rank} ${noun} then` : ''}. The rest of this page is all time.</span>
-    <div class="rank">${list.map((x, i) => `<button class="r" ${attrs(x)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v">${num(x.plays)}</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div>${extra}</div>`;
+    <div class="rank">${list.map((x, i) => `<button class="r" ${attrs(x)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b></span><span class="v cnt">${num(x.plays)}×</span><div class="bar"><i style="width:${(x.plays / max) * 100}%"></i></div></button>`).join('')}</div>${extra}</div>`;
 }
 
 function renderTrack() {
@@ -5704,7 +5704,7 @@ function renderArtist() {
   const pic = a.photo || a.cover || '';
   let h = `<div class="artist-hero page-hero"><i class="glow"></i>
       ${holoCover(pic, a.name, a.name, { frame: true, key: `artist|${a.name}` })}
-      <div class="ah-text"><span class="k">Artist</span><h1 class="fit">${esc(a.name)}</h1>
+      <div class="ah-text"><h1 class="fit">${esc(a.name)}</h1>
         <div class="meta">${plural(a.plays, 'play')} since ${esc(mo(a.first.ts))}, on ${plural(a.days, 'day')}</div></div></div>
     ${a.genres.length ? `<div class="tags">${a.genres.map((g) => `<button class="chip link" data-genre="${esc(genreKeyOf(g))}" data-glabel="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
     ${listenRow('artists', a.name)}`;

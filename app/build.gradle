@@ -27,8 +27,8 @@ android {
         applicationId "app.recordshelf"
         minSdk 26
         targetSdk 34
-        versionCode 65
-        versionName "0.65"
+        versionCode 66
+        versionName "0.66"
         buildConfigField 'String', 'LASTFM_KEY', "\"${builtIn('recordshelf.lastfm.key')}\""
         buildConfigField 'String', 'LASTFM_SECRET', "\"${builtIn('recordshelf.lastfm.secret')}\""
         buildConfigField 'String', 'TIDAL_CLIENT_ID', "\"${tidalBuiltIn('recordshelf.tidal.clientId')}\""
