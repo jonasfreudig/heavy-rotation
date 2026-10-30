@@ -4,10 +4,12 @@ An Android app for your record shelf, everything else you listen to, and what it
 
 ![Heavy Rotation: the shelf, a record, a year as a river of artists, an artist and now playing with its lyrics](docs/screenshots/banner.jpg)
 
-Hi! Heavy Rotation is my passion project. I wanted one place for my records and everything else I
+Hiii! Heavy Rotation has been a very fun project to work on so far - and I hope that you'll enjoy it too!
+I wanted one place for my records and everything else I
 listen to: put a record on, tap once, and have it count next to what the phone plays, then see what
-it all adds up to. It grew into much more than that, and I've loved every bit of building it. I
-hope it turns out to be useful for you too.
+it all adds up to and what cool stats I can get out of it. 
+It grew into much more than that, and there will probably more changes in the future. I
+hope it turns out to be useful for you too!
 
 Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of covers and
 scrobbles the records you play to [Last.fm](https://www.last.fm). It scrobbles what plays on your
