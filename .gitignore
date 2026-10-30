@@ -19,3 +19,6 @@ icon-*.png
 chart-mockups.jpg
 badges-and-ideas.jpg
 genres-proposal.jpg
+
+# Release APKs and notes, made for GitHub releases
+release/
