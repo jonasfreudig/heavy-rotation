@@ -50,8 +50,8 @@ shows the current track with a countdown and has two buttons, Stop and "Flip to 
      restricted settings, then try again.
 3. TIDAL is switched on by default. Other apps appear in the list once they play something.
 4. Keep Pano running and listen as usual for a day or two. In shadow mode Heavy Rotation only logs
-   what it would scrobble (marked "Shadow" on the Activity tab) and sends nothing.
-5. On the Activity tab, tap Compare with Pano. It reads what reached Last.fm since shadow mode
+   what it would scrobble (marked "Shadow" in Activity) and sends nothing.
+5. Open Activity (the clock button at the top) and tap Compare with Pano. It reads what reached Last.fm since shadow mode
    started and shows how much Heavy Rotation caught, what only Pano scrobbled, what only Heavy
    Rotation would have scrobbled, and tracks the two apps named differently.
 6. When you're happy with the result, switch Phone scrobbling to On and turn off Pano's scrobbling
@@ -134,16 +134,16 @@ A week shows its seven days, the week before in outline, and each day on a 24-ho
 change over the period (the river, phases, genre drift) appear once the period has four days with
 music.
 
-A week, month, year or all time comes in four tabs under the period: Overview (the story, the
-numbers, the highlights, your week), Listening (your record, plays over time, the river, when you
-listen, streaks, phases, habits), Music (top lists, new artists, obsessions, genre drift, decades)
-and Shelf (rarely played records and wishlist ideas). The period and the genre or decade filter
-apply to every tab. A day is short, so it stays one page. Settings → Look → Stats and Explore turns
-the tabs off.
+For a week, month, year or all time, the smaller blocks come as tiles, two side by side: streaks,
+phases, habits, new artists, decades, obsessions, rarely played records and wishlist ideas. A tile
+shows a small picture of its chart, or its one number (your longest streak, your biggest obsession).
+Tap it and the block opens full size on its own page, for the same period. The bigger charts stay
+full size on the page. A day is short, so it has no tiles. Settings → Look → Stats and Explore →
+One long page shows every block full size.
 
-"Arrange this page", at the bottom, reorders the blocks (drag the handles) and hides the ones you
-don't want; in tabs, each block stays in its tab, in the order you gave it. The Day tab has its own
-order. The layout goes into backups with the other settings.
+"Arrange this page", at the bottom, reorders the blocks (drag the handles), hides the ones you
+don't want, and makes any block a tile or full size (Tile or Full next to its name). The Day tab
+has its own order. The layout goes into backups with the other settings.
 The charts adapt to the period: a week or a month is shown per day, a year per week or month, all
 time per month, quarter or year. These are the blocks for the chosen period:
 
@@ -192,7 +192,7 @@ time per month, quarter or year. These are the blocks for the chosen period:
 
 #### Songs, albums and artists
 
-Tap a scrobble on the Activity tab, or a song in the stats lists, for the song's page: all-time
+Tap a scrobble in Activity, or a song in the stats lists, for the song's page: all-time
 plays and rank, this period's rank, first and last play, its biggest day, how much of the artist it
 makes up, plays per month, time of day, and what you tend to play right after it. Album pages (from
 Top 10, an artist's albums, or a record's "Your stats" chip) show the same, plus which of their
@@ -251,7 +251,7 @@ before. Tap a show for that night's setlist as a playlist.
 Artist photos come from Deezer's public catalog (no account needed). Each is looked up once and kept
 on the phone; they show on artist pages, in Top 10 and Explore, and in the story.
 
-Phone scrobbles carry no cover, so the Activity tab takes one from your shelf (if you own the album)
+Phone scrobbles carry no cover, so Activity takes one from your shelf (if you own the album)
 or from Deezer, looked up once and kept on the phone.
 
 #### Search
@@ -329,9 +329,11 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 
 #### Explore
 
-Explore has three tabs. For you suggests music you haven't played. Rediscover has the lists below
-and Crate dig. Your taste has the genre map, the musical atlas, you vs everyone and your concerts.
-With Settings → Look → Stats and Explore set to One long page, all of it comes on one page.
+Explore comes in rows: each list is one row you scroll sideways, with its playlist next to the
+heading. At the top sit the discovery mix and Crate dig. Then come the suggestions for you and new
+releases by your artists, then the lists to rediscover, and last your taste: the musical atlas,
+you vs everyone, your concerts and the genre map. With Settings → Look → Stats and Explore set to
+One long page, the lists come one after the other, full size.
 
 #### For you
 
@@ -343,8 +345,9 @@ of your artists that points to it, weighed by how much you play that artist, so 
 your artists point to ranks high. Artists you've played or have on your shelf never show up. The
 first look takes a minute or two; after that it runs again once a week, when you open Explore.
 
-- Artists you might like lists the best 40 with the reason ("Because you play Shame, IDLES and
-  Fontaines D.C."), their genre and how many fans they have on Deezer. Close keeps to your taste,
+- Artists you might like shows the best ones as a row. All opens the full list of up to 40, with
+  the reason ("Because you play Shame, IDLES and Fontaines D.C."), their genre and how many fans
+  they have on Deezer. Close keeps to your taste,
   Further out prefers less known artists and also looks one step further, at who is like your best
   suggestions. Tap a suggestion to see which of your artists point to them and how strongly, and
   their best-known songs, with a playlist of those and their artist page. The artist page of
@@ -361,9 +364,9 @@ first look takes a minute or two; after that it runs again once a week, when you
 Settings → Stats and listening → Suggestions on Explore turns all of this off, and with it the
 lookups.
 
-#### Rediscover
+#### Lists to rediscover
 
-The Rediscover tab collects listening that never makes the top lists:
+These lists collect listening that never makes the top lists:
 
 - Lost favorites are artists you played a lot that have gone quiet for half a year or more, with
   the month they were big for you.
@@ -455,7 +458,9 @@ the whole page, and buttons and cards float over it, frosted, with a soft shadow
 
 Both styles give each page one solid button and its links in the cover's color. Top bars scroll
 away with the page and come back over it, on a soft fade of the page's color, as soon as you scroll
-up. The tabs sit in a floating bar at the bottom, with the page fading out underneath.
+up. Shelf, Stats and Explore sit in a floating bar at the bottom, with the page fading out
+underneath; Activity, the list of what was scrobbled, opens from the clock button at the top, which
+shows a count when scrobbles are waiting.
 
 Animations show where each thing comes from: a pill slides to the chosen tab, view or option; pages
 come in from the side and leave the same way; a record's cover flies from the shelf up to its page
@@ -497,7 +502,7 @@ If the timing drifts from the record, tap the track that is actually playing on 
 page; the times after it move.
 
 Offline, scrobbles wait on the phone and go out automatically once it is online again (also after
-a reboot). The Activity tab shows what was sent, what waits, and what Last.fm ignored and why.
+a reboot). Activity, the clock button at the top, shows what was sent, what waits, and what Last.fm ignored and why.
 
 Last.fm silently ignores scrobbles older than about two weeks. The app blocks scrobbling a listen
 that old and warns when waiting scrobbles get close to the limit.

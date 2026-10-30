@@ -2557,8 +2557,7 @@ function setSpot(id, k) {
   const st = RECS[id];
   if (!st) return;
   st.spot = st.spot === k ? -1 : k;
-  const c = $(`canvas[data-record="${id}"]`);
-  if (c) drawRecord(c);
+  $$(`canvas[data-record="${id}"]`).forEach(drawRecord);
   const ro = $('#ro-rec-' + id);
   if (ro) ro.innerHTML = st.spot >= 0 ? spotText(id) : 'Tap a name below, search, or tap a dot to light an artist up.';
   $$(`[data-ink="${id}"]`).forEach((b) => b.classList.toggle('on', +b.dataset.k === st.spot));
@@ -4722,7 +4721,7 @@ function renderExplore() {
   if (!x) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (x.empty) { body.innerHTML = `<div class="empty"><p>Nothing to explore yet.</p></div>`; return; }
   const tail = x.tail || {};
-  // The page in parts: one after the other, or in tabs (Settings → Look).
+  // The page in parts: one after the other, or as rows (Settings → Look).
   const P = {};
   P.intro = `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}.</p>`;
   P.tiles = `<div class="xp-tiles">
@@ -4766,12 +4765,11 @@ function renderExplore() {
       otd.map((y) => `<div class="otd"><div class="yr"><b>${y.year}</b><small>${plural(y.plays, 'play')}, ${y.artists.map(esc).join(', ')}</small></div>
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
-  morph(body, tabbedHtml('tab-explore', exploreTab, EXPLORE_TABS, EXPLORE_LONG, P, { drop: true }));
+  morph(body, mainCompact() ? exploreRows(x, P) : EXPLORE_LONG.map((k) => P[k] || '').join(''));
   const gm = $('.genre-map');
   gmSizes.disconnect();
   if (gm) { gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
   renderVsCard();
-  syncPageTabs($('#tab-explore'));
   if (!VS) send({ t: 'vs' });
 }
 
@@ -4782,6 +4780,7 @@ let discoverAll = false;
 window.onDiscover = (d) => {
   DISCOVER = d;
   if (tab === 'explore') renderExplore();
+  renderForYou();
 };
 const REACH = [['0', 'Close'], ['1', 'In between'], ['2', 'Further out']];
 const fansLabel = (n) => (n >= 1000 ? `${compact(n)} fans` : '');
@@ -4791,31 +4790,87 @@ const becauseText = (x) => {
   if (x.via) return `Like ${x.via}, another of your suggestions`;
   return n.length ? `Because you play ${n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : n[0]}` : '';
 };
+const discoverOn = () => (ST.discover || {}).on !== false && !(DISCOVER && DISCOVER.on === false);
+/** Still looking for the first suggestions, or it failed: what to say instead of them ('' once there are some). */
+function discoverWait(d) {
+  if (d && (d.built || (d.artists || []).length)) return '';
+  if (d && d.error) return `<p class="hint">${esc(d.error)}</p><button class="btn tonal small" data-dagain>Try again</button>`;
+  const p = d && d.total ? Math.round((d.done / d.total) * 100) : 0;
+  return `<span class="sub">Looking up who Last.fm's and Deezer's listeners find alike to the artists you play${d && d.total ? `: ${d.done} of ${d.total}` : ''}. This takes a minute the first time.</span>
+    <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div>`;
+}
+const mixCard = (d) => `<button class="fy-mix" data-pl="discover"><span class="stack">${(d.artists || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.photo, a.name, a.name, 'tiny')}</i>`).join('')}</span>
+    <span class="txt"><b>Discovery mix</b><small>${d.mix * 2} songs you haven't played, new every Monday</small></span></button>`;
+const reachChips = (d) => `<div class="chips fy-reach">${REACH.map(([v, l]) => `<button class="chip${String(d.reach) === v ? ' on' : ''}" data-reach="${v}">${l}</button>`).join('')}</div>`;
+/** Suggestions as rows with their reason and Not for me, for the full list and the long page. */
+const suggestionRows = (arts) => arts.map((a) => `<div class="r with-cover fy-row" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b>
+    <small class="fy-why">${esc(becauseText(a))}</small>${a.genre || a.fans ? `<small>${esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', '))}</small>` : ''}</span>
+    <button class="icon-btn small" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button></div>`).join('');
+const releaseCards = (d) => (d.releases || []).map((r) => `<button class="xcard" ${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}">${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
+    <small>${esc(r.artist)}</small><small class="meta">${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}</small></button>`).join('');
 function forYouHtml() {
   const d = DISCOVER;
-  if ((ST.discover || {}).on === false || (d && !d.on)) return '';
-  if (!d || (!d.built && (!d.artists || !d.artists.length))) {
-    if (d && d.error) return `<div class="empty small"><p>${esc(d.error)}</p><button class="btn tonal" data-dagain>Try again</button></div>`;
-    const p = d && d.total ? Math.round((d.done / d.total) * 100) : 0;
-    return `<div class="viz fy-wait"><h2>Finding music for you</h2><span class="sub">Looking up who Last.fm's and Deezer's listeners find alike to the artists you play${d && d.total ? `: ${d.done} of ${d.total}` : ''}. This takes a minute the first time.</span>
-      <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div></div>`;
-  }
+  if (!discoverOn()) return '';
+  const wait = discoverWait(d);
+  if (wait) return `<div class="viz fy-wait"><h2>Finding music for you</h2>${wait}</div>`;
   const arts = d.artists || [];
   const shown = discoverAll ? arts : arts.slice(0, 8);
-  const pics = arts.slice(0, 3);
-  const mix = arts.length >= 4 ? `<button class="fy-mix" data-pl="discover"><span class="stack">${pics.map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.photo, a.name, a.name, 'tiny')}</i>`).join('')}</span>
-      <span class="txt"><b>Discovery mix</b><small>${d.mix * 2} songs you haven't played, by artists your listening points to. A new one every Monday.</small></span>${icon('chevron-right')}</button>` : '';
-  const reach = `<div class="chips fy-reach">${REACH.map(([v, l]) => `<button class="chip${String(d.reach) === v ? ' on' : ''}" data-reach="${v}">${l}</button>`).join('')}</div>`;
-  const rows = shown.map((a) => `<div class="r with-cover fy-row" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b>
-      <small class="fy-why">${esc(becauseText(a))}</small>${a.genre || a.fans ? `<small>${esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', '))}</small>` : ''}</span>
-      <button class="icon-btn small" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button></div>`).join('');
   const more = arts.length > shown.length ? `<button class="btn text" data-dmore>Show all ${arts.length}</button>` : '';
-  const rel = (d.releases || []).map((r) => `<button class="xcard" ${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}">${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
-      <small>${esc(r.artist)}</small><small class="meta">${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}</small></button>`).join('');
-  return `${mix}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Artists you haven't played that your listening points to. Further out brings less known ones. Tap one to see why.</span>
-      ${reach}${arts.length ? `<div class="rank fy-list">${rows}</div>${more}` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}</div>
+  const rel = releaseCards(d);
+  return `${arts.length >= 4 ? mixCard(d) : ''}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Artists you haven't played that your listening points to. Further out brings less known ones. Tap one to see why.</span>
+      ${reachChips(d)}${arts.length ? `<div class="rank fy-list">${suggestionRows(shown)}</div>${more}` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}</div>
     ${rel ? `<div class="viz explore"><div class="xhead"><h2>New from your artists</h2></div><span class="sub">Albums, EPs and singles out in the last eight weeks, or coming soon</span><div class="xcards">${rel}</div></div>` : ''}
     ${d.busy ? `<p class="hint center">Looking for more: ${d.done} of ${d.total}</p>` : ''}`;
+}
+
+/** All the suggestions, with how far they go, their reasons and Not for me. */
+function openForYou() {
+  openPage('forYouPage');
+  renderForYou();
+}
+function renderForYou() {
+  if (!isOpen('forYouPage')) return;
+  const d = DISCOVER || {};
+  const wait = discoverWait(d);
+  const arts = d.artists || [];
+  $('#forYouBody').innerHTML = `<h1 class="page-h">Artists you might like</h1><p class="hint">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
+    ${wait || `${reachChips(d)}<p class="hint">Further out brings less known artists, and ones a step further from yours.</p>
+      ${arts.length ? `<div class="rank fy-list">${suggestionRows(arts)}</div>` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`;
+}
+
+// ---- Explore as rows (Settings → Look): every list one row you scroll sideways ----
+
+/** One row: its heading (with a playlist or "all" button), what it is, and its cards. Empty without cards. */
+const xrow = (title, more, cards, sub = '') => (cards ? `<section class="xrow"><div class="xrow-head"><h2>${title}</h2>${more || ''}</div>${sub ? `<span class="sub">${sub}</span>` : ''}<div class="xcards">${cards}</div></section>` : '');
+const xrowPl = (kind) => `<button class="xrow-more" data-pl="${kind}">${icon('playlist', 'i small')}Playlist</button>`;
+const artistCard = (a, line) => `<button class="xcard round" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${line}</small></button>`;
+const songCard = (t, line) => `<button class="xcard" ${trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover })}>${coverHtml(t.cover, t.album || t.title, t.artist)}<b>${esc(t.title)}</b><small>${esc(t.artist)}</small><small class="meta">${line}</small></button>`;
+const timesPlayed = (n) => (n === 1 ? 'played once' : n === 2 ? 'played twice' : `played ${n} times`);
+function exploreRows(x, P) {
+  const d = DISCOVER, on = discoverOn();
+  const dig = `<button class="fy-mix dig" data-pl="dig"><span class="stack">${(x.lostAlbums || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.cover, a.title, a.artist, 'tiny')}</i>`).join('')}</span>
+    <span class="txt"><b>Crate dig</b><small>Songs you played a few times and forgot, shuffled</small></span></button>`;
+  const mix = on && d && (d.artists || []).length >= 4 ? mixCard(d) : '';
+  let h = `<div class="mixrow${mix ? '' : ' solo'}">${mix}${dig}</div>`;
+  if (on) {
+    const arts = (d && d.artists) || [];
+    const wait = discoverWait(d);
+    h += wait ? `<section class="xrow"><div class="xrow-head"><h2>Artists you might like</h2></div>${wait}</section>`
+      : xrow('Artists you might like', arts.length ? `<button class="xrow-more" data-dmore>All ${arts.length}</button>` : '',
+        arts.slice(0, 12).map((a) => `<button class="xcard round" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${esc(a.via ? `Like ${a.via}` : a.because && a.because[0] ? `Like ${a.because[0].name}` : a.genre || '')}</small></button>`).join(''),
+        'Artists you haven\'t played that your listening points to. Tap one to see why.');
+    if (d) h += xrow('New from your artists', '', releaseCards(d));
+  }
+  h += xrow('Lost favorites', xrowPl('lost'), (x.lostArtists || []).map((a) => artistCard(a, `last ${esc(monthYear(a.last))}`)).join(''), 'Played a lot, quiet for half a year or more');
+  h += xrow('Albums to rediscover', xrowPl('lostAlbums'), (x.lostAlbums || []).map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
+    <small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`).join(''), 'Played through, then left on the shelf');
+  h += xrow('Quiet regulars', xrowPl('regulars'), (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''), 'Never on top, always around');
+  h += xrow('One-day wonders', xrowPl('oneDay'), (x.oneDay || []).map((a) => artistCard(a, esc(dateLabel(a.first)))).join(''), 'Played all day once, never again');
+  h += xrow('Deep cuts', xrowPl('deepCuts'), (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''), 'Songs by your favorite artists you\'ve hardly played');
+  const today = esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }));
+  h += xrow('On this day', xrowPl('onThisDay'), (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''), `What you played on ${today} in earlier years`);
+  h += `<section class="xrow"><div class="xrow-head"><h2>Your taste</h2></div>${P.intro}${P.tiles}</section>${P.genreMap}`;
+  return h;
 }
 /** "3 weeks ago", "this week", "out 14 Nov" */
 function releaseWhen(r) {
@@ -4828,7 +4883,7 @@ function releaseWhen(r) {
 }
 /** Not for me: gone from the suggestions, and the artists that led there count a little less. Undo brings it back. */
 function discoverNope(name) {
-  if (DISCOVER && DISCOVER.artists) { DISCOVER.artists = DISCOVER.artists.filter((a) => a.name !== name); renderExplore(); }
+  if (DISCOVER && DISCOVER.artists) { DISCOVER.artists = DISCOVER.artists.filter((a) => a.name !== name); renderExplore(); renderForYou(); }
   send({ t: 'discoverNo', name });
   toast(`${name} won't be suggested again`, { label: 'Undo', run: () => send({ t: 'discoverUndo', name }) });
 }
@@ -5411,9 +5466,9 @@ function renderArtist() {
 // ---- long pages in tabs (Settings → Look): artist, album and genre pages, Stats and Explore; or each as one long page ----
 
 const layoutPref = (key) => { try { return localStorage.getItem(key) !== 'long'; } catch (_) { return true; } };
-/** Artist, album and genre pages in tabs; Stats and Explore in tabs. */
+/** Artist, album and genre pages in tabs; Stats and Explore as rows and tiles. Either way, or as one long page each. */
 const pageTabs = () => layoutPref('pageLayout');
-const mainTabs = () => layoutPref('mainLayout');
+const mainCompact = () => layoutPref('mainLayout');
 /** Each place's tabs ([key, label, its parts]) and the long page's order of the same parts. */
 const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs', 'origin']], ['listening', 'Listening', ['river', 'life', 'record']],
   ['music', 'Music', ['tracks', 'albums', 'shelf', 'disco', 'global']], ['live', 'Live', ['concerts', 'live']]];
@@ -5423,22 +5478,14 @@ const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river
 const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside']], ['artists', 'Artists', ['artists', 'everyone']],
   ['music', 'Music', ['albums', 'songs', 'lost', 'shelf', 'decades']], ['listening', 'Listening', ['life']]];
 const GENRE_LONG = ['tiles', 'inside', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'shelf'];
-/** The Stats tab's blocks by tab (within each, in the order Arrange gives them). The day stays one page: it's short. */
-const STATS_TABS = [['overview', 'Overview', ['story', 'numbers', 'tidy', 'highlights', 'week']],
-  ['listening', 'Listening', ['record', 'timeline', 'river', 'days', 'clock', 'streaks', 'pulse', 'habits']],
-  ['music', 'Music', ['top', 'newArtists', 'obsessions', 'genres', 'decades']], ['shelf', 'Shelf', ['rarely', 'wishlist']]];
-const EXPLORE_TABS = [['foryou', 'For you', ['foryou']], ['rediscover', 'Rediscover', ['dig', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay']],
-  ['taste', 'Your taste', ['intro', 'tiles', 'genreMap']]];
+/** Explore as one long page: its parts in this order. */
 const EXPLORE_LONG = ['intro', 'tiles', 'dig', 'foryou', 'genreMap', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay'];
-let statsTab = '', exploreTab = '';
 
-/** Where tabs are: whether they're on there, the open one, and how another opens. Pages scroll themselves, the main tabs the window. */
+/** Where tabs are: whether they're on there, and how another opens. */
 const TAB_HOSTS = {
   artistPage: { on: pageTabs, show: (t) => PAGE_STATE.artistPage.set({ ...ARTIST, tab: t }) },
   albumPage: { on: pageTabs, show: (t) => PAGE_STATE.albumPage.set({ ...ALBUM, tab: t }) },
   genrePage: { on: pageTabs, show: (t) => PAGE_STATE.genrePage.set({ ...GENRE, tab: t }) },
-  'tab-stats': { on: mainTabs, show: (t) => { statsTab = t; renderStats(); } },
-  'tab-explore': { on: mainTabs, show: (t) => { exploreTab = t; renderExplore(); } },
 };
 /** What each place shows in tabs now: its tabs in order, the open one, and each one's content (the swipe shows the next one coming). */
 const TAB_SHOWN = {};
@@ -5837,16 +5884,17 @@ function statsLayout(group) {
     const before = def.slice(0, i).reverse().find((x) => order.includes(x));
     order.splice(before ? order.indexOf(before) + 1 : 0, 0, k);
   });
-  return { order, hidden: new Set(known(saved.hidden)) };
+  // Tiles as chosen; before any choice, the blocks that start as tiles.
+  return { order, hidden: new Set(known(saved.hidden)), small: new Set(Array.isArray(saved.small) ? known(saved.small) : SMALL_DEFAULT.filter((k) => def.includes(k))) };
 }
-function saveLayout(group, order, hidden) {
+function saveLayout(group, order, hidden, small) {
   // A damaged entry is started over, or nothing could ever be saved again.
   let all = {};
   try {
     const v = JSON.parse(localStorage.getItem('statsLayout') || '{}');
     if (v && typeof v === 'object' && !Array.isArray(v)) all = v;
   } catch (_) { /* damaged, or a preview without storage */ }
-  if (order) all[group] = { order, hidden: [...hidden] };
+  if (order) all[group] = { order, hidden: [...hidden], ...(small ? { small: [...small] } : {}) };
   else delete all[group];
   try { localStorage.setItem('statsLayout', JSON.stringify(all)); } catch (_) { /* preview without storage */ }
 }
@@ -5870,18 +5918,74 @@ function renderStats() {
   }
   const lay = statsLayout(statsGroup(s));
   const ids = lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k));
-  if (k === 'day') {
-    TAB_SHOWN['tab-stats'] = null;
+  if (k === 'day' || !mainCompact()) {
     morph(body, ids.map((id) => BLOCKS[id].html(s) || '').join('') + arrange);
   } else {
-    // In tabs, each tab's blocks keep the order Arrange gives them.
-    const P = {};
-    ids.forEach((id) => { P[id] = BLOCKS[id].html(s) || ''; });
-    const tabs = STATS_TABS.map(([key, l, parts]) => [key, l, ids.filter((id) => parts.includes(id))]);
-    morph(body, tabbedHtml('tab-stats', statsTab, tabs, ids, P, { drop: true, tail: arrange }));
+    // Tiles next to each other in twos, in the order Arrange gives them; a full-size block between them starts a new pair.
+    let h = '', run = [];
+    const flush = () => {
+      if (run.length) h += `<div class="stiles">${run.map(([id, x], i) => statTile(id, s, x, run.length % 2 === 1 && i === run.length - 1)).join('')}</div>`;
+      run = [];
+    };
+    for (const id of ids) {
+      const x = BLOCKS[id].html(s) || '';
+      if (!x) continue;
+      if (lay.small.has(id) && !NEVER_TILE.includes(id)) run.push([id, x]);
+      else { flush(); h += x; }
+    }
+    flush();
+    morph(body, h + arrange);
   }
   drawRecords();
-  syncPageTabs($('#tab-stats'));
+  renderBlock();
+}
+
+// ---- Stats tiles: a block in small, opening full size on its own page ----
+
+/** Blocks that start as tiles; Arrange makes any block a tile or full size, except these. */
+const SMALL_DEFAULT = ['streaks', 'pulse', 'habits', 'newArtists', 'decades', 'obsessions', 'rarely', 'wishlist'];
+const NEVER_TILE = ['story', 'numbers', 'tidy', 'highlights', 'today'];
+const tileBig = (n, line) => `<span class="stile-big"><strong>${n}</strong><small>${line}</small></span>`;
+const tileCovers = (list, line) => `<span class="stile-covers">${list.slice(0, 3).map((x) => coverHtml(x.cover || x.image, x.title || x.album, x.artist, 'tiny')).join('')}</span><small class="stile-line">${line}</small>`;
+/** What a tile says instead of a small picture of its chart, for the blocks that are mostly words. */
+const TILE_SUMMARY = {
+  streaks: (s) => {
+    const st = s.streaks || {};
+    const now = s.range.to * 1000 > Date.now() - 2000 && st.current ? `. Now on day ${st.current}` : '';
+    return st.longest ? tileBig(num(st.longest), `${st.longest === 1 ? 'day' : 'days'} in a row at most, from ${esc(dateLabel(st.longestFrom))}${now}`) : '';
+  },
+  newArtists: (s) => {
+    const na = s.newArtists || {};
+    return na.count ? tileBig(num(na.count), `${na.count === 1 ? 'new artist' : 'new artists'}${na.kept ? `, ${num(na.kept)} you kept playing` : ''}`) : tileBig('0', 'new artists: you stuck with the ones you knew');
+  },
+  obsessions: (s) => {
+    const o = (s.obsessions || [])[0], l = (s.loops || [])[0];
+    if (o) return tileBig(`${num(o.count)}×`, `${esc(o.track)} by ${esc(o.artist)} in one week`);
+    return l ? tileBig(`${l.run}×`, `${esc(l.track)} by ${esc(l.artist)}, back to back`) : '';
+  },
+  rarely: (s) => {
+    const r = s.rarely || {};
+    return (r.items || []).length ? tileCovers(r.items, r.unplayed ? `${r.unplayed} of ${plural(r.owned, 'record')} unplayed` : 'Your records, least played first') : '';
+  },
+  wishlist: (s) => ((s.wishlist || []).length ? tileCovers(s.wishlist.map((x) => ({ ...x, title: x.album })), `${plural(s.wishlist.length, 'album')} you stream but don't own`) : ''),
+};
+/** A tile: the block's name and its summary, or a small picture of the block itself (ids left out, nothing in it takes taps). */
+function statTile(id, s, html, wide) {
+  const sum = TILE_SUMMARY[id] && TILE_SUMMARY[id](s);
+  const pic = sum || `<span class="stile-thumb" aria-hidden="true">${html.replace(/\sid="[^"]*"/g, '')}</span>`;
+  return `<div class="stile${wide ? ' wide' : ''}${sum ? '' : ' pic'}" role="button" tabindex="0" data-block="${id}"><b class="stile-name">${esc(BLOCKS[id].name)}</b>${pic}</div>`;
+}
+let BLOCK = null;
+function openBlock(id) {
+  BLOCK = id;
+  openPage('blockPage');
+  renderBlock();
+}
+function renderBlock() {
+  if (!BLOCK || !isOpen('blockPage') || !STATS || STATS.empty) return;
+  $('#blockTitle').textContent = periodName(STATS.range);
+  morph($('#blockBody'), BLOCKS[BLOCK].html(STATS) || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
+  drawRecords();
 }
 
 // ---- the week as seven days, and each day on a 24-hour strip ----
@@ -5995,23 +6099,34 @@ function openArrange() {
   const group = statsGroup(STATS);
   const lay = statsLayout(group);
   const kinds = group === 'day' ? ['day'] : SPAN;
+  const sizes = group !== 'day' && mainCompact();
+  const size = (id) => (sizes && !NEVER_TILE.includes(id) ? `<button class="chip ar-size${lay.small.has(id) ? ' on' : ''}" data-size>${lay.small.has(id) ? 'Tile' : 'Full'}</button>` : '');
   const row = (id) => `<div class="ar-row${lay.hidden.has(id) ? ' off' : ''}" data-ar="${id}"><span class="ar-grip" aria-label="Move ${esc(BLOCKS[id].name)}">${icon('drag')}</span>
     <span class="ar-name">${esc(BLOCKS[id].name)}${BLOCKS[id].kinds && !BLOCKS[id].kinds.includes('day') && BLOCKS[id].kinds.length === 1 ? `<small>${esc(BLOCKS[id].kinds[0])}s only</small>` : ''}</span>
-    <label class="ar-sw"><input type="checkbox"${lay.hidden.has(id) ? '' : ' checked'} aria-label="Show ${esc(BLOCKS[id].name)}"><i class="switch"></i></label></div>`;
+    ${size(id)}<label class="ar-sw"><input type="checkbox"${lay.hidden.has(id) ? '' : ' checked'} aria-label="Show ${esc(BLOCKS[id].name)}"><i class="switch"></i></label></div>`;
   openSheet(`<div class="sheet-title">Arrange ${group === 'day' ? 'the Day tab' : 'Stats'}</div>
-    <p class="body">Drag the handles to reorder, switch blocks off to hide them. ${group === 'day' ? 'Weeks, months and years have their own order.' : 'For weeks, months, years and all time; the Day tab has its own.'}</p>
+    <p class="body">Drag the handles to reorder, switch blocks off to hide them.${sizes ? ' Tile shows a block small, next to another one; tap it on the page to see it full size.' : ''} ${group === 'day' ? 'Weeks, months and years have their own order.' : 'For weeks, months, years and all time; the Day tab has its own.'}</p>
     <div class="ar-list">${lay.order.filter((id) => (BLOCKS[id].kinds || SPAN).some((x) => kinds.includes(x))).map(row).join('')}</div>
     <div class="sheet-actions"><button class="btn text" id="arReset">Reset</button><button class="btn filled" id="arDone">Done</button></div>`);
   const list = $('#sheetContent .ar-list');
   const save = () => {
     const ids = $$('.ar-row', list).map((r) => r.dataset.ar);
     const hidden = new Set($$('.ar-row', list).filter((r) => !r.querySelector('input').checked).map((r) => r.dataset.ar));
-    // Blocks of the other kind keep their places in the saved order.
+    // Blocks of the other kind keep their places in the saved order, and their size.
     const full = lay.order.filter((id) => !ids.includes(id));
-    saveLayout(group, [...ids, ...full], hidden);
+    const small = new Set([...lay.small].filter((id) => !ids.includes(id)));
+    $$('.ar-row', list).forEach((r) => { const b = r.querySelector('.ar-size'); if (b ? b.classList.contains('on') : lay.small.has(r.dataset.ar)) small.add(r.dataset.ar); });
+    saveLayout(group, [...ids, ...full], hidden, small);
     arrangeRedraw();
   };
   list.addEventListener('change', (e) => { e.target.closest('.ar-row').classList.toggle('off', !e.target.checked); save(); });
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('.ar-size');
+    if (!b) return;
+    b.classList.toggle('on');
+    b.textContent = b.classList.contains('on') ? 'Tile' : 'Full';
+    save();
+  });
   arrangeDrag(list, save);
   $('#sheetContent').onclick = (e) => {
     if (e.target.closest('#arDone')) { clearTimeout(arrangeTimer); closeSheet(); renderStats(); }
@@ -6581,7 +6696,7 @@ function renderSettings() {
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
   $$('#pageSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (pageTabs() ? 'tabs' : 'long')));
-  $$('#mainSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (mainTabs() ? 'tabs' : 'long')));
+  $$('#mainSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (mainCompact() ? 'compact' : 'long')));
   const dv = ST.discover || {};
   $('#discoverSw').checked = dv.on !== false;
   $('#dvNo').hidden = !dv.no;
@@ -6760,12 +6875,18 @@ function build() {
   const statsBody = $('#statsBody');
   statsBody.addEventListener('pointerdown', (e) => onVizPointer(e, STATS));
   statsBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });
-  statsBody.onclick = (e) => {
+  const blockBody = $('#blockBody');
+  blockBody.addEventListener('pointerdown', (e) => onVizPointer(e, STATS));
+  blockBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });
+  blockBody.addEventListener('input', (e) => { if (e.target.matches('[data-asearch]')) onArtistSearch(e.target); });
+  const statsClick = (e) => {
+    const bk = e.target.closest('[data-block]');
+    if (bk) { openBlock(bk.dataset.block); return; }
     const sc = e.target.closest('[data-story]');
     if (sc) { openStory(sc.dataset.story); return; }
     if (e.target.closest('#arrangeBtn')) { openArrange(); return; }
     const day = e.target.closest('[data-day]');
-    if (day) { requestStats(day.dataset.day); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (day) { if (isOpen('blockPage')) closePage(); requestStats(day.dataset.day); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const ink = e.target.closest('[data-ink]');
     if (ink) { setSpot(ink.dataset.ink, +ink.dataset.k); return; }
     const pick = e.target.closest('[data-pick]');
@@ -6782,6 +6903,9 @@ function build() {
     const tk = e.target.closest('[data-top]');
     if (tk) { topKind = tk.dataset.top; renderStats(); }
   };
+  statsBody.onclick = statsClick;
+  blockBody.onclick = statsClick;
+  statsBody.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.block) openBlock(e.target.dataset.block); });
   const artistBody = $('#artistBody');
   artistBody.addEventListener('pointerdown', (e) => onVizPointer(e, ARTIST));
   artistBody.onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
@@ -6790,8 +6914,6 @@ function build() {
     p.addEventListener('scroll', () => syncPageTabs(p), { passive: true });
     tabSwipe(p);
   });
-  ['tab-stats', 'tab-explore'].forEach((id) => tabSwipe($('#' + id)));
-  window.addEventListener('scroll', () => { const t = $('#tab-' + tab); if (t) syncPageTabs(t); }, { passive: true });
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
@@ -6831,19 +6953,22 @@ function build() {
     const ld = t.closest('[data-land]');
     if (ld && !t.closest('[data-artist]')) { const k = +ld.dataset.land; landSel = landSel === k ? -1 : k; renderAtlas(); }
   };
-  $('#exploreBody').onclick = (e) => {
+  const exploreClick = (e) => {
     const no = e.target.closest('[data-nope]');
     if (no) { discoverNope(no.dataset.nope); return; }
     const why = e.target.closest('[data-why]');
     if (why) { openWhy(why.dataset.why); return; }
     const rc = e.target.closest('[data-reach]');
-    if (rc) { DISCOVER = { ...DISCOVER, reach: +rc.dataset.reach }; renderExplore(); send({ t: 'discoverReach', v: +rc.dataset.reach }); return; }
-    if (e.target.closest('[data-dmore]')) { discoverAll = true; renderExplore(); return; }
+    if (rc) { DISCOVER = { ...DISCOVER, reach: +rc.dataset.reach }; renderExplore(); renderForYou(); send({ t: 'discoverReach', v: +rc.dataset.reach }); return; }
+    if (e.target.closest('[data-dmore]')) { if (mainCompact()) openForYou(); else { discoverAll = true; renderExplore(); } return; }
     if (e.target.closest('[data-dagain]')) { DISCOVER = null; send({ t: 'discover', again: true }); renderExplore(); return; }
     if (e.target.closest('#exploreGoStats')) showTab('stats');
     if (e.target.closest('#openVs')) openVs();
     if (e.target.closest('#openConcerts')) openConcerts();
   };
+  $('#exploreBody').onclick = exploreClick;
+  $('#forYouBody').onclick = exploreClick;
+  $('#activityBtn').onclick = () => openPage('activityPage');
   $('#concertsBody').onclick = (e) => {
     if (e.target.closest('#concertsRefresh')) send({ t: 'concertsRefresh' });
   };

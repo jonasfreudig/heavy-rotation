@@ -2235,6 +2235,7 @@ class Stats(
 
     private fun trackJson(t: Int): JSONObject = JSONObject().put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])
         .put("album", trackAlbum[t].let { if (it >= 0) h.albumTitles[it] else "" }).put("plays", trackPlays[t])
+        .put("cover", trackAlbum[t].let { if (it >= 0) cover(it) else "" })
 
     /** Everything on the Explore page. */
     fun explore(): JSONObject {

@@ -469,7 +469,44 @@ button.tile { position: relative; display: block; width: 100%; text-align: left;
 .atab-clip { margin: 0 -16px; padding: 0 16px; overflow-x: clip; }
 .atab-peek { position: absolute; left: calc(100% + 32px); width: 100%; pointer-events: none; }
 .atab-peek.l { left: calc(-100% - 32px); }
-body.bar-away #main .atabs { top: var(--inset-top); }
+/* Explore as rows: each list one sideways row, the two mixes side by side at the top. */
+.mixrow { display: flex; gap: 12px; overflow-x: auto; margin: 8px -16px 0; padding: 0 16px 4px; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; }
+.mixrow::-webkit-scrollbar { display: none; }
+.mixrow .fy-mix { flex: none; width: min(300px, 82%); margin: 0; scroll-snap-align: start; }
+.mixrow.solo .fy-mix { width: 100%; }
+.fy-mix.dig { background: linear-gradient(135deg, var(--md-secondary-container), var(--md-tertiary-container)); color: var(--md-on-secondary-container); }
+.xrow { margin-top: 24px; }
+.xrow-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.xrow-head h2 { font: 600 20px/26px var(--display, var(--font)); }
+.xrow > .sub { display: block; margin-top: 2px; }
+.xrow > .lin { margin-top: 12px; }
+.xrow-more { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--md-primary); font: 500 13px/18px var(--font); padding: 6px 0 6px 8px; }
+.xrow .xcards { align-items: flex-start; }
+.xrow .xp-intro { margin: 4px 4px 10px; }
+.xcard.round { width: 100px; }
+.xcard.round .cover { width: 100px; height: 100px; border-radius: 50%; }
+/* Stats tiles: two side by side, a picture of the chart or its one number; tap for full size. */
+.stiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.stile { --stile-bg: var(--md-surface-container-low); position: relative; height: 172px; border-radius: 22px; overflow: hidden; cursor: pointer; text-align: left;
+  background: var(--stile-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.stile.wide { grid-column: span 2; }
+.stile-name { position: absolute; left: 14px; right: 12px; top: 12px; z-index: 1; font: 600 14px/18px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stile-thumb { position: absolute; left: 0; top: 38px; width: 250%; transform: scale(.4); transform-origin: top left; pointer-events: none; }
+.stile.wide .stile-thumb { width: 125%; transform: scale(.8); }
+.stile-thumb > * { margin: 0 !important; box-shadow: none !important; background: transparent !important; }
+.stile-thumb h2, .stile-thumb .sub, .stile-thumb .readout, .stile-thumb .btn-row { display: none !important; }
+.stile.pic::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; pointer-events: none; background: linear-gradient(transparent, var(--stile-bg)); }
+.stile-big { position: absolute; left: 14px; right: 12px; top: 40px; }
+.stile-big strong { display: block; font: 700 40px/44px var(--display, var(--font)); color: var(--md-primary); }
+.stile-big small, .stile-line { display: block; margin-top: 4px; color: var(--md-on-surface-variant); font-size: 12px; line-height: 16px; }
+.stile-big small { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.stile-covers { position: absolute; left: 14px; top: 42px; display: flex; }
+.stile-covers .cover { width: 56px; height: 56px; border-radius: 8px; margin-right: -14px; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); }
+.stile-line { position: absolute; left: 14px; right: 12px; top: 108px; }
+.ar-size { flex: none; margin-right: 6px; min-width: 52px; justify-content: center; }
+.page-h { font: 600 26px/32px var(--display, var(--font)); margin: 4px 4px 4px; }
+#activityBtn { position: relative; }
+#activityBtn .badge { top: 4px; left: auto; right: 2px; }
 /* For you: the discovery mix, suggestions with their reasons, new releases. */
 .fy-mix { display: flex; align-items: center; gap: 14px; width: 100%; margin: 8px 0 12px; padding: 14px; border-radius: 20px; text-align: left;
   background: linear-gradient(135deg, var(--md-primary-container), var(--md-tertiary-container)); color: var(--md-on-primary-container); }

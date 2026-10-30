@@ -111,6 +111,8 @@
 :root[data-look] .views > .icon-btn.small.on { background: transparent; box-shadow: none; }
 :root[data-look="soft"] :is(.list, .rank, .viz, .tile, .xp-tile, .spin-card, .card:not(:where(.bad, .warn, .tonal, .tidal-job))), :root[data-look="soft"] .grid.list .rec {
   background: var(--soft); color: var(--md-on-surface); box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
+:root[data-look="soft"] .stile { --stile-bg: var(--soft); box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); overflow: hidden; }
+:root[data-look="glass"] .stile { --stile-bg: var(--frost-card); box-shadow: 0 12px 30px var(--drop), inset 1px 1px 0 var(--hi); }
 :root[data-look="soft"] :is(.dig-card, .card.tonal, .card.warn) { box-shadow: 7px 7px 16px var(--sh-d), -7px -7px 16px var(--sh-l); }
 :root[data-look="soft"] .rec .cover { box-shadow: 6px 6px 14px var(--sh-d), -6px -6px 14px var(--sh-l); }
 :root[data-look="soft"] .btn.filled { box-shadow: 5px 5px 14px var(--sh-d), -4px -4px 10px var(--sh-l); }

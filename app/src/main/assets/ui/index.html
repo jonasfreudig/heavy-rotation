@@ -16,6 +16,7 @@
   <div class="appbar-title"><span id="appbarTitle">Shelf</span><small class="title-count" id="shelfCount"></small></div>
   <span class="grow"></span>
   <button class="icon-btn" id="syncBtn" aria-label="Sync collection" hidden><svg class="i"><use href="#i-sync"/></svg></button>
+  <button class="icon-btn" id="activityBtn" aria-label="Activity"><svg class="i"><use href="#i-history"/></svg><i class="badge" id="actBadge" hidden></i></button>
   <button class="icon-btn" id="settingsBtn" aria-label="Settings"><svg class="i"><use href="#i-settings"/></svg></button>
 </header>
 <div class="lin" id="syncBar" hidden><i></i></div>
@@ -67,7 +68,15 @@
     <div id="exploreBody"></div>
   </section>
 
-  <section class="tab" id="tab-activity">
+</main>
+
+<!-- ACTIVITY (full-screen page): what was scrobbled, from the turntable and the phone -->
+<div class="page" id="activityPage" hidden>
+  <header class="appbar">
+    <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="appbar-title">Activity</div>
+  </header>
+  <div class="page-body">
     <div id="phoneCard"></div>
     <div id="queueCard"></div>
     <div id="activityList"></div>
@@ -75,8 +84,25 @@
       <svg class="i big"><use href="#i-history"/></svg>
       <p>Nothing scrobbled from here yet.<br>Pick a record on your shelf, or set up phone scrobbling.</p>
     </div>
-  </section>
-</main>
+  </div>
+</div>
+
+<!-- ONE STATS BLOCK, full size (from its tile) -->
+<div class="page" id="blockPage" hidden>
+  <header class="appbar">
+    <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="appbar-title" id="blockTitle"></div>
+  </header>
+  <div class="page-body" id="blockBody"></div>
+</div>
+
+<!-- ALL SUGGESTIONS -->
+<div class="page" id="forYouPage" hidden>
+  <header class="appbar">
+    <button class="icon-btn" data-back aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+  </header>
+  <div class="page-body" id="forYouBody"></div>
+</div>
 
 <!-- RECORD (full-screen page) -->
 <div class="page" id="recordPage" hidden>
@@ -363,10 +389,10 @@
       <p class="hint">Tabs split artist, album and genre pages into parts of a screen or two each; swipe sideways to move between them. On artist pages, their shows and the ones you were at scroll sideways.</p>
       <div class="row-label"><span>Stats and Explore</span></div>
       <div class="seg" id="mainSeg">
-        <button data-v="tabs">Tabs</button>
+        <button data-v="compact">Rows and tiles</button>
         <button data-v="long">One long page</button>
       </div>
-      <p class="hint">Tabs split Stats into Overview, Listening, Music and Shelf, and Explore into For you, Rediscover and Your taste. The day's stats stay one page.</p>
+      <p class="hint">Rows and tiles puts each list on Explore in one row you scroll sideways, and shows the smaller blocks on Stats as tiles that open full size. Arrange this page, at the bottom of Stats, picks which blocks are tiles.</p>
       <div class="row-label"><span>Background color</span></div>
       <div class="seg" id="ambSeg">
         <button data-v="records">Your records</button>
@@ -454,7 +480,6 @@
   <button data-tab="shelf" class="on"><span class="ind"><svg class="i"><use href="#i-album"/></svg></span><span>Shelf</span></button>
   <button data-tab="stats"><span class="ind"><svg class="i"><use href="#i-chart"/></svg></span><span>Stats</span></button>
   <button data-tab="explore"><span class="ind"><svg class="i"><use href="#i-explore"/></svg></span><span>Explore</span></button>
-  <button data-tab="activity"><span class="ind"><svg class="i"><use href="#i-history"/></svg><i class="badge" id="actBadge" hidden></i></span><span>Activity</span></button>
 </nav>
 <button class="search-fab" id="searchFab" aria-label="Search"><svg class="i"><use href="#i-search"/></svg></button>
 <button class="np-peek" id="npPeek" hidden></button>

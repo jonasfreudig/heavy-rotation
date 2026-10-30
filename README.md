@@ -30,8 +30,9 @@ of its own in between, and your data stays on your phone.
   find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
   releases by your artists. It also has lost favorites, albums to rediscover, a musical atlas of the
   artists you play back to back, you against everyone on Last.fm, and playlists to send to TIDAL.
-- Long pages (Stats, Explore, artists, albums, genres) come in tabs you swipe between, or as one
-  long page if you prefer.
+- Explore comes in rows you scroll sideways, and the smaller Stats blocks as tiles that open full
+  size. Artist, album and genre pages come in tabs you swipe between. Each can be one long page
+  instead.
 - A Now playing page for the phone shows the position, the controls, the music app's queue and the
   album the song is on.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the
