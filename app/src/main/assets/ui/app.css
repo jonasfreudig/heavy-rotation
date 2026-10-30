@@ -1592,3 +1592,31 @@ body.searching .npb { display: none; }
 .sc-t b { display: block; margin-top: 3px; font: italic 760 19px/1.1 var(--display, var(--font)); font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 144; letter-spacing: -.01em; }
 .sc-go { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #f4ecdf; color: #17120e; }
 .sc-go .i { width: 22px; height: 22px; }
+
+/* The welcome on the first launch: what the app does, then its setup, one screen. */
+.welcome { display: flex; flex-direction: column; padding: calc(var(--inset-top) + 24px) 20px calc(var(--inset-bottom) + 20px); min-height: 100%; box-sizing: border-box; }
+.welcome h1 { margin: 14px 0 4px; font: 700 34px/40px var(--display, var(--font)); letter-spacing: -.02em; }
+.welcome h2 { margin: 22px 0 10px; font: 600 20px/26px var(--display, var(--font)); }
+.wl-lead { margin: 0; font-size: 16px; line-height: 23px; color: var(--md-on-surface-variant); }
+.wl-disc { position: relative; width: 64px; height: 64px; border-radius: 50%; box-shadow: 0 10px 26px rgba(0, 0, 0, .3);
+  background: repeating-radial-gradient(circle, #1b1a1f 0 2px, #26242b 2px 3.5px); }
+.wl-disc i { position: absolute; inset: 31%; border-radius: 50%; background: radial-gradient(circle, var(--md-surface) 0 9%, var(--md-primary) 10%); }
+.wl-what { display: grid; gap: 12px; margin-top: 18px; }
+.wl-item { display: flex; gap: 14px; align-items: flex-start; }
+.wl-item b { display: block; font: 600 15px/20px var(--font); }
+.wl-item small { display: block; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); }
+.wl-ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; font-style: normal;
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.wl-ic .i { width: 22px; height: 22px; }
+.wl-steps { display: grid; gap: 2px; border-radius: 16px; overflow: hidden; }
+.wl-step { display: flex; gap: 12px; align-items: center; padding: 12px 14px; background: var(--md-surface-container-low); }
+.wl-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font: 600 13px/1 var(--mono, var(--font));
+  background: var(--md-surface-container-highest); color: var(--md-on-surface); }
+.wl-step.done .wl-n { background: var(--md-primary); color: var(--md-on-primary); }
+.wl-n .i { width: 16px; height: 16px; }
+.wl-t { flex: 1; min-width: 0; }
+.wl-t b { display: block; font: 500 15px/20px var(--font); }
+.wl-t small { display: block; font-size: 12.5px; line-height: 17px; color: var(--md-on-surface-variant); }
+.welcome .hint { margin: 10px 4px 20px; }
+/* At the bottom of the screen when there's room. */
+.welcome .btn.wide { margin-top: auto; }

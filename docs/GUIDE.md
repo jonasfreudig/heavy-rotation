@@ -4,6 +4,11 @@ Everything the app does, and how to set it up. The short version is in the [READ
 
 ## Set up (a few minutes)
 
+On the first launch, a welcome screen says in three lines what the app does and lists the setup:
+Last.fm, Discogs, and, if you like, listening on the phone. Each step has its button and shows a check
+once it's done; Start (or Skip for now) takes you to the shelf. The steps below are the same ones,
+also under Settings.
+
 ### 1. Discogs: your shelf
 
 Gear → Discogs → type your Discogs username → Connect. If your collection is public on Discogs

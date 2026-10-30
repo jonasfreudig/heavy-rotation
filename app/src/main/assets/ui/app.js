@@ -322,6 +322,8 @@ window.onState = (s) => {
   const hadSpin = ST.spin ? ST.spin.id : null;
   ST = s;
   renderState();
+  maybeWelcome();
+  if (isOpen('welcomePage')) renderWelcome();
   askBadges();
   applyAmbient();
   vsStateTick();
@@ -986,6 +988,47 @@ function renderState() {
   if (isOpen('comparePage')) renderCompare();
   if (isOpen('spinPage')) renderSpin();
   if (isOpen('recordPage')) renderRecordSpinNote();
+}
+
+// ---- the first launch: what the app does, and setting it up, on one screen ----
+
+/** Opens the welcome once, on a phone with nothing connected yet. */
+function maybeWelcome() {
+  const d = ST.discogs || {}, l = ST.lastfm || {};
+  if (d.connected || l.connected || isOpen('welcomePage')) return;
+  try {
+    if (localStorage.getItem('welcomed')) return;
+    localStorage.setItem('welcomed', '1');
+  } catch (_) { return; /* preview without storage */ }
+  openPage('welcomePage');
+  renderWelcome();
+}
+/** One step of the setup: what it's for, and its button until it's done. */
+function welcomeStep(n, title, sub, done, doneText, go, label) {
+  return `<div class="wl-step${done ? ' done' : ''}"><span class="wl-n">${done ? icon('check') : n}</span><span class="wl-t"><b>${title}</b><small>${done ? doneText : sub}</small></span>
+    ${done ? '' : `<button class="btn tonal small" data-go="${go}">${label}</button>`}</div>`;
+}
+function renderWelcome() {
+  const d = ST.discogs || {}, l = ST.lastfm || {}, p = ST.phone || {};
+  const lf = !!l.connected && !l.needsAuth, dg = !!d.connected, ph = (p.mode || 'off') !== 'off' && !!p.access;
+  const what = [
+    ['album', 'Your shelf', 'Your Discogs collection as a wall of covers. Put a record on and it scrobbles while it plays.'],
+    ['phone', 'What the phone plays', 'Songs from TIDAL, Spotify and other apps go to Last.fm too, with their lyrics in time.'],
+    ['chart', 'Your stats', 'Your whole Last.fm history as charts and stories, with a page for every artist, album and song.'],
+  ];
+  const h = `<div class="wl-disc" aria-hidden="true"><i></i></div>
+    <h1>Heavy Rotation</h1><p class="wl-lead">Your records, everything you play, and what your listening adds up to.</p>
+    <div class="wl-what">${what.map(([ic, t, x]) => `<div class="wl-item"><i class="wl-ic">${icon(ic)}</i><span><b>${t}</b><small>${x}</small></span></div>`).join('')}</div>
+    <h2>Set it up</h2>
+    <div class="wl-steps">
+      ${welcomeStep(1, 'Connect Last.fm', 'Your listening history, and where scrobbles go.', lf, `Connected as ${esc(l.user || '')}`, 'lfSection', 'Connect')}
+      ${welcomeStep(2, 'Connect Discogs', 'Your records on the shelf.', dg, `${plural(d.count || 0, 'record')} on the shelf`, 'dgSection', 'Connect')}
+      ${welcomeStep(3, 'Listen on the phone', 'If you like: scrobbles what other apps play.', ph, 'On', 'phSection', 'Set up')}
+    </div>
+    <p class="hint">Any of them can wait: they're all in Settings too.</p>
+    <button class="btn filled wide" data-wldone>${lf || dg ? 'Start' : 'Skip for now'}</button>`;
+  const body = $('#welcomeBody');
+  if (body.dataset.html !== h) { body.innerHTML = h; body.dataset.html = h; }
 }
 
 function renderSetup() {
@@ -7878,6 +7921,7 @@ function build() {
     const cc = e.target.closest('[data-concert]');
     if (cc) { openConcertPlaylist(CONCERT_BY_ID[cc.dataset.concert]); return; }
     if (e.target.closest('[data-livepl]')) { openLivePlaylist(-1); return; }
+    if (e.target.closest('[data-wldone]')) { closePage(); return; }
     const go = e.target.closest('[data-go]');
     if (go) { openSettings(go.dataset.go); return; }
     const url = e.target.closest('[data-url]');
