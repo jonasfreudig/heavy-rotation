@@ -2,7 +2,7 @@
 
 An Android app for your record shelf and everything else you listen to.
 
-![Heavy Rotation: the shelf, a record, your month on a record, an artist and now playing](docs/screenshots/banner.jpg)
+![Heavy Rotation: the shelf, a record, a year as a river of artists, an artist and now playing with its lyrics](docs/screenshots/banner.jpg)
 
 Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of covers and
 scrobbles the records you play to [Last.fm](https://www.last.fm). It scrobbles what plays on your
