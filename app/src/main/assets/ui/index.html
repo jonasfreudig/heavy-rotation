@@ -360,7 +360,13 @@
         <button data-v="tabs">Tabs</button>
         <button data-v="long">One long page</button>
       </div>
-      <p class="hint">Tabs split artist, album and genre pages into parts of a screen or two each. On artist pages, their shows and the ones you were at scroll sideways.</p>
+      <p class="hint">Tabs split artist, album and genre pages into parts of a screen or two each; swipe sideways to move between them. On artist pages, their shows and the ones you were at scroll sideways.</p>
+      <div class="row-label"><span>Stats and Explore</span></div>
+      <div class="seg" id="mainSeg">
+        <button data-v="tabs">Tabs</button>
+        <button data-v="long">One long page</button>
+      </div>
+      <p class="hint">Tabs split Stats into Overview, Listening, Music and Shelf, and Explore into For you, Rediscover and Your taste. The day's stats stay one page.</p>
       <div class="row-label"><span>Background color</span></div>
       <div class="seg" id="ambSeg">
         <button data-v="records">Your records</button>
@@ -422,6 +428,10 @@
       <div class="row-label"><span>Tidy up</span></div>
       <p class="body" id="tidyStatus">Videos, app sounds and other non-music scrobbles can be hidden from your stats. Nothing changes on Last.fm.</p>
       <button class="btn tonal" data-tidy><svg class="i"><use href="#i-clean"/></svg>Tidy up stats</button>
+    </div>
+    <div class="card" id="dvSection">
+      <label class="switch-row"><span>Suggestions on Explore<small>Artists you haven't played, a weekly discovery mix and new releases by your artists. They come from who Last.fm's and Deezer's listeners find alike to the artists you play.</small></span><input type="checkbox" id="discoverSw"><i class="switch"></i></label>
+      <div id="dvNo" hidden><p class="hint" id="dvNoText"></p><button class="btn text" id="dvClear">Suggest them again</button></div>
     </div>
 
     <h2 class="group-head">Your data</h2>

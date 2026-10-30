@@ -1467,6 +1467,37 @@ class Stats(
     fun artistPhoto(name: String) = albumImages[photoKey(name)].orEmpty()
 
     /** Of [names], those whose photo hasn't been looked up yet. */
+    fun needPhotos(names: List<String>) = withoutPhoto(names)
+
+    /**
+     * Your artists that suggestions start from ([Discover]), the heaviest [n] with their weight: a play counts for half
+     * as much after [half] days, so the ones you play now count the most, and all your plays of an artist add a little.
+     */
+    fun discoverSeeds(n: Int = Discover.SEEDS, half: Double = 120.0): List<Pair<String, Double>> {
+        val recent = DoubleArray(h.artistNames.size)
+        val all = IntArray(h.artistNames.size)
+        val k = Math.log(2.0) / (half * 86400.0)
+        for (i in 0 until h.size) {
+            val a = h.artist[i]
+            recent[a] += Math.exp(-k * maxOf(0L, nowSec - h.ts[i]))
+            all[a]++
+        }
+        return recent.indices.map { it to recent[it] + 0.02 * all[it] }
+            .filter { it.second > 0.5 }
+            .sortedByDescending { it.second }
+            .take(n)
+            .map { h.artistNames[it.first] to it.second }
+    }
+
+    private val shelfArtists by lazy { collection.map { Text.norm(it.artist) }.toSet() }
+
+    /** Whether you've played the artist or have a record of theirs. */
+    fun knows(name: String): Boolean {
+        val k = Text.norm(name)
+        return k in artistIndex || k in shelfArtists
+    }
+
+    /** Of [names], those whose photo hasn't been looked up yet. */
     private fun withoutPhoto(names: List<String>) = names.filter { photoKey(it) !in albumImages }.distinct()
 
     /** Top artists of a period without a photo yet, to look up. */

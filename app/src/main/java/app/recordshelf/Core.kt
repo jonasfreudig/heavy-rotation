@@ -11,6 +11,7 @@ import app.recordshelf.discogs.RateLimiter
 import app.recordshelf.discogs.DiscogsException
 import app.recordshelf.discogs.Release
 import app.recordshelf.history.Discography
+import app.recordshelf.history.Discover
 import app.recordshelf.history.Genres
 import app.recordshelf.history.Global
 import app.recordshelf.history.GlobalAsk
@@ -20,7 +21,10 @@ import app.recordshelf.history.Hidden
 import app.recordshelf.history.History
 import app.recordshelf.history.HistorySync
 import app.recordshelf.history.Junk
+import app.recordshelf.history.Like
+import app.recordshelf.history.Pick
 import app.recordshelf.history.Stats
+import app.recordshelf.history.Suggestion
 import app.recordshelf.history.Years
 import app.recordshelf.lastfm.LastfmClient
 import app.recordshelf.lastfm.LastfmException
@@ -564,6 +568,13 @@ object Core {
                 statsExec.execute {
                     val s = currentStats()
                     val j = s?.artist(name, s.range(id)) ?: JSONObject().put("name", name).put("missing", true)
+                    if (j.has("missing")) {
+                        j.put("photo", s?.artistPhoto(name).orEmpty())
+                        val best = topsOf(null, name, lookUp = false)
+                        if (best != null) j.put("best", JSONArray(best.take(10)))
+                        // Not looked up yet: once, then the page again.
+                        else if (lastfm() != null && topsAsked.add(Text.norm(name))) discoverExec.execute { if (topsOf(lastfm(), name) != null) { saveDiscover(); handle(msg) } }
+                    }
                     concertsOf(j.optString("name").ifEmpty { name }, s).takeIf { it.length() > 0 }?.let { j.put("concerts", it) }
                     push("onArtist") { j.put("req", msg.optInt("req")) }
                     // No photo yet: Deezer may have one; the page comes again if so.
@@ -656,9 +667,47 @@ object Core {
                     if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
                 }
             }
+            "discover" -> discoverExec.execute {
+                push("onDiscover") { discoverJson() }
+                discoverInner(force = msg.optBoolean("again"))
+            }
+            "discoverReach" -> {
+                prefs.discoverReach = msg.optInt("v").coerceIn(Discover.CLOSE, Discover.FURTHER)
+                discoverExec.execute {
+                    push("onDiscover") { discoverJson() }
+                    // The best ones now may be new: their genres, songs and photos, then the tab again.
+                    val s = currentStats() ?: return@execute
+                    discoverExtras(s, lastfm())
+                    push("onDiscover") { discoverJson() }
+                }
+            }
+            "discoverNo", "discoverUndo" -> discoverExec.execute {
+                if (msg.optString("t") == "discoverNo") discoverRefuse(msg.optString("name")) else discoverUnrefuse(msg.optString("name"))
+                push("onDiscover") { discoverJson() }
+                pushState()
+                currentStats()?.let { discoverExtras(it, lastfm()) }
+                push("onDiscover") { discoverJson() }
+            }
+            "discoverClearNo" -> discoverExec.execute {
+                prefs.discoverNo = "{}"
+                prefs.discoverWeaker = "{}"
+                push("onDiscover") { discoverJson() }
+                pushState()
+            }
+            "discoverOn" -> {
+                prefs.discoverOn = msg.optBoolean("v")
+                pushState()
+                discoverExec.execute {
+                    push("onDiscover") { discoverJson() }
+                    discoverInner(force = false)
+                }
+            }
+            "discoverWhy" -> discoverExec.execute { discoverWhy(msg) }
             "playlist" -> statsExec.execute {
                 val s = currentStats()
                 if (msg.optString("kind") == "genre") return@execute genrePlaylist(s, msg)
+                if (msg.optString("kind") == "discover") return@execute discoverExec.execute { discoverMix(msg) }
+                if (msg.optString("kind") == "artistBest") return@execute discoverExec.execute { artistBest(msg) }
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
             "genre" -> {
@@ -1936,32 +1985,45 @@ object Core {
         }
     }
 
+    private val discoLock = Any()
+
     /**
-     * An artist's discography from Deezer (kept a week on the phone, so new releases show up),
-     * with your plays and your shelf. On [webExec].
+     * An artist on Deezer ("artist") and their releases, kept a week on the phone so new releases show up. [pace]: a
+     * pause after a lookup, for many in a row (Deezer allows 50 requests in 5 seconds).
      */
-    private fun discographyJson(name: String): JSONObject {
+    private fun discoEntry(name: String, pace: Boolean = false): JSONObject {
         val key = Text.norm(name)
-        val cache = try {
+        fun read() = try {
             JSONObject(file(DISCO_FILE).read() ?: "{}")
         } catch (_: Exception) {
             JSONObject()
         }
-        var c = cache.optJSONObject(key)
-        if (c == null || System.currentTimeMillis() - c.optLong("at") > DISCO_TTL) {
-            val a = deezer.findArtist(name)
-            c = JSONObject().put("at", System.currentTimeMillis())
-            if (a != null) {
-                c.put("artist", a.toJson()).put("releases", JSONArray(deezer.releases(a.id).map { it.toJson() }))
-                // The photo comes along for free.
-                if (a.photo.isNotEmpty() && Stats.photoKey(name) !in db.images().keys) db.saveImage(Stats.photoKey(name), a.photo)
-            }
+        synchronized(discoLock) { read().optJSONObject(key) }?.takeIf { System.currentTimeMillis() - it.optLong("at") <= DISCO_TTL }?.let { return it }
+        val a = deezer.findArtist(name)
+        val c = JSONObject().put("at", System.currentTimeMillis())
+        if (a != null) {
+            c.put("artist", a.toJson()).put("releases", JSONArray(deezer.releases(a.id).map { it.toJson() }))
+            // The photo comes along for free.
+            if (a.photo.isNotEmpty() && Stats.photoKey(name) !in db.images().keys) db.saveImage(Stats.photoKey(name), a.photo)
+        }
+        synchronized(discoLock) {
+            val cache = read()
             cache.put(key, c)
             // Keep the most recent lookups only.
             val keys = cache.keys().asSequence().toList()
             if (keys.size > DISCO_MAX) keys.sortedBy { cache.getJSONObject(it).optLong("at") }.take(keys.size - DISCO_MAX).forEach { cache.remove(it) }
             file(DISCO_FILE).write(cache.toString())
         }
+        if (pace) Thread.sleep(250)
+        return c
+    }
+
+    /**
+     * An artist's discography from Deezer (kept a week on the phone, so new releases show up),
+     * with your plays and your shelf. On [webExec].
+     */
+    private fun discographyJson(name: String): JSONObject {
+        val c = discoEntry(name)
         val artist = c.optJSONObject("artist") ?: return JSONObject().put("none", true)
         val rel = c.optJSONArray("releases") ?: JSONArray()
         val releases = (0 until rel.length()).map { DzRelease.fromJson(rel.getJSONObject(it)) }
@@ -1969,6 +2031,288 @@ object Core {
         val shelf = collection.associateBy { Text.albumKey(it.artist, it.title) }
         val items = Discography.json(Discography.merge(releases), { t -> s?.albumPlaysOf(name, t) ?: 0 }, { t -> shelf[Text.albumKey(name, t)]?.releaseId ?: 0L })
         return JSONObject().put("artist", DzArtist.fromJson(artist).toJson()).put("items", items)
+    }
+
+    // ---- for you: music you haven't played, from what your artists point to (history/Discover) ----
+
+    private val discoverExec = serial()
+    private val topsAsked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
+    @Volatile private var discoverBusy = false
+    @Volatile private var discoverDone = 0
+    @Volatile private var discoverTotal = 0
+    @Volatile private var discoverError = ""
+    @Volatile private var discoverTried = 0L
+    private const val DISCOVER_FILE = "discover.json"
+
+    /** Who is like an artist is looked up again after a month, their songs and genres too; the suggestions are looked through weekly. */
+    private const val LIKES_TTL = 30L * 24 * HOUR
+    private const val DISCOVER_EVERY = 7L * 24 * HOUR
+
+    /** After a look that failed (offline), the next one waits this long. */
+    private const val DISCOVER_RETRY = 10L * 60_000
+
+    /** The suggestions whose genres, songs and photos are looked up ahead, and the songs in the weekly mix. */
+    private const val DISCOVER_SHOWN = 20
+    private const val MIX_SIZE = 30
+
+    /**
+     * What was looked up, kept in discover.json: "likes" (per artist, normed: "at" and "list", who is like them), "tops"
+     * (their best-known songs), "genre", "releases" (new ones by your artists) and "at" (when all was last looked through).
+     * Only touched while holding it.
+     */
+    private val dstore: JSONObject by lazy { runCatching { JSONObject(file(DISCOVER_FILE).read() ?: "{}") }.getOrNull() ?: JSONObject() }
+
+    private fun dpart(name: String): JSONObject = synchronized(dstore) { dstore.optJSONObject(name) ?: JSONObject().also { dstore.put(name, it) } }
+
+    private fun saveDiscover() = synchronized(dstore) { file(DISCOVER_FILE).write(dstore.toString()) }
+
+    private fun fresh(o: JSONObject?, ttl: Long) = o != null && System.currentTimeMillis() - o.optLong("at") < ttl
+
+    private fun likesFresh(name: String) = synchronized(dstore) { fresh(dpart("likes").optJSONObject(Text.norm(name)), LIKES_TTL) }
+
+    /** The artists you said aren't for you (normed name to {name, seeds: the artists of yours that led to them}). */
+    private fun discoverNo(): JSONObject = runCatching { JSONObject(prefs.discoverNo) }.getOrNull() ?: JSONObject()
+
+    private fun discoverWeaker(): Map<String, Int> = runCatching { JSONObject(prefs.discoverWeaker) }.getOrNull()
+        ?.let { o -> o.keys().asSequence().associateWith { o.optInt(it) } }.orEmpty()
+
+    /** Who Last.fm and Deezer find like [name] (Deezer's artist [deezerId], else looked up), kept. Throws when neither answers. */
+    private fun fetchLikes(c: LastfmClient?, name: String, deezerId: Long? = null) {
+        var answered = false
+        val lf = try {
+            c?.similarArtists(name)?.also { answered = true }.orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        Thread.sleep(220) // Last.fm asks for at most 5 requests a second
+        val dz = try {
+            val id = deezerId?.takeIf { it > 0 } ?: deezer.findArtist(name)?.id?.also { Thread.sleep(150) }
+            (if (id == null) emptyList() else deezer.related(id)).also { answered = true }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        Thread.sleep(150)
+        if (!answered) throw IOException("Neither Last.fm nor Deezer answered")
+        val list = Discover.merge(lf, dz.map { Triple(it.name, it.fans, it.photo) })
+        synchronized(dstore) { dpart("likes").put(Text.norm(name), JSONObject().put("at", System.currentTimeMillis()).put("list", JSONArray(list.map { it.toJson() }))) }
+    }
+
+    /** An artist's best-known songs on Last.fm (most played first), kept a month; null without Last.fm or if it failed. */
+    private fun topsOf(c: LastfmClient?, name: String, lookUp: Boolean = true): List<String>? {
+        val k = Text.norm(name)
+        synchronized(dstore) { dpart("tops").optJSONObject(k)?.takeIf { fresh(it, LIKES_TTL) } }?.let { o ->
+            val a = o.optJSONArray("songs") ?: JSONArray()
+            return (0 until a.length()).map { a.getString(it) }
+        }
+        if (!lookUp || c == null) return null
+        val songs = try {
+            c.artistTopTracks(name, 15).map { it.first }.filter { it.isNotBlank() }
+        } catch (_: Exception) {
+            return null
+        }
+        Thread.sleep(220)
+        synchronized(dstore) { dpart("tops").put(k, JSONObject().put("at", System.currentTimeMillis()).put("songs", JSONArray(songs))) }
+        return songs
+    }
+
+    /** An artist's genre ("Garage punk") from their Last.fm tags, kept; "" if none is known. */
+    private fun genreOf(c: LastfmClient?, name: String, lookUp: Boolean = true): String {
+        val k = Text.norm(name)
+        synchronized(dstore) { dpart("genre").optJSONObject(k)?.takeIf { fresh(it, LIKES_TTL) } }?.let { return it.optString("v") }
+        if (!lookUp || c == null) return ""
+        val v = try {
+            val g = Genres(emptyList(), mapOf(Genres.artistKey(name) to Genres.fromTags(c.artistTopTags(name), name)))
+            g.detail(name, null)?.let { d -> if (d.style.isNotEmpty()) g.styleLabel(d.style) else Genres.label(d.family) }.orEmpty()
+        } catch (_: Exception) {
+            return ""
+        }
+        Thread.sleep(220)
+        synchronized(dstore) { dpart("genre").put(k, JSONObject().put("at", System.currentTimeMillis()).put("v", v)) }
+        return v
+    }
+
+    /** The suggestions from what is kept, as far as the settings say. */
+    private fun suggestions(s: Stats, max: Int = Discover.MAX): List<Suggestion> {
+        val likes = HashMap<String, List<Like>>()
+        synchronized(dstore) {
+            val o = dpart("likes")
+            for (k in o.keys()) o.optJSONObject(k)?.optJSONArray("list")?.let { a -> likes[k] = (0 until a.length()).map { Like.fromJson(a.getJSONObject(it)) } }
+        }
+        val no = discoverNo()
+        return Discover.suggest(s.discoverSeeds(), likes, s::knows, no.keys().asSequence().toSet(), discoverWeaker(), prefs.discoverReach, max)
+    }
+
+    /**
+     * Looks through what your artists point to: Last.fm's similar artists and Deezer's related ones, new releases by your
+     * artists, and the best suggestions' songs, genres and photos. Weekly, or now when [force]. On [discoverExec].
+     */
+    private fun discoverInner(force: Boolean) {
+        if (discoverBusy || !prefs.discoverOn) return
+        val now = System.currentTimeMillis()
+        if (!force && (now - synchronized(dstore) { dstore.optLong("at") } < DISCOVER_EVERY || now - discoverTried < DISCOVER_RETRY)) return
+        val s = currentStats() ?: return
+        val seeds = s.discoverSeeds()
+        if (seeds.isEmpty()) return
+        val c = lastfm()
+        discoverTried = now
+        discoverBusy = true
+        discoverError = ""
+        discoverDone = 0
+        discoverTotal = seeds.size
+        pushDiscover()
+        try {
+            var fails = 0
+            val rels = ArrayList<Pair<String, List<DzRelease>>>()
+            for ((i, seed) in seeds.withIndex()) {
+                val name = seed.first
+                val e = try {
+                    discoEntry(name, pace = true).also { fails = 0 }
+                } catch (_: Exception) {
+                    fails++
+                    null
+                }
+                e?.optJSONArray("releases")?.let { a -> rels += name to (0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) } }
+                if (!likesFresh(name)) {
+                    try {
+                        fetchLikes(c, name, e?.optJSONObject("artist")?.optLong("id"))
+                        fails = 0
+                    } catch (_: Exception) {
+                        fails++
+                    }
+                }
+                discoverDone = i + 1
+                if (fails >= 4) throw IOException("offline")
+                if (i % 5 == 4) pushDiscover()
+            }
+            val fresh = Discover.newReleases(rels, java.time.LocalDate.now())
+            synchronized(dstore) {
+                dstore.put("releases", JSONArray(fresh.map { (a, r) -> r.toJson().put("artist", a) }))
+                dstore.put("at", now)
+            }
+            discoverExtras(s, c)
+        } catch (_: Exception) {
+            discoverError = "Couldn't reach Last.fm and Deezer. Suggestions come once you're online."
+        } finally {
+            saveDiscover()
+            discoverBusy = false
+            pushDiscover()
+        }
+    }
+
+    /**
+     * For the best suggestions: who is like them (for "further out"), their songs (for the mix), their genres, and
+     * photos Deezer didn't bring along. On [discoverExec].
+     */
+    private fun discoverExtras(s: Stats, c: LastfmClient?) {
+        val best = suggestions(s, DISCOVER_SHOWN)
+        for (x in best.take(Discover.STEP2)) if (!likesFresh(x.name)) runCatching { fetchLikes(c, x.name) }
+        for (x in best.take(Discover.mixArtists(MIX_SIZE))) topsOf(c, x.name)
+        for (x in best) genreOf(c, x.name)
+        saveDiscover()
+        val photos = s.needPhotos(best.filter { it.photo.isEmpty() }.map { it.name })
+        if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { pushDiscover() } }
+    }
+
+    private fun pushDiscover() = discoverExec.execute { push("onDiscover") { discoverJson() } }
+
+    /** The For you tab: the suggestions (best first, with why), new releases by your artists, and how the look is going. */
+    private fun discoverJson(): JSONObject {
+        val o = JSONObject().put("on", prefs.discoverOn).put("reach", prefs.discoverReach).put("busy", discoverBusy)
+            .put("done", discoverDone).put("total", discoverTotal).put("error", discoverError).put("no", discoverNo().length())
+            .put("lastfm", lastfm() != null)
+        if (!prefs.discoverOn) return o
+        val s = currentStats() ?: return o
+        val sugg = suggestions(s)
+        o.put("built", synchronized(dstore) { dstore.optLong("at") })
+        o.put("artists", JSONArray(sugg.map { suggestionJson(it, s) }))
+        val rel = synchronized(dstore) { dstore.optJSONArray("releases")?.let { JSONArray(it.toString()) } } ?: JSONArray()
+        for (i in 0 until rel.length()) rel.getJSONObject(i).let { r -> r.put("plays", s.albumPlaysOf(r.optString("artist"), r.optString("title"))) }
+        o.put("releases", rel)
+        o.put("mix", Discover.mixArtists(MIX_SIZE))
+        return o
+    }
+
+    private fun suggestionJson(x: Suggestion, s: Stats): JSONObject {
+        val most = x.because.firstOrNull()?.second ?: 1.0
+        return JSONObject().put("name", x.name).put("photo", x.photo.ifEmpty { s.artistPhoto(x.name) }).put("fans", x.fans)
+            .put("genre", genreOf(null, x.name, lookUp = false)).put("via", x.via)
+            .put("because", JSONArray(x.because.take(5).map { (n, v) -> JSONObject().put("name", n).put("v", v / most).put("like", x.like[n] ?: 0.0) }))
+    }
+
+    /** You said [name] isn't for you: left out from now on, and the artists of yours that led to them count a little less. */
+    private fun discoverRefuse(name: String) {
+        val s = currentStats() ?: return
+        val k = Text.norm(name)
+        val no = discoverNo()
+        if (no.has(k)) return
+        val led = suggestions(s).firstOrNull { Text.norm(it.name) == k }?.because?.take(3)?.map { it.first }.orEmpty()
+        no.put(k, JSONObject().put("name", name).put("seeds", JSONArray(led)))
+        prefs.discoverNo = no.toString()
+        val w = runCatching { JSONObject(prefs.discoverWeaker) }.getOrNull() ?: JSONObject()
+        for (n in led) w.put(Text.norm(n), w.optInt(Text.norm(n)) + 1)
+        prefs.discoverWeaker = w.toString()
+    }
+
+    /** Takes back a "not for me" (and what it did to the artists that led there). */
+    private fun discoverUnrefuse(name: String) {
+        val k = Text.norm(name)
+        val no = discoverNo()
+        val e = no.optJSONObject(k) ?: return
+        no.remove(k)
+        prefs.discoverNo = no.toString()
+        val w = runCatching { JSONObject(prefs.discoverWeaker) }.getOrNull() ?: JSONObject()
+        val led = e.optJSONArray("seeds") ?: JSONArray()
+        for (i in 0 until led.length()) {
+            val n = Text.norm(led.getString(i))
+            val v = w.optInt(n) - 1
+            if (v > 0) w.put(n, v) else w.remove(n)
+        }
+        prefs.discoverWeaker = w.toString()
+    }
+
+    /** Why one artist is suggested, and their best-known songs to start with. On [discoverExec]. */
+    private fun discoverWhy(msg: JSONObject) {
+        val name = msg.optString("name")
+        val s = currentStats() ?: return
+        val c = lastfm()
+        val x = suggestions(s).firstOrNull { Text.norm(it.name) == Text.norm(name) }
+        val songs = topsOf(c, name).orEmpty()
+        val j = (if (x != null) suggestionJson(x, s) else JSONObject().put("name", name).put("photo", s.artistPhoto(name)).put("genre", genreOf(c, name)))
+            .put("songs", JSONArray(songs.take(5))).put("req", msg.optInt("req")).put("known", s.knows(name))
+        push("onDiscoverWhy") { j }
+    }
+
+    /**
+     * The discovery mix: [MIX_SIZE] songs (or the size asked for) by suggested artists, two at most from each. Seed 0 is
+     * the week's own mix; another seed makes another. On [discoverExec].
+     */
+    private fun discoverMix(msg: JSONObject) {
+        val s = currentStats() ?: return push("onPlaylist") { JSONObject().put("empty", true) }
+        val size = msg.optInt("size", MIX_SIZE).coerceIn(10, 100)
+        val asked = msg.optLong("seed")
+        val seed = if (asked == 0L) Discover.weekSeed(java.time.LocalDate.now()) else asked
+        val sugg = suggestions(s)
+        val c = lastfm()
+        // Their songs: kept, else looked up now for the ones this mix could pick.
+        val tops = HashMap<String, List<String>>()
+        for ((i, x) in sugg.withIndex()) topsOf(c, x.name, lookUp = i < Discover.mixArtists(size) + 10)?.let { tops[Text.norm(x.name)] = it }
+        saveDiscover()
+        val list = Discover.mix(sugg, tops, size, seed)
+        push("onPlaylist") {
+            JSONObject().put("kind", "discover").put("seed", asked).put("size", size).put("reach", prefs.discoverReach)
+                .put("name", "Discovery mix").put("note", "Songs you haven't played, by artists your listening points to")
+                .put("tracks", JSONArray(list.map { it.toJson() }))
+        }
+    }
+
+    /** An artist's best-known songs on Last.fm, as a playlist to start with them. On [discoverExec]. */
+    private fun artistBest(msg: JSONObject) {
+        val name = msg.optString("artist")
+        val songs = topsOf(lastfm(), name).orEmpty()
+        push("onPlaylist") {
+            JSONObject().put("kind", "artistBest").put("artist", name).put("name", "Best of $name").put("note", "Their most played songs on Last.fm")
+                .put("tracks", JSONArray(songs.map { Pick(name, it, "", 0, "new").toJson() }))
+        }
     }
 
     /** Computes and pushes the stats for [statsRange]. On [statsExec]. */
@@ -2442,6 +2786,7 @@ object Core {
             JSONObject().put("hasKey", prefs.setlistKey.isNotEmpty()).put("builtIn", prefs.setlistBuiltIn).put("keyHint", if (prefs.setlistBuiltIn) "" else hint(prefs.setlistKey))
                 .put("user", prefs.setlistUser).put("concerts", concerts().size).put("concertsAt", prefs.concertsAt).put("concertsBusy", concertsBusy).put("concertsError", concertsError),
         )
+        .put("discover", JSONObject().put("on", prefs.discoverOn).put("no", discoverNo().length()))
         .put("version", BuildConfig.VERSION_NAME)
 
     // ---- small persisted maps ----

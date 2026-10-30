@@ -131,6 +131,24 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getLong("concertsAt", 0)
         set(v) = app.edit().putLong("concertsAt", v).apply()
 
+    /**
+     * Suggestions on Explore (history/Discover): whether they're on, how far they go (0 close, 1 in between, 2 further out),
+     * the artists you said aren't for you (normed name to name, as JSON) and, per artist of yours, how many of the
+     * suggestions it led to you turned down (JSON).
+     */
+    var discoverOn: Boolean
+        get() = app.getBoolean("discoverOn", true)
+        set(v) = app.edit().putBoolean("discoverOn", v).apply()
+    var discoverReach: Int
+        get() = app.getInt("discoverReach", 1)
+        set(v) = app.edit().putInt("discoverReach", v).apply()
+    var discoverNo: String
+        get() = app.getString("discoverNo", "{}") ?: "{}"
+        set(v) = app.edit().putString("discoverNo", v).apply()
+    var discoverWeaker: String
+        get() = app.getString("discoverWeaker", "{}") ?: "{}"
+        set(v) = app.edit().putString("discoverWeaker", v).apply()
+
     /** Names fixed before they're scrobbled (scrobble/FixRules): the ready-made fixes switched on, and the user's own rules. */
     var fixPresets: Set<String>
         get() = app.getString("fixPresets", "").orEmpty().split(',').filter { it.isNotBlank() }.toSet()

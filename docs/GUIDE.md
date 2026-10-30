@@ -134,8 +134,16 @@ A week shows its seven days, the week before in outline, and each day on a 24-ho
 change over the period (the river, phases, genre drift) appear once the period has four days with
 music.
 
+A week, month, year or all time comes in four tabs under the period: Overview (the story, the
+numbers, the highlights, your week), Listening (your record, plays over time, the river, when you
+listen, streaks, phases, habits), Music (top lists, new artists, obsessions, genre drift, decades)
+and Shelf (rarely played records and wishlist ideas). The period and the genre or decade filter
+apply to every tab. A day is short, so it stays one page. Settings → Look → Stats and Explore turns
+the tabs off.
+
 "Arrange this page", at the bottom, reorders the blocks (drag the handles) and hides the ones you
-don't want; the Day tab has its own order. The layout goes into backups with the other settings.
+don't want; in tabs, each block stays in its tab, in the order you gave it. The Day tab has its own
+order. The layout goes into backups with the other settings.
 The charts adapt to the period: a week or a month is shown per day, a year per week or month, all
 time per month, quarter or year. These are the blocks for the chosen period:
 
@@ -321,7 +329,41 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 
 #### Explore
 
-The Explore tab collects listening that never makes the top lists:
+Explore has three tabs. For you suggests music you haven't played. Rediscover has the lists below
+and Crate dig. Your taste has the genre map, the musical atlas, you vs everyone and your concerts.
+With Settings → Look → Stats and Explore set to One long page, all of it comes on one page.
+
+#### For you
+
+For you starts from the 25 artists you play most, with recent plays counting the most (a play
+counts half as much after four months). For each of them the app asks Last.fm which artists its
+listeners find similar, and Deezer which artists its listeners play alongside. When both name an
+artist, that counts for more than either one alone. Each suggestion gets the likeness from each
+of your artists that points to it, weighed by how much you play that artist, so one that several of
+your artists point to ranks high. Artists you've played or have on your shelf never show up. The
+first look takes a minute or two; after that it runs again once a week, when you open Explore.
+
+- Artists you might like lists the best 40 with the reason ("Because you play Shame, IDLES and
+  Fontaines D.C."), their genre and how many fans they have on Deezer. Close keeps to your taste,
+  Further out prefers less known artists and also looks one step further, at who is like your best
+  suggestions. Tap a suggestion to see which of your artists point to them and how strongly, and
+  their best-known songs, with a playlist of those and their artist page. The artist page of
+  someone you haven't played shows their best-known songs, their discography and their shows.
+- Not for me (the ✕ on a row, or in the sheet) drops an artist for good, and the artists of yours
+  that led to them count a little less from then on. Undo takes it back right away; Settings →
+  Stats and listening → Suggest them again brings back everyone you turned down.
+- The discovery mix is 30 songs you haven't played: the two best-known songs of each of 15
+  suggested artists, no artist twice in a row. It stays the same all week and changes on Monday.
+  Make another picks other artists and songs. Like every playlist, it can go to TIDAL.
+- New from your artists has the albums, EPs and singles your artists put out in the last eight
+  weeks, or that come out soon, from Deezer.
+
+Settings → Stats and listening → Suggestions on Explore turns all of this off, and with it the
+lookups.
+
+#### Rediscover
+
+The Rediscover tab collects listening that never makes the top lists:
 
 - Lost favorites are artists you played a lot that have gone quiet for half a year or more, with
   the month they were big for you.
@@ -383,9 +425,10 @@ discography, their most played songs) and Live (the shows you were at, and what 
 lately). An album's are Overview, Songs (track by track and the tracklist) and Listening (when it
 clicked, its songs over time, the charts). A genre's are Overview (the numbers and the styles in
 it), Artists, Music (albums, songs, records to rediscover, your shelf, decades) and Listening. The
-tabs stay at the top as you scroll, and swiping sideways on the page opens the tab next to the
-open one. In an artist's Live tab the setlist comes in two columns and
-the shows scroll sideways as ticket stubs.
+tabs stay at the top as you scroll. Swipe sideways to move to the next tab: it comes in beside the
+open one as you drag, and slides into place when you let go past a third of the way or flick.
+Rows that scroll sideways and charts you can scrub keep their own swipes. In an artist's Live tab
+the setlist comes in two columns and the shows scroll sideways as ticket stubs.
 
 The number of records on the shelf sits next to its title. One line under the title has the sort
 order (tap it for the others: recently or first added, artist A–Z or Z–A, year, plays), the filter

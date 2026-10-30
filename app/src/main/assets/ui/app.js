@@ -264,12 +264,20 @@ const Pill = {
 };
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, act) {
   const t = $('#snackbar');
   t.textContent = msg;
+  if (act) {
+    const b = document.createElement('button');
+    b.className = 'snack-act';
+    b.textContent = act.label;
+    b.onclick = () => { t.classList.remove('show'); act.run(); };
+    t.appendChild(b);
+  }
+  t.classList.toggle('acts', !!act);
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+  toastTimer = setTimeout(() => t.classList.remove('show'), act ? 5000 : 3200);
 }
 
 function openUrl(url) {
@@ -3806,7 +3814,7 @@ function renderGenre() {
     }
     P.life = lifeCharts(g, 'it', '', g.label + g.label);
     P.shelf = shelfHtml;
-    h += tabbedHtml(g, GENRE_TABS, GENRE_LONG, P);
+    h += tabbedHtml('genrePage', g.tab, GENRE_TABS, GENRE_LONG, P);
   }
   if (shelfRecs.length && (g.loading || g.missing)) h += shelfHtml;
   morph($('#genreBody'), h);
@@ -3971,7 +3979,7 @@ function renderAlbum() {
       sub: (s) => `Plays per ${a.river.unit} of each song since you first played it; the top ${a.river.artists.length} are <b>${s}%</b> of them.`,
       link: (n) => trackAttrs(a.artist, n, { album: a.title, cover }) }) : '';
     P.life = lifeCharts(a, 'it', cover, a.title + a.artist);
-    h += tabbedHtml(a, ALBUM_TABS, ALBUM_LONG, P);
+    h += tabbedHtml('albumPage', a.tab, ALBUM_TABS, ALBUM_LONG, P);
   }
   keepHolo($('#albumBody'), h);
   tint($('#albumBody'), cover, a.title + a.artist);
@@ -4694,6 +4702,7 @@ function requestExplore() {
   if (!(ST.history || {}).count) { EXPLORE = null; renderExplore(); return; }
   if (!EXPLORE) renderExplore();
   send({ t: 'explore' });
+  if ((ST.discover || {}).on !== false) send({ t: 'discover' });
 }
 window.onExplore = (x) => { EXPLORE = x; renderExplore(); };
 
@@ -4713,52 +4722,175 @@ function renderExplore() {
   if (!x) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (x.empty) { body.innerHTML = `<div class="empty"><p>Nothing to explore yet.</p></div>`; return; }
   const tail = x.tail || {};
-  let h = `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}.</p>
-    <div class="xp-tiles">
+  // The page in parts: one after the other, or in tabs (Settings → Look).
+  const P = {};
+  P.intro = `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}.</p>`;
+  P.tiles = `<div class="xp-tiles">
       <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
       <button class="xp-tile wide" id="openConcerts">${TICKET_ART}<span><b>Your concerts</b><small>${(ST.setlist || {}).concerts ? `${plural(ST.setlist.concerts, 'show')} you were at, and what they did to your listening` : 'The shows you were at, from setlist.fm'}</small></span></button>
-    </div>
-    <button class="btn tonal xp-dig" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button>`;
-  h += genreMapHtml(x.genreMap);
+    </div>`;
+  P.dig = `<button class="btn tonal xp-dig" data-pl="dig">${icon('shuffle')}Crate dig: a random playlist</button>`;
+  P.foryou = forYouHtml();
+  P.genreMap = genreMapHtml(x.genreMap);
   const la = x.lostArtists || [];
   if (la.length) {
-    h += xSection('Lost favorites', 'Artists you played a lot that have gone quiet for half a year or more', 'lost',
+    P.lost = xSection('Lost favorites', 'Artists you played a lot that have gone quiet for half a year or more', 'lost',
       `<div class="xcards">${la.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name)}<b>${esc(a.name)}</b>
         <small>${plural(a.plays, 'play')}, last ${esc(monthYear(a.last))}</small><small class="meta">Big in ${esc(monthYear(a.peak.start))}</small></button>`).join('')}</div>`);
   }
   const lb = x.lostAlbums || [];
   if (lb.length) {
-    h += xSection('Albums to rediscover', 'Albums you played through, then left on the shelf', 'lostAlbums',
+    P.lostAlbums = xSection('Albums to rediscover', 'Albums you played through, then left on the shelf', 'lostAlbums',
       `<div class="xcards">${lb.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
         <small>${esc(a.artist)}</small><small class="meta">${plural(a.plays, 'play')}, last ${esc(monthYear(a.last))}</small></button>`).join('')}</div>`);
   }
   const rg = x.regulars || [];
   if (rg.length) {
-    h += xSection('Quiet regulars', 'Never on top, always around: artists you come back to month after month', 'regulars',
+    P.regulars = xSection('Quiet regulars', 'Never on top, always around: artists you come back to month after month', 'regulars',
       `<div class="rank">${rg.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${a.track ? `${esc(a.track)}, ` : ''}since ${esc(monthYear(a.first))}</small></span><span class="v">${a.months} months</span></button>`).join('')}</div>`);
   }
   const od = x.oneDay || [];
   if (od.length) {
-    h += xSection('One-day wonders', 'Played all day once, never again. Worth another try?', 'oneDay',
+    P.oneDay = xSection('One-day wonders', 'Played all day once, never again. Worth another try?', 'oneDay',
       `<div class="rank">${od.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}</small></span><span class="v">${plural(a.plays, 'play')}</span></button>`).join('')}</div>`);
   }
   const dc = x.deepCuts || [];
   if (dc.length) {
-    h += xSection('Deep cuts', 'Songs by your favorite artists you\'ve played only once or twice', 'deepCuts',
+    P.deepCuts = xSection('Deep cuts', 'Songs by your favorite artists you\'ve played only once or twice', 'deepCuts',
       `<div class="rank">${dc.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}</small></span><span class="v">${t.plays}×</span></button>`).join('')}</div>`);
   }
   const otd = x.onThisDay || [];
   if (otd.length) {
-    h += xSection('On this day', `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`, 'onThisDay',
+    P.onThisDay = xSection('On this day', `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`, 'onThisDay',
       otd.map((y) => `<div class="otd"><div class="yr"><b>${y.year}</b><small>${plural(y.plays, 'play')}, ${y.artists.map(esc).join(', ')}</small></div>
         <div class="rank">${y.tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v">${t.plays > 1 ? `${t.plays}×` : ''}</span></button>`).join('')}</div></div>`).join(''));
   }
-  morph(body, h);
+  morph(body, tabbedHtml('tab-explore', exploreTab, EXPLORE_TABS, EXPLORE_LONG, P, { drop: true }));
   const gm = $('.genre-map');
-  if (gm) { gmSizes.disconnect(); gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
+  gmSizes.disconnect();
+  if (gm) { gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
   renderVsCard();
+  syncPageTabs($('#tab-explore'));
   if (!VS) send({ t: 'vs' });
+}
+
+// ---- for you: music you haven't played, from what your artists point to ----
+
+let DISCOVER = null;
+let discoverAll = false;
+window.onDiscover = (d) => {
+  DISCOVER = d;
+  if (tab === 'explore') renderExplore();
+};
+const REACH = [['0', 'Close'], ['1', 'In between'], ['2', 'Further out']];
+const fansLabel = (n) => (n >= 1000 ? `${compact(n)} fans` : '');
+/** "Because you play A, B and C" */
+const becauseText = (x) => {
+  const n = (x.because || []).slice(0, 3).map((b) => b.name);
+  if (x.via) return `Like ${x.via}, another of your suggestions`;
+  return n.length ? `Because you play ${n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : n[0]}` : '';
+};
+function forYouHtml() {
+  const d = DISCOVER;
+  if ((ST.discover || {}).on === false || (d && !d.on)) return '';
+  if (!d || (!d.built && (!d.artists || !d.artists.length))) {
+    if (d && d.error) return `<div class="empty small"><p>${esc(d.error)}</p><button class="btn tonal" data-dagain>Try again</button></div>`;
+    const p = d && d.total ? Math.round((d.done / d.total) * 100) : 0;
+    return `<div class="viz fy-wait"><h2>Finding music for you</h2><span class="sub">Looking up who Last.fm's and Deezer's listeners find alike to the artists you play${d && d.total ? `: ${d.done} of ${d.total}` : ''}. This takes a minute the first time.</span>
+      <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div></div>`;
+  }
+  const arts = d.artists || [];
+  const shown = discoverAll ? arts : arts.slice(0, 8);
+  const pics = arts.slice(0, 3);
+  const mix = arts.length >= 4 ? `<button class="fy-mix" data-pl="discover"><span class="stack">${pics.map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.photo, a.name, a.name, 'tiny')}</i>`).join('')}</span>
+      <span class="txt"><b>Discovery mix</b><small>${d.mix * 2} songs you haven't played, by artists your listening points to. A new one every Monday.</small></span>${icon('chevron-right')}</button>` : '';
+  const reach = `<div class="chips fy-reach">${REACH.map(([v, l]) => `<button class="chip${String(d.reach) === v ? ' on' : ''}" data-reach="${v}">${l}</button>`).join('')}</div>`;
+  const rows = shown.map((a) => `<div class="r with-cover fy-row" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b>
+      <small class="fy-why">${esc(becauseText(a))}</small>${a.genre || a.fans ? `<small>${esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', '))}</small>` : ''}</span>
+      <button class="icon-btn small" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button></div>`).join('');
+  const more = arts.length > shown.length ? `<button class="btn text" data-dmore>Show all ${arts.length}</button>` : '';
+  const rel = (d.releases || []).map((r) => `<button class="xcard" ${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}">${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
+      <small>${esc(r.artist)}</small><small class="meta">${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}</small></button>`).join('');
+  return `${mix}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Artists you haven't played that your listening points to. Further out brings less known ones. Tap one to see why.</span>
+      ${reach}${arts.length ? `<div class="rank fy-list">${rows}</div>${more}` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}</div>
+    ${rel ? `<div class="viz explore"><div class="xhead"><h2>New from your artists</h2></div><span class="sub">Albums, EPs and singles out in the last eight weeks, or coming soon</span><div class="xcards">${rel}</div></div>` : ''}
+    ${d.busy ? `<p class="hint center">Looking for more: ${d.done} of ${d.total}</p>` : ''}`;
+}
+/** "3 weeks ago", "this week", "out 14 Nov" */
+function releaseWhen(r) {
+  const d = new Date(`${r.date}T12:00:00`);
+  const days = Math.round((Date.now() - d.getTime()) / 864e5);
+  const type = { album: 'album', ep: 'EP', single: 'single' }[r.type] || 'release';
+  if (days < 0) return `${type}, out ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  if (days < 7) return `${type}, this week`;
+  return `${type}, ${days < 14 ? 'last week' : `${Math.floor(days / 7)} weeks ago`}`;
+}
+/** Not for me: gone from the suggestions, and the artists that led there count a little less. Undo brings it back. */
+function discoverNope(name) {
+  if (DISCOVER && DISCOVER.artists) { DISCOVER.artists = DISCOVER.artists.filter((a) => a.name !== name); renderExplore(); }
+  send({ t: 'discoverNo', name });
+  toast(`${name} won't be suggested again`, { label: 'Undo', run: () => send({ t: 'discoverUndo', name }) });
+}
+
+/** Why an artist is suggested: which of your artists point to them and how strongly, and where to start. */
+let WHY = null;
+let whyReq = 0;
+function openWhy(name) {
+  const x = ((DISCOVER || {}).artists || []).find((a) => a.name === name) || { name };
+  WHY = { ...x, loading: true, req: ++whyReq };
+  openSheet(whyHtml());
+  wireWhy();
+  send({ t: 'discoverWhy', name, req: whyReq });
+}
+window.onDiscoverWhy = (j) => {
+  if (!WHY || j.req !== WHY.req) return;
+  WHY = { ...WHY, ...j, loading: false };
+  if (sheetOpen()) { $('#sheetContent').innerHTML = whyHtml(); wireWhy(); }
+};
+const likeWord = (v) => (v >= 0.6 ? 'very alike' : v >= 0.3 ? 'alike' : 'a little alike');
+function whyHtml() {
+  const x = WHY;
+  const bars = (x.because || []).map((b) => `<div class="whybar"><span>${esc(b.name)}</span><i><b style="width:${Math.max(6, Math.round(b.v * 100))}%"></b></i><small>${likeWord(b.like)}</small></div>`).join('');
+  const songs = (x.songs || []).map((t, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(t)}</b></span></div>`).join('');
+  return `<div class="why-sheet"><div class="why-hero">${coverHtml(x.photo, x.name, x.name, 'tiny round')}<div><h2>${esc(x.name)}</h2><div class="meta">${esc([x.genre, fansLabel(x.fans)].filter(Boolean).join(', ')) || 'Not in your history yet'}</div></div></div>
+    ${bars ? `<div class="row-label"><span>What points to them</span></div>${bars}
+      <p class="hint">Each bar: how alike listeners on Last.fm and Deezer find the two, weighed by how much you play your artist lately.${(x.because || []).length > 1 ? ` ${plural(x.because.length, 'artist')} of yours point here, so they rank high.` : ''}</p>` : x.via ? `<p class="body">${esc(becauseText(x))}.</p>` : ''}
+    <div class="row-label"><span>Start with</span></div>
+    ${x.loading ? '<div class="lin inline indet"><i></i></div>' : songs ? `<div class="rank">${songs}</div>` : '<p class="hint">Last.fm has no songs of theirs listed.</p>'}
+    <div class="btn-row">
+      ${(x.songs || []).length ? `<button class="btn filled" data-pl="artistBest" data-artist="${esc(x.name)}">${icon('playlist')}Best-of playlist</button>` : ''}
+      <button class="btn tonal" data-artist="${esc(x.name)}">Artist page</button>
+      ${x.known ? '' : `<button class="btn text" data-nope="${esc(x.name)}">Not for me</button>`}
+    </div></div>`;
+}
+function wireWhy() {
+  $('#sheetContent').onclick = (e) => {
+    const no = e.target.closest('[data-nope]');
+    if (no) { closeSheet(); discoverNope(no.dataset.nope); return; }
+    if (e.target.closest('[data-artist], [data-pl]')) closeSheet();
+  };
+}
+/** The discovery mix (the week's, or another one) and an artist's best-known songs, as playlists. */
+function openDiscoverMix(seed = 0) {
+  openPage('playlistPage');
+  PLAYLIST = { loading: true, kind: 'discover', name: 'Discovery mix', size: 30, seed, reach: (DISCOVER || {}).reach };
+  TIDALJOB = null;
+  PLNAME = null;
+  renderPlaylist();
+  send({ t: 'playlist', kind: 'discover', size: 30, seed });
+}
+function openArtistBest(artist) {
+  openPage('playlistPage');
+  PLAYLIST = { loading: true, kind: 'artistBest', artist };
+  TIDALJOB = null;
+  PLNAME = null;
+  renderPlaylist();
+  send({ t: 'playlist', kind: 'artistBest', artist });
+}
+function discoverPlControls(p) {
+  return `<div class="pl-ctl" id="plCtl"><div class="chips">${REACH.map(([v, l]) => `<button class="chip${String(p.reach) === v ? ' on' : ''}" data-plreach="${v}">${l}</button>`).join('')}
+    <button class="chip" data-plagain>${icon('shuffle', 'i small')}Make another</button></div></div>`;
 }
 
 // ---- playlists ----
@@ -4769,7 +4901,9 @@ let PLNAME = null; // the name and description you gave the playlist: { name, no
 /** The playlist's name and description: yours, else the ones it came with. */
 const plTitle = (p) => (PLNAME ? PLNAME.name : p.name);
 const plNote = (p) => (PLNAME ? PLNAME.note : `${p.note}. Made with Heavy Rotation.`);
-function openPlaylist(kind, range) {
+function openPlaylist(kind, range, el) {
+  if (kind === 'discover') { openDiscoverMix(); return; }
+  if (kind === 'artistBest') { openArtistBest(el && el.dataset.artist); return; }
   openPage('playlistPage');
   PLAYLIST = { loading: true, kind };
   TIDALJOB = null;
@@ -4800,6 +4934,19 @@ function genrePlControls(p) {
 function wireGenrePlControls() {
   const box = $('#plCtl');
   if (!box) return;
+  if (PLAYLIST && PLAYLIST.kind === 'discover') {
+    box.onclick = (e) => {
+      const r = e.target.closest('[data-plreach]'), again = e.target.closest('[data-plagain]');
+      if (!r && !again) return;
+      const p = PLAYLIST;
+      if (r) send({ t: 'discoverReach', v: +r.dataset.plreach });
+      PLAYLIST = { ...p, loading: true, reach: r ? +r.dataset.plreach : p.reach, seed: again ? Date.now() % 1e9 : p.seed };
+      TIDALJOB = null;
+      renderPlaylist();
+      send({ t: 'playlist', kind: 'discover', size: p.size, seed: PLAYLIST.seed });
+    };
+    return;
+  }
   box.onclick = (e) => {
     const m = e.target.closest('[data-plmode]'), s = e.target.closest('[data-plsize]'), again = e.target.closest('[data-plagain]');
     if (!m && !s && !again) return;
@@ -4813,6 +4960,8 @@ function wireGenrePlControls() {
 window.onPlaylist = (p) => {
   // A genre's playlist that is no longer the one asked for (another size or mix since): left out.
   if (p.kind === 'genre' && PLAYLIST && PLAYLIST.kind === 'genre' && (p.key !== PLAYLIST.key || p.size !== PLAYLIST.size || p.mode !== PLAYLIST.mode || p.seed !== PLAYLIST.seed)) return;
+  if (p.kind === 'discover' && PLAYLIST && (PLAYLIST.kind !== 'discover' || p.seed !== PLAYLIST.seed)) return;
+  if (p.kind === 'artistBest' && PLAYLIST && (PLAYLIST.kind !== 'artistBest' || p.artist !== PLAYLIST.artist)) return;
   if (p.kind === 'top' && p.range) { p.name = `${periodName(p.range)} on record`; p.note = `Your most played songs of ${periodName(p.range)}`; }
   PLAYLIST = p;
   renderPlaylist();
@@ -4874,6 +5023,11 @@ function renderPlaylist() {
     wireGenrePlControls();
     return;
   }
+  if (p.loading && p.kind === 'discover') {
+    body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>Discovery mix</h1><p>Picking ${p.size} songs…</p></div></div>${discoverPlControls(p)}<div class="lin inline indet"><i></i></div>`;
+    wireGenrePlControls();
+    return;
+  }
   if (p.loading) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (p.empty || !p.tracks || !p.tracks.length) { body.innerHTML = `<div class="empty">${icon('playlist', 'i big')}<p>No songs for this playlist yet.</p></div>`; return; }
   const about = PLNAME ? PLNAME.note : p.note;
@@ -4884,7 +5038,7 @@ function renderPlaylist() {
       <button class="btn tonal" id="plShare">${icon('share')}Share</button>
       ${p.kind === 'dig' ? `<button class="btn text" data-pl="dig">${icon('shuffle')}Dig again</button>` : ''}
     </div>
-    ${p.kind === 'genre' ? genrePlControls(p) : ''}
+    ${p.kind === 'genre' ? genrePlControls(p) : p.kind === 'discover' ? discoverPlControls(p) : ''}
     <div id="plTidalBlock">${tidalBlock()}</div>
     <div class="card how">
       <div class="card-title">${icon('open')}${(ST.tidal || {}).loggedIn ? 'Or with TuneMyMusic or Soundiiz (also for Spotify)' : 'Into TIDAL (or Spotify)'}</div>
@@ -4895,8 +5049,9 @@ function renderPlaylist() {
       </ol>
       <div class="btn-row"><button class="btn text small link" data-url="https://www.tunemymusic.com/transfer">TuneMyMusic</button><button class="btn text small link" data-url="https://soundiiz.com/">Soundiiz</button></div>
     </div>
-    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source === 'new' ? '<span class="v new-tag">new</span>' : `<span class="v">${t.plays}×</span>`}</button>`).join('')}</div>
+    <div class="rank">${p.tracks.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title, { album: t.album })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}${t.note ? `, ${esc(t.note)}` : ''}</small></span>${t.source !== 'new' ? `<span class="v">${t.plays}×</span>` : p.kind === 'discover' || p.kind === 'artistBest' ? '' : '<span class="v new-tag">new</span>'}</button>`).join('')}</div>
     ${p.kind === 'genre' && p.tracks.some((t) => t.source === 'new') ? '<p class="hint">"New" songs are ones Last.fm finds similar to your favorites here, that you haven\'t played.</p>' : ''}
+    ${p.kind === 'discover' ? '<p class="hint">Each artist\'s best-known songs on Last.fm, two at most of each. "Make another" picks other artists and songs; the week\'s mix stays until Monday.</p>' : ''}
     ${p.kind === 'setlist' ? `<p class="hint">"New" are songs you haven't played yet. Setlist from <button class="link-inline" data-url="${esc(p.url || 'https://www.setlist.fm/')}">setlist.fm</button>.</p>` : ''}`;
   wireGenrePlControls();
   $('#plEdit').onclick = $('#plName').onclick = editPlaylistName;
@@ -5187,8 +5342,15 @@ function renderArtist() {
   const a = ARTIST;
   if (!a || a.loading || !isOpen('artistPage')) return;
   if (a.missing) {
-    $('#artistBody').innerHTML = `<div class="hero"><h1>${esc(a.name)}</h1>${listenRow('artists', a.name)}</div><div class="empty small"><p>${(ST.history || {}).count > 0 ? 'No plays of this artist in your history yet.' : 'Import your Last.fm history on the Stats tab to see their story here.'}</p></div>
+    const sug = ((DISCOVER || {}).artists || []).find((x) => norm(x.name) === norm(a.name));
+    const best = a.best || [];
+    $('#artistBody').innerHTML = `<div class="hero new-artist">${a.photo ? coverHtml(a.photo, a.name, a.name, 'round') : ''}<div><h1>${esc(a.name)}</h1>
+        <div class="meta">${(ST.history || {}).count > 0 ? 'No plays in your history yet' : 'Import your Last.fm history on the Stats tab to see their story here'}</div></div></div>${listenRow('artists', a.name)}
+      ${sug ? `<button class="card fy-because" data-why="${esc(a.name)}"><small>Suggested for you</small><span>${esc(becauseText(sug))}</span>${icon('chevron-right')}</button>` : ''}
+      ${best.length ? `<div class="viz"><div class="xhead"><h2>Their best-known songs</h2><button class="btn tonal small" data-pl="artistBest" data-artist="${esc(a.name)}">${icon('playlist')}Playlist</button></div><span class="sub">Most played on Last.fm</span>
+        <div class="rank">${best.map((t, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(t)}</b></span></div>`).join('')}</div></div>` : ''}
       <div id="discoSlot">${discoHtml(a.name)}</div><div id="liveSlot">${liveHtml(a.name)}</div>`;
+    $('#artistBody').querySelectorAll('[data-why]').forEach((b) => { b.onclick = () => openWhy(b.dataset.why); });
     return;
   }
   const mo = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
@@ -5238,7 +5400,7 @@ function renderArtist() {
   P.shelf = a.owned.length ? `<div class="viz"><h2>On your shelf</h2><div class="covers">${a.owned.map((x) => `<button class="rec" data-rec="${x.id}">${coverHtml(x.cover, x.title, x.artist)}<b>${esc(x.title)}</b><small>${x.year || ''}</small></button>`).join('')}</div></div>` : '';
   // The live tab waits for setlist.fm (liveSlot fills in); empty, it says so.
   if (a.tab === 'live' && !a.concerts && LIVE && !LIVE.loading && !liveHtml()) P.live = '<div class="empty small"><p>No shows of theirs on setlist.fm yet, and none you were at.</p></div>';
-  h += tabbedHtml(a, ARTIST_TABS, ARTIST_LONG, P);
+  h += tabbedHtml('artistPage', a.tab, ARTIST_TABS, ARTIST_LONG, P);
   keepHolo($('#artistBody'), h);
   tint($('#artistBody'), pic, a.name + a.name);
   fitText($('#artistBody .fit'));
@@ -5246,10 +5408,13 @@ function renderArtist() {
   syncPageTabs($('#artistPage'));
 }
 
-// ---- pages in tabs: artist, album and genre pages (Settings → Look → Pages), or each as one long page ----
+// ---- long pages in tabs (Settings → Look): artist, album and genre pages, Stats and Explore; or each as one long page ----
 
-const pageTabs = () => { try { return localStorage.getItem('pageLayout') !== 'long'; } catch (_) { return true; } };
-/** Each page's tabs ([key, label, its parts]) and the long page's order of the same parts. */
+const layoutPref = (key) => { try { return localStorage.getItem(key) !== 'long'; } catch (_) { return true; } };
+/** Artist, album and genre pages in tabs; Stats and Explore in tabs. */
+const pageTabs = () => layoutPref('pageLayout');
+const mainTabs = () => layoutPref('mainLayout');
+/** Each place's tabs ([key, label, its parts]) and the long page's order of the same parts. */
 const ARTIST_TABS = [['overview', 'Overview', ['tiles', 'period', 'vs', 'origin']], ['listening', 'Listening', ['river', 'life', 'record']],
   ['music', 'Music', ['tracks', 'albums', 'shelf', 'disco', 'global']], ['live', 'Live', ['concerts', 'live']]];
 const ARTIST_LONG = ['tiles', 'period', 'vs', 'origin', 'disco', 'river', 'life', 'record', 'tracks', 'albums', 'concerts', 'live', 'global', 'shelf'];
@@ -5258,78 +5423,176 @@ const ALBUM_LONG = ['tiles', 'period', 'shape', 'songs', 'vs', 'clicked', 'river
 const GENRE_TABS = [['overview', 'Overview', ['tiles', 'inside']], ['artists', 'Artists', ['artists', 'everyone']],
   ['music', 'Music', ['albums', 'songs', 'lost', 'shelf', 'decades']], ['listening', 'Listening', ['life']]];
 const GENRE_LONG = ['tiles', 'inside', 'artists', 'lost', 'albums', 'songs', 'everyone', 'decades', 'life', 'shelf'];
+/** The Stats tab's blocks by tab (within each, in the order Arrange gives them). The day stays one page: it's short. */
+const STATS_TABS = [['overview', 'Overview', ['story', 'numbers', 'tidy', 'highlights', 'week']],
+  ['listening', 'Listening', ['record', 'timeline', 'river', 'days', 'clock', 'streaks', 'pulse', 'habits']],
+  ['music', 'Music', ['top', 'newArtists', 'obsessions', 'genres', 'decades']], ['shelf', 'Shelf', ['rarely', 'wishlist']]];
+const EXPLORE_TABS = [['foryou', 'For you', ['foryou']], ['rediscover', 'Rediscover', ['dig', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay']],
+  ['taste', 'Your taste', ['intro', 'tiles', 'genreMap']]];
+const EXPLORE_LONG = ['intro', 'tiles', 'dig', 'foryou', 'genreMap', 'lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts', 'onThisDay'];
+let statsTab = '', exploreTab = '';
+
+/** Where tabs are: whether they're on there, the open one, and how another opens. Pages scroll themselves, the main tabs the window. */
+const TAB_HOSTS = {
+  artistPage: { on: pageTabs, show: (t) => PAGE_STATE.artistPage.set({ ...ARTIST, tab: t }) },
+  albumPage: { on: pageTabs, show: (t) => PAGE_STATE.albumPage.set({ ...ALBUM, tab: t }) },
+  genrePage: { on: pageTabs, show: (t) => PAGE_STATE.genrePage.set({ ...GENRE, tab: t }) },
+  'tab-stats': { on: mainTabs, show: (t) => { statsTab = t; renderStats(); } },
+  'tab-explore': { on: mainTabs, show: (t) => { exploreTab = t; renderExplore(); } },
+};
+/** What each place shows in tabs now: its tabs in order, the open one, and each one's content (the swipe shows the next one coming). */
+const TAB_SHOWN = {};
+const hostScroller = (host) => (host.classList.contains('page') ? host : document.scrollingElement);
 /**
- * A page's parts [P]: all of them in [long] order, or in tabs the tab bar and the parts of the open tab (the page's
- * state [st].tab, else the first). [empty]: what an empty tab says.
+ * A place's parts [P]: all of them in [long] order, or in tabs the tab bar and the parts of the [open] tab (else the
+ * first). [empty]: what an empty tab says; [drop]: empty tabs are left out instead; [tail]: comes after the parts.
  */
-function tabbedHtml(st, tabs, long, P, empty = '') {
-  if (!pageTabs()) return long.map((k) => P[k] || '').join('');
-  const open = tabs.find(([k]) => k === st.tab) || tabs[0];
-  const body = open[2].map((k) => P[k] || '').join('');
-  return `<i class="tab-anchor"></i><div class="atabs"><div class="seg small">${tabs.map(([k, l]) => `<button data-ptab="${k}" class="${k === open[0] ? 'on' : ''}">${l}</button>`).join('')}</div></div>
-    <div class="atab-body" data-tab="${open[0]}">${body || empty || '<div class="empty small"><p>Nothing here yet.</p></div>'}</div>`;
+function tabbedHtml(id, open, tabs, long, P, { empty = '', drop = false, tail = '' } = {}) {
+  if (!TAB_HOSTS[id].on()) { TAB_SHOWN[id] = null; return long.map((k) => P[k] || '').join('') + tail; }
+  let shown = tabs.map(([k, l, parts]) => ({ k, l, html: parts.map((p) => P[p] || '').join('') }));
+  if (drop) shown = shown.filter((t) => t.html);
+  if (!shown.length) { TAB_SHOWN[id] = null; return tail; }
+  const cur = shown.find((t) => t.k === open) || shown[0];
+  const html = {};
+  shown.forEach((t) => { html[t.k] = (t.html || empty || '<div class="empty small"><p>Nothing here yet.</p></div>') + tail; });
+  TAB_SHOWN[id] = { keys: shown.map((t) => t.k), open: cur.k, html };
+  return `<i class="tab-anchor"></i><div class="atabs"><div class="seg small">${shown.map((t) => `<button data-ptab="${t.k}" class="${t.k === cur.k ? 'on' : ''}">${t.l}</button>`).join('')}</div></div>
+    <div class="atab-clip"><div class="atab-body" data-tab="${cur.k}">${html[cur.k]}</div></div>`;
 }
-/** Another tab on page [pageId]: scrolled down past the tabs, the new one starts at its top, right under them. */
-function setPageTab(pageId, t) {
-  const ps = PAGE_STATE[pageId], st = ps && ps.get();
-  if (!st || st.tab === t) return;
-  const page = $('#' + pageId), anchor = page.querySelector('.tab-anchor'), bar = page.querySelector('.atabs');
-  let to = null;
-  if (anchor && bar) {
-    const y = anchor.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop - (parseFloat(getComputedStyle(bar).top) || 0);
-    if (page.scrollTop > y) to = Math.max(0, y);
-  }
-  ps.set({ ...st, tab: t });
-  if (to != null) {
-    page.dataset.quiet = '1';
-    page.scrollTop = to;
-    setTimeout(() => { delete page.dataset.quiet; }, 120);
+/** Where the scroll is when the tabs sit right where they stick; null without tabs. */
+function tabsTop(host) {
+  const anchor = host.querySelector('.tab-anchor'), bar = host.querySelector('.atabs');
+  if (!anchor || !bar) return null;
+  const sc = hostScroller(host);
+  const top = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;
+  return Math.max(0, anchor.getBoundingClientRect().top - top + sc.scrollTop - (parseFloat(getComputedStyle(bar).top) || 0));
+}
+/** Another tab of [id]: scrolled down past the tabs, the new one starts at its top, right under them. */
+function openTab(id, t) {
+  const host = $('#' + id), s = TAB_SHOWN[id];
+  if (!s || s.open === t) return;
+  const y = tabsTop(host), sc = hostScroller(host);
+  TAB_HOSTS[id].show(t);
+  if (y != null && sc.scrollTop > y) {
+    sc.dataset.quiet = '1';
+    sc.scrollTop = y;
+    setTimeout(() => { delete sc.dataset.quiet; }, 120);
   }
 }
-/** The tab next to the open one on [page] ([dir] 1: right, -1: left), or null. */
-function tabNext(page, dir) {
-  const tabs = { artistPage: ARTIST_TABS, albumPage: ALBUM_TABS, genrePage: GENRE_TABS }[page.id];
-  const st = PAGE_STATE[page.id] && PAGE_STATE[page.id].get();
-  if (!tabs || !st || !page.querySelector('.atabs')) return null;
-  const i = Math.max(0, tabs.findIndex(([k]) => k === st.tab));
-  const n = tabs[i + dir];
-  return n ? n[0] : null;
+/** The tab next to the open one ([dir] 1: right, -1: left), or null. */
+function tabNext(host, dir) {
+  const s = TAB_SHOWN[host.id];
+  if (!s || !host.querySelector('.atabs')) return null;
+  return s.keys[s.keys.indexOf(s.open) + dir] || null;
 }
 /**
- * Swiping sideways on a page in tabs opens the tab next to it: the open one follows the finger and slides away, the
- * next comes in from that side. Rows that scroll sideways and a zoomed record keep their own swipes, and the screen's
- * edges stay Android's (back).
+ * Tab [key]'s content beside the open one ([dir] 1: on its right), at the height it will have once open (right under
+ * the tabs when the page is scrolled past them). Made once a swipe.
  */
-function tabSwipe(page) {
+function tabPeek(host, body, dir, key) {
+  const side = dir > 0 ? 'r' : 'l';
+  const had = body.querySelector(`:scope > .atab-peek.${side}`);
+  if (had && had.dataset.key === key) return had;
+  if (had) had.remove();
+  const y = tabsTop(host), sc = hostScroller(host);
+  const el = document.createElement('div');
+  el.className = `atab-peek ${side}`;
+  el.dataset.key = key;
+  el.style.top = `${y != null ? Math.max(0, sc.scrollTop - y) : 0}px`;
+  el.innerHTML = TAB_SHOWN[host.id].html[key];
+  body.appendChild(el);
+  // What draws itself once it's on the page.
+  el.querySelectorAll('canvas[data-record]').forEach((c) => drawRecord(c));
+  if (el.querySelector('.genre-map')) fitGenreMap();
+  return el;
+}
+const dropPeeks = (body) => body.querySelectorAll(':scope > .atab-peek').forEach((p) => p.remove());
+/** The space between two tabs side by side: the page's margins on both. */
+const TAB_GAP = 32;
+/** The rest of the way to tab [key], at about the pace the finger left it ([v] px/ms), then that tab is the open one. */
+function tabGo(host, body, dir, key, from, v, ms) {
+  const w = body.offsetWidth + TAB_GAP, to = -dir * w, left = Math.abs(to - from);
+  const t = ms || Math.round(Math.min(300, Math.max(150, v > 0.2 ? (left / v) * 1.8 : 120 + (180 * left) / w)));
+  host.querySelectorAll('.atabs [data-ptab]').forEach((b) => b.classList.toggle('on', b.dataset.ptab === key));
+  body._sliding = true;
+  body.style.willChange = 'transform';
+  body.style.transform = `translateX(${to}px)`;
+  const a = body.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: t, easing: 'cubic-bezier(.25, .8, .3, 1)' });
+  let over = false;
+  const land = () => {
+    if (over) return;
+    over = true;
+    body._sliding = false;
+    // What's on screen becomes the open tab as it is: nothing loads or draws again, and the render after finds it done.
+    const peek = body.querySelector(`:scope > .atab-peek.${dir > 0 ? 'r' : 'l'}`);
+    if (peek && peek.dataset.key === key) { body.replaceChildren(...peek.childNodes); body.dataset.tab = key; } else dropPeeks(body);
+    body.style.transform = '';
+    body.style.willChange = '';
+    openTab(host.id, key);
+  };
+  a.onfinish = land;
+  a.oncancel = land;
+  setTimeout(land, t + 250);
+}
+/** Not far enough: back where it was, and the tab beside it goes. */
+function tabBack(body, from) {
+  body.style.transform = '';
+  const a = body.animate([{ transform: `translateX(${from}px)` }, { transform: 'none' }], { duration: 220, easing: EASE_OUT });
+  a.onfinish = a.oncancel = () => { if (!body._sliding) { body.style.willChange = ''; dropPeeks(body); } };
+}
+/** A tap on a tab slides over to it the way a swipe would. */
+function tabTap(host, key) {
+  const s = TAB_SHOWN[host.id], body = host.querySelector('.atab-body');
+  if (!s || !body || body._sliding || key === s.open) return;
+  if (!s.keys.includes(key) || matchMedia('(prefers-reduced-motion: reduce)').matches) { openTab(host.id, key); return; }
+  const dir = s.keys.indexOf(key) > s.keys.indexOf(s.open) ? 1 : -1;
+  tabPeek(host, body, dir, key);
+  tabGo(host, body, dir, key, 0, 0, 260);
+}
+/** Rows that scroll sideways, charts you scrub, a zoomed record and fields keep their own drags. */
+const SWIPE_SKIP = '.tix, .covers, .xcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], input, textarea';
+/**
+ * Swiping sideways on a place in tabs moves to the tab beside it like turning a page: the open tab follows the finger
+ * with the next one coming in next to it, and on letting go it either slides the rest of the way or springs back. The
+ * screen's edges stay Android's (back).
+ */
+function tabSwipe(host) {
   let s = null, swipedAt = 0;
-  page.addEventListener('pointerdown', (e) => {
+  host.addEventListener('pointerdown', (e) => {
     s = null;
     const body = e.target.closest('.atab-body');
-    if (!body || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    if (e.target.closest('.tix, .covers, .xcards, .chip-row, .na-row, canvas[data-record], input, textarea')) return;
+    if (!body || body._sliding || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (e.target.closest(SWIPE_SKIP)) return;
     if (e.clientX < 24 || e.clientX > window.innerWidth - 24) return;
-    s = { x: e.clientX, y: e.clientY, t: performance.now(), body, on: false, dx: 0, frame: 0 };
+    s = { x: e.clientX, y: e.clientY, body, on: false, dx: 0, v: 0, t: performance.now(), frame: 0 };
   }, { passive: true });
-  page.addEventListener('pointermove', (e) => {
+  host.addEventListener('pointermove', (e) => {
     if (!s || !e.isPrimary) return;
-    const dx = e.clientX - s.x, dy = e.clientY - s.y;
     if (!s.on) {
+      const dx = e.clientX - s.x, dy = e.clientY - s.y;
       if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
-      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
       s.on = true;
-      // Its own layer while it moves: the cards' soft shadows are painted once, not on every frame.
+      // It moves from here on, so it doesn't jump by the first 12 px.
+      s.x += dx > 0 ? 12 : -12;
+      s.t = performance.now();
       s.body.style.willChange = 'transform';
     }
-    s.dx = dx;
+    const now = performance.now(), d = e.clientX - s.x;
+    // How fast it goes, mostly from the last few moves.
+    if (now > s.t) s.v = 0.6 * ((d - s.dx) / (now - s.t)) + 0.4 * s.v;
+    s.t = now;
+    s.dx = d;
     // One move a frame, however often the finger reports.
     if (s.frame) return;
     const st = s;
     st.frame = requestAnimationFrame(() => {
       st.frame = 0;
       if (s !== st) return;
+      const dir = st.dx < 0 ? 1 : -1, key = tabNext(host, dir);
+      if (key) tabPeek(host, st.body, dir, key);
       // No tab that way: it only gives a little.
-      const free = tabNext(page, st.dx < 0 ? 1 : -1);
-      st.body.style.transform = `translateX(${(free ? st.dx : st.dx * 0.22).toFixed(1)}px)`;
+      st.body.style.transform = `translateX(${(key ? st.dx : st.dx * 0.22).toFixed(1)}px)`;
     });
   }, { passive: true });
   const end = (e) => {
@@ -5338,38 +5601,30 @@ function tabSwipe(page) {
     if (!st || !st.on) return;
     if (st.frame) cancelAnimationFrame(st.frame);
     swipedAt = Date.now();
-    const dir = st.dx < 0 ? 1 : -1, next = tabNext(page, dir);
-    const fast = Math.abs(st.dx) / Math.max(1, performance.now() - st.t) > 0.45;
-    const settle = (el, from) => {
-      el.style.willChange = 'transform';
-      el.style.transform = '';
-      el.animate([{ transform: `translateX(${from}px)`, opacity: from === st.dx ? 1 : 0.35 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: EASE_OUT })
-        .onfinish = () => { el.style.willChange = ''; };
-    };
-    if (next && e.type === 'pointerup' && (Math.abs(st.dx) > page.clientWidth * 0.26 || fast)) {
-      // The next tab at once, coming in from the side the finger left: no waiting for the old one to slide away.
-      st.body.style.transform = '';
-      st.body.style.willChange = '';
-      setPageTab(page.id, next);
-      const fresh = page.querySelector('.atab-body');
-      if (fresh) settle(fresh, Math.round(dir * Math.min(page.clientWidth * 0.3, 120)));
-    } else {
-      settle(st.body, st.dx);
-    }
+    const body = st.body, w = body.offsetWidth + TAB_GAP;
+    const dir = st.dx < 0 ? 1 : -1, key = tabNext(host, dir);
+    const from = key ? st.dx : st.dx * 0.22;
+    // Its speed in the swipe's direction: past a third of the way and not flung back, or flung that way.
+    const toward = -st.v * dir;
+    const go = key && e.type === 'pointerup' && ((Math.abs(st.dx) > w * 0.33 && toward > -0.3) || (toward > 0.35 && Math.abs(st.dx) > 20));
+    if (go) tabGo(host, body, dir, key, from, toward);
+    else tabBack(body, from);
   };
-  page.addEventListener('pointerup', end);
-  page.addEventListener('pointercancel', end);
+  host.addEventListener('pointerup', end);
+  host.addEventListener('pointercancel', end);
   // A swipe that ends on a row isn't a tap on it.
-  page.addEventListener('click', (e) => { if (Date.now() - swipedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
+  host.addEventListener('click', (e) => { if (Date.now() - swipedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
 /** The tabs get the page's color behind them once they stick to the top. */
-function syncPageTabs(page) {
-  const bar = page.querySelector('.atabs'), anchor = page.querySelector('.tab-anchor');
+function syncPageTabs(host) {
+  const bar = host.querySelector('.atabs'), anchor = host.querySelector('.tab-anchor');
   if (!bar || !anchor) return;
   // Where they'd be without sticking (their anchor) against where they stick: measured so, the top bar sliding in or out doesn't matter.
   const top = parseFloat(getComputedStyle(bar).top) || 0;
-  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - page.getBoundingClientRect().top < top);
+  const sc = hostScroller(host);
+  const from = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;
+  bar.classList.toggle('stuck', anchor.getBoundingClientRect().top - from < top);
 }
 
 // ---- tidy up: videos, app sounds and clips out of the stats ----
@@ -5614,8 +5869,19 @@ function renderStats() {
     return;
   }
   const lay = statsLayout(statsGroup(s));
-  morph(body, lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k)).map((id) => BLOCKS[id].html(s) || '').join('') + arrange);
+  const ids = lay.order.filter((id) => !lay.hidden.has(id) && (BLOCKS[id].kinds || SPAN).includes(k));
+  if (k === 'day') {
+    TAB_SHOWN['tab-stats'] = null;
+    morph(body, ids.map((id) => BLOCKS[id].html(s) || '').join('') + arrange);
+  } else {
+    // In tabs, each tab's blocks keep the order Arrange gives them.
+    const P = {};
+    ids.forEach((id) => { P[id] = BLOCKS[id].html(s) || ''; });
+    const tabs = STATS_TABS.map(([key, l, parts]) => [key, l, ids.filter((id) => parts.includes(id))]);
+    morph(body, tabbedHtml('tab-stats', statsTab, tabs, ids, P, { drop: true, tail: arrange }));
+  }
   drawRecords();
+  syncPageTabs($('#tab-stats'));
 }
 
 // ---- the week as seven days, and each day on a 24-hour strip ----
@@ -6315,6 +6581,11 @@ function renderSettings() {
   $$('#lookSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === lookMode()));
   $$('#nowSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === nowStyle()));
   $$('#pageSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (pageTabs() ? 'tabs' : 'long')));
+  $$('#mainSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (mainTabs() ? 'tabs' : 'long')));
+  const dv = ST.discover || {};
+  $('#discoverSw').checked = dv.on !== false;
+  $('#dvNo').hidden = !dv.no;
+  $('#dvNoText').textContent = dv.no ? `${plural(dv.no, 'artist')} you said aren't for you stay out of the suggestions.` : '';
   try { $('#tiltSw').checked = localStorage.getItem('tilt') !== 'off'; } catch (_) { $('#tiltSw').checked = true; }
   $('#version').textContent = ST.version ? `Heavy Rotation ${ST.version}` : '';
   renderPhoneSettings();
@@ -6351,9 +6622,9 @@ function build() {
     const ls = e.target.closest('[data-listen]');
     if (ls) { openListen(ls); return; }
     const pt = e.target.closest('[data-ptab]');
-    if (pt) { setPageTab(pt.closest('.page').id, pt.dataset.ptab); return; }
+    if (pt) { tabTap(pt.closest('.page, .tab'), pt.dataset.ptab); return; }
     const pl = e.target.closest('[data-pl]');
-    if (pl) { openPlaylist(pl.dataset.pl); return; }
+    if (pl) { openPlaylist(pl.dataset.pl, undefined, pl); return; }
     const rk = e.target.closest('[data-ranks]');
     if (rk) { openRanks(rk.dataset.ranks, rk.dataset.rrange, rk.dataset, !!rk.dataset.rshown); return; }
     if (e.target.closest('[data-nowpage]')) { openNow(); return; }
@@ -6519,6 +6790,8 @@ function build() {
     p.addEventListener('scroll', () => syncPageTabs(p), { passive: true });
     tabSwipe(p);
   });
+  ['tab-stats', 'tab-explore'].forEach((id) => tabSwipe($('#' + id)));
+  window.addEventListener('scroll', () => { const t = $('#tab-' + tab); if (t) syncPageTabs(t); }, { passive: true });
   $('#trackBody').addEventListener('pointerdown', (e) => onVizPointer(e, TRACK));
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
@@ -6559,6 +6832,14 @@ function build() {
     if (ld && !t.closest('[data-artist]')) { const k = +ld.dataset.land; landSel = landSel === k ? -1 : k; renderAtlas(); }
   };
   $('#exploreBody').onclick = (e) => {
+    const no = e.target.closest('[data-nope]');
+    if (no) { discoverNope(no.dataset.nope); return; }
+    const why = e.target.closest('[data-why]');
+    if (why) { openWhy(why.dataset.why); return; }
+    const rc = e.target.closest('[data-reach]');
+    if (rc) { DISCOVER = { ...DISCOVER, reach: +rc.dataset.reach }; renderExplore(); send({ t: 'discoverReach', v: +rc.dataset.reach }); return; }
+    if (e.target.closest('[data-dmore]')) { discoverAll = true; renderExplore(); return; }
+    if (e.target.closest('[data-dagain]')) { DISCOVER = null; send({ t: 'discover', again: true }); renderExplore(); return; }
     if (e.target.closest('#exploreGoStats')) showTab('stats');
     if (e.target.closest('#openVs')) openVs();
     if (e.target.closest('#openConcerts')) openConcerts();
@@ -6746,6 +7027,22 @@ function build() {
     renderSpinCard();
     renderSettings();
   };
+  $('#mainSeg').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try { localStorage.setItem('mainLayout', b.dataset.v); } catch (_) { /* preview without storage */ }
+    renderSettings();
+    renderStats();
+    renderExplore();
+  };
+  $('#discoverSw').onchange = (e) => {
+    const on = e.target.checked;
+    ST.discover = { ...(ST.discover || {}), on };
+    DISCOVER = null;
+    send({ t: 'discoverOn', v: on });
+    renderExplore();
+  };
+  $('#dvClear').onclick = () => { send({ t: 'discoverClearNo' }); toast('They can be suggested again'); };
   $('#pageSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;

@@ -26,8 +26,12 @@ of its own in between, and your data stays on your phone.
 - The stats know your shelf. They show the records you own but rarely play, the albums you stream a
   lot but don't own yet, and how much of your listening was vinyl.
 - Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
-- The Explore tab has lost favorites, albums to rediscover, a musical atlas of the artists you play
-  back to back, you against everyone on Last.fm, and playlists to send to TIDAL.
+- The Explore tab suggests artists you haven't played yet, from who Last.fm's and Deezer's listeners
+  find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
+  releases by your artists. It also has lost favorites, albums to rediscover, a musical atlas of the
+  artists you play back to back, you against everyone on Last.fm, and playlists to send to TIDAL.
+- Long pages (Stats, Explore, artists, albums, genres) come in tabs you swipe between, or as one
+  long page if you prefer.
 - A Now playing page for the phone shows the position, the controls, the music app's queue and the
   album the song is on.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the

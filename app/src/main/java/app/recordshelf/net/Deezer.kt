@@ -58,6 +58,14 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
             ?.let { DzArtist(it.optLong("id"), it.optString("name"), it.optString("picture_big").takeIf { p -> hasPhoto(p) } ?: "", it.optLong("nb_fan"), it.optString("link")) }
     }
 
+    /** Artists Deezer's listeners also play with this one, the closest first. */
+    fun related(artistId: Long, limit: Int = 25): List<DzArtist> {
+        val data = get("/artist/$artistId/related?limit=$limit").optJSONArray("data") ?: return emptyList()
+        return (0 until data.length()).map { data.getJSONObject(it) }.map {
+            DzArtist(it.optLong("id"), it.optString("name"), it.optString("picture_big").takeIf { p -> hasPhoto(p) } ?: "", it.optLong("nb_fan"), it.optString("link"))
+        }
+    }
+
     /** A square photo (500 px) of the artist with this name; null if Deezer has none. */
     fun artistPhoto(name: String): String? = findArtist(name)?.photo?.ifEmpty { null }
 

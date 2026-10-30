@@ -100,6 +100,7 @@ const Mock = (() => {
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
     setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a', user: 'gieskannenbauer', concerts: 14, concertsAt: Date.now() - 2 * DAY, concertsBusy: false, concertsError: '' },
+    discover: { on: true, no: 0 },
     fix: { presets: [
       { id: 'remaster', label: 'Take "Remastered" off songs and albums', example: 'Heroes - 2017 Remaster → Heroes', on: true },
       { id: 'explicit', label: 'Take "Explicit" and "Clean" off', example: 'Song (Explicit) → Song', on: false },
@@ -659,6 +660,28 @@ const Mock = (() => {
       gems: known.filter((x) => x.mine >= 20).sort((p, q) => p.listeners - q.listeners).slice(0, 8), songs: songs.sort((p, q) => q.ratio - p.ratio).slice(0, 10), taste };
   }
   let vsLooked = false;
+  // Suggestions as Core.kt gives them: artists not in the made-up log, each pointed to by a few of its top artists.
+  const NEW_ARTISTS = [['Altin Gün', 'Psychedelic rock', 310000], ['Khruangbin', 'Psychedelic soul', 2100000], ['Mdou Moctar', 'Desert blues', 160000],
+    ['Ezra Collective', 'Jazz', 240000], ['Men I Trust', 'Dream pop', 900000], ['Tinariwen', 'Desert blues', 280000], ['BADBADNOTGOOD', 'Jazz', 700000],
+    ['Nubya Garcia', 'Jazz', 90000], ['Hermanos Gutiérrez', 'Instrumental', 150000], ['Bombino', 'Desert blues', 70000], ['Yin Yin', 'Psychedelic', 40000],
+    ["L'Impératrice", 'Nu-disco', 500000]];
+  const discNo = new Set();
+  let discReach = 1, discLooked = false;
+  function fakeDiscover() {
+    const L = history();
+    const seeds = ranked(counts(0, L.ts.length, (L2, i) => L2.a[i])).slice(0, 10).map((a) => L.artists[a]);
+    let arts = NEW_ARTISTS.filter(([n]) => !discNo.has(n)).map(([name, genre, fans], i) => {
+      const k = 1 + (i % 3) + (i < 3 ? 1 : 0);
+      const because = Array.from({ length: k }, (_, j) => ({ name: seeds[(i * 3 + j * 2) % seeds.length], v: 1 - j * 0.22, like: 0.75 - j * 0.17 }));
+      return { name, photo: '', fans, genre, via: discReach === 2 && i === 10 ? NEW_ARTISTS[2][0] : '', because };
+    });
+    if (discReach === 2) arts = arts.slice().sort((p, q) => p.fans - q.fans);
+    if (discReach === 0) arts = arts.slice().sort((p, q) => q.fans - p.fans);
+    const day = (d) => new Date(Date.now() - d * DAY).toISOString().slice(0, 10);
+    const releases = [{ artist: seeds[0], title: 'Late Bloom', type: 'album', date: day(18), cover: '', plays: 12 }, { artist: seeds[2], title: 'Night Bus', type: 'single', date: day(3), cover: '', plays: 0 },
+      { artist: seeds[4], title: 'Field Recordings', type: 'ep', date: day(-14), cover: '', plays: 0 }];
+    return { on: true, reach: discReach, busy: false, done: 25, total: 25, error: '', no: discNo.size, lastfm: true, built: Date.now() - DAY, artists: arts, releases, mix: 15 };
+  }
   // The atlas from the made-up log, worked out like Atlas.kt does (links, spring layout, constellations, shapes).
   let atlasCache = null;
   function fakeAtlas() {
@@ -1388,7 +1411,13 @@ const Mock = (() => {
           later(250, () => { const st = fakeStats(m.range || ''); onStats({ ...st, concerts: concertsIn(st.range) }); });
           break;
         case 'story': later(400, () => { const st = fakeStory(m.range || ''); onStory({ ...st, concerts: concertsIn(st.range) }); }); break;
-        case 'artist': later(250, () => onArtist({ ...fakeArtist(m.name), concerts: fakeConcerts().filter((c) => c.artist === m.name), req: m.req })); break;
+        case 'artist':
+          if (!history().artists.includes(m.name)) {
+            later(250, () => onArtist({ name: m.name, missing: true, photo: '', best: ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'], req: m.req }));
+            break;
+          }
+          later(250, () => onArtist({ ...fakeArtist(m.name), concerts: fakeConcerts().filter((c) => c.artist === m.name), req: m.req }));
+          break;
         case 'setlists': later(700, () => onSetlists(S.setlist.hasKey ? { ...fakeSetlists(m.name), name: m.name, req: m.req } : { name: m.name, req: m.req, needsKey: true })); break;
         case 'saveSetlist': S.setlist = { hasKey: true, builtIn: false, keyHint: `…${m.key.slice(-4)}` }; pushState(); break;
         case 'setlistForget': S.setlist = { hasKey: false, builtIn: false, keyHint: '' }; pushState(); break;
@@ -1443,6 +1472,29 @@ const Mock = (() => {
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
         case 'explore': later(300, () => onExplore(fakeExplore())); break;
+        case 'discover':
+          if (!S.discover.on) { later(100, () => onDiscover({ on: false })); break; }
+          if (!discLooked) {
+            // The first time: a minute of looking up, shown as it goes.
+            discLooked = true;
+            later(200, () => onDiscover({ on: true, busy: true, done: 4, total: 25, reach: discReach }));
+            later(1400, () => onDiscover({ on: true, busy: true, done: 17, total: 25, reach: discReach }));
+            later(2600, () => onDiscover(fakeDiscover()));
+          } else later(150, () => onDiscover(fakeDiscover()));
+          break;
+        case 'discoverReach': discReach = m.v; later(200, () => onDiscover(fakeDiscover())); break;
+        case 'discoverNo': case 'discoverUndo': case 'discoverClearNo':
+          if (m.t === 'discoverNo') discNo.add(m.name); else if (m.t === 'discoverUndo') discNo.delete(m.name); else discNo.clear();
+          S.discover.no = discNo.size;
+          pushState();
+          later(150, () => onDiscover(fakeDiscover()));
+          break;
+        case 'discoverOn': S.discover.on = m.v; pushState(); later(150, () => onDiscover(m.v ? fakeDiscover() : { on: false })); break;
+        case 'discoverWhy': {
+          const x = fakeDiscover().artists.find((a) => a.name === m.name) || { name: m.name, photo: '', because: [] };
+          later(350, () => onDiscoverWhy({ ...x, songs: ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'], known: false, req: m.req }));
+          break;
+        }
         case 'historyCheck': {
           // As if 2024 had come up short, until it is fetched again.
           const years = [2023, 2024, 2025, 2026].map((y, k) => ({ year: y, lastfm: [9120, 31873, 28440, 16579][k], here: [9120, m.repair ? 31873 : 22410, 28440, 16577][k] }));
@@ -1492,6 +1544,13 @@ const Mock = (() => {
             const tracks = Array.from({ length: m.size }, (_, i) => (i % Math.max(1, Math.round(m.size / Math.max(1, fresh))) === 2 && fresh
               ? { artist: `New Artist ${i}`, title: `Unheard Song ${i}`, album: '', plays: 0, source: 'new' } : { ...base[(i + (m.seed % 7)) % base.length], source: 'core' }));
             later(500, () => onPlaylist({ kind: 'genre', key: m.key, label: 'New Wave & Synth', size: m.size, mode: m.mode, seed: m.seed, name: 'New Wave & Synth mix', note: 'Your favorites, songs from around them, and a few new ones', tracks }));
+          } else if (m.kind === 'discover') {
+            const arts = fakeDiscover().artists;
+            const tracks = Array.from({ length: m.size || 30 }, (_, i) => ({ artist: arts[(i + (m.seed % 5)) % arts.length].name, title: i < arts.length ? 'Their Best-Known Song' : 'The Second Most Played', album: '', plays: 0, source: 'new' }));
+            later(700, () => onPlaylist({ kind: 'discover', seed: m.seed, size: m.size, reach: discReach, name: 'Discovery mix', note: "Songs you haven't played, by artists your listening points to", tracks }));
+          } else if (m.kind === 'artistBest') {
+            const tracks = ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'].map((title) => ({ artist: m.artist, title, album: '', plays: 0, source: 'new' }));
+            later(400, () => onPlaylist({ kind: 'artistBest', artist: m.artist, name: `Best of ${m.artist}`, note: 'Their most played songs on Last.fm', tracks }));
           } else later(300, () => onPlaylist(fakePlaylist(m.kind)));
           break;
         case 'hide': case 'unhide': case 'keep':

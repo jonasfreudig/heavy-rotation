@@ -240,6 +240,12 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
             ?.arrayOrOne("track")?.objects().orEmpty()
             .map { Triple(it.optJSONObject("artist")?.str("name").orEmpty(), it.str("name"), it.optDouble("match", 0.0)) }
 
+    /** Artists Last.fm's listeners find similar to one (name, match 0..1), most similar first; empty if it doesn't know them. */
+    fun similarArtists(artist: String, limit: Int = 60): List<Pair<String, Double>> =
+        info("artist.getSimilar", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("similarartists")
+            ?.arrayOrOne("artist")?.objects().orEmpty()
+            .map { it.str("name") to it.optDouble("match", 0.0) }
+
     /** An artist's most played songs on Last.fm with everyone's plays, most played first; empty if unknown. */
     fun artistTopTracks(artist: String, limit: Int = 50): List<Pair<String, Long>> =
         info("artist.getTopTracks", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("toptracks")
