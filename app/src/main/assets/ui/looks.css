@@ -118,7 +118,6 @@
 :root[data-look="soft"] .btn.filled { box-shadow: 5px 5px 14px var(--sh-d), -4px -4px 10px var(--sh-l); }
 :root[data-look="soft"] .navbar { background: var(--soft); box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l); }
 :root[data-look="soft"] .bottom-fade { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--soft) 80%, transparent) 55%, var(--soft)); }
-:root[data-look="soft"] .appbar { --bar-bg: var(--soft); }
 
 /* ---- the search circle, the search field, the record in the corner, the view switch ---- */
 :root[data-look] .views { background: transparent; }

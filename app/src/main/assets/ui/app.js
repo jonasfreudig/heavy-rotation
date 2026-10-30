@@ -530,8 +530,6 @@ function openPage(id, how) {
   pageSaved.length = pageStack.length;
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
-  const bar = p.querySelector(':scope > .appbar');
-  if (bar) bar.classList.remove('away', 'back');
   // In from the right; a page a cover flies into only fades in, so the cover has a still place to land.
   // Held clear for two frames while the phone draws it: shown at once, it was a blank page for those.
   p.animate(how === 'fly' ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(32px)' }, { opacity: 1, transform: 'none' }],
@@ -540,43 +538,18 @@ function openPage(id, how) {
   syncBack();
 }
 
-/** How far (px) to scroll up before the top bar comes back, and down before it goes again. */
-const BAR_SHOW = 48, BAR_HIDE = 24;
 /**
- * Top bars scroll away with the page, like the rest of it. Scrolling up brings them back over the
- * page ("back": held at the top, a soft fade of the page's color behind them) until the page is at
- * its top again or you scroll down, when they slide away. [onAway] hears whether the bar is out of view.
+ * Top bars are part of the page: they scroll away with it and come back only with the top of the page, never
+ * on their own. (A bar that slid back in over the page whenever you scrolled up, and out again, made the bar
+ * and the tabs stuck under it blink.) [onAway] hears whether the bar is out of view.
  */
 function watchBar(scroller, bar, onAway) {
   const el = scroller === window ? document.scrollingElement : scroller;
-  // [run]: how far the page has gone in one direction without turning back. The bar comes back after a clear
-  // move up and goes after a short one down: a finger that wavers while reading leaves it where it is (it used
-  // to come and go with every few pixels, and stuck tabs jumped with it).
-  let last = 0, run = 0, gone = false;
+  let gone = false;
   scroller.addEventListener('scroll', () => {
-    const y = el.scrollTop, d = y - last;
-    last = y;
-    // Moved by the app (another tab of a page): the bar stays as it is.
-    if (el.dataset.quiet) { run = 0; return; }
-    if (y <= 2 || (y < bar.offsetHeight && !bar.classList.contains('back'))) {
-      bar.classList.remove('back', 'away');
-      run = 0;
-    } else if (d) {
-      run = Math.sign(d) === Math.sign(run) ? run + d : d;
-      // Only well away from the top: a fling up to the top used to start the bar sliding in from out of view
-      // just before the page brought it back by itself, and it blinked.
-      if (run < -BAR_SHOW && y > bar.offsetHeight * 2) { bar.classList.add('back'); bar.classList.remove('away'); }
-      else if (run > BAR_HIDE && bar.classList.contains('back')) {
-        // Near the top the page shows the bar in its place anyway: it goes back there instead of sliding out of view.
-        if (y < bar.offsetHeight) bar.classList.remove('back', 'away');
-        else bar.classList.add('away');
-      }
-    }
-    const nowGone = bar.classList.contains('back') ? bar.classList.contains('away') : y > bar.offsetHeight - 8;
+    const nowGone = el.scrollTop > bar.offsetHeight - 8;
     if (nowGone !== gone) { gone = nowGone; if (onAway) onAway(gone); }
   }, { passive: true });
-  // Slid away: back into the page's flow, where it waits out of view at the top.
-  bar.addEventListener('transitionend', (e) => { if (e.propertyName === 'transform' && bar.classList.contains('away')) bar.classList.remove('back', 'away'); });
 }
 /**
  * Closes the top page. [swipe]: the back swipe that moved it, whose page underneath comes home

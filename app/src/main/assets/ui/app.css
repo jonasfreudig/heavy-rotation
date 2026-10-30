@@ -467,8 +467,8 @@ button.tile .delta { align-self: flex-start; }
 .rank-hero h1 { margin: 0; font: 700 26px/32px var(--font); }
 .rank-hero p { margin: 4px 0 0; color: var(--md-on-surface-variant); font-size: 13px; }
 .pl-txt { flex: 1; min-width: 0; }
-/* Artist pages in tabs: the tabs stick under the top bar (or the top, with the bar gone) */
-.atabs { position: sticky; top: calc(var(--inset-top) + 54px); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; transition: top .32s cubic-bezier(.2, 0, 0, 1); --atabs-bg: var(--md-surface); }
+/* Pages in tabs: the page's top scrolls away with its top bar, and the tabs stay at the top of the screen. */
+.atabs { position: sticky; top: var(--inset-top); z-index: 4; margin: 4px -16px 2px; padding: 10px 16px 12px; --atabs-bg: var(--md-surface); }
 .atabs .seg { margin: 0; }
 /* Stuck to the top, the tabs sit on a fade of the page's color that comes in softly, like the top bar's. */
 /* Stuck, they sit on one block of the page's color from the very top of the screen down past them: nothing of
@@ -476,7 +476,6 @@ button.tile .delta { align-self: flex-start; }
 .atabs::before { content: ''; position: absolute; left: 0; right: 0; top: calc(-1 * (var(--inset-top) + 72px)); bottom: -14px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .25s;
   background: linear-gradient(180deg, var(--atabs-bg) 0%, var(--atabs-bg) calc(100% - 14px), transparent 100%); }
 .atabs.stuck::before { opacity: 1; }
-.page.bar-gone .atabs { top: var(--inset-top); }
 .atab-body { position: relative; display: flow-root; min-height: 60vh; touch-action: pan-y; }
 /* Every tab side by side, a page width apart, clipped by the screen's edges and by the open one's height. The others
    stay hidden until a finger touches down ("live"); the open one alone sets the page's length. */
