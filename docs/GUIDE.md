@@ -472,7 +472,10 @@ shelf (a line at the top, with the progress) or In the corner (the record peekin
 search button, on every tab). Tap it for Now spinning or, for the phone, Now playing. Now playing
 has the song's exact position (drag to seek), play/pause and skip, what the app plays next (with
 the playlist's or mix's name) when the app shares its queue, and the whole album the song is on,
-with how much of the album is left (tracklists from Deezer). Tap the app's name to open the app on
+with how much of the album is left (tracklists from Deezer), and the song's lyrics from LRCLIB.
+Timed lyrics light up line by line as the song goes (tap a line to jump there). While the lyrics of a
+playing song are open, the screen stays on; switch Keep the screen on off, on the lyrics, to let it
+turn off as usual. Tap the app's name to open the app on
 its own player screen. Apps that work with Android Auto usually share their queue. The chart button
 at the top opens the song's stats.
 

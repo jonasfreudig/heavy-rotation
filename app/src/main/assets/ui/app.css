@@ -1339,3 +1339,6 @@ details.more[open] summary { margin-bottom: 6px; }
 /* Actions one under the other in a sheet (a decade, a song held on a list). */
 .sheet-actions.col { flex-direction: column; align-items: stretch; gap: 8px; }
 .sheet-actions.col .btn { justify-content: flex-start; }
+/* The lyrics' heading with the switch that keeps the screen on. */
+.lyr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lyr-head .chip { height: 30px; margin: 0; font-size: 12.5px; }

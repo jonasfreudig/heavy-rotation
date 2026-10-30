@@ -18,6 +18,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
 import android.util.TypedValue
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -467,6 +468,12 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 updateTiltSensor()
             }
             "canBack" -> setCanGoBack(msg.optBoolean("v"))
+            // While the lyrics of a playing song are open, the screen doesn't turn off by itself.
+            "keepAwake" -> if (msg.optBoolean("on")) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             "openPhoneApp" -> openPhoneApp(msg.optString("pkg"))
             "startSpin" -> {
                 if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

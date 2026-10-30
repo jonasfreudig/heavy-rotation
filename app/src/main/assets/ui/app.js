@@ -1071,6 +1071,7 @@ function renderPhoneNow() {
 let lastCur = -2;
 /** Once a second while a record spins: progress, times and which track is current. */
 function tickUi() {
+  syncAwake();
   tickPhone();
   tickNow();
   sleepMarks();
@@ -1326,6 +1327,20 @@ function parseLrc(s) {
   }
   return out.sort((a, b) => a.t - b.t);
 }
+/** Whether the screen stays on while the lyrics of a playing song are open (the switch on the lyrics; on unless turned off). */
+const lyricsAwake = () => { try { return localStorage.getItem('lyricsAwake') !== 'off'; } catch (_) { return true; } };
+const hasLyrics = () => { const d = LYR.data; return !!d && !d.missing && !d.error && !d.instrumental && !!((LYR.lines && LYR.lines.length) || d.plain); };
+let awake = false;
+/** Asks Android to keep the screen on, or to let it go, when that changes. Once a second (tickUi) and on every change. */
+function syncAwake() {
+  const n = (ST.phone || {}).now;
+  const m = (n && n.media) || {};
+  const want = !!n && lyricsAwake() && isOpen('nowPage') && hasLyrics() && !!(m.playing ?? n.playing);
+  if (want === awake) return;
+  awake = want;
+  send({ t: 'keepAwake', on: want });
+}
+const lyricsHead = () => `<div class="lyr-head"><h2>Lyrics</h2><button class="chip lyr-awake${lyricsAwake() ? ' on' : ''}" data-lyrawake aria-pressed="${lyricsAwake()}">${icon('sun', 'i small')}Keep the screen on</button></div>`;
 function lyricsHtml(canSeek) {
   const d = LYR.data;
   const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
@@ -1334,10 +1349,10 @@ function lyricsHtml(canSeek) {
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
   if (LYR.lines && LYR.lines.length) {
-    return `<h2>Lyrics</h2><span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
+    return `${lyricsHead()}<span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
       <div class="lyr-lines synced">${LYR.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
   }
-  return `<h2>Lyrics</h2><div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
+  return `${lyricsHead()}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
 }
 window.onLyrics = (d) => {
   if (d.q !== LYR.q) return;
@@ -7279,6 +7294,16 @@ function build() {
     const dc = e.target.closest('[data-decade]');
     if (dc) { openDecade(+dc.dataset.decade); return; }
     if (e.target.closest('[data-newlist]')) { openNewArtists(); return; }
+    const la = e.target.closest('[data-lyrawake]');
+    if (la) {
+      const on = !lyricsAwake();
+      try { localStorage.setItem('lyricsAwake', on ? 'on' : 'off'); } catch (_) { /* preview without storage */ }
+      la.classList.toggle('on', on);
+      la.setAttribute('aria-pressed', String(on));
+      syncAwake();
+      toast(on ? 'The screen stays on while the lyrics play' : 'The screen turns off as usual');
+      return;
+    }
     if (e.target.closest('[data-likethem]')) { openLikeThem(); return; }
     const gb = e.target.closest('[data-goblock]');
     if (gb) { goBlock(gb.dataset.goblock); return; }
