@@ -22,16 +22,32 @@ class LrclibClient(private val base: String = "https://lrclib.net/api") {
         const val LENGTH_SLACK = 8.0
     }
 
-    /** The lyrics of a song, or null if LRCLIB has none; [durSec] is its length (0: unknown). */
+    /**
+     * The lyrics of a song, or null if LRCLIB has none; [durSec] is its length (0: unknown). The exact lookup can be
+     * slow or fail while LRCLIB fetches from elsewhere, so a failed one goes on to the search; only when both fail
+     * is it an error.
+     */
     fun find(artist: String, title: String, album: String, durSec: Int): Lyrics? {
         val p = linkedMapOf("artist_name" to artist, "track_name" to title)
         if (album.isNotBlank()) p["album_name"] = album
         if (durSec > 0) p["duration"] = durSec.toString()
-        val r = Http.get("$base/get?" + Http.form(p))
-        if (r.code == 200) parse(JSONObject(r.body))?.let { return it }
-        else if (r.code != 404) throw IOException("LRCLIB answered ${r.code}")
-        val s = Http.get("$base/search?" + Http.form(mapOf("track_name" to title, "artist_name" to artist)))
-        if (s.code != 200) return null
+        var failed: Exception? = null
+        try {
+            val r = Http.get("$base/get?" + Http.form(p), timeoutMs = 10_000)
+            if (r.code == 200) parse(JSONObject(r.body))?.let { return it }
+            else if (r.code != 404) failed = IOException("LRCLIB answered ${r.code}")
+        } catch (e: Exception) {
+            failed = e
+        }
+        val s = try {
+            Http.get("$base/search?" + Http.form(mapOf("track_name" to title, "artist_name" to artist)), timeoutMs = 15_000)
+        } catch (e: Exception) {
+            throw failed ?: e
+        }
+        if (s.code != 200) {
+            if (failed != null) throw failed
+            return null
+        }
         val hits = JSONArray(s.body)
         val want = Text.normLoose(title)
         val who = Text.norm(artist)

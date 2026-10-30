@@ -1359,7 +1359,7 @@ function lyricsHtml(canSeek) {
   const d = LYR.data;
   const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
   if (!d) return '<h2>Lyrics</h2><p class="hint">Looking for the lyrics…</p>';
-  if (d.error) return '<h2>Lyrics</h2><p class="hint">Couldn\'t reach LRCLIB for the lyrics just now.</p>';
+  if (d.error) return `<h2>Lyrics</h2><p class="hint">Couldn't reach LRCLIB for the lyrics just now.</p><button class="btn tonal small" data-lyragain>${icon('sync')}Try again</button>`;
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
   if (LYR.lines && LYR.lines.length) {
@@ -7624,6 +7624,13 @@ function build() {
     const dc = e.target.closest('[data-decade]');
     if (dc) { openDecade(+dc.dataset.decade); return; }
     if (e.target.closest('[data-newlist]')) { openNewArtists(); return; }
+    if (e.target.closest('[data-lyragain]')) {
+      // Asked again: the song's lyrics from scratch.
+      const n = (ST.phone || {}).now;
+      LYR = { q: '', data: null, lines: null };
+      if (n) { ensureLyrics(n); const box = $('#npLyrics'); if (box) box.innerHTML = lyricsHtml((n.media || {}).canSeek); }
+      return;
+    }
     const la = e.target.closest('[data-lyrawake]');
     if (la) {
       const on = !lyricsAwake();

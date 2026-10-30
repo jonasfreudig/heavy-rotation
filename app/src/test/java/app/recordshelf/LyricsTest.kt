@@ -40,4 +40,25 @@ class LyricsTest {
             server.stop()
         }
     }
+
+    @Test
+    fun aFailedExactLookupGoesOnToTheSearch() {
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                when {
+                    r.path.endsWith("/get") -> Res(502, "busy")
+                    r.params["track_name"] == "Down" -> Res(503, "busy")
+                    else -> Res(200, """[{"trackName":"Song","artistName":"Band","duration":240,"plainLyrics":"words","syncedLyrics":"[00:12.30] words"}]""")
+                }
+            }
+            val c = LrclibClient(server.base + "/api")
+            assertEquals("[00:12.30] words", c.find("Band", "Song", "", 240)!!.synced)
+            // Both failing is an error, not "no lyrics".
+            val failed = try { c.find("Band", "Down", "", 240); false } catch (_: Exception) { true }
+            assertTrue(failed)
+        } finally {
+            server.stop()
+        }
+    }
 }

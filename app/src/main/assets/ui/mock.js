@@ -99,7 +99,7 @@ const Mock = (() => {
     },
     history: { count: 86012, done: true, resumable: false, importing: false, syncing: false, fetched: 0, total: 0, error: '', lastSync: Date.now() - 20 * 60e3, tagsDone: 0, tagsTotal: 0 },
     tidal: { hasApp: true, builtIn: true, loggedIn: false, busy: false, error: '', clientHint: '', redirect: 'recordshelf://tidal' },
-    setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a', user: 'gieskannenbauer', concerts: 14, concertsAt: Date.now() - 2 * DAY, concertsBusy: false, concertsError: '' },
+    setlist: { hasKey: true, builtIn: false, keyHint: '…3f2a', user: 'vinylfan', concerts: 14, concertsAt: Date.now() - 2 * DAY, concertsBusy: false, concertsError: '' },
     discover: { on: true, no: 0 },
     fix: { presets: [
       { id: 'remaster', label: 'Take "Remastered" off songs and albums', example: 'Heroes - 2017 Remaster → Heroes', on: true },

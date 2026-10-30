@@ -769,10 +769,17 @@ object Core {
                 val title = msg.optString("title")
                 val key = Text.norm(artist) + "\u0000" + Text.normLoose(title)
                 webExec.execute {
+                    // Asked twice before it counts as unreachable: LRCLIB is often slow for a moment.
+                    fun ask() = (lrclib.find(artist, title, msg.optString("album"), msg.optInt("dur"))?.toJson() ?: JSONObject().put("missing", true)).also { lyrics[key] = it }
                     val j = lyrics[key] ?: try {
-                        (lrclib.find(artist, title, msg.optString("album"), msg.optInt("dur"))?.toJson() ?: JSONObject().put("missing", true)).also { lyrics[key] = it }
+                        ask()
                     } catch (_: Exception) {
-                        JSONObject().put("error", true)
+                        try {
+                            Thread.sleep(1500)
+                            ask()
+                        } catch (_: Exception) {
+                            JSONObject().put("error", true)
+                        }
                     }
                     push("onLyrics") { JSONObject(j.toString()).put("q", msg.optString("q")) }
                 }
