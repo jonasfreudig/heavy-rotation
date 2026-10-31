@@ -4282,7 +4282,10 @@ function renderTrack() {
   const albumTitle = al ? al.title : t.albumTitle;
   const cover = (al && al.cover) || t.cover;
   const shelfId = (al && al.owned) || (albumTitle ? shelfIdOf(al ? al.artist : t.artist, albumTitle) : 0);
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
+  // Its card's tier shows on the cover: a frame of the tier's metal, its glow behind, and a record of it if you own the album.
+  const tier = t.loading || t.missing ? '' : cardTier(t.plays || 0)[1];
+  $('#trackBody').dataset.tier = tier === 'base' ? '' : tier;
+  let h = `<div class="hero page-hero"><i class="glow"></i>${tier && tier !== 'base' ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">,</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${genreChips(t.genres)}
@@ -4298,7 +4301,7 @@ function renderTrack() {
       ${tile('First heard', esc(monthYear(t.first)), `last played ${esc(dateLabel(t.last))}`, '', 'history')}
       ${tile('Biggest day', plural(t.bestDay.count, 'play'), esc(dateLabel(t.bestDay.day)), '', 'fire')}
     </div>
-    <p class="hint center">${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
+    <p class="hint center">${tierWords(t.plays)}${pct(t.shareOfArtist)} of your ${esc(t.artist)} plays, on ${plural(t.days, 'day')}.</p>`;
     h += vsBlock(t.global, 'it', t.globalRank ? ` It's ${esc(t.artist)}'s #${t.globalRank} most played song there.` : '');
     h += lifeCharts(t, 'it', cover, (albumTitle || t.title) + t.artist);
     h += chartRunViz(t);
@@ -6916,6 +6919,13 @@ function tradingCards(found, count) {
 /** The tiers of a song card by plays: each a goal to play it toward. */
 const CARD_TIERS = [[100, 'holo', 'Holo'], [50, 'gold', 'Gold'], [25, 'silver', 'Silver'], [10, 'bronze', 'Bronze']];
 const cardTier = (plays) => CARD_TIERS.find(([n]) => plays >= n) || [0, 'base', ''];
+/** What a song's card is and how far the next tier is, as the start of a sentence; '' below bronze. */
+function tierWords(plays) {
+  const [, tier, label] = cardTier(plays);
+  if (tier === 'base') return '';
+  const next = CARD_TIERS.slice().reverse().find(([n]) => n > plays);
+  return next ? `${label} card, ${plural(next[0] - plays, 'play')} to ${next[2].toLowerCase()}. ` : `${label} card, the top tier. `;
+}
 /**
  * An artist's songs as collector cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100, each with how
  * far it is to the next tier. Songs played fewer than three times stay out.

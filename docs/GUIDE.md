@@ -449,7 +449,9 @@ lit up on your record, top tracks, their discography, and the records of theirs 
 tracks look like Your chart on the Stats tab, each song with its album's cover; the first five show,
 and Show all opens the rest. Your cards show their songs as collector cards with the album cover:
 bronze at 10 plays, silver at 25, gold at 50 and holo at 100, each with how many plays it still
-needs for the next tier.
+needs for the next tier. A song's own page wears its card too: from bronze on, its cover sits in a frame of
+that metal with a soft glow behind it, the record sliding out is pressed in the same metal when the
+album is on your shelf, and the line under the numbers says how far the next tier is.
 
 #### Tidy up: videos and app sounds
 
