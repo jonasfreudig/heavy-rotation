@@ -6524,6 +6524,8 @@ const BLOCKS = {
   covers: { name: 'In covers', kinds: ['day', ...SPAN], html: coverWallViz },
   lineup: { name: 'Your lineup', kinds: ['day', ...SPAN], html: lineupViz },
   top: { name: 'Top lists', kinds: ['day', ...SPAN], html: chartViz, classic: (s) => topViz(s.top) },
+  minutes: { name: 'Time listened', kinds: SPAN, html: minutesViz },
+  milestones: { name: 'Milestones', kinds: SPAN, html: milestonesViz },
   taste: { name: 'Your taste', html: tasteHtml },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
   dayline: { name: 'Your day', kinds: ['day'], html: (s) => daylineViz(s) },
@@ -6535,7 +6537,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
-  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'taste'],
+  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'minutes', 'milestones', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
@@ -7139,8 +7141,256 @@ function tasteHtml() {
     <div class="xp-tiles">
       <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
+      <button class="xp-tile wide" id="openThrough">${THROUGH_ART}<span><b>Through the years</b><small>The race, every play, gaps, how deep you go</small></span></button>
       <button class="xp-tile wide" id="openConcerts">${TICKET_ART}<span><b>Your concerts</b><small>${(ST.setlist || {}).concerts ? `${plural(ST.setlist.concerts, 'show')} you were at, and what they did to your listening` : 'The shows you were at, from setlist.fm'}</small></span></button>
     </div>${genreMapHtml(x.genreMap)}</section>`;
+}
+
+// ---- time listened and milestones (Stats), and Through the years: the race, every play, gaps, old and new, depth ----
+
+const THROUGH_ART = `<svg viewBox="0 0 120 52" aria-hidden="true"><g style="fill:var(--md-primary)"><rect x="6" y="8" width="96" height="9" rx="4.5"/><rect x="6" y="22" width="70" height="9" rx="4.5" opacity=".65"/><rect x="6" y="36" width="44" height="9" rx="4.5" opacity=".4"/></g></svg>`;
+
+/** "412 days", "3.4 years". */
+const daysWords = (d) => (d < 1000 ? plural(Math.round(d), 'day') : `${(d / 365.25).toFixed(1).replace(/\.0$/, '')} years`);
+/** 1st, 2nd, 3rd, 100th. */
+const ordinal = (n) => `${num(n)}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+const hoursMin = (min) => (min >= 120 ? `${num(Math.round(min / 60))} h` : fmtLong(min * 60));
+/** Its place by plays, when that isn't its place by time. */
+const byPlaysNote = (x, place) => (x.byPlays && x.byPlays !== place ? `, ${ordinal(x.byPlays)} by plays` : '');
+
+function minutesViz(s) {
+  const m = s.minutes;
+  if (!m || !m.total || !(m.artists || []).length) return '';
+  const seg = minutesSeg === 'tracks' && (m.tracks || []).length ? 'tracks' : 'artists';
+  const list = (seg === 'tracks' ? m.tracks : m.artists).slice(0, 8);
+  const max = Math.max(1, list[0].min);
+  const rows = list.map((x, i) => {
+    const attrs = seg === 'tracks' ? trackAttrs(x.artist, x.title, { album: x.album }) : `data-artist="${esc(x.name)}"`;
+    const pic = seg === 'tracks' ? coverHtml(x.cover, x.album || x.title, x.artist, 'tiny') : coverHtml(x.photo || x.cover, x.name, x.name, 'tiny round');
+    const sub = seg === 'tracks' ? `${esc(x.artist)}, ${fmtDur(x.len)} long` : `${plural(x.plays, 'play')}${byPlaysNote(x, i + 1)}`;
+    return `<button class="r pl-r mn-r" ${attrs}><span class="n">${i + 1}</span>${pic}<span class="t"><b>${esc(seg === 'tracks' ? x.title : x.name)}</b><small>${sub}${seg === 'tracks' ? byPlaysNote(x, i + 1) : ''}</small></span>
+      <span class="v cnt">${hoursMin(x.min)}</span><div class="bar"><i style="width:${((x.min / max) * 100).toFixed(1)}%"></i></div></button>`;
+  }).join('');
+  return `<div class="viz minutes-viz"><h2>Time listened</h2><span class="sub">Estimated from the time between plays</span>
+    <div class="mn-total"><b>${hoursMin(m.total)}</b><span>in ${esc(periodName(s.range))}</span></div>
+    <div class="seg small" role="tablist"><button data-mnseg="artists" class="${seg === 'artists' ? 'on' : ''}">Artists</button><button data-mnseg="tracks" class="${seg === 'tracks' ? 'on' : ''}">Songs</button></div>
+    <div class="rank">${rows}</div></div>`;
+}
+let minutesSeg = 'artists';
+
+function milestoneText(x) {
+  if (x.kind === 'scrobble') return x.n === 1 ? 'Your first play' : `Your ${ordinal(x.n)} play`;
+  if (x.kind === 'artist') return `Your ${ordinal(x.n)} play of ${esc(x.artist)}`;
+  return `Your ${ordinal(x.n)} play of ${esc(x.title)}`;
+}
+function milestonesViz(s) {
+  const ms = s.milestones || [];
+  if (!ms.length) return '';
+  const rows = ms.slice().reverse().map((x) => {
+    const pic = x.kind === 'artist' ? coverHtml(x.photo || x.cover, x.artist, x.artist, 'tiny round') : coverHtml(x.cover, x.album || x.title, x.artist, 'tiny');
+    const sub = x.kind === 'artist' ? esc(x.title) : x.kind === 'track' ? esc(x.artist) : `${esc(x.title)}, ${esc(x.artist)}`;
+    const attrs = x.kind === 'artist' ? `data-artist="${esc(x.artist)}"` : trackAttrs(x.artist, x.title, { album: x.album });
+    return `<button class="r with-cover ms-${x.kind}" ${attrs}>${pic}<span class="t"><b>${milestoneText(x)}</b><small>${sub}</small></span><span class="v">${esc(dateLabel(x.at))}</span></button>`;
+  }).join('');
+  return `<div class="viz"><h2>Milestones</h2><div class="rank">${rows}</div></div>`;
+}
+
+let THROUGH = null;
+const RACE = { m: -1, timer: 0, playing: false };
+function openThrough() {
+  openPage('throughPage');
+  renderThrough();
+  if (!THROUGH) send({ t: 'through' });
+}
+window.onThrough = (j) => {
+  const first = !THROUGH;
+  THROUGH = j;
+  if (first && j.race) RACE.m = j.race.months - 1;
+  if (isOpen('throughPage')) renderThrough();
+};
+
+function renderThrough() {
+  if (!isOpen('throughPage')) return;
+  const body = $('#throughBody');
+  const j = THROUGH;
+  if (!j) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
+  if (j.empty) { body.innerHTML = '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>'; return; }
+  morph(body, raceHtml(j.race) + scatterHtml(j.scatter) + depthHtml(j.depth) + gapsHtml(j.gaps) + agesHtml(j.ages));
+  drawRace();
+  drawScatter();
+}
+
+// -- the race: your top artists by plays so far, month by month --
+
+const RACE_ROWS = 10;
+const monthOf = (r, m) => { const d = new Date(r.from); return new Date(d.getFullYear(), d.getMonth() + m, 1); };
+function raceHtml(r) {
+  if (!r || !(r.artists || []).length || r.months < 2) return '';
+  const bars = r.artists.map((a, k) => `<button class="rc-bar" data-artist="${esc(a.name)}" data-k="${k}" style="--h:${hue(a.name)}">
+    ${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="rc-name">${esc(a.name)}</span><span class="rc-n"></span></button>`).join('');
+  return `<div class="viz race-viz"><h2>The race</h2>
+    <div class="rc-when" id="rcWhen"></div>
+    <div class="rc-track" id="rcTrack" style="height:${RACE_ROWS * 34}px">${bars}</div>
+    <div class="rc-ctl"><button class="icon-btn" data-race aria-label="Play">${icon(RACE.playing ? 'pause' : 'play')}</button>
+      <input type="range" id="rcSlider" min="0" max="${r.months - 1}" value="${Math.max(0, RACE.m)}" aria-label="Month"></div></div>`;
+}
+function drawRace() {
+  const r = THROUGH && THROUGH.race;
+  const track = $('#rcTrack');
+  if (!r || !track) return;
+  const m = Math.max(0, Math.min(r.months - 1, RACE.m));
+  const order = r.artists.map((a, k) => [k, a.cum[m]]).filter((x) => x[1] > 0).sort((p, q) => q[1] - p[1]);
+  const place = new Map(order.map(([k], i) => [k, i]));
+  const max = Math.max(1, order.length ? order[0][1] : 1);
+  track.querySelectorAll('.rc-bar').forEach((b) => {
+    const k = +b.dataset.k, i = place.has(k) ? place.get(k) : RACE_ROWS;
+    const v = r.artists[k].cum[m];
+    b.style.transform = `translateY(${Math.min(i, RACE_ROWS) * 34}px)`;
+    b.style.setProperty('--f', (v / max).toFixed(3));
+    b.classList.toggle('out', i >= RACE_ROWS);
+    b.querySelector('.rc-n').textContent = num(v);
+  });
+  $('#rcWhen').textContent = monthOf(r, m).toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const sl = $('#rcSlider');
+  if (sl && +sl.value !== m) sl.value = m;
+}
+function raceStep() {
+  const r = THROUGH && THROUGH.race;
+  if (!r || !isOpen('throughPage')) { raceStop(); return; }
+  if (RACE.m >= r.months - 1) { raceStop(); return; }
+  RACE.m++;
+  drawRace();
+}
+function racePlay() {
+  const r = THROUGH && THROUGH.race;
+  if (!r) return;
+  if (RACE.m >= r.months - 1) RACE.m = 0;
+  RACE.playing = true;
+  clearInterval(RACE.timer);
+  // A whole history in about 20 seconds, but no month faster than a fifth of a second.
+  RACE.timer = setInterval(raceStep, Math.max(200, Math.round(20000 / r.months)));
+  drawRace();
+  syncRaceButton();
+}
+function raceStop() {
+  clearInterval(RACE.timer);
+  RACE.playing = false;
+  syncRaceButton();
+}
+function syncRaceButton() {
+  const b = $('#throughPage [data-race]');
+  if (b) { b.innerHTML = icon(RACE.playing ? 'pause' : 'play'); b.setAttribute('aria-label', RACE.playing ? 'Pause' : 'Play'); }
+}
+
+// -- every play: one row per artist, a dot per day they played --
+
+const SCATTER = { row: -1 };
+const SC_ROW = 9;
+function scatterHtml(sc) {
+  if (!sc || !(sc.artists || []).length) return '';
+  const y0 = new Date(sc.from).getFullYear(), y1 = new Date(sc.from + sc.days * 864e5).getFullYear();
+  const step = y1 - y0 > 12 ? 4 : y1 - y0 > 6 ? 2 : 1;
+  const ticks = [];
+  for (let y = y0 + 1; y <= y1; y += 1) if ((y - y0) % step === 0 || y0 + 1 === y1) ticks.push(`<i style="left:${(((new Date(y, 0, 1) - sc.from) / 864e5 / sc.days) * 100).toFixed(2)}%">${y}</i>`);
+  return `<div class="viz scatter-viz"><h2>Every play</h2>
+    <div class="sc-wrap"><canvas id="scCanvas" aria-label="Every play, one row per artist"></canvas></div>
+    <div class="sc-years">${ticks.join('')}</div>
+    <div class="readout" id="ro-sc">${scatterText(sc, SCATTER.row)}</div></div>`;
+}
+function scatterText(sc, row) {
+  const a = sc.artists[row];
+  if (!a) return `Your top ${sc.artists.length} artists in the order you found them, everyone else at the bottom`;
+  return `<b>${esc(a.name)}</b>: ${plural(a.plays, 'play')} since ${esc(monthYear(a.first))}`;
+}
+function drawScatter() {
+  const sc = THROUGH && THROUGH.scatter;
+  const cv = $('#scCanvas');
+  if (!sc || !cv) return;
+  const rows = sc.artists.length;
+  const w = cv.parentElement.clientWidth, h = (rows + 2) * SC_ROW;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  cv.style.height = `${h}px`;
+  const g = cv.getContext('2d');
+  g.scale(dpr, dpr);
+  const css = getComputedStyle(cv);
+  const ink = css.getPropertyValue('--md-on-surface').trim() || '#000';
+  const x = (d) => (d / Math.max(1, sc.days - 1)) * (w - 4) + 2;
+  const dot = (pts, y, color, alpha) => {
+    g.fillStyle = color;
+    for (let k = 0; k < pts.length; k += 2) {
+      const n = pts[k + 1];
+      g.globalAlpha = Math.min(1, alpha + n * 0.08);
+      g.beginPath();
+      g.arc(x(pts[k]), y, Math.min(3.6, 1.2 + Math.sqrt(n) * 0.55), 0, Math.PI * 2);
+      g.fill();
+    }
+  };
+  sc.artists.forEach((a, i) => {
+    const y = i * SC_ROW + SC_ROW / 2 + 1;
+    if (i === SCATTER.row) { g.globalAlpha = 0.1; g.fillStyle = ink; g.fillRect(0, y - SC_ROW / 2, w, SC_ROW); }
+    dot(a.pts, y, `hsl(${hue(a.name)} 55% 50%)`, SCATTER.row < 0 || SCATTER.row === i ? 0.55 : 0.18);
+  });
+  // Everyone else: a bar per day, as tall as its plays.
+  const o = sc.others || [];
+  let om = 1;
+  for (let k = 1; k < o.length; k += 2) om = Math.max(om, o[k]);
+  g.globalAlpha = 0.35;
+  g.fillStyle = ink;
+  const base = (rows + 2) * SC_ROW;
+  for (let k = 0; k < o.length; k += 2) { const bh = Math.max(1, (o[k + 1] / om) * (SC_ROW * 1.6)); g.fillRect(x(o[k]) - 0.5, base - bh, 1, bh); }
+  g.globalAlpha = 1;
+}
+function scatterTap(e) {
+  const sc = THROUGH && THROUGH.scatter;
+  const cv = $('#scCanvas');
+  if (!sc || !cv) return;
+  const row = Math.floor((e.clientY - cv.getBoundingClientRect().top) / SC_ROW);
+  SCATTER.row = row >= 0 && row < sc.artists.length && row !== SCATTER.row ? row : -1;
+  $('#ro-sc').innerHTML = scatterText(sc, SCATTER.row);
+  drawScatter();
+}
+
+// -- how deep you go --
+
+function depthHtml(d) {
+  if (!d || !d.artists || !d.artists.n) return '';
+  const e = d.artists.n, curve = d.curve || [];
+  // Your top artists' plays, and the line where plays equal the place: the number is where they cross.
+  const n = curve.length, top = Math.max(2, e * 2);
+  const W = 300, H = 120, sx = W / Math.max(1, n), sy = H / Math.max(1, top);
+  const bars = curve.map((v, i) => `<rect x="${(i * sx).toFixed(1)}" y="${(H - Math.min(top, v) * sy).toFixed(1)}" width="${Math.max(0.6, sx - 0.6).toFixed(1)}" height="${(Math.min(top, v) * sy).toFixed(1)}" class="${i < e ? 'in' : ''}"/>`).join('');
+  const line = `<line x1="0" y1="${H}" x2="${(Math.min(n, top) * sx).toFixed(1)}" y2="${(H - Math.min(n, top) * sy).toFixed(1)}"/>`;
+  const years = (d.years || []).slice(-8);
+  const ymax = Math.max(1, ...years.map((y) => y.n));
+  return `<div class="viz depth-viz"><h2>How deep you go</h2>
+    <div class="dp-big"><b>${num(e)}</b><span>artists you played ${num(e)} times or more</span></div>
+    <svg class="dp-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${bars}${line}</svg>
+    <p class="dp-next">${d.artists.next === 1 ? 'One more artist' : `${num(d.artists.next)} more artists`} at ${num(e + 1)} plays makes it ${num(e + 1)}.</p>
+    <div class="tiles">${tile('Songs', num(d.tracks.n), `played ${num(d.tracks.n)} times or more`)}${tile('Albums', num(d.albums.n), `played ${num(d.albums.n)} times or more`)}</div>
+    ${years.length > 1 ? `<div class="dp-years">${years.map((y) => `<div><i style="height:${((y.n / ymax) * 100).toFixed(1)}%"></i><b>${num(y.n)}</b><span>${y.year}</span></div>`).join('')}</div>` : ''}</div>`;
+}
+
+// -- gaps, and old favorites and newcomers --
+
+const yearsRow = (a, sub, v) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${sub}</small></span><span class="v">${v}</span></button>`;
+function gapsHtml(g) {
+  if (!g) return '';
+  const quiet = g.quiet || [], back = g.back || [];
+  if (!quiet.length && !back.length) return '';
+  return `<div class="viz"><h2>Gaps</h2>
+    ${quiet.length ? `<h3 class="sub-h">Still quiet</h3><div class="rank">${quiet.map((a) => yearsRow(a, `${plural(a.plays, 'play')}, last ${esc(monthYear(a.last))}`, daysWords(a.days))).join('')}</div>` : ''}
+    ${back.length ? `<h3 class="sub-h">Comebacks</h3><div class="rank">${back.map((a) => yearsRow(a, `Back in ${esc(monthYear(a.to))}, ${plural(a.since, 'play')} since`, daysWords(a.days))).join('')}</div>` : ''}</div>`;
+}
+function agesHtml(x) {
+  if (!x) return '';
+  const old = x.old || [], fresh = x.new || [];
+  if (!old.length && !fresh.length) return '';
+  const row = (a) => yearsRow(a, `${plural(a.plays, 'play')}, mostly around ${esc(monthYear(a.avg))}`, '');
+  return `<div class="viz"><h2>Old favorites and newcomers</h2>
+    ${old.length ? `<h3 class="sub-h">Old favorites you still play</h3><div class="rank">${old.map(row).join('')}</div>` : ''}
+    ${fresh.length ? `<h3 class="sub-h">Newcomers</h3><div class="rank">${fresh.map(row).join('')}</div>` : ''}</div>`;
 }
 
 // ---- the chart, the lineup and the period in covers ----
@@ -8096,6 +8346,10 @@ function build() {
     if (gb) { goBlock(gb.dataset.goblock); return; }
     if (e.target.closest('#openVs')) { openVs(); return; }
     if (e.target.closest('#openConcerts')) { openConcerts(); return; }
+    if (e.target.closest('#openThrough')) { openThrough(); return; }
+    if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
+    const mns = e.target.closest('[data-mnseg]');
+    if (mns) { minutesSeg = mns.dataset.mnseg; renderStats(); return; }
     // A day or month from outside Stats (On this day on Explore): Stats for it.
     const dd = e.target.closest('[data-day]');
     if (dd && !e.target.closest('#statsBody, #blockBody')) {
@@ -8268,6 +8522,13 @@ function build() {
   $('#albumBody').addEventListener('pointerdown', (e) => onVizPointer(e, ALBUM));
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
   $('#genreBody').addEventListener('pointerdown', (e) => onVizPointer(e, GENRE));
+  $('#throughBody').addEventListener('click', (e) => { if (e.target.id === 'scCanvas') scatterTap(e); });
+  $('#throughBody').addEventListener('input', (e) => {
+    if (e.target.id !== 'rcSlider') return;
+    raceStop();
+    RACE.m = +e.target.value;
+    drawRace();
+  });
   $('#genreBody').onclick = (e) => {
     const rec = e.target.closest('[data-rec]');
     if (rec) openRecord(+rec.dataset.rec, rec);

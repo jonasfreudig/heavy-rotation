@@ -122,6 +122,24 @@ class Stats(
         /** A listening session ends after half an hour without a play. */
         private const val SESSION_GAP = 30 * 60L
         private const val DAY_SEC = 86_400L
+
+        /** A gap to the next play shorter than this was a skip, not the song's length. */
+        private const val MIN_TRACK_SEC = 30L
+        /** The plays that count as milestones: of everything, of one artist, of one song. */
+        private val SCROBBLE_MILESTONES = setOf(1, 1_000, 5_000, 10_000, 25_000, 50_000, 75_000, 100_000)
+        private val ARTIST_MILESTONES = setOf(100, 250, 500, 1_000, 2_500, 5_000, 10_000)
+        private val TRACK_MILESTONES = setOf(50, 100, 250, 500, 1_000)
+        /** The race: the top this many each month, and at most this many artists in all. */
+        const val RACE_TOP = 10
+        const val RACE_MAX = 40
+        /** Every play: the rows of the most played artists, the rest in one row below. */
+        const val SCATTER_ARTISTS = 40
+        /** Gaps: artists with this many plays, quiet for this many days. */
+        const val GAP_MIN_PLAYS = 50
+        const val GAP_MIN_DAYS = 90
+        const val GAPS_SHOWN = 10
+        /** Old favorites and newcomers: artists with this many plays. */
+        const val AGE_MIN_PLAYS = 25
     }
 
     private val rules = zone.rules
@@ -285,6 +303,8 @@ class Stats(
             .put("wishlist", wishlist(i0, i1))
             .put("top", top(i0, i1, TOP_MAX, prev?.let { h.lowerBound(it.from) } ?: -1, prev?.let { h.lowerBound(it.to) } ?: -1))
             .put("cards", cardsSummary())
+            .put("minutes", minutes(i0, i1))
+            .put("milestones", milestones(i0, i1))
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
@@ -2705,5 +2725,219 @@ class Stats(
             .put("streak", streaks(r, i0, i1))
             .put("insights", insights(r, i0, i1, prev))
             .put("first", JSONObject().put("track", h.trackTitles[h.track[i0]]).put("artist", h.artistNames[h.artist[i0]]).put("ts", h.ts[i0] * 1000))
+    }
+
+    // ---- time listened, milestones, and all of your history in charts (Through the years) ----
+
+    /**
+     * Each song's length in seconds as your plays tell it: the median time to the next play when one came within
+     * half an hour (Last.fm dates a play when it starts). A song never followed that soon takes its artist's usual
+     * length, else [MINUTES_PER_PLAY].
+     */
+    private val trackSec: IntArray by lazy {
+        val gaps = arrayOfNulls<ArrayList<Int>>(h.trackTitles.size)
+        for (i in 0 until h.size - 1) {
+            val g = h.ts[i + 1] - h.ts[i]
+            if (g in MIN_TRACK_SEC..SESSION_GAP) (gaps[h.track[i]] ?: ArrayList<Int>().also { gaps[h.track[i]] = it }).add(g.toInt())
+        }
+        val med = IntArray(h.trackTitles.size) { t -> gaps[t]?.sorted()?.let { it[it.size / 2] } ?: 0 }
+        val byArtist = HashMap<Int, MutableList<Int>>()
+        for (t in med.indices) if (med[t] > 0) byArtist.getOrPut(h.trackArtist[t]) { ArrayList() } += med[t]
+        val artistMed = byArtist.mapValues { (_, v) -> v.sorted()[v.size / 2] }
+        IntArray(med.size) { t -> med[t].takeIf { it > 0 } ?: artistMed[h.trackArtist[t]] ?: (MINUTES_PER_PLAY * 60).toInt() }
+    }
+
+    /** Time listened between plays [i0] and [i1] (estimated, see [trackSec]), and the artists and songs with the most of it, each with its place by plays. */
+    fun minutes(i0: Int, i1: Int, max: Int = 10): JSONObject {
+        val aSec = LongArray(h.artistNames.size)
+        val aPlays = IntArray(h.artistNames.size)
+        val tSec = LongArray(h.trackTitles.size)
+        val tPlays = IntArray(h.trackTitles.size)
+        var total = 0L
+        for (i in i0 until i1) {
+            val sec = trackSec[h.track[i]].toLong()
+            total += sec
+            aSec[h.artist[i]] += sec
+            aPlays[h.artist[i]]++
+            tSec[h.track[i]] += sec
+            tPlays[h.track[i]]++
+        }
+        fun places(p: IntArray): Map<Int, Int> = p.indices.filter { p[it] > 0 }.sortedByDescending { p[it] }.withIndex().associate { (k, x) -> x to k + 1 }
+        val aPlace = places(aPlays)
+        val tPlace = places(tPlays)
+        val topA = aSec.indices.filter { aSec[it] > 0 }.sortedByDescending { aSec[it] }.take(max)
+        val topT = tSec.indices.filter { tSec[it] > 0 }.sortedByDescending { tSec[it] }.take(max)
+        return JSONObject().put("total", total / 60)
+            .put("artists", JSONArray(topA.map { a ->
+                JSONObject().put("name", h.artistNames[a]).put("min", aSec[a] / 60).put("plays", aPlays[a]).put("byPlays", aPlace[a] ?: 0)
+                    .put("photo", artistPhoto(h.artistNames[a])).put("cover", artistPicture(a))
+            }))
+            .put("tracks", JSONArray(topT.map { t -> trackJson(t).put("min", tSec[t] / 60).put("plays", tPlays[t]).put("len", trackSec[t]).put("byPlays", tPlace[t] ?: 0) }))
+    }
+
+    private class Milestone(val i: Int, val kind: String, val n: Int)
+
+    /** Every round number of plays: of everything, of an artist, of a song (the play that made it). */
+    private val milestoneList: List<Milestone> by lazy {
+        val out = ArrayList<Milestone>()
+        val a = IntArray(h.artistNames.size)
+        val t = IntArray(h.trackTitles.size)
+        for (i in 0 until h.size) {
+            val n = i + 1
+            if (n in SCROBBLE_MILESTONES || (n > 100_000 && n % 50_000 == 0)) out += Milestone(i, "scrobble", n)
+            (++a[h.artist[i]]).let { if (it in ARTIST_MILESTONES) out += Milestone(i, "artist", it) }
+            (++t[h.track[i]]).let { if (it in TRACK_MILESTONES) out += Milestone(i, "track", it) }
+        }
+        out
+    }
+
+    /** The biggest milestones between plays [i0] and [i1], [max] at most, in the order they came. */
+    fun milestones(i0: Int, i1: Int, max: Int = 12): JSONArray {
+        fun weight(m: Milestone) = when (m.kind) {
+            "scrobble" -> 1e9 + m.n
+            "artist" -> m.n / 100.0
+            else -> m.n / 50.0
+        }
+        val pick = milestoneList.filter { it.i in i0 until i1 }
+            .sortedWith(compareByDescending<Milestone> { weight(it) }.thenByDescending { it.i }).take(max).sortedBy { it.i }
+        return JSONArray(pick.map { m ->
+            playJson(m.i).put("kind", m.kind).put("n", m.n).put("at", h.ts[m.i] * 1000)
+                .also { if (m.kind == "artist") it.put("photo", artistPhoto(h.artistNames[h.artist[m.i]])) }
+        })
+    }
+
+    /** Through the years: the race, every play, gaps, old favorites and newcomers, and how deep you go. Worked out once per history. */
+    fun throughTheYears(): JSONObject = throughJson
+
+    private val throughJson: JSONObject by lazy {
+        if (h.size == 0) return@lazy JSONObject().put("empty", true)
+        JSONObject().put("plays", h.size).put("race", race()).put("scatter", scatter()).put("gaps", gaps()).put("ages", ages()).put("depth", depth())
+    }
+
+    /** The artists on Through the years without a photo yet. */
+    fun throughNeedingPhotos(): List<String> {
+        val j = throughJson
+        val names = ArrayList<String>()
+        fun from(a: JSONArray?) { for (k in 0 until (a?.length() ?: 0)) names += a!!.getJSONObject(k).getString("name") }
+        from(j.optJSONObject("race")?.optJSONArray("artists"))
+        j.optJSONObject("gaps")?.let { from(it.optJSONArray("quiet")); from(it.optJSONArray("back")) }
+        j.optJSONObject("ages")?.let { from(it.optJSONArray("old")); from(it.optJSONArray("new")) }
+        return withoutPhoto(names)
+    }
+
+    private fun artistBrief(a: Int) = JSONObject().put("name", h.artistNames[a]).put("plays", artistLife.plays[a])
+        .put("photo", artistPhoto(h.artistNames[a])).put("cover", artistPicture(a))
+
+    /** The artists of the race, each with their plays so far at the end of every month: the [RACE_TOP] of any month, [RACE_MAX] at most. */
+    private fun race(): JSONObject {
+        val m0 = monthKey(h.ts[0])
+        val n = maxOf(monthKey(nowSec), monthKey(h.ts[h.size - 1])) - m0 + 1
+        val cum = IntArray(h.artistNames.size)
+        val inTop = HashSet<Int>()
+        var i = 0
+        for (m in 0 until n) {
+            while (i < h.size && monthKey(h.ts[i]) - m0 <= m) cum[h.artist[i++]]++
+            cum.indices.filter { cum[it] > 0 }.sortedByDescending { cum[it] }.take(RACE_TOP).forEach { inTop += it }
+        }
+        val shown = inTop.sortedByDescending { cum[it] }.take(RACE_MAX)
+        val row = shown.withIndex().associate { (k, a) -> a to k }
+        val series = Array(shown.size) { IntArray(n) }
+        val run = IntArray(shown.size)
+        i = 0
+        for (m in 0 until n) {
+            while (i < h.size && monthKey(h.ts[i]) - m0 <= m) row[h.artist[i++]]?.let { run[it]++ }
+            for (k in shown.indices) series[k][m] = run[k]
+        }
+        return JSONObject().put("from", monthStart(m0)).put("months", n)
+            .put("artists", JSONArray(shown.mapIndexed { k, a -> artistBrief(a).put("cum", JSONArray(series[k].toList())) }))
+    }
+
+    /** Every play: per day, the plays of each of the [SCATTER_ARTISTS] most played artists (in order of their first play), and of everyone else. */
+    private fun scatter(): JSONObject {
+        val l = artistLife
+        val top = l.plays.indices.filter { l.plays[it] > 0 }.sortedByDescending { l.plays[it] }.take(SCATTER_ARTISTS).sortedBy { l.first[it] }
+        val row = top.withIndex().associate { (k, a) -> a to k }
+        val d0 = day(h.ts[0])
+        val per = Array(top.size + 1) { java.util.TreeMap<Int, Int>() }
+        for (i in 0 until h.size) per[row[h.artist[i]] ?: top.size].merge((day(h.ts[i]) - d0).toInt(), 1, Int::plus)
+        fun pts(m: Map<Int, Int>) = JSONArray().also { arr -> m.forEach { (d, c) -> arr.put(d).put(c) } }
+        return JSONObject().put("from", dayStart(d0) * 1000).put("days", (maxOf(day(nowSec), day(h.ts[h.size - 1])) - d0 + 1).toInt())
+            .put("artists", JSONArray(top.mapIndexed { k, a -> artistBrief(a).put("first", l.first[a] * 1000).put("pts", pts(per[k])) }))
+            .put("others", pts(per[top.size]))
+    }
+
+    /** Artists you loved who are still quiet (the longest first), and the longest silences that ended in a comeback. */
+    private fun gaps(): JSONObject {
+        val n = h.artistNames.size
+        val last = LongArray(n) { -1 }
+        val plays = IntArray(n)
+        val gap = LongArray(n)
+        val gapFrom = LongArray(n)
+        val gapTo = LongArray(n)
+        val before = IntArray(n)
+        for (i in 0 until h.size) {
+            val a = h.artist[i]
+            if (last[a] >= 0 && h.ts[i] - last[a] > gap[a]) {
+                gap[a] = h.ts[i] - last[a]
+                gapFrom[a] = last[a]
+                gapTo[a] = h.ts[i]
+                before[a] = plays[a]
+            }
+            last[a] = h.ts[i]
+            plays[a]++
+        }
+        val loved = (0 until n).filter { plays[it] >= GAP_MIN_PLAYS }
+        val quiet = loved.filter { nowSec - last[it] >= GAP_MIN_DAYS * DAY_SEC }.sortedBy { last[it] }.take(GAPS_SHOWN)
+        val back = loved.filter { gap[it] >= GAP_MIN_DAYS * DAY_SEC && plays[it] - before[it] >= 5 }.sortedByDescending { gap[it] }.take(GAPS_SHOWN)
+        return JSONObject()
+            .put("quiet", JSONArray(quiet.map { artistBrief(it).put("last", last[it] * 1000).put("days", (nowSec - last[it]) / DAY_SEC) }))
+            .put("back", JSONArray(back.map { a ->
+                artistBrief(a).put("from", gapFrom[a] * 1000).put("to", gapTo[a] * 1000).put("days", gap[a] / DAY_SEC).put("since", plays[a] - before[a])
+            }))
+            .put("minPlays", GAP_MIN_PLAYS)
+    }
+
+    /** Artists by the average date of their plays: old favorites you still play (on average two years ago or more), and newcomers (the newest average). */
+    private fun ages(): JSONObject {
+        val l = artistLife
+        val sum = DoubleArray(h.artistNames.size)
+        for (i in 0 until h.size) sum[h.artist[i]] += h.ts[i].toDouble()
+        val pool = l.plays.indices.filter { l.plays[it] >= AGE_MIN_PLAYS }
+        fun avg(a: Int) = sum[a] / l.plays[a]
+        fun json(a: Int) = artistBrief(a).put("avg", (avg(a) * 1000).toLong()).put("first", l.first[a] * 1000).put("last", l.last[a] * 1000)
+        val old = pool.filter { l.last[it] >= nowSec - 365 * DAY_SEC && avg(it) <= nowSec - 2 * 365 * DAY_SEC }.sortedBy { avg(it) }.take(GAPS_SHOWN)
+        val oldSet = old.toHashSet()
+        val new = pool.filter { it !in oldSet }.sortedByDescending { avg(it) }.take(GAPS_SHOWN)
+        return JSONObject().put("old", JSONArray(old.map { json(it) })).put("new", JSONArray(new.map { json(it) })).put("minPlays", AGE_MIN_PLAYS)
+    }
+
+    /**
+     * How deep you go: the largest n with n artists (songs, albums) played n times or more, how many more it takes for
+     * the next, the artists' number at the end of each year, and the plays of your top artists for the chart.
+     */
+    private fun depth(): JSONObject {
+        fun number(counts: IntArray): Int {
+            val s = counts.sortedArrayDescending()
+            var e = 0
+            while (e < s.size && s[e] >= e + 1) e++
+            return e
+        }
+        fun of(counts: IntArray): JSONObject {
+            val e = number(counts)
+            return JSONObject().put("n", e).put("next", e + 1 - counts.count { it >= e + 1 })
+        }
+        val years = JSONArray()
+        val run = IntArray(h.artistNames.size)
+        var i = 0
+        while (i < h.size) {
+            val y = date(h.ts[i]).year
+            while (i < h.size && date(h.ts[i]).year == y) run[h.artist[i++]]++
+            years.put(JSONObject().put("year", y).put("n", number(run)))
+        }
+        val plays = artistLife.plays
+        val e = number(plays)
+        val ranked = plays.sortedArrayDescending().filter { it > 0 }
+        return JSONObject().put("artists", of(plays)).put("tracks", of(trackPlays)).put("albums", of(albumPlays)).put("years", years)
+            .put("curve", JSONArray(ranked.take(maxOf(30, e * 2))))
     }
 }

@@ -356,6 +356,22 @@ whole history, worked out from the order of your scrobbles.
 Play counts are song plays: an album's "124 plays" means 124 scrobbles of its songs. Record and
 album pages turn that into "≈ 12 times through" when the number of songs is known.
 
+#### Through the years
+
+A tile under Your taste opens your whole history as charts. The race shows your top 10 artists by
+plays so far, month by month; press play or drag the slider. Every play gives each of your 40 most
+played artists a row (in the order you found them) with a dot for every day you played them, and
+everyone else as small bars along the bottom. How deep you go is the largest number n with n artists
+you played n times or more, with the same for songs and albums and how it grew each year. Gaps lists
+artists with 50 plays or more that have been quiet for 90 days or longer, and the longest silences
+that ended in a comeback. Old favorites are artists you still play whose plays lie two years back
+on average; newcomers have the newest plays on average.
+
+Two Stats blocks follow the period you pick. Time listened ranks artists and songs by time instead
+of plays. Scrobbles carry no length, so each song's length is the usual time from it to the next
+play (Last.fm dates a play when it starts). Milestones lists round numbers: your 10,000th play, an
+artist's 500th, a song's 100th.
+
 #### You vs everyone
 
 Last.fm knows how many people listened to every artist, album and song, and how often, over all

@@ -640,6 +640,8 @@ const Mock = (() => {
     out.calendar = calendarOf(r, i0, i1, freshAll, out.obsessions.map((o) => o.week + 2 * DAY).concat(out.loops.map((l) => l.at)));
     out.strip = stripOf(r);
     out.cards = fakeCards().summary;
+    out.minutes = fakeMinutes(i0, i1);
+    out.milestones = fakeMilestones(i0, i1);
     // insights and personality, from the numbers above
     const n = sm.scrobbles;
     const ins = [];
@@ -1081,6 +1083,103 @@ const Mock = (() => {
   }
   /** A whole top list, as the app sends it: places from..from+n, and the few around the page's own if it's further down. */
   /** Your cards as Stats.cards and Stats.cardsSummary give them: songs by all-time plays, and when each reached its tier. */
+  // Time listened, milestones and Through the years, worked out from the made-up history as the app does (lengths made up too).
+  const fakeLen = (t) => 150 + ((t * 37) % 300);
+  function fakeMinutes(i0, i1) {
+    const L = history();
+    const a = {}, ap = {}, t = {}, tp = {}, tA = {};
+    let total = 0;
+    for (let i = i0; i < i1; i++) {
+      const s = fakeLen(L.t[i]);
+      total += s;
+      a[L.a[i]] = (a[L.a[i]] || 0) + s;
+      ap[L.a[i]] = (ap[L.a[i]] || 0) + 1;
+      t[L.t[i]] = (t[L.t[i]] || 0) + s;
+      tp[L.t[i]] = (tp[L.t[i]] || 0) + 1;
+      tA[L.t[i]] = L.a[i];
+    }
+    const place = (p) => { const o = Object.keys(p).map(Number).sort((x, y) => p[y] - p[x]); return (k) => o.indexOf(k) + 1; };
+    const pa = place(ap), pt = place(tp);
+    const top = (m) => Object.keys(m).map(Number).sort((x, y) => m[y] - m[x]).slice(0, 10);
+    return {
+      total: Math.round(total / 60),
+      artists: top(a).map((k) => ({ name: L.artists[k], min: Math.round(a[k] / 60), plays: ap[k], byPlays: pa(k), photo: '', cover: '' })),
+      tracks: top(t).map((k) => ({ title: L.titles[k], artist: L.artists[tA[k]], album: '', cover: '', min: Math.round(t[k] / 60), plays: tp[k], len: fakeLen(k), byPlays: pt(k) })),
+    };
+  }
+  function fakeMilestones(i0, i1) {
+    const L = history();
+    const out = [], a = {}, t = {};
+    for (let i = 0; i < L.ts.length; i++) {
+      const n = i + 1, ca = (a[L.a[i]] = (a[L.a[i]] || 0) + 1), ct = (t[L.t[i]] = (t[L.t[i]] || 0) + 1);
+      if (i < i0 || i >= i1) continue;
+      const play = { title: L.titles[L.t[i]], artist: L.artists[L.a[i]], album: '', cover: '', at: L.ts[i] };
+      if ([1, 1000, 5000, 10000, 25000].includes(n)) out.push({ ...play, kind: 'scrobble', n });
+      if ([100, 250, 500, 1000].includes(ca)) out.push({ ...play, kind: 'artist', n: ca, photo: '' });
+      if ([50, 100, 250].includes(ct)) out.push({ ...play, kind: 'track', n: ct });
+    }
+    return out.slice(-12);
+  }
+  function fakeThrough() {
+    const L = history();
+    const N = L.ts.length;
+    const plays = {}, first = {}, last = {}, sum = {};
+    for (let i = 0; i < N; i++) {
+      const a = L.a[i];
+      plays[a] = (plays[a] || 0) + 1;
+      if (first[a] == null) first[a] = L.ts[i];
+      last[a] = L.ts[i];
+      sum[a] = (sum[a] || 0) + L.ts[i];
+    }
+    const ids = Object.keys(plays).map(Number);
+    const brief = (a) => ({ name: L.artists[a], plays: plays[a], photo: '', cover: '' });
+    const d0 = new Date(L.ts[0]);
+    const m0 = d0.getFullYear() * 12 + d0.getMonth(), now = new Date();
+    const months = now.getFullYear() * 12 + now.getMonth() - m0 + 1;
+    const raceIds = ids.sort((x, y) => plays[y] - plays[x]).slice(0, 16);
+    const cum = raceIds.map(() => new Array(months).fill(0));
+    for (let i = 0; i < N; i++) {
+      const k = raceIds.indexOf(L.a[i]);
+      if (k < 0) continue;
+      const d = new Date(L.ts[i]);
+      for (let m = d.getFullYear() * 12 + d.getMonth() - m0; m < months; m++) cum[k][m]++;
+    }
+    const day0 = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate()).getTime();
+    const days = Math.round((Date.now() - day0) / DAY) + 1;
+    const scIds = ids.slice().sort((x, y) => plays[y] - plays[x]).slice(0, 40).sort((x, y) => first[x] - first[y]);
+    const per = scIds.map(() => ({})), others = {};
+    for (let i = 0; i < N; i++) {
+      const k = scIds.indexOf(L.a[i]), d = Math.floor((L.ts[i] - day0) / DAY);
+      const m = k < 0 ? others : per[k];
+      m[d] = (m[d] || 0) + 1;
+    }
+    const flat = (m) => Object.keys(m).map(Number).sort((x, y) => x - y).flatMap((d) => [d, m[d]]);
+    const loved = ids.filter((a) => plays[a] >= 20);
+    const avg = (a) => sum[a] / plays[a];
+    const counts = ids.map((a) => plays[a]).sort((x, y) => y - x);
+    let e = 0;
+    while (e < counts.length && counts[e] >= e + 1) e++;
+    return {
+      plays: N,
+      race: { from: new Date(d0.getFullYear(), d0.getMonth(), 1).getTime(), months, artists: raceIds.map((a, k) => ({ ...brief(a), cum: cum[k] })) },
+      scatter: { from: day0, days, artists: scIds.map((a, k) => ({ ...brief(a), first: first[a], pts: flat(per[k]) })), others: flat(others) },
+      gaps: {
+        quiet: loved.slice().sort((x, y) => last[x] - last[y]).slice(0, 6).map((a) => ({ ...brief(a), last: last[a], days: Math.round((Date.now() - last[a]) / DAY) })),
+        back: loved.slice(0, 4).map((a, k) => ({ ...brief(a), from: Date.now() - (400 + k * 90) * DAY, to: Date.now() - (60 + k * 20) * DAY, days: 340 + k * 70, since: 12 + k * 5 })),
+        minPlays: 50,
+      },
+      ages: {
+        old: loved.slice().sort((x, y) => avg(x) - avg(y)).slice(0, 6).map((a) => ({ ...brief(a), avg: avg(a), first: first[a], last: last[a] })),
+        new: loved.slice().sort((x, y) => avg(y) - avg(x)).slice(0, 6).map((a) => ({ ...brief(a), avg: avg(a), first: first[a], last: last[a] })),
+        minPlays: 25,
+      },
+      depth: {
+        artists: { n: e, next: e + 1 - counts.filter((c) => c >= e + 1).length }, tracks: { n: Math.round(e * 0.6), next: 3 }, albums: { n: Math.round(e * 0.8), next: 2 },
+        years: [2021, 2022, 2023, 2024, 2025, 2026].map((year, k) => ({ year, n: Math.round(e * (0.3 + k * 0.14)) })),
+        curve: counts.slice(0, Math.max(30, e * 2)),
+      },
+    };
+  }
   function fakeCards() {
     const L = history();
     const n = {}, at = {}, tArtist = {}, tiers = [10, 25, 50, 100];
@@ -1524,6 +1623,7 @@ const Mock = (() => {
         }
         case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
         case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
+        case 'through': later(400, () => onThrough(fakeThrough())); break;
         case 'cards': later(250, () => { const c = fakeCards(); delete c.summary; onCards({ ...c, req: m.req }); }); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'phoneControl': {

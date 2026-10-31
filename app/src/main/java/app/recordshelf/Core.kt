@@ -718,6 +718,12 @@ object Core {
                 val s = currentStats()
                 push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
             }
+            "through" -> statsExec.execute {
+                val s = currentStats()
+                push("onThrough") { s?.throughTheYears() ?: JSONObject().put("empty", true) }
+                val photos = s?.throughNeedingPhotos().orEmpty()
+                if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
+            }
             "vs" -> statsExec.execute {
                 val s = currentStats()
                 val j = s?.vs() ?: JSONObject().put("empty", true)
