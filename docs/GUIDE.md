@@ -453,6 +453,12 @@ needs for the next tier. A song's own page wears its card too: from bronze on, i
 that metal with a soft glow behind it, the record sliding out is pressed in the same metal when the
 album is on your shelf, and the line under the numbers says how far the next tier is.
 
+All your cards are in one binder: Your cards on the Stats tab (under the numbers) or All your
+cards on an artist page. It counts what you hold of each tier, shows the songs a few plays from
+their next tier (and the ones a few plays from becoming a card at all), and lays out every card by
+tier. New this month shows the cards that reached their tier this month; By artist sorts them by
+artist instead. Tap a tier's count to jump to it, and a card for its song's page.
+
 #### Tidy up: videos and app sounds
 
 A scrobbler that listened to every app may have sent things that aren't music: "HBO Max", a game

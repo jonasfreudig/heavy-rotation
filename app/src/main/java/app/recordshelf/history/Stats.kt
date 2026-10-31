@@ -56,6 +56,12 @@ class Stats(
         /** A full top list opened from a page far down it also shows this many places either side of that page's. */
         const val AROUND = 8
 
+        /** A song's card tiers by plays: bronze, silver, gold and holo. */
+        val CARD_TIERS = intArrayOf(10, 25, 50, 100)
+
+        /** Songs this many plays short of bronze show as almost there, before they are cards. */
+        const val CARD_ALMOST = 3
+
         /** A new artist you "kept": played this often since. */
         const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
@@ -278,6 +284,7 @@ class Stats(
             .put("rarely", rarelyPlayed(i0, i1))
             .put("wishlist", wishlist(i0, i1))
             .put("top", top(i0, i1, TOP_MAX, prev?.let { h.lowerBound(it.from) } ?: -1, prev?.let { h.lowerBound(it.to) } ?: -1))
+            .put("cards", cardsSummary())
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
@@ -2421,6 +2428,48 @@ class Stats(
         val byArtist = HashMap<Int, MutableList<Int>>()
         for (t in h.trackTitles.indices) if (h.trackArtist[t] in want) byArtist.getOrPut(h.trackArtist[t]) { ArrayList() } += t
         return byArtist.mapValues { (_, ts) -> ts.sortedByDescending { trackPlays[it] }.take(per) }
+    }
+
+    // ---- your cards: every song played often enough, as a collector card ----
+
+    /** When each song reached the card tier it holds now (seconds; 0 below bronze). */
+    private val cardReached: LongArray by lazy {
+        val n = IntArray(h.trackTitles.size)
+        LongArray(h.trackTitles.size).also { at -> for (i in 0 until h.size) h.track[i].let { t -> if (++n[t] in CARD_TIERS) at[t] = h.ts[i] } }
+    }
+    private val cardSongs: List<Int> by lazy {
+        trackPlays.indices.filter { trackPlays[it] >= CARD_TIERS[0] }.sortedWith(compareByDescending<Int> { trackPlays[it] }.thenBy { h.trackTitles[it].lowercase() })
+    }
+    private fun tierOf(plays: Int) = CARD_TIERS.indexOfLast { plays >= it }
+    private val monthFromSec get() = date(nowSec).withDayOfMonth(1).atStartOfDay(zone).toEpochSecond()
+
+    /**
+     * Every card, most played first, with when it reached its tier; the songs a few plays short of bronze; and
+     * where this month began, so the page can tell the cards new this month.
+     */
+    fun cards(): JSONObject {
+        val almost = trackPlays.indices.filter { trackPlays[it] in CARD_TIERS[0] - CARD_ALMOST until CARD_TIERS[0] }
+            .sortedWith(compareByDescending<Int> { trackPlays[it] }.thenBy { h.trackTitles[it].lowercase() }).take(TOP_MAX)
+        return JSONObject().put("monthFrom", monthFromSec * 1000)
+            .put("artists", cardSongs.map { h.trackArtist[it] }.distinct().size)
+            .put("cards", JSONArray(cardSongs.map { trackJson(it).put("reached", cardReached[it] * 1000) }))
+            .put("almost", JSONArray(almost.map { trackJson(it) }))
+    }
+
+    /** For the Stats row: how many cards of each tier (bronze first), how many reached their tier this month, and the top card's cover of each tier held. */
+    fun cardsSummary(): JSONObject {
+        val counts = IntArray(CARD_TIERS.size)
+        val best = IntArray(CARD_TIERS.size) { -1 }
+        val from = monthFromSec
+        var fresh = 0
+        for (t in cardSongs) {
+            val k = tierOf(trackPlays[t])
+            counts[k]++
+            if (best[k] < 0) best[k] = t
+            if (cardReached[t] >= from) fresh++
+        }
+        return JSONObject().put("total", cardSongs.size).put("counts", JSONArray(counts.toList())).put("fresh", fresh)
+            .put("best", JSONArray(best.toList().mapIndexedNotNull { k, t -> if (t < 0) null else trackJson(t).put("tier", k) }.reversed()))
     }
 
     private fun trackJson(t: Int): JSONObject = JSONObject().put("title", h.trackTitles[t]).put("artist", h.artistNames[h.trackArtist[t]])

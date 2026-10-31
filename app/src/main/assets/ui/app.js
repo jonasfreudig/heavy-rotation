@@ -6442,6 +6442,7 @@ const BLOCKS = {
   story: { name: 'The story', html: (s) => storyCardHtml(s) },
   numbers: { name: 'Numbers', html: numbersHtml },
   tidy: { name: 'Tidy-up note', html: (s) => tidyBanner(s.tidy) },
+  cards: { name: 'Your cards', html: cardsRowHtml },
   highlights: { name: 'Highlights', kinds: ['day', ...SPAN], html: highlightsViz },
   week: { name: 'Your week', kinds: ['week'], html: (s) => weekViz(s) },
   record: {
@@ -6482,7 +6483,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
-  span: ['story', 'numbers', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'taste'],
+  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
@@ -6934,18 +6935,88 @@ function songCards(a) {
   const list = (a.tracks || []).filter((x) => x.plays >= 3);
   if (list.length < 2) return '';
   const counts = CARD_TIERS.map(([n, k, l]) => [l, list.filter((x) => cardTier(x.plays)[1] === k).length]).filter(([, c]) => c);
-  const cards = list.map((x, i) => {
-    const [, tier, label] = cardTier(x.plays);
-    const next = CARD_TIERS.slice().reverse().find(([n]) => n > x.plays);
-    const from = (CARD_TIERS.slice().reverse().filter(([n]) => n <= x.plays).pop() || [0])[0];
-    const prog = next ? Math.round(((x.plays - from) / (next[0] - from)) * 100) : 100;
-    return `<button class="tcard song ${tier}" ${trackAttrs(a.name, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b><small>${i + 1}/${list.length}</small></span>
-      <span class="tc-img">${coverHtml(x.cover, x.album || x.title, a.name)}</span>${label ? `<span class="tc-type">${label}</span>` : ''}
-      <span class="tc-st"><span><b>${num(x.plays)}</b>${x.plays === 1 ? 'play' : 'plays'}</span><span><b>${x.first ? esc(shortDate(x.first)) : '–'}</b>first</span></span>
-      <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${prog}%"></i></span><small>${plural(next[0] - x.plays, 'play')} to ${next[2].toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
-  }).join('');
+  const cards = list.map((x, i) => tierCard({ ...x, artist: a.name }, `${i + 1}/${list.length}`, `<b>${x.first ? esc(shortDate(x.first)) : '–'}</b>first`)).join('');
   return `<div class="viz"><h2>Your cards</h2><span class="sub">Their songs as cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100.${counts.length ? ` You hold ${counts.map(([l, c]) => `${c} ${l.toLowerCase()}`).join(', ')}.` : ''}</span>
-    <div class="tcards">${cards}</div></div>`;
+    <div class="tcards">${cards}</div><button class="btn text" data-cardbook>${icon('chevron-right')}All your cards</button></div>`;
+}
+/** A song [x] as a card with its tier and the way to the next one; [corner] at the top right, [second] next to its plays. */
+function tierCard(x, corner, second) {
+  const [, tier, label] = cardTier(x.plays);
+  const next = CARD_TIERS.slice().reverse().find(([n]) => n > x.plays);
+  const from = (CARD_TIERS.slice().reverse().filter(([n]) => n <= x.plays).pop() || [0])[0];
+  const prog = next ? Math.round(((x.plays - from) / (next[0] - from)) * 100) : 100;
+  return `<button class="tcard song ${tier}" ${trackAttrs(x.artist, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b>${corner ? `<small>${corner}</small>` : ''}</span>
+      <span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span>${label ? `<span class="tc-type">${label}</span>` : ''}
+      <span class="tc-st"><span><b>${num(x.plays)}</b>${x.plays === 1 ? 'play' : 'plays'}</span><span>${second}</span></span>
+      <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${prog}%"></i></span><small>${plural(next[0] - x.plays, 'play')} to ${next[2].toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
+}
+
+// ---- your cards: every song you played 10 times or more, in one binder ----
+
+/** The tiers as the app counts them, bronze first. */
+const TIER_KEYS = ['bronze', 'silver', 'gold', 'holo'];
+/** "3 holo, 6 gold, 6 silver, 15 bronze" from counts bronze first. */
+const tierCounts = (counts) => counts.map((n, k) => (n ? `${num(n)} ${TIER_KEYS[k]}` : '')).filter(Boolean).reverse().join(', ');
+/** On Stats: a few of your best cards fanned out, and what you hold. Opens the binder. */
+function cardsRowHtml(s) {
+  const c = s.cards;
+  if (!c || !c.total) return '';
+  const fan = c.best.map((x) => `<i class="tcard song ${TIER_KEYS[x.tier]}"><span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span></i>`).join('');
+  return `<button class="cards-row" data-cardbook><span class="cr-fan">${fan}</span><span class="cr-tx"><b>Your cards</b><small>${tierCounts(c.counts)}${c.fresh ? `. ${num(c.fresh)} new this month` : ''}</small></span>${icon('chevron-right')}</button>`;
+}
+let CARDBOOK = null;
+function openCardbook() {
+  openPage('cardsPage');
+  CARDBOOK = { loading: true, req: ++REQ, view: 'all', open: {} };
+  renderCardbook();
+  send({ t: 'cards', req: CARDBOOK.req });
+}
+window.onCards = (j) => {
+  const B = CARDBOOK;
+  if (!B || j.req !== B.req) return;
+  Object.assign(B, { loading: false, cards: j.cards || [], almost: j.almost || [], artists: j.artists || 0, monthFrom: j.monthFrom || 0 });
+  renderCardbook();
+};
+/** A card in the binder's grid: the cover, the title, its plays and artist. */
+const binderCard = (x) => `<button class="tcard song ${cardTier(x.plays)[1]}" ${trackAttrs(x.artist, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b></span>
+  <span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span><span class="tc-st"><span><b>${num(x.plays)}</b>${esc(x.artist)}</span></span></button>`;
+/** The binder's grid sections hold this many cards until you ask for all. */
+const BINDER_SHOWN = 60;
+function renderCardbook() {
+  const B = CARDBOOK;
+  if (!B || !isOpen('cardsPage')) return;
+  if (B.loading) { morph($('#cardsBody'), '<div class="lin inline indet"><i></i></div>'); return; }
+  const cards = B.cards;
+  if (!cards.length) {
+    morph($('#cardsBody'), `<div class="empty">${icon('album', 'i big')}<p>No cards yet. A song becomes a bronze card at its 10th play, silver at 25, gold at 50 and holo at 100.</p></div>`);
+    return;
+  }
+  const tiers = CARD_TIERS.map(([, k, l]) => ({ k, l, list: cards.filter((x) => cardTier(x.plays)[1] === k) }));
+  const fresh = cards.filter((x) => x.reached >= B.monthFrom);
+  let h = `<div class="viz"><h2>Your cards</h2><span class="sub">Every song you played 10 times or more, as a card: bronze at 10 plays, silver at 25, gold at 50, holo at 100. ${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}.</span>
+    <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
+  // The cards a few plays from their next tier, and the songs a few from becoming one.
+  const toGo = (x) => { const n = CARD_TIERS.slice().reverse().find(([m]) => m > x.plays); return n ? n[0] - x.plays : Infinity; };
+  const almost = cards.concat(B.almost).filter((x) => toGo(x) <= 5).sort((a, b) => toGo(a) - toGo(b) || b.plays - a.plays).slice(0, 20);
+  if (almost.length) h += `<div class="viz"><h2>Almost there</h2><span class="sub">A few plays from their next tier</span><div class="tcards">${almost.map((x) => tierCard(x, '', `<b>${esc(x.artist)}</b>artist`)).join('')}</div></div>`;
+  h += `<div class="chips bd-chips">${[['all', 'All'], ['fresh', `New this month${fresh.length ? ` (${num(fresh.length)})` : ''}`], ['artist', 'By artist']].map(([k, l]) => `<button class="chip${B.view === k ? ' on' : ''}" data-cbview="${k}">${l}</button>`).join('')}</div>`;
+  const section = (key, title, list, link = '') => {
+    if (!list.length) return '';
+    const shown = B.open[key] ? list : list.slice(0, BINDER_SHOWN);
+    return `<div class="bd-sec" data-cbsec="${esc(key)}"><h2>${link || esc(title)} <small>${num(list.length)}</small></h2><div class="bd-grid">${shown.map(binderCard).join('')}</div>
+      ${shown.length < list.length ? `<button class="btn text" data-cbmore="${esc(key)}">Show all ${num(list.length)}</button>` : ''}</div>`;
+  };
+  if (B.view === 'artist') {
+    const by = new Map();
+    cards.forEach((x) => { if (!by.has(x.artist)) by.set(x.artist, []); by.get(x.artist).push(x); });
+    h += [...by.entries()].sort((a, b) => b[1].length - a[1].length || b[1][0].plays - a[1][0].plays)
+      .map(([a, list]) => section(`a:${a}`, a, list, `<button class="artist-link" data-artist="${esc(a)}">${esc(a)}</button>`)).join('');
+  } else {
+    const pool = B.view === 'fresh' ? fresh : cards;
+    h += tiers.map((t) => section(t.k, t.l, pool.filter((x) => cardTier(x.plays)[1] === t.k))).join('')
+      || `<p class="hint">No song reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
+  }
+  morph($('#cardsBody'), h);
 }
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
@@ -7890,6 +7961,18 @@ function build() {
     const flip = e.target.closest('[data-flip]');
     if (flip) { turnSleeve(flip); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }
+    if (e.target.closest('[data-cardbook]')) { openCardbook(); return; }
+    const cbv = e.target.closest('#cardsPage [data-cbview]');
+    if (cbv) { CARDBOOK.view = cbv.dataset.cbview; renderCardbook(); return; }
+    const cbm = e.target.closest('#cardsPage [data-cbmore]');
+    if (cbm) { CARDBOOK.open[cbm.dataset.cbmore] = true; renderCardbook(); return; }
+    const cbt = e.target.closest('#cardsPage [data-cbtier]');
+    if (cbt) {
+      if (CARDBOOK.view !== 'all') { CARDBOOK.view = 'all'; renderCardbook(); }
+      const sec = $(`#cardsPage [data-cbsec="${cbt.dataset.cbtier}"]`);
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     if (e.target.closest('[data-hide-all]')) { hideAllSuggestions(); return; }
     const hide = e.target.closest('[data-hide],[data-unhide],[data-keep]');
     if (hide) { tidyAction(hide); return; }

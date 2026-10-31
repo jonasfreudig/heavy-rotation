@@ -639,6 +639,7 @@ const Mock = (() => {
     };
     out.calendar = calendarOf(r, i0, i1, freshAll, out.obsessions.map((o) => o.week + 2 * DAY).concat(out.loops.map((l) => l.at)));
     out.strip = stripOf(r);
+    out.cards = fakeCards().summary;
     // insights and personality, from the numbers above
     const n = sm.scrobbles;
     const ins = [];
@@ -1079,6 +1080,31 @@ const Mock = (() => {
         { id: 'u3', date: iso(Date.now() + 23 * DAY), venue: 'Paradiso', city: 'Amsterdam', country: 'Netherlands', tour: '', url: 'https://www.setlist.fm/', songs: [] }] };
   }
   /** A whole top list, as the app sends it: places from..from+n, and the few around the page's own if it's further down. */
+  /** Your cards as Stats.cards and Stats.cardsSummary give them: songs by all-time plays, and when each reached its tier. */
+  function fakeCards() {
+    const L = history();
+    const n = {}, at = {}, tArtist = {}, tiers = [10, 25, 50, 100];
+    for (let i = 0; i < L.ts.length; i++) {
+      const t = L.t[i];
+      if (tArtist[t] == null) tArtist[t] = L.a[i];
+      n[t] = (n[t] || 0) + 1;
+      if (tiers.includes(n[t])) at[t] = L.ts[i];
+    }
+    const song = (t) => ({ title: L.titles[t], artist: L.artists[tArtist[t]], album: '', cover: '', plays: n[t] });
+    const ids = Object.keys(n).map(Number);
+    const cards = ids.filter((t) => n[t] >= 10).sort((x, y) => n[y] - n[x] || L.titles[x].localeCompare(L.titles[y]));
+    const d = new Date();
+    const monthFrom = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    const counts = [0, 0, 0, 0], best = [];
+    cards.forEach((t) => { const k = tiers.filter((m) => n[t] >= m).length - 1; counts[k]++; if (!best[k]) best[k] = { ...song(t), tier: k }; });
+    return {
+      monthFrom,
+      artists: new Set(cards.map((t) => tArtist[t])).size,
+      cards: cards.map((t) => ({ ...song(t), reached: at[t] })),
+      almost: ids.filter((t) => n[t] >= 7 && n[t] < 10).sort((x, y) => n[y] - n[x]).slice(0, 100).map(song),
+      summary: { total: cards.length, counts, fresh: cards.filter((t) => at[t] >= monthFrom).length, best: best.filter(Boolean).reverse() },
+    };
+  }
   function fakeRankList(m) {
     const L = history();
     const r = mockRange(m.range || statsRange);
@@ -1498,6 +1524,7 @@ const Mock = (() => {
         }
         case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
         case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
+        case 'cards': later(250, () => { const c = fakeCards(); delete c.summary; onCards({ ...c, req: m.req }); }); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'phoneControl': {
           if (m.action === 'play' || m.action === 'pause') phonePlaying = m.action === 'play';

@@ -609,6 +609,14 @@ object Core {
                     }
                 }
             }
+            "cards" -> statsExec.execute {
+                val s = currentStats() ?: return@execute
+                val j = s.cards()
+                push("onCards") { j.put("req", msg.optInt("req")) }
+                // Covers for cards of albums nothing else looked up; the page comes again with them.
+                val covers = missingCovers(j, db.images().keys)
+                if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
+            }
             "rankList" -> {
                 val id = msg.optString("range").ifEmpty { statsRange }
                 statsExec.execute {

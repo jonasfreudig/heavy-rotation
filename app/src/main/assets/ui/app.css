@@ -1488,7 +1488,50 @@ details.more[open] summary { margin-bottom: 6px; }
 .tcard.holo { background: linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
 .tcard.holo::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
   background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
+/* A holo card is no holo cover: none of the cover's size and margins. */
+.tcard.holo { width: 150px; margin: 0; perspective: none; }
+.bd-grid .tcard.holo { width: auto; }
+.cr-fan .tcard.holo { width: 34px; margin-left: -16px; }
+.cr-fan .tcard.holo:first-child { margin-left: 0; }
 .tcard.holo .tc-type { background: linear-gradient(90deg, #6a4bd8, #d64b9a); }
+
+/* Your cards: a row on Stats with the best cards fanned out, and the binder with every card in a grid by tier. */
+.cards-row { display: flex; align-items: center; gap: 14px; width: 100%; margin: 12px 0 4px; padding: 12px 14px; border-radius: 18px; text-align: left; color: var(--md-on-surface);
+  background: var(--md-surface-container-low); }
+.tinted .cards-row { background: color-mix(in srgb, var(--tint) 9%, var(--md-surface-container-low)); }
+.cards-row > .i { flex: none; width: 20px; height: 20px; opacity: .6; }
+.cr-fan { display: flex; flex: none; padding-left: 4px; }
+.cr-fan .tcard { width: 34px; height: 46px; padding: 3px; border-radius: 6px; margin-left: -16px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+.cr-fan .tcard:first-child { margin-left: 0; }
+.cr-fan .tcard:nth-child(1) { rotate: -8deg; } .cr-fan .tcard:nth-child(2) { rotate: -2deg; } .cr-fan .tcard:nth-child(3) { rotate: 4deg; } .cr-fan .tcard:nth-child(4) { rotate: 10deg; }
+.cr-fan .tc-img { height: 100%; border-radius: 3px; }
+.cr-fan .tc-img .cover { width: 100%; height: 100%; border-radius: 0; font-size: 14px; }
+.cr-tx { flex: 1; min-width: 0; }
+.cr-tx b { display: block; font: 600 15px/20px var(--font); }
+.cr-tx small { color: var(--md-on-surface-variant); font-size: 12.5px; line-height: 17px; }
+.bd-sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 2px; }
+.bd-sum button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px 10px; border-radius: 16px; color: #2a2238; }
+.bd-sum button:disabled { opacity: .45; }
+.bd-sum b { font: 650 24px/1 var(--display, var(--font)); }
+.bd-sum small { font: 500 10.5px/14px var(--mono, var(--font)); letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.bd-sum .bd-holo { background: linear-gradient(135deg, #f3c9ff, #b6e3ff, #c6ffd6, #fff1b3, #ffc6dd); }
+.bd-sum .bd-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
+.bd-sum .bd-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }
+.bd-sum .bd-bronze { background: linear-gradient(160deg, #f6e2cf, #dfb894); }
+.bd-chips { margin: 8px 0 2px; }
+.bd-sec { scroll-margin-top: calc(var(--inset-top) + 12px); }
+.bd-sec h2 { margin: 18px 4px 0; }
+.bd-sec h2 small { font: 500 13px var(--mono, var(--font)); color: var(--md-on-surface-variant); }
+.bd-sec h2 .artist-link { font: inherit; color: inherit; }
+.bd-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 10px 0 4px; }
+.bd-grid .tcard { width: auto; padding: 6px; border-radius: 12px; }
+.bd-grid .tc-top { padding-bottom: 5px; }
+.bd-grid .tc-top b { font-size: 12px; line-height: 15px; }
+.bd-grid .tc-img { height: auto; aspect-ratio: 1; }
+.bd-grid .tc-st { grid-template-columns: 1fr; }
+.bd-grid .tc-st span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcard.song .tc-st span { min-width: 0; }
+.tcard.song .tc-st b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* A song's chart run: places on a log scale, #1 on top. */
 .chart-run { position: relative; height: 128px; margin-top: 22px; touch-action: pan-y; }
