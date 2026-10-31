@@ -503,8 +503,32 @@ function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
   setTimeout(end, ms + 250);
   return a;
 }
+/**
+ * What an open page covers whole (the tabs, the pages under it) is hidden once it has settled, and shown
+ * again the moment anything may reveal it: going back, a back swipe, another page coming in. Drawn on
+ * under a long page, the tabs' own long layers took the phone's memory, and parts of the page on top
+ * went blank for a frame while its cover tilted.
+ */
+let coverTimer = 0;
+function uncover() {
+  clearTimeout(coverTimer);
+  $$('.covered').forEach((el) => el.classList.remove('covered'));
+}
+function coverSoon(ms = 420) {
+  clearTimeout(coverTimer);
+  coverTimer = setTimeout(coverSync, ms);
+}
+function coverSync() {
+  const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
+  const layers = [...$$('.page'), ...homeLayers()];
+  if (!top || top.hidden || backFx || !$('#story').hidden) { uncover(); return; }
+  // Anything still on the move (a page sliding in or out, a cover in flight): later.
+  if (layers.some((el) => !el.hidden && (el._closing || el.style.transform || el.getAnimations().some((a) => a.playState === 'running'))) || (flight && flight.playState === 'running')) { coverSoon(200); return; }
+  layers.forEach((el) => el.classList.toggle('covered', el !== top));
+}
 function openPage(id, how) {
   const p = $('#' + id);
+  uncover();
   tidyLayers();
   if (p._closing) {
     p._closing.cancel();
@@ -530,6 +554,7 @@ function openPage(id, how) {
   pageSaved.length = pageStack.length;
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
+  coverSoon();
   // In from the right; a page a cover flies into only fades in, so the cover has a still place to land.
   // Held clear for two frames while the phone draws it: shown at once, it was a blank page for those.
   p.animate(how === 'fly' ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(32px)' }, { opacity: 1, transform: 'none' }],
@@ -556,6 +581,7 @@ function watchBar(scroller, bar, onAway) {
  * as it slides out; closed by a tap, it is set up the same way first, so both look alike.
  */
 function closePage(swipe = null) {
+  uncover();
   const id = pageStack.pop();
   pageSaved.length = pageStack.length;
   if (!id) return;
@@ -610,6 +636,7 @@ function closePage(swipe = null) {
   if (id === 'settingsPage') showKeyForm = false;
   Tilt.refresh();
   syncBack();
+  coverSoon();
 }
 
 /**
@@ -656,6 +683,7 @@ function backTarget() {
   return null;
 }
 window.onBackStart = () => {
+  uncover();
   if (flight && flight.playState === 'running') flight.cancel();
   backFx = backTarget();
   if (!backFx) return;
@@ -750,6 +778,7 @@ window.onBackCancel = () => {
   backFx = null;
   backSpring(fx.el);
   backSettle(fx, false);
+  coverSoon(400);
 };
 
 /**

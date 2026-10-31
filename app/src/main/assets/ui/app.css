@@ -297,6 +297,8 @@ input[type=datetime-local] { color-scheme: inherit; }
 .bar i { display: block; height: 100%; width: 0; border-radius: 2px; background: currentColor; transition: width .9s linear; }
 
 /* ---- record page ---- */
+/* Under a settled page, out of sight and not drawn (see coverSync). */
+.covered { visibility: hidden !important; }
 .page { position: fixed; inset: 0; z-index: 10; background: var(--md-surface); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-bottom: calc(var(--inset-bottom) + 32px); }
 @keyframes pageIn { from { transform: translateX(24px); opacity: 0; } }
 .hero { text-align: center; padding: 0 8px; }
