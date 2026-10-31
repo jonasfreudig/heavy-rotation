@@ -6046,7 +6046,9 @@ function tabsTop(host) {
   if (!anchor || !bar) return null;
   const sc = hostScroller(host);
   const top = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;
-  return Math.max(0, anchor.getBoundingClientRect().top - top + sc.scrollTop - (parseFloat(getComputedStyle(bar).top) || 0));
+  // The tabs start their margin below the anchor; without it a tab change stopped 4 px short, and they came unstuck.
+  const cs = getComputedStyle(bar);
+  return Math.max(0, anchor.getBoundingClientRect().top + (parseFloat(cs.marginTop) || 0) - top + sc.scrollTop - (parseFloat(cs.top) || 0));
 }
 /** Another tab of [id]: scrolled down past the tabs, the new one starts at its top, right under them. */
 function openTab(id, t) {
@@ -6211,7 +6213,11 @@ function warmTabs(host) {
  */
 function syncPageTabs(host) {
   const bar = host.querySelector('.atabs'), anchor = host.querySelector('.tab-anchor');
-  if (!bar || !anchor || host._tabAnchor === anchor) return;
+  if (!bar || !anchor) return;
+  // A tab change can draw the tabs anew where they were, and the observer only speaks when the anchor crosses: they
+  // take its last word, or they'd sit unstuck at the top with the page showing above them.
+  bar.classList.toggle('stuck', host._tabAnchor === anchor && !!host._tabStuck);
+  if (host._tabAnchor === anchor) return;
   if (host._tabIO) host._tabIO.disconnect();
   host._tabAnchor = anchor;
   // Where they stick (the status bar's height), and a pixel of slack: a tab change scrolls to exactly there.
@@ -6219,8 +6225,9 @@ function syncPageTabs(host) {
   const root = hostScroller(host) === document.scrollingElement ? null : host;
   host._tabIO = new IntersectionObserver(([e]) => {
     const rootTop = e.rootBounds ? e.rootBounds.top : top;
+    host._tabStuck = !e.isIntersecting && e.boundingClientRect.top < rootTop + 1;
     const b = host.querySelector('.atabs');
-    if (b) b.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < rootTop + 1);
+    if (b) b.classList.toggle('stuck', host._tabStuck);
   }, { root, rootMargin: `-${top}px 0px 0px 0px`, threshold: 0 });
   host._tabIO.observe(anchor);
 }

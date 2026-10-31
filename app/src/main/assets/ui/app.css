@@ -477,7 +477,8 @@ button.tile .delta { align-self: flex-start; }
 .atabs::before { content: ''; position: absolute; left: 0; right: 0; top: calc(-1 * (var(--inset-top) + 72px)); bottom: -14px; z-index: -1; pointer-events: none; opacity: 0;
   background: linear-gradient(180deg, var(--atabs-bg) 0%, var(--atabs-bg) calc(100% - 14px), transparent 100%); }
 .atabs.stuck::before { opacity: 1; }
-.atab-body { position: relative; display: flow-root; min-height: 60vh; touch-action: pan-y; }
+/* At least a screen under the tabs: a short tab opened while scrolled down still keeps them at the top. */
+.atab-body { position: relative; display: flow-root; min-height: calc(100vh - var(--inset-top) - 64px); touch-action: pan-y; }
 /* Every tab side by side, a page width apart, clipped by the screen's edges and by the open one's height. The others
    stay hidden until a finger touches down ("live"); the open one alone sets the page's length. */
 .atab-clip { margin: 0 -16px; padding: 0 16px; overflow: clip; overflow-clip-margin: 24px; }
