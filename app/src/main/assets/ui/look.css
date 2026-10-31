@@ -704,10 +704,11 @@ html.locked .page { overflow: hidden; }
 .sw-toc button { flex: none; padding: 6px 12px; border-radius: 16px; font: 500 13px/18px var(--font); color: var(--md-on-surface-variant);
   background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); transition: background .2s, color .2s; }
 .sw-toc button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
-.sw-strip { display: flex; align-items: flex-start; gap: 10px; overflow: auto hidden; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px;
-  scrollbar-width: none; transition: height .25s cubic-bezier(.3, .7, .3, 1); }
+/* As tall as its tallest block, each block's card stretched to it, so nothing changes size while swiped. */
+.sw-strip { display: flex; align-items: stretch; gap: 10px; overflow: auto hidden; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
 .sw-strip::-webkit-scrollbar { display: none; }
-.sw-page { flex: none; width: calc(100% - 26px); scroll-snap-align: center; scroll-snap-stop: always; }
+.sw-page { flex: none; width: calc(100% - 26px); display: flex; flex-direction: column; scroll-snap-align: center; scroll-snap-stop: always; }
+.sw-page > :last-child { flex: 1 0 auto; }
 .sw-page > * { margin-top: 0 !important; margin-bottom: 0 !important; }
 /* The names above say what each is: the block's own heading would say it twice. */
 .sw-page > .viz > h2:first-child { display: none; }
@@ -718,6 +719,31 @@ html.locked .page { overflow: hidden; }
 .sw-page :is(.xcards, .tcards, .covers, .na-row, .tix, .chip-row) { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; scroll-snap-type: none; }
 .sw-page :is(.heat, .stack, .river svg, .area, .ring, .tline, .barcode, .cols, .ch-rows, .rank, .chart-run) { touch-action: pan-x pan-y; }
 .sw-page .rec-wrap:not(.zoomed) canvas { touch-action: pan-x pan-y; }
+/* Squares two by two and a pill, each opening its block under it. */
+.sq-sec { margin: 12px 0; }
+.sq-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sq-row.one { grid-template-columns: 1fr; }
+.sq-row .tp.sq { width: auto; min-width: 0; padding-right: 36px; }
+.sq-more { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); color: var(--md-on-surface-variant); }
+.sq-more .i { width: 18px; height: 18px; transform: rotate(90deg); }
+.on > .sq-more .i { transform: rotate(-90deg); }
+.sq-row > * { min-width: 0; }
+.sq-pic { display: flex; margin: 8px 0 2px; }
+.sq-pic > * { flex: none; width: 34px; height: 34px; margin-right: -8px; border-radius: 6px; font-size: 13px; box-shadow: 0 0 0 2px var(--md-surface-container); }
+.tp.sq.on, .sq-pill.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); box-shadow: none; }
+.tp.sq.on .tp-l, .tp.sq.on small, .sq-pill.on small { color: inherit; opacity: .8; }
+.sq-pill { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 46px 8px 10px; border-radius: 28px;
+  text-align: left; color: inherit; background: var(--md-surface-container); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 6%, transparent); }
+.sq-pill > .i { flex: none; width: 38px; height: 38px; padding: 9px; border-radius: 50%; background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+.sq-pill b { display: block; font: 600 14.5px/19px var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-pill small { display: block; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
+.sq-pill span { min-width: 0; }
+.sq-pill .sq-more { top: 50%; margin-top: -13px; right: 12px; }
+.sq-open > .viz { margin: 10px 0 0; }
+/* The square says what it is: the block's own heading would say it twice. */
+.sq-open > .viz > h2:first-child { display: none; }
+
 /* Your taste in sections: a small card each for what opens a page of its own. */
 .tp-row { display: flex; gap: 10px; overflow-x: auto; margin: 4px -16px 14px; padding: 2px 16px 6px; scrollbar-width: none; }
 .tp-row::-webkit-scrollbar { display: none; }

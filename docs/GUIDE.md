@@ -154,15 +154,18 @@ Settings → Look → Stats picks how a week, month, year or all time looks:
   that size. Tap a card and its block opens on its own page for the same period, with all it has:
   every new artist, every song on repeat, up to 16 artists in who you played when. The bigger
   charts stay full size on the page.
-- Sections puts related blocks side by side, each at full size: highlights and milestones; over
-  time (listening over time, the river, who you played when, genre drift); days and hours (days and
-  streaks, when you listen, your record); your music (top lists, time listened, new artists, on
-  repeat, decades, lineup, in covers); your shelf. Swipe sideways or tap a name above to move
-  between them; the section is as tall as the block it shows, and keeps showing it when you change
-  the period. Rows of covers or cards that scroll sideways elsewhere wrap here, and a sideways swipe
-  on a chart moves to the next block (taps on it work as usual). Your taste comes as small cards:
-  your concerts as a ticket, each part of Through the years, you vs everyone and the atlas. This
-  replaced the Classic page in 0.93; Classic users get Sections.
+- Sections mixes three forms. Highlights, top lists, who you played when, your record and new
+  artists stand on their own, full size. Time listened and days and streaks, decades and on repeat,
+  and rarely played records and the wishlist come as pairs of squares with a number or a name each;
+  tap one and its block opens under the pair, tap it again to close it. Milestones is a pill with
+  the biggest one. Related blocks of about the same height sit side by side in a strip: your week
+  and your days, the river and genre drift, listening over time and when you listen, in covers and
+  your lineup. Swipe sideways or tap a name above to move between them. A strip is as tall as its
+  tallest block, so it keeps its size while you swipe, and keeps showing the block you picked when
+  you change the period, as do opened squares. A sideways swipe on a chart in a strip moves to the
+  next block (taps on it work as usual). Your taste comes as small cards: your concerts as a
+  ticket, each part of Through the years, you vs everyone and the atlas. Sections replaced the
+  Classic page in 0.93; Classic users get Sections.
 
 A day is short, so it always shows its blocks full size.
 

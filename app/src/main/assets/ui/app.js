@@ -6556,51 +6556,129 @@ function goBlock(id) {
   if (BLOCKS[id] && STATS && (BLOCKS[id].kinds || SPAN).includes(STATS.range.kind)) openBlock(id);
 }
 
-// ---- Stats in sections: related blocks side by side at full size, swiped through ----
+// ---- Stats in sections: blocks on their own, small ones as squares or a pill, related ones side by side ----
 
-/** The sections in order and their blocks (Arrange orders and hides them within); a block in none stands on its own before Your taste. */
+/**
+ * The page in sections, top to bottom, each [kind, name, blocks]: blocks on their own (''), two squares side by side
+ * that open their block under them ('squares'), a pill that does the same in one line ('pill'), and strips of related
+ * blocks of about the same height, swiped through ('strip'). Arrange hides blocks and orders them within a section; a
+ * block in none stands on its own before Your taste.
+ */
 const STATS_SECTIONS = [
-  ['', ['story', 'numbers', 'cards', 'tidy']],
-  ['Highlights', ['highlights', 'milestones']],
-  ['Your week', ['week', 'days']],
-  ['Over time', ['timeline', 'river', 'who', 'genres']],
-  ['Days and hours', ['streaks', 'clock', 'record']],
-  ['Your music', ['top', 'minutes', 'newArtists', 'repeat', 'decades', 'lineup', 'covers']],
-  ['Your shelf', ['rarely', 'wishlist']],
-  ['', ['taste']],
+  ['', '', ['story', 'numbers', 'cards', 'tidy', 'highlights']],
+  ['strip', 'Day by day', ['week', 'days']],
+  ['squares', '', ['minutes', 'streaks']],
+  ['', '', ['top']],
+  ['pill', '', ['milestones']],
+  ['strip', 'Over time', ['river', 'genres']],
+  ['', '', ['who']],
+  ['strip', 'Your rhythm', ['timeline', 'clock']],
+  ['', '', ['record']],
+  ['squares', '', ['decades', 'repeat']],
+  ['strip', 'In pictures', ['covers', 'lineup']],
+  ['', '', ['newArtists']],
+  ['squares', '', ['rarely', 'wishlist']],
+  ['', '', ['taste']],
 ];
-/** The block each section shows, kept while you move between periods. */
+/** What a block says as a square: a big word or number and a line under it (HTML), or null when it has nothing. */
+const SQUARES = {
+  minutes: (s) => {
+    const m = s.minutes;
+    if (!m || !m.total || !(m.artists || []).length) return null;
+    return { big: hoursMin(m.total), line: `${esc(m.artists[0].name)} most, ${hoursMin(m.artists[0].min)}` };
+  },
+  streaks: (s) => {
+    const st = s.streaks || {};
+    if (!st.longest) return null;
+    return { big: plural(st.longest, 'day'), line: `in a row, ${st.longest > 1 ? `${esc(shortDate(st.longestFrom))} to ${esc(shortDate(st.longestTo))}` : esc(shortDate(st.longestFrom))}` };
+  },
+  decades: (s) => {
+    const x = s.decades || {}, ds = x.decades || [];
+    if (ds.length < 2) return null;
+    const known = Math.max(1, x.known);
+    const [p, q] = [...ds].sort((u, v) => v.plays - u.plays);
+    return { big: `${p.decade}s`, line: `${pct(p.plays / known)} of plays, then the ${q.decade}s` };
+  },
+  repeat: (s) => {
+    const x = repeatList(s)[0];
+    return x ? { big: esc(x.track), sm: true, line: `${esc(x.artist)}, ${esc(repeatWords(x))}` } : null;
+  },
+  rarely: (s) => {
+    const r = s.rarely || {}, items = r.items || [];
+    if (!items.length) return null;
+    const pic = items.slice(0, 3).map((x) => coverHtml(x.cover, x.title, x.artist, 'tiny')).join('');
+    return r.unplayed ? { pic, big: `${num(r.unplayed)} unplayed`, line: `of the ${plural(r.owned, 'record')} you own` }
+      : { pic, big: esc(items[0].title), sm: true, line: `${esc(items[0].artist)}, your least played record` };
+  },
+  wishlist: (s) => {
+    const w = s.wishlist || [];
+    if (!w.length) return null;
+    return { pic: w.slice(0, 3).map((x) => coverHtml(x.image, x.album, x.artist, 'tiny')).join(''), big: plural(w.length, 'album'), line: `you stream and don't own, ${esc(w[0].album)} most` };
+  },
+};
+/** What a block says as a pill: one line and a few words after it. */
+const PILLS = {
+  milestones: (s) => {
+    const ms = s.milestones || [];
+    if (!ms.length) return null;
+    const x = ms.find((m) => m.kind === 'scrobble') || ms[ms.length - 1];
+    return { ic: 'star', line: `${milestoneText(x)}, ${esc(dateLabel(x.at))}`, more: ms.length > 1 ? `${num(ms.length - 1)} more milestones` : '' };
+  },
+};
+/** The block each strip shows and each row of squares or pill has open, kept while you move between periods. */
 const SWIPE = {};
+const OPEN = {};
 function sectionsHtml(ids, s, mark) {
   const shown = new Set(ids);
-  const placed = new Set(STATS_SECTIONS.flatMap(([, b]) => b));
+  const placed = new Set(STATS_SECTIONS.flatMap(([, , b]) => b));
   // Each section in its own order, unless you arranged the page: then in yours.
   let arranged = false;
   try { arranged = !!(JSON.parse(localStorage.getItem('statsLayout') || '{}').span || {}).order; } catch (_) { /* preview without storage */ }
+  const keyOf = (list) => list.join('-').toLowerCase();
   let h = '';
-  const sec = (name, list) => {
-    const parts = list.filter((id) => shown.has(id)).sort((a, b) => (arranged ? ids.indexOf(a) - ids.indexOf(b) : 0))
-      .map((id) => [id, id === 'taste' ? tasteHtml(s, true) : blockHtml(id, s)]).filter(([, x]) => x);
+  const sec = (kind, name, list) => {
+    const own = list.filter((id) => shown.has(id)).sort((a, b) => (arranged ? ids.indexOf(a) - ids.indexOf(b) : 0));
+    const parts = own.map((id) => [id, id === 'taste' ? tasteHtml(s, true) : blockHtml(id, s)]).filter(([, x]) => x);
     if (!parts.length) return;
-    // A section with one block left is just that block.
-    if (!name || parts.length === 1) { h += parts.map(([id, x]) => mark(id, x)).join(''); return; }
-    const key = name.toLowerCase().replace(/\W+/g, '');
+    const key = keyOf(list);
+    if (kind === 'squares' || kind === 'pill') {
+      const tiles = parts.map(([id]) => [id, (kind === 'pill' ? PILLS : SQUARES)[id](s)]).filter(([, t]) => t);
+      if (!tiles.length) { h += parts.map(([id, x]) => mark(id, x)).join(''); return; }
+      const open = parts.find(([id]) => id === OPEN[key]);
+      const tile = ([id, t]) => {
+        const on = open && open[0] === id;
+        const more = `<span class="sq-more" aria-hidden="true">${icon('chevron-right')}</span>`;
+        if (kind === 'pill') return `<button class="sq-pill${on ? ' on' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${icon(t.ic)}<span><b>${t.line}</b>${t.more ? `<small>${t.more}</small>` : ''}</span>${more}</button>`;
+        return `<button class="tp sq${on ? ' on' : ''}" data-sqgo="${id}" aria-expanded="${!!on}"><span class="tp-l">${esc(BLOCKS[id].name)}</span>${t.pic ? `<span class="sq-pic">${t.pic}</span>` : ''}<b class="${t.sm ? 'sm' : ''}">${t.big}</b><small>${t.line}</small>${more}</button>`;
+      };
+      h += `<div class="sq-sec" data-sq="${key}"><div class="sq-row${tiles.length === 1 ? ' one' : ''}">${tiles.map(tile).join('')}</div>${open ? `<div class="sq-open" data-blk="${open[0]}">${open[1]}</div>` : ''}</div>`;
+      return;
+    }
+    // A strip with one block left is just that block.
+    if (kind !== 'strip' || parts.length === 1) { h += parts.map(([id, x]) => mark(id, x)).join(''); return; }
     const at = Math.min(SWIPE[key] || 0, parts.length - 1);
     h += `<div class="sw-sec" data-sw="${key}"><h2 class="sw-h">${esc(name)}</h2>
       <div class="sw-toc">${parts.map(([id], k) => `<button data-swgo="${k}" class="${k === at ? 'on' : ''}">${esc(BLOCKS[id].name)}</button>`).join('')}</div>
       <div class="sw-strip">${parts.map(([id, x]) => `<div class="sw-page" data-blk="${id}">${x}</div>`).join('')}</div>
       <div class="sw-dots" aria-hidden="true">${parts.map((_, k) => `<i class="${k === at ? 'on' : ''}"></i>`).join('')}</div></div>`;
   };
-  for (const [name, list] of STATS_SECTIONS) {
-    if (list[0] === 'taste') ids.filter((id) => !placed.has(id)).forEach((id) => sec('', [id]));
-    sec(name, list);
+  for (const [kind, name, list] of STATS_SECTIONS) {
+    if (list[0] === 'taste') ids.filter((id) => !placed.has(id)).forEach((id) => sec('', '', [id]));
+    sec(kind, name, list);
   }
   return h;
 }
+/** A square or the pill, tapped: its block opens under it, or closes. */
+function openSquare(btn) {
+  const key = btn.closest('.sq-sec').dataset.sq, id = btn.dataset.sqgo;
+  OPEN[key] = OPEN[key] === id ? '' : id;
+  renderStats();
+}
 const stripStep = (st) => (st.children.length > 1 ? st.children[1].offsetLeft - st.children[0].offsetLeft : 1);
 /**
- * A section's strip after a swipe ([moved]) or a new drawing: the block it shows marked in its names and dots, and
- * the strip as tall as that block. A new drawing goes back to the block the section showed before.
+ * A section's strip while it's swiped ([moved]) or after a new drawing: the block it shows marked in its names and
+ * dots. A new drawing goes back to the block the section showed before. The strip is as tall as its tallest block,
+ * so it keeps its size while swiped.
  */
 function syncStrip(sec, moved) {
   const st = sec && sec.querySelector('.sw-strip');
@@ -6611,20 +6689,15 @@ function syncStrip(sec, moved) {
     i = Math.min(SWIPE[key] || 0, n - 1);
     st.scrollLeft = i * stripStep(st);
   }
+  if (moved && SWIPE[key] === i) return;
   SWIPE[key] = i;
   sec.querySelectorAll('.sw-toc button').forEach((b, k) => b.classList.toggle('on', k === i));
   sec.querySelectorAll('.sw-dots i').forEach((b, k) => b.classList.toggle('on', k === i));
-  st.style.height = `${st.children[i].offsetHeight}px`;
   const chip = sec.querySelector('.sw-toc .on'), toc = chip && chip.parentElement;
   if (moved && toc) toc.scrollTo({ left: chip.offsetLeft - (toc.clientWidth - chip.offsetWidth) / 2, behavior: 'smooth' });
 }
-// A block that grows or shrinks (a longer list, another tab of it) takes its strip along.
-const swSizes = new ResizeObserver((es) => es.forEach((e) => { const sec = e.target.closest('.sw-sec'); if (sec) syncStrip(sec, true); }));
 function syncStrips(root) {
-  swSizes.disconnect();
-  if (!root) return;
-  root.querySelectorAll('.sw-sec').forEach((sec) => syncStrip(sec, false));
-  root.querySelectorAll('.sw-page').forEach((p) => swSizes.observe(p));
+  if (root) root.querySelectorAll('.sw-sec').forEach((sec) => syncStrip(sec, false));
 }
 function swipeTo(btn) {
   const st = btn.closest('.sw-sec').querySelector('.sw-strip');
@@ -8371,6 +8444,8 @@ function build() {
     if (thr) { openThrough(thr.dataset.through); return; }
     const swg = e.target.closest('[data-swgo]');
     if (swg) { swipeTo(swg); return; }
+    const sqg = e.target.closest('[data-sqgo]');
+    if (sqg) { openSquare(sqg); return; }
     const mc = e.target.closest('#atlasBody [data-mc]');
     if (mc) { mapSel = mapSel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
     if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
@@ -8532,12 +8607,11 @@ function build() {
   blockBody.onclick = statsClick;
   // Swipe sideways on a top list for the next kind: songs, albums, artists.
   listSwipe(statsBody, '.ch-rows, #topSeg ~ .rank', '#topSeg');
-  // A strip of blocks, swiped: its names and height follow once it settles.
+  // A strip of blocks, swiped: its names and dots follow as it moves.
   statsBody.addEventListener('scroll', (e) => {
     const st = e.target;
-    if (!st.classList || !st.classList.contains('sw-strip')) return;
-    clearTimeout(st._settle);
-    st._settle = setTimeout(() => syncStrip(st.closest('.sw-sec'), true), 90);
+    if (!st.classList || !st.classList.contains('sw-strip') || st._frame) return;
+    st._frame = requestAnimationFrame(() => { st._frame = 0; syncStrip(st.closest('.sw-sec'), true); });
   }, true);
   listSwipe(blockBody, '.ch-rows, #topSeg ~ .rank', '#topSeg');
   listSwipe($('#rankBody'), '.ranks', '#rankSeg');
