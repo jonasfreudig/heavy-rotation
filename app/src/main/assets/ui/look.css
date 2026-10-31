@@ -688,3 +688,10 @@ html.locked .page { overflow: hidden; }
 .dp-years i { width: 100%; border-radius: 5px 5px 2px 2px; background: color-mix(in srgb, var(--tint-text, var(--md-primary)) 55%, transparent); }
 .dp-years b { font: 600 11px/12px var(--font); }
 .dp-years span { font: 500 10px/12px var(--mono); color: var(--md-on-surface-variant); }
+/* ---- the atlas's world map ---- */
+.wm { display: block; width: 100%; height: auto; }
+.wm path { fill: var(--md-surface-container-high); stroke: var(--md-surface-container-low); stroke-width: .6; }
+.wm path.sel { stroke: var(--md-on-surface); stroke-width: 1.4; }
+.wm-sel { margin-top: 10px; }
+.wm-sel h3 { margin: 0; font: 650 18px/24px var(--display, var(--font)); }
+.wm-sel .chips { margin-top: 8px; }

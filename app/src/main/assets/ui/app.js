@@ -4577,12 +4577,47 @@ function renderAtlas() {
   const a = ATLAS;
   if (!a) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (a.empty) { body.innerHTML = '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>'; return; }
-  if (atlasView === 'tree') body.innerHTML = treeHtml(a.tree);
+  if (atlasView === 'map') {
+    morph(body, worldMapHtml(WORLDMAP));
+    if (!WORLDMAP || !mapAsked) { mapAsked = true; send({ t: 'worldMap' }); }
+  } else if (atlasView === 'tree') body.innerHTML = treeHtml(a.tree);
   else if (atlasView === 'land') body.innerHTML = landHtml(a.landscape);
   else {
     body.innerHTML = universeHtml(a.universe);
     setupUniverse(a.universe);
   }
+}
+
+// -- the map: where your artists are from --
+
+let WORLDMAP = null;
+let mapAsked = false;
+let mapSel = '';
+window.onWorldMap = (m) => {
+  WORLDMAP = m;
+  if (isOpen('atlasPage') && atlasView === 'map') renderAtlas();
+};
+const regionNames = (() => { try { return new Intl.DisplayNames([], { type: 'region' }); } catch (_) { return null; } })();
+const countryName = (c) => { try { return (regionNames && regionNames.of(c)) || WORLD.names[c] || c; } catch (_) { return WORLD.names[c] || c; } };
+function worldMapHtml(m) {
+  if (!m) return '<div class="lin inline indet"><i></i></div>';
+  if (m.empty) return '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>';
+  const cs = m.countries || {};
+  const ranked = Object.entries(cs).sort((p, q) => q[1].plays - p[1].plays);
+  const max = Math.max(1, ...ranked.map(([, c]) => c.plays));
+  const shade = (p) => `color-mix(in srgb, var(--tint-text, var(--md-primary)) ${Math.round(22 + (78 * Math.log(1 + p)) / Math.log(1 + max))}%, var(--md-surface-container-high))`;
+  const paths = Object.entries(WORLD.paths).map(([k, d]) => `<path d="${d}"${cs[k] ? ` data-mc="${k}" class="on${k === mapSel ? ' sel' : ''}" style="fill:${shade(cs[k].plays)}"` : ''}/>`).join('');
+  const sel = cs[mapSel];
+  const detail = sel ? `<div class="wm-sel"><h3>${esc(countryName(mapSel))}</h3><span class="sub">${plural(sel.n, 'artist')}, ${num(sel.plays)} plays</span>
+    <div class="chips everyone">${sel.artists.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div></div>` : '';
+  const going = m.looked < m.total;
+  const progress = going ? `<p class="hint">Looking up where your artists are from: ${num(m.looked)} of ${num(m.total)}${m.busy ? '' : '. More next time you open the map.'}</p>
+    <div class="lin inline${m.looked ? '' : ' indet'}"><i style="width:${((m.looked / Math.max(1, m.total)) * 100).toFixed(1)}%"></i></div>` : '';
+  const placed = m.plays ? `${pct(m.placed / m.plays)} of your top ${num(m.total)} artists' plays have a country` : '';
+  const rows = ranked.slice(0, 15).map(([k, c], i) => `<button class="r${k === mapSel ? ' here' : ''}" data-mc="${k}"><span class="n">${i + 1}</span><span class="t"><b>${esc(countryName(k))}</b><small>${c.n === 1 ? esc(c.artists[0].name) : `${plural(c.n, 'artist')}, most ${esc(c.artists[0].name)}`}</small></span><span class="v cnt">${compact(c.plays)}</span>
+    <div class="bar"><i style="width:${((c.plays / max) * 100).toFixed(1)}%"></i></div></button>`).join('');
+  return `<div class="viz wm-viz"><svg class="wm" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="Your artists on a world map">${paths}</svg>
+    ${detail}${placed && !going ? `<div class="readout">${placed}</div>` : ''}</div>${progress}${rows ? `<div class="rank">${rows}</div>` : ''}`;
 }
 
 // -- the universe --
@@ -8347,6 +8382,8 @@ function build() {
     if (e.target.closest('#openVs')) { openVs(); return; }
     if (e.target.closest('#openConcerts')) { openConcerts(); return; }
     if (e.target.closest('#openThrough')) { openThrough(); return; }
+    const mc = e.target.closest('#atlasBody [data-mc]');
+    if (mc) { mapSel = mapSel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
     if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
     const mns = e.target.closest('[data-mnseg]');
     if (mns) { minutesSeg = mns.dataset.mnseg; renderStats(); return; }

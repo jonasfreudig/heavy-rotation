@@ -108,12 +108,13 @@ This application uses Discogs’ API but is not affiliated with, sponsored or en
 ‘Discogs’ is a trademark of Zink Media, LLC.
 
 Listening data powered by AudioScrobbler ([Last.fm](https://www.last.fm)). Covers, artist photos,
-discographies and release years come from [Deezer](https://www.deezer.com), track lengths also from
-[MusicBrainz](https://musicbrainz.org), lyrics from [LRCLIB](https://lrclib.net) and setlists from
+discographies and release years come from [Deezer](https://www.deezer.com), track lengths and artists'
+countries also from [MusicBrainz](https://musicbrainz.org), lyrics from [LRCLIB](https://lrclib.net) and setlists from
 [setlist.fm](https://www.setlist.fm). Exact links and playlists use [TIDAL](https://tidal.com).
 Heavy Rotation isn't affiliated with any of them.
 
 The fonts Fraunces and DM Mono are under the SIL Open Font License (`app/src/main/assets/ui/fonts`).
+The world map's outlines are from [Natural Earth](https://www.naturalearthdata.com) (public domain).
 
 ## Feedback
 

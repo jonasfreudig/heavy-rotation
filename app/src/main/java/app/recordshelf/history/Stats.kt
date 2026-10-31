@@ -140,6 +140,8 @@ class Stats(
         const val GAPS_SHOWN = 10
         /** Old favorites and newcomers: artists with this many plays. */
         const val AGE_MIN_PLAYS = 25
+        /** The world map places this many of your most played artists. */
+        const val MAP_ARTISTS = 300
     }
 
     private val rules = zone.rules
@@ -2804,6 +2806,12 @@ class Stats(
             playJson(m.i).put("kind", m.kind).put("n", m.n).put("at", h.ts[m.i] * 1000)
                 .also { if (m.kind == "artist") it.put("photo", artistPhoto(h.artistNames[h.artist[m.i]])) }
         })
+    }
+
+    /** Your [max] most played artists with their plays, for the world map. */
+    fun mapArtists(max: Int = MAP_ARTISTS): List<Pair<String, Int>> {
+        val l = artistLife
+        return l.plays.indices.filter { l.plays[it] > 0 }.sortedByDescending { l.plays[it] }.take(max).map { h.artistNames[it] to l.plays[it] }
     }
 
     /** Through the years: the race, every play, gaps, old favorites and newcomers, and how deep you go. Worked out once per history. */

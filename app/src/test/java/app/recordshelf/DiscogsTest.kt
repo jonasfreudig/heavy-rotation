@@ -251,4 +251,22 @@ class DiscogsTest {
         assertEquals(listOf("r1", "r2"), mb.search("Fleetwood Mac", "Rumours \"77\""))
         assertEquals("release:\"Rumours \\\"77\\\"\" AND artist:\"Fleetwood Mac\"", server.requests.single().params["query"])
     }
+
+    @Test
+    fun musicBrainzCountryOfTheArtistByThatName() {
+        server.handler = { r ->
+            when (r.params["query"]) {
+                "artist:\"IDLES\"" -> Res(200, """{"artists":[{"name":"Idles Tribute","score":100,"country":"US"},{"name":"IDLES","sort-name":"IDLES","score":98,"country":"GB"}]}""")
+                // Only a city as the area: its country code, if MusicBrainz gives one.
+                "artist:\"Khruangbin\"" -> Res(200, """{"artists":[{"name":"Khruangbin","score":100,"area":{"type":"City","name":"Houston"}}]}""")
+                "artist:\"Kraftwerk\"" -> Res(200, """{"artists":[{"name":"Kraftwerk","score":100,"area":{"name":"Germany","iso-3166-1-codes":["de"]}}]}""")
+                else -> Res(200, """{"artists":[]}""")
+            }
+        }
+        val mb = MusicBrainzClient(server.base, minGapMs = 0) { }
+        assertEquals("GB", mb.artistCountry("IDLES"))
+        assertEquals("", mb.artistCountry("Khruangbin"))
+        assertEquals("DE", mb.artistCountry("Kraftwerk"))
+        assertEquals("", mb.artistCountry("Nobody"))
+    }
 }

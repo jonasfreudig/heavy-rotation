@@ -94,6 +94,7 @@ object Core {
     private const val DISCO_FILE = "discographies.json"
     private const val YEARS_FILE = "album_years.json"
     private const val GLOBALS_FILE = "global_counts.json"
+    private const val COUNTRIES_FILE = "artist_countries.json"
 
     /** Discographies are looked up again after a week, so new releases show up. */
     private const val DISCO_TTL = 7L * 24 * HOUR
@@ -279,6 +280,74 @@ object Core {
     private fun yearsSnapshot(): Map<String, Int> = synchronized(albumYears) { HashMap(albumYears) }
 
     private fun saveYears() = synchronized(albumYears) { file(YEARS_FILE).write(JSONObject(albumYears as Map<*, *>).toString()) }
+    // ---- where your artists are from, for the world map: MusicBrainz, kept on the phone ----
+
+    /** Artist (Text.norm) to ISO 3166 code; "" when MusicBrainz knows no country for them. */
+    private val countries: MutableMap<String, String> by lazy {
+        val m = HashMap<String, String>()
+        try {
+            val o = JSONObject(file(COUNTRIES_FILE).read() ?: "{}")
+            for (k in o.keys()) m[k] = o.optString(k)
+        } catch (_: Exception) {
+        }
+        m
+    }
+    private val countryExec = serial()
+    @Volatile private var countriesBusy = false
+
+    private fun saveCountries() = synchronized(countries) { file(COUNTRIES_FILE).write(JSONObject(countries as Map<*, *>).toString()) }
+
+    /** Your top artists by country: plays and the most played of them each, and how many are looked up yet. */
+    private fun worldMapJson(s: Stats): JSONObject {
+        val top = s.mapArtists()
+        val known = synchronized(countries) { HashMap(countries) }
+        val by = HashMap<String, MutableList<Pair<String, Int>>>()
+        var looked = 0
+        for ((name, plays) in top) {
+            val c = known[Text.norm(name)] ?: continue
+            looked++
+            if (c.isNotEmpty()) by.getOrPut(c) { ArrayList() } += name to plays
+        }
+        val o = JSONObject()
+        for ((c, l) in by) {
+            o.put(c, JSONObject().put("plays", l.sumOf { it.second }).put("n", l.size)
+                .put("artists", JSONArray(l.sortedByDescending { it.second }.take(8).map { JSONObject().put("name", it.first).put("plays", it.second) })))
+        }
+        return JSONObject().put("total", top.size).put("looked", looked).put("busy", countriesBusy).put("countries", o)
+            .put("plays", top.sumOf { it.second }).put("placed", by.values.sumOf { l -> l.sumOf { it.second } })
+    }
+
+    private fun pushWorldMap() = statsExec.execute { currentStats()?.let { s -> push("onWorldMap") { worldMapJson(s) } } }
+
+    /** Looks up where [names] are from, one a second (MusicBrainz's pace), the map growing every ten; stops when offline. */
+    private fun lookUpCountries(names: List<String>) {
+        if (countriesBusy || names.isEmpty()) return
+        countriesBusy = true
+        countryExec.execute {
+            var fails = 0
+            try {
+                val mb = MusicBrainzClient()
+                for ((k, name) in names.withIndex()) {
+                    val c = try {
+                        mb.artistCountry(name).also { fails = 0 }
+                    } catch (_: java.io.IOException) {
+                        if (++fails >= 3) break
+                        continue
+                    }
+                    synchronized(countries) { countries[Text.norm(name)] = c }
+                    if (k % 10 == 9) {
+                        saveCountries()
+                        pushWorldMap()
+                    }
+                }
+            } finally {
+                countriesBusy = false
+                saveCountries()
+                pushWorldMap()
+            }
+        }
+    }
+
     // ---- you against everyone: Last.fm's all-time counts, kept on the phone ----
     private val globalsStore: Pair<MutableMap<String, Global>, MutableMap<String, GlobalTop>> by lazy {
         val g = Globals.fromJson(file(GLOBALS_FILE).read())
@@ -717,6 +786,16 @@ object Core {
             "atlas" -> statsExec.execute {
                 val s = currentStats()
                 push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
+            }
+            "worldMap" -> statsExec.execute {
+                val s = currentStats()
+                if (s == null) {
+                    push("onWorldMap") { JSONObject().put("empty", true) }
+                    return@execute
+                }
+                val missing = synchronized(countries) { s.mapArtists().map { it.first }.filter { Text.norm(it) !in countries } }
+                lookUpCountries(missing)
+                push("onWorldMap") { worldMapJson(s) }
             }
             "through" -> statsExec.execute {
                 val s = currentStats()

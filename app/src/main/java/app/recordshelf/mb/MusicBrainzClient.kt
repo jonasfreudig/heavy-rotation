@@ -2,6 +2,7 @@ package app.recordshelf.mb
 
 import app.recordshelf.net.Http
 import app.recordshelf.scrobble.SourceTrack
+import app.recordshelf.util.Text
 import app.recordshelf.util.objects
 import app.recordshelf.util.str
 import org.json.JSONObject
@@ -47,6 +48,20 @@ class MusicBrainzClient(
         val q = "release:\"${quote(title)}\" AND artist:\"${quote(artist)}\""
         val j = get("/release?query=${Http.enc(q)}&fmt=json&limit=$limit") ?: return emptyList()
         return j.optJSONArray("releases")?.objects().orEmpty().filter { it.optInt("score") >= 90 }.map { it.str("id") }
+    }
+
+    /**
+     * Where an artist is from: the ISO 3166 code of the best match by that exact name, "" when there is none or it
+     * names no country (an area that is a city, or none). For the world map.
+     */
+    fun artistCountry(name: String): String {
+        val j = get("/artist?query=${Http.enc("artist:\"${quote(name)}\"")}&fmt=json&limit=5") ?: return ""
+        val norm = Text.norm(name)
+        val best = j.optJSONArray("artists")?.objects().orEmpty()
+            .firstOrNull { it.optInt("score") >= 90 && (Text.norm(it.str("name")) == norm || Text.norm(it.str("sort-name")) == norm) } ?: return ""
+        return best.str("country").ifEmpty {
+            best.optJSONObject("area")?.optJSONArray("iso-3166-1-codes")?.optString(0).orEmpty()
+        }.uppercase()
     }
 
     private fun quote(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")

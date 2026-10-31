@@ -1623,6 +1623,25 @@ const Mock = (() => {
         }
         case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
         case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
+        case 'worldMap': later(300, () => {
+          const L = history(), plays = {};
+          L.a.forEach((a) => { plays[a] = (plays[a] || 0) + 1; });
+          const from = { 'Fleetwood Mac': 'GB', Khruangbin: 'US', Gorillaz: 'GB', Shame: 'GB', 'The Strokes': 'US', 'Beach House': 'US', Turnstile: 'US', Air: 'FR', IDLES: 'GB', 'Fontaines D.C.': 'IE', Bonobo: 'GB', 'Tame Impala': 'AU', 'Glass Animals': 'GB', 'Little Simz': 'GB', Portishead: 'GB', 'Frank Ocean': 'US' };
+          const pool = ['DE', 'SE', 'JP', 'CA', 'NL', 'BR', 'NO', 'ZA', 'MX', 'IS', ''];
+          const countries = {};
+          let placed = 0, all = 0;
+          Object.keys(plays).map(Number).sort((x, y) => plays[y] - plays[x]).slice(0, 300).forEach((a, k) => {
+            const name = L.artists[a], c = from[name] || pool[k % pool.length];
+            all += plays[a];
+            if (!c) return;
+            placed += plays[a];
+            const e = (countries[c] = countries[c] || { plays: 0, n: 0, artists: [] });
+            e.plays += plays[a];
+            e.n++;
+            if (e.artists.length < 8) e.artists.push({ name, plays: plays[a] });
+          });
+          onWorldMap({ total: 300, looked: 300, busy: false, countries, plays: all, placed });
+        }); break;
         case 'through': later(400, () => onThrough(fakeThrough())); break;
         case 'cards': later(250, () => { const c = fakeCards(); delete c.summary; onCards({ ...c, req: m.req }); }); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;

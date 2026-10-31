@@ -372,6 +372,11 @@ of plays. Scrobbles carry no length, so each song's length is the usual time fro
 play (Last.fm dates a play when it starts). Milestones lists round numbers: your 10,000th play, an
 artist's 500th, a song's 100th.
 
+The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the
+countries ranked below it. Tap a country for its artists. The countries come from MusicBrainz, one
+artist a second, so the first time takes about five minutes; the map fills in as they arrive and
+the answers stay on the phone.
+
 #### You vs everyone
 
 Last.fm knows how many people listened to every artist, album and song, and how often, over all
