@@ -4162,8 +4162,15 @@ function openGenre(key, label) {
   GENRE = { key, label: label || genreLabel(key), loading: true, req: ++REQ };
   renderGenre();
   send({ t: 'genre', key, req: GENRE.req });
+  // The app answers within 20 s even when the page hangs there; no answer at all says so too.
+  const req = GENRE.req;
+  setTimeout(() => {
+    const late = (s) => (s.loading ? { ...s, loading: false, error: 'No answer from the app after 30 s' } : s);
+    GENRE = deliver('genrePage', req, GENRE, (s, shown) => { const next = late(s); if (shown) { GENRE = next; renderGenre(); } return next; });
+  }, 30000);
 }
 window.onGenre = (g) => {
+  if (!g) return;
   GENRE = deliver('genrePage', g.req, GENRE, (s, shown) => {
     const next = { ...s, ...g, label: g.label || s.label, req: s.req, loading: false };
     if (shown) { GENRE = next; renderGenre(); }
@@ -4179,8 +4186,15 @@ function alsoHtml(g) {
     <div class="chips everyone">${also.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div></div>`;
 }
 function renderGenre() {
-  const g = GENRE;
-  if (!g || !isOpen('genrePage')) return;
+  if (!GENRE || !isOpen('genrePage')) return;
+  try {
+    drawGenre(GENRE);
+  } catch (e) {
+    console.error('genre page', e);
+    $('#genreBody').innerHTML = `<div class="empty small"><p>This page couldn't be put together. If it keeps happening, the error below helps find out why.</p><p class="hint">${esc(String((e && e.message) || e))}</p></div>`;
+  }
+}
+function drawGenre(g) {
   const shelfRecs = (g.shelf || []).map((id) => COLL.find((r) => r.id === id)).filter(Boolean);
   const fam = g.family || null, isSub = g.kind === 'sub';
   const crumbs = fam ? `<nav class="crumb"><button data-genremap>Genres</button><span>›</span>${isSub ? `<button data-genre="${esc(fam.key)}" data-glabel="${esc(fam.label)}">${esc(fam.label)}</button><span>›</span>` : ''}<b>${esc(g.label)}</b></nav>` : '';

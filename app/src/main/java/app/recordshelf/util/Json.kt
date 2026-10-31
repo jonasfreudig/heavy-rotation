@@ -19,6 +19,25 @@ fun JSONArray.strings(): List<String> = (0 until length()).map { optString(it) }
 fun List<String>.toJsonArray(): JSONArray = JSONArray().also { a -> forEach { a.put(it) } }
 
 /**
+ * Numbers JSON can't carry (NaN or infinity, from a 0/0 somewhere) set to 0, in place, and where they were.
+ * One of them inside an array makes Android's toString() give null, and the page an answer it can't read.
+ */
+fun Any.finiteJson(path: String = ""): List<String> {
+    fun bad(v: Any?) = v is Number && !v.toDouble().isFinite()
+    return when (this) {
+        is JSONObject -> keys().asSequence().toList().flatMap { k ->
+            val v = opt(k)
+            if (bad(v)) listOf("$path.$k").also { put(k, 0) } else v?.finiteJson("$path.$k").orEmpty()
+        }
+        is JSONArray -> (0 until length()).flatMap { i ->
+            val v = opt(i)
+            if (bad(v)) listOf("$path[$i]").also { put(i, 0) } else v?.finiteJson("$path[$i]").orEmpty()
+        }
+        else -> emptyList()
+    }
+}
+
+/**
  * A JSON document on disk, replaced atomically so a crash mid-write never leaves half a file.
  * Several JsonFiles for the same path take turns (the lock is per path, not per object).
  */

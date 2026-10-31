@@ -8,6 +8,7 @@ import app.recordshelf.history.History
 import app.recordshelf.history.Stats
 import app.recordshelf.net.DeezerClient
 import app.recordshelf.net.DzRelease
+import app.recordshelf.util.finiteJson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -250,6 +251,7 @@ class DiscographyTest {
             val g = s.genrePage(k)
             assertTrue("$k has a page", g != null && g.getInt("plays") > 0)
             assertTrue("$k built whole: ${g!!.optJSONArray("broken")}", !g.has("broken"))
+            assertEquals("$k has only numbers JSON can carry", emptyList<String>(), g.finiteJson())
         }
     }
 }

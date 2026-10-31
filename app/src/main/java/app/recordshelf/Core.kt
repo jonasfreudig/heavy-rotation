@@ -56,6 +56,7 @@ import app.recordshelf.tidal.TidalException
 import app.recordshelf.util.JsonFile
 import app.recordshelf.util.Palette
 import app.recordshelf.util.Text
+import app.recordshelf.util.finiteJson
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -2706,11 +2707,19 @@ object Core {
 
     private inline fun push(fn: String, build: () -> Any) {
         if (ui == null) {
-            if (fn !in NOT_KEPT) build().toString().let { s -> synchronized(missed) { missed[fn] = s } }
+            if (fn !in NOT_KEPT) text(fn, build()).let { s -> synchronized(missed) { missed[fn] = s } }
             return
         }
-        val s = build().toString()
+        val s = text(fn, build())
         main.post { ui?.push(fn, s) }
+    }
+
+    /** A reply as text. A number JSON can't carry makes Android's toString() give null: it goes out as 0, and the log says where. */
+    private fun text(fn: String, v: Any): String {
+        val s: String? = v.toString()
+        if (s != null) return s
+        android.util.Log.w("HeavyRotation", "$fn: numbers set to 0 at ${v.finiteJson().take(8)}")
+        return v.toString()
     }
 
     fun pushAll() {
