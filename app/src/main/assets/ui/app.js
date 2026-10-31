@@ -1418,6 +1418,8 @@ const lyricsHead = () => `<div class="lyr-head"><h2>Lyrics</h2><button class="ch
   <button class="icon-btn small lyr-big" data-lyrfull aria-label="${lyrFull ? 'Smaller lyrics' : 'Lyrics over the whole screen'}" aria-pressed="${lyrFull}">${icon(lyrFull ? 'down' : 'up')}</button></div>`;
 /** Whether the lyrics fill Now playing, with the song in a small row above them. */
 let lyrFull = false;
+/** Filling the screen, the line being sung sits this far down the lyrics (a share of their height), the next ones under it. */
+const LYR_FULL_AT = 0.12;
 function setLyrFull(on) {
   lyrFull = on;
   $('#nowPage').classList.toggle('lyr-full', on);
@@ -1486,10 +1488,11 @@ function syncLyrics() {
       ps[k].classList.toggle('now', k === i);
       ps[k].classList.toggle('past', k < i);
     }
-    // Into the middle of the box, unless you are reading elsewhere in it.
+    // Into the middle of the box, or near its top when the lyrics fill the screen; not while you read elsewhere in it.
     if (i >= 0 && ps[i] && Date.now() > lyrUserUntil) {
       const off = ps[i].getBoundingClientRect().top - box.getBoundingClientRect().top;
-      box.scrollTo({ top: box.scrollTop + off - box.clientHeight / 2 + ps[i].offsetHeight / 2, behavior: lyrAt === -2 ? 'auto' : 'smooth' });
+      const to = lyrFull ? box.clientHeight * LYR_FULL_AT : box.clientHeight / 2 - ps[i].offsetHeight / 2;
+      box.scrollTo({ top: box.scrollTop + off - to, behavior: lyrAt === -2 ? 'auto' : 'smooth' });
     }
     lyrAt = i;
   }

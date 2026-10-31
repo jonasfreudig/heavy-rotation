@@ -1405,7 +1405,9 @@ details.more[open] summary { margin-bottom: 6px; }
 #nowPage.lyr-full .lyr-mini b { display: block; font: 600 15px/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #nowPage.lyr-full .lyr-mini small { display: block; font-size: 12.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #nowPage.lyr-full .np-lyrics .lyr-lines { flex: 1; min-height: 0; max-height: none; }
-#nowPage.lyr-full .np-lyrics .lyr-lines.synced { padding: 35vh 0; }
+/* The line being sung near the top (LYR_FULL_AT), with room under the last one to get it there. */
+#nowPage.lyr-full .np-lyrics .lyr-lines.synced { padding: 9vh 0 70vh;
+  -webkit-mask-image: linear-gradient(transparent, #000 6%, #000 80%, transparent); mask-image: linear-gradient(transparent, #000 6%, #000 80%, transparent); }
 #nowPage.lyr-full .lyr-lines.synced p { font-size: 26px; line-height: 1.28; }
 @keyframes lyrUp { from { transform: translateY(40px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #nowPage.lyr-full .np-lyrics { animation: none; } }

@@ -84,6 +84,9 @@ object Core {
 
     private const val HOUR = 3_600_000L
 
+    /** A genre page not built by then reports where it got stuck. */
+    private const val GENRE_WAIT_SEC = 20L
+
     /** Last.fm takes scrobbles up to two weeks late (a phone that was offline, a record logged afterwards). */
     private const val LATE_SEC = 14 * 24 * 3600L
     private const val HIDDEN_FILE = "hidden.json"
@@ -133,6 +136,34 @@ object Core {
         toast("Something went wrong in the background (${t.message ?: t.javaClass.simpleName})")
     }
     private val syncExec = serial()
+
+    /**
+     * Genre pages, on their own line so they don't wait behind the rest of Stats, each built on a worker that is
+     * watched: a page that fails or hangs says so (where it hung, too) instead of loading for good.
+     */
+    private val genreExec = serial()
+    private val genreWorkers = Executors.newCachedThreadPool()
+    private fun watchedGenrePage(key: String): JSONObject {
+        val worker = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val job = genreWorkers.submit<JSONObject> {
+            worker.set(Thread.currentThread())
+            currentStats()?.genrePage(key) ?: JSONObject().put("missing", true)
+        }
+        return try {
+            job.get(GENRE_WAIT_SEC, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            val at = worker.get()?.stackTrace.orEmpty().filter { it.className.startsWith("app.recordshelf") }.take(6)
+                .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+            job.cancel(true)
+            android.util.Log.w("HeavyRotation", "genre page $key hung at $at")
+            JSONObject().put("error", "Took longer than $GENRE_WAIT_SEC s, at $at")
+        } catch (e: java.util.concurrent.ExecutionException) {
+            val c = e.cause ?: e
+            android.util.Log.w("HeavyRotation", "genre page $key", c)
+            val at = c.stackTrace.filter { it.className.startsWith("app.recordshelf") }.take(4).joinToString(" < ") { "${it.methodName}:${it.lineNumber}" }
+            JSONObject().put("error", "${c.javaClass.simpleName}: ${c.message.orEmpty()} at $at")
+        }
+    }
     private val lookupExec = serial()
     private val scrobExec = serial()
 
@@ -743,15 +774,8 @@ object Core {
             }
             "genre" -> {
                 val key = msg.optString("key")
-                statsExec.execute {
-                    val s = currentStats()
-                    // A page that fails says so; else it would wait for an answer forever.
-                    val j = try {
-                        s?.genrePage(key) ?: JSONObject().put("missing", true)
-                    } catch (e: Throwable) {
-                        android.util.Log.w("HeavyRotation", "genre page $key", e)
-                        JSONObject().put("error", "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
-                    }
+                genreExec.execute {
+                    val j = watchedGenrePage(key)
                     push("onGenre") { j.put("key", key).put("req", msg.optInt("req")) }
                     if (j.has("broken")) android.util.Log.w("HeavyRotation", "genre page $key: ${j.optJSONArray("broken")}")
                     // Photos for its top artists, if Deezer has them; the page comes again.
