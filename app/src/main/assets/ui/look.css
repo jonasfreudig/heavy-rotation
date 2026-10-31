@@ -540,12 +540,15 @@ html.locked .page { overflow: hidden; }
 .wk .d { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .wk .cl { position: relative; flex: 1; width: 100%; }
 .wk .cl i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px; }
-.wk .cl .last { border: 1.5px dashed color-mix(in srgb, var(--md-on-surface) 22%, transparent); }
-.wk .cl .v { left: 3px; right: 3px; background: var(--tint-text, var(--md-primary)); }
+/* The week before: a line across each day, over the bar, with a gap around it so it shows on the bar too. */
+.wk .cl .last { left: -3px; right: -3px; height: 3px; transform: translateY(50%); border-radius: 2px; background: color-mix(in srgb, var(--md-on-surface) 72%, transparent); box-shadow: 0 0 0 2px var(--md-surface-container-low); }
+.wk .cl .v { background: var(--tint-text, var(--md-primary)); }
+.wk .d.ahead .cl .last { opacity: 0.45; }
 .wk .d.sel .cl .v { filter: brightness(1.15); }
-.wk .d span { font: 500 11px/14px var(--mono); color: var(--md-on-surface-variant); }
+.wk .d span { position: relative; font: 500 11px/14px var(--mono); color: var(--md-on-surface-variant); }
 .wk .d.today span { color: var(--md-on-surface); font-weight: 700; }
-.wk .d.today span::after { content: ''; display: block; width: 5px; height: 5px; margin: 3px auto 0; border-radius: 50%; background: var(--tint-text, var(--md-primary)); }
+/* Today's dot hangs below the letter, so today's bar has the same room as the others. */
+.wk .d.today span::after { content: ''; position: absolute; left: 50%; top: 100%; width: 5px; height: 5px; margin: 3px 0 0 -2.5px; border-radius: 50%; background: var(--tint-text, var(--md-primary)); }
 .dstrip { position: relative; height: 34px; margin-top: 14px; border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); }
 .dstrip i { position: absolute; top: 6px; bottom: 6px; width: 2.5px; margin-left: -1px; border-radius: 2px; }
 .dstrip .now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--md-on-surface); opacity: .55; }

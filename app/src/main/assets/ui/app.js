@@ -1455,7 +1455,7 @@ function lyricsHtml(canSeek) {
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
   if (LYR.lines && LYR.lines.length) {
-    return `${lyricsMini()}${lyricsHead()}<span class="sub">In time with the song${canSeek ? '; tap a line to jump there' : ''}</span>
+    return `${lyricsMini()}${lyricsHead()}
       <div class="lyr-lines synced">${LYR.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
   }
   return `${lyricsMini()}${lyricsHead()}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
@@ -2550,7 +2550,7 @@ function clockViz(clock, id, title) {
   let peak = 0;
   clock.forEach((v, i) => { if (v > clock[peak]) peak = i; });
   const def = clock[peak] ? `Busiest: <b>${DOW[Math.floor(peak / 24)]}s, ${pad(peak % 24)}:00–${pad((peak % 24) + 1)}:00</b> (${num(clock[peak])} plays)` : 'No plays in this period';
-  return `<div class="viz"><h2>${esc(title || 'When you listen')}</h2><span class="sub">Plays per weekday and hour</span>
+  return `<div class="viz"><h2>${esc(title || 'When you listen')}</h2>
     <div class="heat">${cells}</div><div class="readout" id="ro-${id}">${def}</div></div>`;
 }
 
@@ -2561,7 +2561,7 @@ function streakViz(st, s) {
   let h = `<div class="tiles">${cur ? tile('Current streak', plural(st.current, 'day'), st.current ? `since ${dateLabel(st.currentFrom)}` : 'no music today or yesterday') : ''}
     ${tile(s.range.kind === 'all' ? 'Longest streak' : `Longest this ${periodWord(s.range.kind)}`, plural(st.longest, 'day'), st.longest ? range(st.longestFrom, st.longestTo) : '')}</div>`;
   if (st.artists && st.artists.length) {
-    h += `<div class="viz"><h2>Artist streaks</h2><span class="sub">Most days in a row with the same artist</span><div class="rank">${st.artists.map((a, i) =>
+    h += `<div class="viz"><h2>Artist streaks</h2><div class="rank">${st.artists.map((a, i) =>
       `<button class="r" data-artist="${esc(a.artist)}"><span class="n">${i + 1}</span><span class="t"><b>${esc(a.artist)}</b><small>${esc(range(a.from, a.to))}</small></span><span class="v">${plural(a.days, 'day')}</span></button>`).join('')}</div></div>`;
   }
   return h;
@@ -2681,7 +2681,7 @@ function riverViz(rv, o = {}) {
   // A page's river spans years: its ends say which.
   const edge = (ms) => (o.title && rv.unit !== 'year' ? new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' }) : periodLabel(ms, rv.unit, true));
   return `<div class="viz" data-other="${esc((o.other || 'everyone else').toLowerCase())}"><h2>${esc(o.title || 'The river')}</h2>
-    <span class="sub">${o.sub ? o.sub(share) : `Plays per ${rv.unit}, flowing around everyone else (grey). Your top ${rv.artists.length} are <b>${share}%</b> of it.`}</span>
+    <span class="sub">${o.sub ? o.sub(share) : `Your top ${rv.artists.length} are <b>${share}%</b> of your plays`}</span>
     <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}<line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
       <text x="0" y="${H + 12}">${esc(edge(rv.starts[0]))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(edge(rv.starts[B - 1]))}</text></svg></div>
     <div class="readout">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
@@ -2699,7 +2699,7 @@ function newArtistsViz(na) {
   const b = na.buckets || [];
   if (b.length < 2) return '';
   if (!b.some((x) => x.count)) {
-    return `<div class="viz"><h2>New artists</h2><span class="sub">No first listens in this stretch: you stuck with artists you already knew.</span></div>`;
+    return `<div class="viz"><h2>New artists</h2><span class="sub">No new artists in this stretch.</span></div>`;
   }
   const max = Math.max(1, ...b.filter((x) => !x.historyStart).map((x) => x.count));
   const cols = b.map((x, i) => `<div class="c ${x.historyStart ? 'start' : ''}" data-col="na" data-i="${i}"><i style="height:${Math.min(100, (x.count / max) * 100)}%"></i></div>`).join('');
@@ -2712,7 +2712,7 @@ function newArtistsViz(na) {
   const row = finds.length ? `<h3 class="na-h">Your best finds</h3>
     <div class="na-row">${finds.map((f) => `<button class="na-find" data-artist="${esc(f.name)}">${artistFace(f)}<b>${esc(f.name)}</b><small>${esc(monthYear(f.first))}</small><small>${plural(f.plays, 'play')}</small></button>`).join('')}</div>
     ${found.length > 1 ? `<button class="btn tonal wide" data-newlist>All ${num(na.count)} new artists</button>` : ''}` : '';
-  return `<div class="viz"><h2>New artists</h2><span class="sub">Artists you heard for the first time, per ${na.unit}</span>${head}
+  return `<div class="viz"><h2>New artists</h2>${head}
     <div class="cols"><span class="ymax">${num(max)}</span>${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
     <div class="readout" id="ro-na">${newArtistsText(last, na.unit)}</div>${row}</div>`;
 }
@@ -2817,7 +2817,7 @@ function obsessionsViz(list, loops) {
   if (!list.length && !loops.length) return '';
   let h = '<div class="viz"><h2>Obsessions</h2>';
   if (list.length) {
-    h += `<span class="sub">A track on repeat: most plays in one week</span><div class="rank">${list.map((o, i) =>
+    h += `<span class="sub">Most plays in one week</span><div class="rank">${list.map((o, i) =>
       `<button class="r" ${trackAttrs(o.artist, o.track)}><span class="n">${i + 1}</span><span class="t"><b>${esc(o.track)}</b><small>${esc(o.artist)}, week of ${esc(dateLabel(o.week))}</small></span><span class="v">${num(o.count)}×</span></button>`).join('')}</div>`;
   }
   if (loops.length) {
@@ -2835,7 +2835,7 @@ const RECS = {};
 function recordViz(rec, id, title, sub, opts = {}) {
   if (!rec || !rec.days) return '';
   const st = RECS[id];
-  let h = `<div class="viz"><h2>${esc(title)}</h2><span class="sub">${esc(sub || 'Every play is a dot. Each groove is a day, from the label to the rim; noon is at the top, midnight at the bottom. Your top artists have their own colors.')}</span>
+  let h = `<div class="viz"><h2>${esc(title)}</h2><span class="sub">${esc(sub || 'Each dot is a play, each groove a day. Noon is at the top.')}</span>
     <div class="rec-wrap${st && st.z > 1 ? ' zoomed' : ''}"><canvas data-record="${id}"></canvas>
       <div class="rec-zoom"><button class="icon-btn small" data-rzoom="in" data-rec="${id}" aria-label="Zoom in">+</button><button class="icon-btn small" data-rzoom="out" data-rec="${id}" aria-label="Zoom out">−</button><button class="icon-btn small rz-reset" data-rzoom="reset" data-rec="${id}" aria-label="Whole record">1×</button></div>
       <span class="rec-hint">Pinch or double-tap to zoom in</span></div>
@@ -3147,7 +3147,7 @@ function pulseViz(p) {
       <text class="nm" x="0" y="${base - 4}" data-artist="${esc(r.artist)}">${esc(trunc(r.artist))}</text></g>`;
   });
   svg += `<text x="${labelW}" y="${H - 4}">${esc(periodLabel(p.starts[0], p.unit, true))}</text><text x="${W}" y="${H - 4}" text-anchor="end">${esc(periodLabel(p.starts[p.bins - 1], p.unit, true))}</text>`;
-  return `<div class="viz"><h2>Phases</h2><span class="sub">Plays per ${p.unit} of your ${rows.length} most played artists, ordered by when they peaked. Tap a name for the artist.</span>
+  return `<div class="viz"><h2>Phases</h2><span class="sub">Your top ${rows.length} artists, in the order they peaked</span>
     <div class="ridges"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div><div class="readout" id="ro-pulse">Tap a ridge for its peak.</div></div>`;
 }
 
@@ -3712,7 +3712,7 @@ function lifeCharts(x, what, img, seed) {
   let peak = 0;
   x.hours.forEach((v, i) => { if (v > x.hours[peak]) peak = i; });
   const mood = peak >= 5 && peak < 10 ? 'a morning thing' : peak >= 10 && peak < 17 ? 'for the daytime' : peak >= 17 && peak < 22 ? 'an evening thing' : 'for the night';
-  return timeViz(x, what) + `<div class="viz"><h2>Around the clock</h2><span class="sub">When you play ${what}, hour by hour, midnight on top</span>
+  return timeViz(x, what) + `<div class="viz"><h2>Around the clock</h2><span class="sub">Midnight at the top</span>
       ${clockRing(x.hours, img, seed)}<div class="readout">Mostly around <b>${pad(peak)}:00</b>: ${mood}.</div></div>`;
 }
 
@@ -3739,7 +3739,7 @@ function chartRunViz(t) {
   const guides = [1, 10, 100, 1000].filter((v) => v <= worst).map((v) => `<span class="cr-g" style="top:${((y(v) / H) * 100).toFixed(2)}%">#${v}</span>`).join('');
   const step = Math.max(1, Math.ceil(n / 4));
   const labels = r.map((v, i) => i).filter((i) => i % step === 0).map((i) => `<span>${esc(mDate(i).toLocaleDateString([], { month: 'short', year: '2-digit' }))}</span>`).join('');
-  return `<div class="viz"><h2>Its chart run</h2><span class="sub">Its place among all the songs you played, month by month. Highest: <b>#${best}</b> in ${esc(mDate(bestAt).toLocaleDateString([], { month: 'long', year: 'numeric' }))}${top10 ? `; ${plural(top10, 'month')} in your top 10` : ''}.</span>
+  return `<div class="viz"><h2>Its chart run</h2><span class="sub">Highest: <b>#${best}</b> in ${esc(mDate(bestAt).toLocaleDateString([], { month: 'long', year: 'numeric' }))}${top10 ? `; ${plural(top10, 'month')} in your top 10` : ''}.</span>
     <div class="chart-run"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${guides}${dots}
       <div class="hits">${r.map((v, i) => `<div data-col="cr" data-i="${i}"></div>`).join('')}</div></div>
     <div class="xl">${labels}</div><div class="readout">Tap a month for its place.</div></div>`;
@@ -4036,7 +4036,7 @@ function decadesViz(x) {
   if (ds.length < 2 && !statsDecade) return '';
   const max = Math.max(1, ...ds.map((d) => d.plays));
   const share = x.total ? Math.round((x.known / x.total) * 100) : 0;
-  return `<div class="viz"><h2>Decades</h2><span class="sub">When the music you played came out (${share}% of plays have a known year). Tap one for more.</span>
+  return `<div class="viz"><h2>Decades</h2><span class="sub">${share}% of plays have a known year</span>
     <div class="decades">${ds.map((d) => `<button class="dec${statsDecade === d.decade ? ' on' : ''}" data-decade="${d.decade}"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></button>`).join('')}</div></div>`;
 }
 /** The sheet to pick a genre for the stats: the families, each opening to the styles inside it. */
@@ -4120,7 +4120,7 @@ function genreMapHtml(m) {
     return `<button class="gm-box" ${attrs} aria-label="${esc(name)}" style="left:${((b.x / W) * 100).toFixed(2)}%;top:${((b.y / H) * 100).toFixed(2)}%;width:${pw.toFixed(2)}%;height:${ph.toFixed(2)}%;--c:${b.color}">
       <b>${esc(name)}</b><small>${Math.round((b.v / total) * 100)}%</small>${subs}</button>`;
   }).join('');
-  return `<div class="viz genre-map-card"><h2>Your genres</h2><span class="sub">All your listening, sorted into genres: the bigger, the more you play it${m.all > total ? ` (${pct(total / m.all)} of your plays have a known genre)` : ''}. Tap one for its page.</span>
+  return `<div class="viz genre-map-card"><h2>Your genres</h2>${m.all > total ? `<span class="sub">${pct(total / m.all)} of your plays have a known genre</span>` : ''}
     <div class="genre-map">${boxes}</div><div class="chips gm-more" hidden></div></div>`;
 }
 /**
@@ -4182,7 +4182,7 @@ window.onGenre = (g) => {
 function alsoHtml(g) {
   const also = g.also || [];
   if (!also.length) return '';
-  return `<div class="g-also"><span class="sub">Also partly ${esc(g.label)}; their plays count under their main genre</span>
+  return `<div class="g-also"><span class="sub">Also partly ${esc(g.label)}</span>
     <div class="chips everyone">${also.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div></div>`;
 }
 function renderGenre() {
@@ -4224,12 +4224,12 @@ function drawGenre(g) {
       <button class="btn tonal" data-genrepl>${icon('playlist')}Make a playlist</button></div>`;
     P.inside = part(() => genreInsideHtml(g));
     if ((top.artists || []).length) {
-      P.artists = `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
+      P.artists = `<div class="viz"><h2>Your ${esc(g.label)} artists</h2>
         <div class="xcards">${top.artists.slice(0, 10).map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div>${alsoHtml(g)}</div>`;
     }
     const lost = g.lost || [], lostAlbums = g.lostAlbums || [];
     if (lost.length || lostAlbums.length) {
-      P.lost = `<div class="viz"><h2>Rediscover</h2><span class="sub">${esc(g.label)} you loved, quiet for half a year or more</span>
+      P.lost = `<div class="viz"><h2>Rediscover</h2><span class="sub">Quiet for half a year or more</span>
         <div class="xcards">${lost.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small>last ${esc(monthYear(a.last))}</small><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}
         ${lostAlbums.map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b><small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`).join('')}</div></div>`;
     }
@@ -4243,20 +4243,20 @@ function drawGenre(g) {
     const all = g.all || [];
     if (all.length > (top.artists || []).length) {
       const shown = g.showAll ? all : all.slice(0, 30);
-      P.everyone = `<div class="viz"><h2>Everyone in ${esc(g.label)}</h2><span class="sub">All ${num(g.artists)} artists you played, most first</span>
+      P.everyone = `<div class="viz"><h2>Everyone in ${esc(g.label)}</h2><span class="sub">${plural(g.artists, 'artist')}</span>
         <div class="chips everyone">${shown.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div>
         ${all.length > shown.length ? `<button class="btn text" data-genreall>Show all ${num(all.length)}</button>` : ''}</div>`;
     }
     const ds = (g.decades && g.decades.decades) || [];
     if (ds.length > 1) {
       const max = Math.max(1, ...ds.map((d) => d.plays));
-      P.decades = `<div class="viz"><h2>Decades</h2><span class="sub">When your ${esc(g.label)} came out</span><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
+      P.decades = `<div class="viz"><h2>Decades</h2><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
     }
     P.life = part(() => lifeCharts(g, 'it', '', g.label + g.label));
     P.lineup = part(() => lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
-      { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` }));
+      { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: 'The more you played them, the bigger the name' }));
     const c = g.calendar || {};
-    P.year = part(() => ((c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
+    P.year = part(() => ((c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">The last twelve months</span>
       ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : ''));
     P.shelf = shelfHtml;
     h += tabbedHtml('genrePage', g.tab, GENRE_TABS, GENRE_LONG, P);
@@ -4289,7 +4289,7 @@ function genreInsideHtml(g) {
   const chips = shown.map((s, k) => `<button class="chip${s.key === g.key ? ' on' : ''}" ${s.key === g.key ? '' : `data-genre="${esc(s.key)}" data-glabel="${esc(s.label)}"`}><i class="sw" style="background:${shade(k)}"></i>${esc(s.label)}<small class="n">${Math.round((s.plays / total) * 100)}%</small></button>`).join('');
   const more = inside.length > shown.length ? `<button class="chip" data-genresubs>${inside.length - shown.length} more</button>` : '';
   return `<div class="viz"><h2>${isSub ? 'Next to it' : 'Inside it'}</h2>
-    <span class="sub">${isSub ? `The other styles in ${esc(fam.label)}` : 'The styles and tags it is made of'}${g.general ? `; ${pct(g.general / total)} of its plays name no style` : ''}. Tap one for its page.</span>
+    ${g.general ? `<span class="sub">${pct(g.general / total)} of its plays name no style</span>` : ''}
     <div class="gbar">${segs}</div><div class="chips gchips">${chips}${more}</div></div>`;
 }
 
@@ -4359,7 +4359,7 @@ function renderTrack() {
     h += chartRunViz(t);
     h += sitsViz(t);
     if (t.next && t.next.length) {
-      h += `<div class="viz"><h2>What comes next</h2><span class="sub">What you played right after it</span><div class="rank">${t.next.map((x, i) =>
+      h += `<div class="viz"><h2>What comes next</h2><div class="rank">${t.next.map((x, i) =>
         `<button class="r" ${trackAttrs(x.artist, x.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span><span class="v">${x.count}×</span></button>`).join('')}</div></div>`;
     }
     h += repeatViz(t);
@@ -4429,7 +4429,7 @@ function renderAlbum() {
     P.vs = vsBlock(a.global, 'it');
     P.clicked = clickedViz(a);
     P.river = a.river ? riverViz(a.river, { title: 'Its songs over time', other: 'Its other songs',
-      sub: (s) => `Plays per ${a.river.unit} of each song since you first played it; the top ${a.river.artists.length} are <b>${s}%</b> of them.`,
+      sub: (s) => `The top ${a.river.artists.length} songs are <b>${s}%</b> of the plays`,
       link: (n) => trackAttrs(a.artist, n, { album: a.title, cover }) }) : '';
     P.life = lifeCharts(a, 'it', cover, a.title + a.artist);
     h += tabbedHtml('albumPage', a.tab, ALBUM_TABS, ALBUM_LONG, P);
@@ -4464,7 +4464,7 @@ function trackShapeViz(a) {
     : back >= front * 1.6 ? 'you play its second half more than its first'
       : never ? (never === 1 ? 'one song you\'ve never played' : `${never} songs you've never played`) : 'you\'ve played every song on it';
   const step = s.length > 16 ? 5 : 1;
-  return `<div class="viz"><h2>Track by track</h2><span class="sub">Your plays of each song, in the album's order: its shape for you</span>
+  return `<div class="viz"><h2>Track by track</h2>
     <div class="shape">${s.map((x, i) => `<span data-col="tt" data-i="${i}"${i === fav ? ' class="top"' : ''}><i style="height:${x.plays ? (6 + (x.plays / max) * 94).toFixed(1) : 0}%"${x.plays ? '' : ' class="none"'}></i></span>`).join('')}</div>
     <div class="shape-n">${s.map((x, i) => `<span>${(i + 1) % step === 0 || i === 0 ? i + 1 : ''}</span>`).join('')}</div>
     <div class="readout"><b>${esc(s[fav].title)}</b> (${fav + 1}) is your favorite, ${plural(max, 'play')}; ${lean}.</div></div>`;
@@ -4495,7 +4495,7 @@ function clickedViz(a) {
     : `It sat for ${span} after your first play (${plural(cum[k] - w[k], 'play')}), then <b>${plural(w[k], 'play')}</b> in the week of ${esc(when(k))}.`;
   const px = (x(k) / W) * 100, py = (y(cum[k]) / H) * 100;
   const step = Math.max(1, Math.ceil(n / 4));
-  return `<div class="viz"><h2>When it clicked</h2><span class="sub">All your plays added up, week by week since the first one</span>
+  return `<div class="viz"><h2>When it clicked</h2><span class="sub">Your plays added up, week by week</span>
     <div class="area">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tint);stop-opacity:.4"/><stop offset="1" style="stop-color:var(--tint);stop-opacity:0"/></linearGradient></defs>
@@ -4526,7 +4526,7 @@ function sitsViz(t) {
       : 'Mostly <b>somewhere in the middle</b> of a listening session.';
   const row = (label, v, base, on) => `<div class="sit${on ? ' on' : ''}"><span>${label}</span><span class="sbar"><i style="width:${(v * 100).toFixed(1)}%"></i>${base != null ? `<b style="left:${(base * 100).toFixed(1)}%" title="a song usually"></b>` : ''}</span><span class="v">${pct(v)}</span></div>`;
   const most = Math.max(open, close, s.middle / n);
-  return `<div class="viz"><h2>Where it sits</h2><span class="sub">In your listening sessions (a break of half an hour ends one); the tick: any song</span>
+  return `<div class="viz"><h2>Where it sits</h2><span class="sub">The tick: any song</span>
     <div class="sits">${row('Opener', open, s.baseOpen, open === most)}${row('In the middle', s.middle / n, null, s.middle / n === most)}${row('Closer', close, s.baseClose, close === most)}</div>
     <div class="readout">${sub}${s.alone ? ` ${plural(s.alone, 'time')} it was all you played.` : ''}</div></div>`;
 }
@@ -4542,7 +4542,7 @@ function repeatViz(t) {
   const tall = Math.min(12, Math.max(...shown.map((r) => r.n)));
   const sub = runs.length === 1 ? `<b>${best.n} times in a row</b> on ${esc(dateLabel(best.at))}.`
     : `<b>${best.n} times in a row</b> on ${esc(dateLabel(best.at))}, your longest; on repeat on ${plural(days, 'day')}.`;
-  return `<div class="viz"><h2>Repeat runs</h2><span class="sub">Each time it played back to back${runs.length > RUNS_SHOWN ? ` (the latest ${RUNS_SHOWN})` : ''}: one block per play</span>
+  return `<div class="viz"><h2>Repeat runs</h2><span class="sub">One block per play${runs.length > RUNS_SHOWN ? `, the latest ${RUNS_SHOWN} runs` : ''}</span>
     <div class="runs" style="--rows:${tall}">${shown.map((r, i) => `<span data-col="rr" data-i="${i}"${r.n === best.n ? ' class="top"' : ''}>${'<i></i>'.repeat(Math.min(r.n, 12))}${r.n > 12 ? `<em>${r.n}</em>` : ''}</span>`).join('')}</div>
     <div class="readout">${sub}</div></div>`;
 }
@@ -4935,7 +4935,7 @@ function treeHtml(t) {
   treeIndex(t);
   const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), <b>${num(t.after)}</b> came right after another artist in the same listening session, ${num(t.blue)} came out of the blue (a search, an album, a tip), and ${num(t.start)} were with you from the start of your history.`;
   return `<p class="uni-intro">${intro}</p>
-    <div class="viz"><h2>Gateways</h2><span class="sub">The artists that led you to the most others you kept playing. "Right after" means the very next song; with radio or autoplay, that was the app's pick.</span>
+    <div class="viz"><h2>Gateways</h2><span class="sub">Artists that led you to others you kept playing</span>
     <div class="tree">${t.gateways.map((g) => treeRow(g.id, 0)).join('') || '<p class="hint">No artist has led you to two or more others yet.</p>'}</div></div>`;
 }
 
@@ -5105,37 +5105,37 @@ function renderVs() {
   // How mainstream: tiers from household names to the underground
   const tiers = v.tiers || [];
   const tot = Math.max(1, tiers.reduce((s, t) => s + t.plays, 0));
-  h += `<div class="viz"><h2>How mainstream your artists are</h2><span class="sub">Your plays by how many people listen to the artist</span>
+  h += `<div class="viz"><h2>How mainstream your artists are</h2>
     <div class="tierbar">${tiers.map((t, k) => (t.plays ? `<i style="flex:${t.plays};background:${tierColor(k)}" title="${esc(VS_TIERS[k][0])}"></i>` : '')).join('')}</div>
     <div class="tierlist">${tiers.map((t, k) => `<div class="tr"><span class="sw" style="background:${tierColor(k)}"></span><span class="nm"><b>${VS_TIERS[k][0]}</b><small>${VS_TIERS[k][1]}, ${plural(t.artists, 'artist')}${t.top ? `, most: <button class="link" data-artist="${esc(t.top)}">${esc(t.top)}</button>` : ''}</small></span><span class="pc">${pct(t.plays / tot)}</span></div>`).join('')}</div></div>`;
   // Bigger fan than most
   const fans = v.fans || [];
   if (fans.length) {
-    h += `<div class="viz"><h2>A bigger fan than most</h2><span class="sub">Your plays against the average listener's (the tick)</span>
+    h += `<div class="viz"><h2>A bigger fan than most</h2><span class="sub">The tick: the average listener</span>
       <div class="rank vs-rank">${fans.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>you ${num(a.mine)}, average ${num(Math.round(a.avg))}</small></span><span class="v x">${esc(fmtX(a.ratio))}</span>${vsBar(a.mine, a.avg)}</button>`).join('')}</div></div>`;
   }
   // Your share of everyone's plays
   const shares = v.shares || [];
   if (shares.length) {
-    h += `<div class="viz"><h2>Your share</h2><span class="sub">Of all their plays on Last.fm, this many are yours</span>
+    h += `<div class="viz"><h2>Your share</h2>
       <div class="xcards">${shares.map((a) => `<button class="xcard share" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b class="big">${oneIn(a.share)}</b><b>${esc(a.name)}</b><small class="meta">${compact(a.plays)} plays in all</small></button>`).join('')}</div></div>`;
   }
   // Favorites few people know
   const gems = v.gems || [];
   if (gems.length) {
-    h += `<div class="viz"><h2>Favorites few people know</h2><span class="sub">Artists you play a lot with the fewest listeners</span>
+    h += `<div class="viz"><h2>Favorites few people know</h2>
       <div class="xcards">${gems.map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small>${compact(a.listeners)} listeners</small><small class="meta">you: ${compact(a.mine)}</small></button>`).join('')}</div></div>`;
   }
   // Songs
   const songs = v.songs || [];
   if (songs.length) {
-    h += `<div class="viz"><h2>Songs you play more than anyone</h2><span class="sub">Against the average listener of each song</span>
+    h += `<div class="viz"><h2>Songs you play more than anyone</h2>
       <div class="rank vs-rank">${songs.map((t, i) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}, you ${num(t.mine)}, average ${num(Math.round(t.avg))}</small></span><span class="v x">${esc(fmtX(t.ratio))}</span>${vsBar(t.mine, t.avg)}</button>`).join('')}</div></div>`;
   }
   // Your favorite song by each top artist against everyone's
   const taste = v.taste || [];
   if (taste.length) {
-    h += `<div class="viz"><h2>Your favorite vs everyone's</h2><span class="sub">Your most played song by each of your top artists, and theirs on Last.fm</span>
+    h += `<div class="viz"><h2>Your favorite vs everyone's</h2>
       <div class="taste">${taste.map((x) => {
         const same = x.mine.rank === 1;
         const where = same ? 'their most played too' : x.mine.rank ? `their #${x.mine.rank} on Last.fm` : 'not in their top 50 on Last.fm';
@@ -5245,7 +5245,7 @@ function discoverWait(d) {
   if (d && (d.built || (d.artists || []).length)) return '';
   if (d && d.error) return `<p class="hint">${esc(d.error)}</p><button class="btn tonal small" data-dagain>Try again</button>`;
   const p = d && d.total ? Math.round((d.done / d.total) * 100) : 0;
-  return `<span class="sub">Looking up who Last.fm's and Deezer's listeners find alike to the artists you play${d && d.total ? `: ${d.done} of ${d.total}` : ''}. This takes a minute the first time.</span>
+  return `<span class="sub">Looking up similar artists${d && d.total ? `: ${d.done} of ${d.total}` : ''}. The first time takes a minute.</span>
     <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div>`;
 }
 /** A mix in Explore's top row: three covers stacked, its name and what's in it; a tap makes the playlist [kind]. */
@@ -5269,9 +5269,9 @@ function forYouHtml() {
   const shown = discoverAll ? arts : arts.slice(0, 8);
   const more = arts.length > shown.length ? `<button class="btn text" data-dmore>Show all ${arts.length}</button>` : '';
   const rel = releaseCards(d);
-  return `${arts.length >= 4 ? mixCard(d) : ''}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Artists you haven't played that your listening points to. Further out brings less known ones. Tap one to see why.</span>
+  return `${arts.length >= 4 ? mixCard(d) : ''}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Further out brings lesser-known ones</span>
       ${reachChips(d)}${arts.length ? `<div class="rank fy-list">${suggestionRows(shown)}</div>${more}` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}</div>
-    ${rel ? `<div class="viz explore"><div class="xhead"><h2>New from your artists</h2></div><span class="sub">Albums, EPs and singles out in the last eight weeks, or coming soon</span><div class="xcards">${rel}</div></div>` : ''}
+    ${rel ? `<div class="viz explore"><div class="xhead"><h2>New from your artists</h2></div><span class="sub">Out in the last eight weeks, or coming soon</span><div class="xcards">${rel}</div></div>` : ''}
     ${d.busy ? `<p class="hint center">Looking for more: ${d.done} of ${d.total}</p>` : ''}`;
 }
 
@@ -5348,7 +5348,7 @@ const XLIST = {
     rows: (l) => l.items.map((a) => artistRow(a, `last ${esc(monthYear(a.last))}, big in ${esc(monthYear(a.peak.start))}`)).join('') },
   lostAlbums: { title: 'Albums to rediscover', sub: 'Played through, then left on the shelf', cards: (x) => (x.lostAlbums || []).map(albumCard).join(''),
     rows: (l) => l.items.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, last ${esc(monthYear(a.last))}</small></span><span class="v">${num(a.plays)}</span></button>`).join('') },
-  regulars: { title: 'Quiet regulars', sub: 'Never on top, always around', cards: (x) => (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''),
+  regulars: { title: 'Quiet regulars', sub: 'Played most months, never your top', cards: (x) => (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''),
     rows: (l) => l.items.map((a) => artistRow(a, `${a.months} months${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
   oneDay: { title: 'One-day wonders', sub: 'Played all day once, never again', cards: (x) => (x.oneDay || []).map((a) => artistCard(a, esc(dateLabel(a.first)))).join(''),
     rows: (l) => l.items.map((a) => artistRow(a, `${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
@@ -5730,10 +5730,10 @@ function ticketHtml(date, place, line, attrs) {
 function concertsBlock(list) {
   if (!list || !list.length) return '';
   if (pageTabs()) {
-    return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}. Tap a show for that night's setlist.</span>
+    return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}</span>
       <div class="tix">${list.map((c) => { CONCERT_BY_ID[c.id] = c; return ticketHtml(c.date, c.venue || c.city, [c.city, c.after != null ? `${plural(c.after, 'play')} after` : ''].filter(Boolean).join(', '), `data-concert="${esc(c.id)}"`); }).join('')}</div></div>`;
   }
-  return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}, from your setlist.fm. Tap a show for that night's setlist.</span>
+  return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}, from your setlist.fm</span>
     <div class="rank concerts">${list.map((c) => concertRow(c, true)).join('')}</div></div>`;
 }
 /** The night's setlist as a playlist, with your plays of each song; no setlist: its setlist.fm page. */
@@ -5784,7 +5784,7 @@ function renderConcerts() {
     const glows = shows.filter((c) => c.after != null && !c.running && c.after >= 5).sort((a, b) => b.after - b.before - (a.after - a.before)).slice(0, 3);
     if (glows.length) {
       const max = Math.max(1, ...glows.map((c) => Math.max(c.after, c.before)));
-      h += `<div class="viz"><h2>Afterglow</h2><span class="sub">The shows that sent you back to their music most: your plays of them in the four weeks before and after</span>
+      h += `<div class="viz"><h2>Afterglow</h2><span class="sub">Your plays of them four weeks before and after each show</span>
         <div class="glows">${glows.map((c) => { CONCERT_BY_ID[c.id] = c; const d = new Date(`${c.date}T12:00:00`); return `<button class="glow-tk" data-concert="${esc(c.id)}"><span class="tkd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}</small></span>
           <span class="gt"><b>${esc(c.artist)}</b><small>${esc([c.venue, c.city].filter(Boolean).join(', '))}</small>
           <span class="gb"><i class="b" style="width:${((c.before / max) * 100).toFixed(1)}%"></i><em>${c.before} before</em></span><span class="gb"><i class="a" style="width:${((c.after / max) * 100).toFixed(1)}%"></i><em>${c.after} after</em></span></span>
@@ -5794,7 +5794,7 @@ function renderConcerts() {
     const years = {};
     shows.forEach((c) => { (years[c.date.slice(0, 4)] = years[c.date.slice(0, 4)] || []).push(c); });
     Object.keys(years).sort().reverse().forEach((y) => {
-      h += `<div class="viz"><h2>${y}</h2><span class="sub">${plural(years[y].length, 'show')}. Tap one for that night's setlist.</span><div class="tix grid">${years[y].map((c) => {
+      h += `<div class="viz"><h2>${y}</h2><span class="sub">${plural(years[y].length, 'show')}</span><div class="tix grid">${years[y].map((c) => {
         CONCERT_BY_ID[c.id] = c;
         const glow = c.after == null ? '' : c.running ? `${c.after} since` : `${c.after} after, ${c.before} before`;
         const hot = c.after != null && !c.running && c.after >= 5 && c.after >= 2 * c.before;
@@ -5983,7 +5983,7 @@ function renderArtist() {
     $('#artistBody').innerHTML = `<div class="hero new-artist">${a.photo ? coverHtml(a.photo, a.name, a.name, 'round') : ''}<div><h1>${esc(a.name)}</h1>
         <div class="meta">${(ST.history || {}).count > 0 ? 'No plays in your history yet' : 'Import your Last.fm history on the Stats tab to see their story here'}</div></div></div>${listenRow('artists', a.name)}
       ${sug ? `<button class="card fy-because" data-why="${esc(a.name)}"><small>Suggested for you</small><span>${esc(becauseText(sug))}</span>${icon('chevron-right')}</button>` : ''}
-      ${best.length ? `<div class="viz"><div class="xhead"><h2>Their best-known songs</h2><button class="btn tonal small" data-pl="artistBest" data-artist="${esc(a.name)}">${icon('playlist')}Playlist</button></div><span class="sub">Most played on Last.fm</span>
+      ${best.length ? `<div class="viz"><div class="xhead"><h2>Their best-known songs</h2><button class="btn tonal small" data-pl="artistBest" data-artist="${esc(a.name)}">${icon('playlist')}Playlist</button></div>
         <div class="rank">${best.map((t, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(t)}</b></span></div>`).join('')}</div></div>` : ''}
       <div id="discoSlot">${discoHtml(a.name)}</div><div id="liveSlot">${liveHtml(a.name)}</div>`;
     $('#artistBody').querySelectorAll('[data-why]').forEach((b) => { b.onclick = () => openWhy(b.dataset.why); });
@@ -6013,7 +6013,7 @@ function renderArtist() {
   P.origin = originHtml(a);
   P.disco = `<div id="discoSlot">${discoHtml(a.name)}</div>`;
   P.river = a.river ? riverViz(a.river, { title: 'Their albums over time', other: 'Singles and the rest',
-    sub: (s) => `Plays per ${a.river.unit} of each album since you first played them; the top ${a.river.artists.length} are <b>${s}%</b> of it.`,
+    sub: (s) => `The top ${a.river.artists.length} albums are <b>${s}%</b> of the plays`,
     link: (n) => albumAttrs(a.name, n) }) : '';
   P.life = lifeCharts(a, 'them', pic, a.name + a.name);
   P.record = '';
@@ -6433,7 +6433,7 @@ function rarelyViz(r) {
 
 function wishlistViz(w) {
   if (!w || !w.length) return '';
-  return `<div class="viz"><h2>Wishlist ideas</h2><span class="sub">Albums you stream a lot but don't own on vinyl. Tap one to look on Discogs.</span><div class="covers">${w.map((x) =>
+  return `<div class="viz"><h2>Wishlist ideas</h2><span class="sub">Streamed a lot, not on your shelf</span><div class="covers">${w.map((x) =>
     `<button class="rec" data-url="${esc(x.search)}">${coverHtml(x.image, x.album, x.artist)}<b>${esc(x.album)}</b><small>${esc(x.artist)}</small><small class="meta">${plural(x.plays, 'play')}</small></button>`).join('')}</div></div>`;
 }
 
@@ -6939,7 +6939,7 @@ function whoViz(s, n = 10) {
   const words = [steady ? `<b>${esc(steady.name)}</b> was the steadiest: ${steady.present} of the ${W.hb.active} ${W.unitWord} with music.` : '',
     wave ? `<b>${esc(wave.name)}</b> came in a wave.` : '', fresh ? `<b>${esc(fresh.name)}</b> is new to you.` : ''].filter(Boolean).join(' ');
   const rows = [...W.rows].sort((a, b) => a.peak - b.peak).map((r) => `<button class="who-r" data-artist="${esc(r.name)}">${coverHtml(r.photo, r.name, r.name, 'tiny round')}<span class="t"><b>${esc(r.name)}</b><small class="k-${r.kind}">${esc(r.word)}</small></span>${ridgeSvg(r.counts, r.color, max)}</button>`).join('');
-  return `<div class="viz who"><h2>Who you played when</h2><span class="sub">Your top artists in the order they peaked. Steady means most ${W.unitWord}, a wave means half their plays within ${W.spanWords}.</span>
+  return `<div class="viz who"><h2>Who you played when</h2><span class="sub">Steady: most ${W.unitWord}. Wave: half their plays within ${W.spanWords}.</span>
     <div class="who-ax"><span>${esc(periodLabel(W.hb.starts[0], W.hb.unit, true))}</span><span>${esc(periodLabel(W.hb.starts[W.B - 1], W.hb.unit, true))}</span></div>${rows}
     ${words ? `<div class="readout">${words}</div>` : ''}</div>`;
 }
@@ -6950,16 +6950,16 @@ function whoViz(s, n = 10) {
 function newArtistsView(s, page) {
   const na = s.newArtists || {}, found = na.found || [];
   if (s.summary.historyStartsHere && !na.count) return `<div class="viz"><h2>New artists</h2><span class="sub">Your history starts ${esc(inPeriod(s.range))}, so every artist is new here.</span></div>`;
-  if (!na.count) return `<div class="viz"><h2>New artists</h2><span class="sub">No first listens ${esc(inPeriod(s.range))}: you stuck with the artists you knew.</span></div>`;
+  if (!na.count) return `<div class="viz"><h2>New artists</h2><span class="sub">No new artists ${esc(inPeriod(s.range))}.</span></div>`;
   const like = discoverOn() && found.length ? `<button class="btn tonal" data-likethem>${icon('explore')}More like them</button>` : '';
   if (page) {
     const more = na.count > found.length ? `<p class="hint">The ${found.length} played most since; ${num(na.count - found.length)} more you heard only now and then.</p>` : '';
-    return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}. Most played first, with what played right before you found them.</span>
+    return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}.</span>
       ${like ? `<div class="btn-row">${like}</div>` : ''}<div class="na-list">${found.map((f) => `<button class="na-item" data-artist="${esc(f.name)}">${artistFace(f)}<span class="t"><b>${esc(f.name)}</b><small>first played ${esc(dateLabel(f.first))}${f.from ? `, after ${esc(f.from)}` : ''}</small></span><span class="v">${num(f.plays)}<small>${f.plays === 1 ? 'play' : 'plays'}</small></span></button>`).join('')}</div>${more}</div>`;
   }
   const faces = tradingCards(found, na.count);
   const all = found.length > 1 ? `<button class="btn text" data-newlist>${icon('view-list')}All ${num(na.count)}</button>` : '';
-  return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}, as cards to collect: the day you found each and what played right before. The shiny ones you kept playing.</span>
+  return `<div class="viz"><h2>New artists</h2><span class="sub">${plural(na.count, 'artist')} you heard for the first time${na.kept ? `, ${num(na.kept)} you kept playing` : ''}. The shiny ones you kept playing.</span>
     ${faces}${like || all ? `<div class="btn-row">${like}${all}</div>` : ''}</div>`;
 }
 /** New artists as cards to collect: photo, genre, plays, the day found and what led there; foil for the ones you kept playing. */
@@ -6988,7 +6988,7 @@ function songCards(a) {
   if (list.length < 2) return '';
   const counts = CARD_TIERS.map(([n, k, l]) => [l, list.filter((x) => cardTier(x.plays)[1] === k).length]).filter(([, c]) => c);
   const cards = list.map((x, i) => tierCard({ ...x, artist: a.name }, `${i + 1}/${list.length}`, `<b>${x.first ? esc(shortDate(x.first)) : '–'}</b>first`)).join('');
-  return `<div class="viz"><h2>Your cards</h2><span class="sub">Their songs as cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100.${counts.length ? ` You hold ${counts.map(([l, c]) => `${c} ${l.toLowerCase()}`).join(', ')}.` : ''}</span>
+  return `<div class="viz"><h2>Your cards</h2><span class="sub">Bronze at 10 plays, silver at 25, gold at 50, holo at 100.${counts.length ? ` You hold ${counts.map(([l, c]) => `${c} ${l.toLowerCase()}`).join(', ')}.` : ''}</span>
     <div class="tcards">${cards}</div><button class="btn text" data-cardbook>${icon('chevron-right')}All your cards</button></div>`;
 }
 /** A song [x] as a card with its tier and the way to the next one; [corner] at the top right, [second] next to its plays. */
@@ -7045,7 +7045,7 @@ function renderCardbook() {
   }
   const tiers = CARD_TIERS.map(([, k, l]) => ({ k, l, list: cards.filter((x) => cardTier(x.plays)[1] === k) }));
   const fresh = cards.filter((x) => x.reached >= B.monthFrom);
-  let h = `<div class="viz"><h2>Your cards</h2><span class="sub">Every song you played 10 times or more, as a card: bronze at 10 plays, silver at 25, gold at 50, holo at 100. ${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}.</span>
+  let h = `<div class="viz"><h2>Your cards</h2><span class="sub">${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}. Bronze at 10 plays, silver at 25, gold at 50, holo at 100.</span>
     <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
   // The cards a few plays from their next tier, and the songs a few from becoming one.
   const toGo = (x) => { const n = CARD_TIERS.slice().reverse().find(([m]) => m > x.plays); return n ? n[0] - x.plays : Infinity; };
@@ -7085,7 +7085,7 @@ const repeatWords = (x) => [x.week ? `${x.week} in one week` : '', x.run ? `${x.
 function onRepeatViz(s, page) {
   const list = repeatList(s).slice(0, page ? 40 : 8);
   if (!list.length) return '';
-  return `<div class="viz"><h2>On repeat</h2><span class="sub">Songs you played again and again: seven times or more in one week, or back to back</span><div class="rank">${list.map((x) =>
+  return `<div class="viz"><h2>On repeat</h2><span class="sub">Seven or more plays in a week, or back to back</span><div class="rank">${list.map((x) =>
     `<button class="r with-cover" ${trackAttrs(x.artist, x.track, { album: x.album, cover: x.cover })}>${coverHtml(x.cover, x.album || x.track, x.artist, 'tiny')}<span class="t"><b>${esc(x.track)}</b><small>${esc(x.artist)}, ${x.week ? 'week of ' : ''}${esc(shortDate(x.at))}</small></span><span class="rp">${esc(repeatWords(x))}</span></button>`).join('')}</div></div>`;
 }
 /** The decades as one bar, oldest first and darker toward now; [tap]: each opens its sheet. */
@@ -7101,7 +7101,7 @@ function decadesView(s) {
   if (ds.length < 2 && !statsDecade) return '';
   const known = Math.max(1, x.known);
   const share = x.total ? Math.round((x.known / x.total) * 100) : 0;
-  return `<div class="viz"><h2>Decades</h2><span class="sub">When the music you played came out (${share}% of plays have a year). Tap a decade for more.</span>${decadeBar(ds, known, true)}
+  return `<div class="viz"><h2>Decades</h2><span class="sub">${share}% of plays have a known year</span>${decadeBar(ds, known, true)}
     <div class="chips">${ds.map((d) => `<button class="chip${statsDecade === d.decade ? ' on' : ''}" data-decade="${d.decade}">${d.decade}s<small>&nbsp;${pct(d.plays / known)}</small></button>`).join('')}</div></div>`;
 }
 /** One decade: its share, Stats for it alone, and your records from it. */
@@ -7135,7 +7135,7 @@ function tasteHtml() {
   if (!EXPLORE && !tasteAsked) { tasteAsked = true; send({ t: 'explore' }); }
   const x = EXPLORE || {}, tail = x.tail || {};
   const intro = tail.artists ? `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}.</p>` : '';
-  return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All of your history, whatever the period above</span>${intro}
+  return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All time</span>${intro}
     <div class="xp-tiles">
       <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
@@ -7224,7 +7224,7 @@ function lineupViz(s, o = {}) {
   const fs = Math.max(26, Math.min(52, Math.round(400 / Math.max(6, head.length))));
   const sm = s.summary || {}, na = (s.newArtists || {}).count || 0;
   const when = o.when || (s.range.kind === 'all' ? 'all of your history' : s.range.kind === 'day' && s.range.running ? 'your day today' : `your ${periodName(s.range)}`);
-  const sub = o.sub || `The ${s.range.kind === 'all' ? 'artists of all time' : `${periodWord(s.range.kind)}'s artists`} as a festival bill: the more you played them, the bigger the name`;
+  const sub = o.sub || 'The more you played them, the bigger the name';
   return `<div class="viz lineup-viz"><h2>${esc(o.title || 'Your lineup')}</h2><span class="sub">${sub}</span>
     <div class="lineup" style="--l1:${h1.toFixed(0)};--l2:${((h1 + 300) % 360).toFixed(0)}"><div class="lu-k">Heavy Rotation presents</div><div class="lu-d">${esc(when)}</div>
       <div class="lu-head" style="font-size:${fs}px">${name(a[0])}</div>${row(a.slice(1, 3), 'b')}${row(a.slice(3, 7), 'm')}${row(a.slice(7, 19), 's')}
@@ -7239,7 +7239,7 @@ function coverWallViz(s) {
     : s.range.kind === 'month' ? `${new Date(s.range.from * 1000).toLocaleDateString([], { month: 'long' })} in covers`
     : s.range.kind === 'all' ? 'All time in covers' : s.range.kind === 'week' ? 'Your week in covers' : `${periodName(s.range)} in covers`;
   const tiles = boxes.map((b, i) => `<button class="${b.w * b.h > 60000 ? 'big' : ''}" ${albumAttrs(b.al.artist, b.al.title)} data-cover="${esc(b.al.cover)}" style="left:${(b.x / 10).toFixed(2)}%;top:${(b.y / 10).toFixed(2)}%;width:${(b.w / 10).toFixed(2)}%;height:${(b.h / 10).toFixed(2)}%" aria-label="${esc(`${b.al.title} by ${b.al.artist}, ${plural(b.al.plays, 'play')}`)}">${coverHtml(b.al.cover, b.al.title, b.al.artist)}${b.w > 180 && b.h > 140 ? `<small>${esc(b.al.title)}</small>` : ''}</button>`).join('');
-  return `<div class="viz"><h2>${esc(title)}</h2><span class="sub">The albums you played, each as big as its plays. Tap one for its page.</span><div class="cover-wall">${tiles}</div></div>`;
+  return `<div class="viz"><h2>${esc(title)}</h2><div class="cover-wall">${tiles}</div></div>`;
 }
 
 // ---- genre pages: their records at the top, fanned out or on a picture disc (Settings → Look) ----
@@ -7255,7 +7255,7 @@ function genreArt(g) {
     while (four.length < 4) four.push(al[four.length % al.length]);
     return `<div class="g-disc" aria-hidden="true"><div class="g-mos">${four.map((x) => coverHtml(x.cover, x.title, x.artist)).join('')}</div><div class="g-lbl"><span>${esc(g.label)}</span></div></div>`;
   }
-  const pos = [[-112, -13, 0.88, 1], [-58, -6, 0.94, 2], [0, 0, 1, 4], [58, 6, 0.94, 3], [112, 13, 0.88, 1]].slice(0, al.length);
+  const pos = [[-112, -13, 0.88, 1], [-58, -6, 0.94, 2], [0, 0, 1, 4], [58, 6, 0.94, 3], [112, 13, 0.88, 1]];
   const order = al.length === 2 ? [1, 2] : al.length === 3 ? [1, 2, 3] : al.length === 4 ? [0, 1, 2, 3] : [0, 1, 2, 3, 4];
   const covers = al.map((x, i) => {
     const [dx, rot, sc, z] = pos[order[i]];
@@ -7291,10 +7291,10 @@ function weekViz(s) {
   if (!w) return '';
   const max = Math.max(1, ...w.days.map((v) => v || 0), ...w.last);
   const cols = w.days.map((v, i) => `<div class="d${i === w.today ? ' today' : ''}${v == null ? ' ahead' : ''}" data-col="wk" data-i="${i}">
-    <div class="cl"><i class="last" style="height:${((w.last[i] / max) * 100).toFixed(1)}%"></i>${v ? `<i class="v" style="height:${((v / max) * 100).toFixed(1)}%"></i>` : ''}</div><span>${DOW_LETTER[i]}</span></div>`).join('');
+    <div class="cl">${v ? `<i class="v" style="height:${((v / max) * 100).toFixed(1)}%"></i>` : ''}${w.last[i] ? `<i class="last" style="bottom:${((w.last[i] / max) * 100).toFixed(1)}%"></i>` : ''}</div><span>${DOW_LETTER[i]}</span></div>`).join('');
   const t = w.today;
   const def = t >= 0 ? `Today so far: <b>${plural(w.days[t] || 0, 'play')}</b>; last ${DOW_LONG[t].replace(/s$/, '')}: ${w.last[t]} in all` : weekText(w, w.days.indexOf(Math.max(...w.days.map((v) => v || 0))));
-  return `<div class="viz"><h2>Your week</h2><span class="sub">Plays per day; the week before in outline</span><div class="wk">${cols}</div><div class="readout" id="ro-wk">${def}</div></div>`;
+  return `<div class="viz"><h2>Your week</h2><div class="wk">${cols}</div><div class="readout" id="ro-wk">${def}</div></div>`;
 }
 const weekText = (w, i) => `${DOW_LONG[i].replace(/s$/, '')}: <b>${plural(w.days[i] || 0, 'play')}</b>; a week earlier: ${w.last[i]}`;
 
@@ -7302,7 +7302,7 @@ function daysViz(s) {
   const w = s.week;
   if (!w) return '';
   const rows = w.strips.map((p, i) => `<div class="row${w.days[i] == null ? ' ahead' : ''}"><span>${DOW[i]}</span>${stripHtml(p, i === w.today ? clockHours() : null, true)}</div>`).join('');
-  return `<div class="viz"><h2>Your days</h2><span class="sub">When you listened, day by day</span><div class="ddays">${rows}<div class="row"><span></span>${hoursAxis()}</div></div>${legendHtml(w.artists || [])}</div>`;
+  return `<div class="viz"><h2>Your days</h2><div class="ddays">${rows}<div class="row"><span></span>${hoursAxis()}</div></div>${legendHtml(w.artists || [])}</div>`;
 }
 
 // ---- the Day tab: built for a handful of songs rather than thousands ----
@@ -7340,7 +7340,7 @@ function daylineViz(s) {
     return `<div class="s"${x.album ? ` ${albumAttrs(x.albumArtist, x.album)}` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
       <span class="w"><b>${plural(x.count, 'song')}</b>, ${what}${how ? `<small>${how}</small>` : ''}</span><i class="sw" style="background:${x.color ? `var(--a${x.color})` : 'var(--md-outline)'}"></i></div>`;
   }).join('');
-  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session: music without a long break</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
+  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
     <div class="dsessions">${ss}</div></div>`;
 }
 function firstLatestViz(s) {
