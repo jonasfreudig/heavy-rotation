@@ -863,38 +863,48 @@ class Stats(
         if (sub.size == 0) return if (':' in key) genrePage(family) else null
         val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals)
         val o = s.life { true } ?: return null
-        val ex = s.explore()
+        // Each part on its own: one that fails on some history leaves the rest of the page, and says why.
+        val broken = ArrayList<String>()
+        fun <T> part(name: String, make: () -> T): T? = try {
+            make()
+        } catch (e: RuntimeException) {
+            broken += "$name: ${e.javaClass.simpleName} ${e.message.orEmpty()}".trim()
+            null
+        }
+        val ex = part("explore") { s.explore() }
         val (famTotals, subTotals) = genreTotals
         val fid = genreIds[family] ?: -1
         val famPlays = if (fid >= 0) famTotals[fid] else 0
         // Its place among the families, or among all subgenres.
         val rank = if (':' in key) subIds[key]?.let { id -> subTotals.count { it > subTotals[id] } + 1 } ?: 0
         else if (fid >= 0) famTotals.count { it > famPlays } + 1 else 0
-        val inside = subsOf(family, 40)
+        val inside = part("inside") { subsOf(family, 40) }.orEmpty()
         val per = IntArray(sub.artistNames.size)
         for (i in 0 until sub.size) per[sub.artist[i]]++
         val all = per.indices.sortedByDescending { per[it] }.take(GENRE_ALL_MAX).map { JSONObject().put("name", sub.artistNames[it]).put("plays", per[it]) }
         // Artists mostly filed elsewhere who are partly this family too (Surprise Chef: Soul & Funk, and Jazz).
-        val also = if (':' in key || fid < 0) emptyList() else {
+        val also = if (':' in key || fid < 0) emptyList() else part("also") {
             val plays = IntArray(h.artistNames.size).also { p -> for (a in h.artist) p[a]++ }
             plays.indices.filter { a -> plays[a] > 0 && artistGenre[a] != fid && family in genres.of(h.artistNames[a], null).first }
                 .sortedByDescending { plays[it] }.take(GENRE_ALSO_MAX).map { JSONObject().put("name", h.artistNames[it]).put("plays", plays[it]) }
-        }
+        }.orEmpty()
         return o.put("key", key).put("kind", if (':' in key) "sub" else "family").put("all", JSONArray(all)).put("label", genres.labelOf(key))
             .put("also", JSONArray(also))
             .put("share", sub.size.toDouble() / maxOf(1, h.size)).put("ofFamily", sub.size.toDouble() / maxOf(1, famPlays))
             .put("family", JSONObject().put("key", family).put("label", Genres.label(family)).put("plays", famPlays).put("rank", if (fid >= 0) famTotals.count { it > famPlays } + 1 else 0))
-            .put("inside", JSONArray(inside.map { subJson(it) }))
-            .put("general", maxOf(0, famPlays - subKeys.indices.filter { subKeys[it].startsWith("$family:") }.sumOf { subTotals[it] }))
-            .put("shelf", JSONArray(collection.filter { genres.owns(it, key) }.map { it.releaseId }.distinct()))
-            .put("artists", sub.artistNames.size).put("rank", rank).put("top", s.top(0, sub.size, TOP_MAX))
-            .put("lost", ex.getJSONArray("lostArtists")).put("lostAlbums", ex.getJSONArray("lostAlbums"))
-            .put("decades", s.decades(0, sub.size))
-            .put("calendar", date(nowSec).let { d ->
+            .put("inside", JSONArray(part("inside") { inside.map { subJson(it) } }.orEmpty()))
+            .put("general", part("general") { maxOf(0, famPlays - subKeys.indices.filter { subKeys[it].startsWith("$family:") }.sumOf { subTotals[it] }) } ?: 0)
+            .put("shelf", JSONArray(part("shelf") { collection.filter { genres.owns(it, key) }.map { it.releaseId }.distinct() }.orEmpty()))
+            .put("artists", sub.artistNames.size).put("rank", rank).put("top", part("top") { s.top(0, sub.size, TOP_MAX) } ?: JSONObject())
+            .put("lost", ex?.optJSONArray("lostArtists") ?: JSONArray()).put("lostAlbums", ex?.optJSONArray("lostAlbums") ?: JSONArray())
+            .put("decades", part("decades") { s.decades(0, sub.size) } ?: JSONObject())
+            .put("calendar", part("calendar") {
+                val d = date(nowSec)
                 // Twelve whole months, this one the last.
                 val r = Range("g12", "Last 12 months", ms(d.withDayOfMonth(1).minusMonths(11)) / 1000, ms(d.plusDays(1)) / 1000, "12m")
                 s.calendar(r, sub.lowerBound(r.from), sub.size)
-            })
+            } ?: JSONObject())
+            .also { if (broken.isNotEmpty()) it.put("broken", JSONArray(broken)) }
     }
 
     /** The name of a genre or style key from anywhere ("indie", "indie:shoegaze", "Post-Punk"). */

@@ -4180,7 +4180,7 @@ function renderGenre() {
   if (!g || !isOpen('genrePage')) return;
   const shelfRecs = (g.shelf || []).map((id) => COLL.find((r) => r.id === id)).filter(Boolean);
   const fam = g.family || null, isSub = g.kind === 'sub';
-  const crumbs = fam ? `<nav class="crumb"><button data-genremap>Genres</button><span>›</span>${isSub ? `<button data-genre="${esc(fam.key)}" data-glabel="${esc(fam.label)}">${esc(fam.label)}</button><span>›</span>` : ''}<b>${esc(g.label)}</b></nav>` : '<span class="k">Genre</span>';
+  const crumbs = fam ? `<nav class="crumb"><button data-genremap>Genres</button><span>›</span>${isSub ? `<button data-genre="${esc(fam.key)}" data-glabel="${esc(fam.label)}">${esc(fam.label)}</button><span>›</span>` : ''}<b>${esc(g.label)}</b></nav>` : '';
   const meta = !g.plays ? '' : isSub
     ? `${pct(g.ofFamily)} of ${esc(fam.label)}, ${pct(g.share)} of everything you play`
     : `${pct(g.share)} of everything you play${g.rank ? `, your number ${g.rank} genre` : ''}`;
@@ -4190,19 +4190,22 @@ function renderGenre() {
   const shelfHtml = shelfRecs.length ? `<div class="viz"><h2>On your shelf</h2><span class="sub">${plural(shelfRecs.length, 'record')} with ${esc(g.label)} on Discogs</span>
       <div class="xcards">${shelfRecs.map((r) => `<button class="xcard" data-rec="${r.id}">${coverHtml(r.cover || r.thumb, r.title, r.artist)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small><small class="meta">${r.year || ''}</small></button>`).join('')}</div></div>` : '';
   if (g.loading) h += '<div class="lin inline indet"><i></i></div>';
+  else if (g.error) h += `<div class="empty small"><p>This page couldn't be put together. If it keeps happening, the error below helps find out why.</p><p class="hint">${esc(g.error)}</p></div>`;
   else if (g.missing) h += `<div class="empty small"><p>None of your plays has ${esc(g.label)} as its main genre${shelfRecs.length ? ', but some of your records do' : ''}.</p></div>`;
-  else {
+  else try {
     const top = g.top || {};
     const P = {};
+    // The charts each on their own: one that can't draw this genre leaves the rest of the page.
+    const part = (f) => { try { return f(); } catch (e) { console.error('genre page part', e); return ''; } };
     P.tiles = `<div class="tiles">
       ${tile('Plays', num(g.plays), `on ${plural(g.days, 'day')}`, '', 'music')}
       ${tile('Artists', num(g.artists), (top.artists || [])[0] ? `most: ${top.artists[0].name}` : '', '', 'heart')}
       ${tile('Since', esc(monthYear(g.first)), `last played ${esc(dateLabel(g.last))}`, '', 'history')}
-      ${tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire')}
+      ${g.bestDay ? tile('Biggest day', plural(g.bestDay.count, 'play'), esc(dateLabel(g.bestDay.day)), '', 'fire') : ''}
     </div>
     <div class="btn-row"><button class="btn filled" data-statsgenre="${esc(g.key)}" aria-label="Stats for ${esc(g.label)}">${icon('chart')}Stats</button>
       <button class="btn tonal" data-genrepl>${icon('playlist')}Make a playlist</button></div>`;
-    P.inside = genreInsideHtml(g);
+    P.inside = part(() => genreInsideHtml(g));
     if ((top.artists || []).length) {
       P.artists = `<div class="viz"><h2>Your ${esc(g.label)} artists</h2><span class="sub">Most played, all time</span>
         <div class="xcards">${top.artists.slice(0, 10).map((a) => `<button class="xcard" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${plural(a.plays, 'play')}</small></button>`).join('')}</div>${alsoHtml(g)}</div>`;
@@ -4232,16 +4235,19 @@ function renderGenre() {
       const max = Math.max(1, ...ds.map((d) => d.plays));
       P.decades = `<div class="viz"><h2>Decades</h2><span class="sub">When your ${esc(g.label)} came out</span><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
     }
-    P.life = lifeCharts(g, 'it', '', g.label + g.label);
-    P.lineup = lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
-      { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` });
+    P.life = part(() => lifeCharts(g, 'it', '', g.label + g.label));
+    P.lineup = part(() => lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
+      { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: `Your ${esc(g.label)} artists as a festival bill: the more you played them, the bigger the name` }));
     const c = g.calendar || {};
-    P.year = (c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
-      ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : '';
+    P.year = part(() => ((c.counts || []).some((v) => v > 0) ? `<div class="viz cal-viz"><h2>Your ${esc(g.label)} year</h2><span class="sub">Twelve months day by day: darker days had more ${esc(g.label)}. Tap a day for its stats.</span>
+      ${yearGrid(c, { range: {} }, Math.max(1, ...c.counts), [-1, -2])}</div>` : ''));
     P.shelf = shelfHtml;
     h += tabbedHtml('genrePage', g.tab, GENRE_TABS, GENRE_LONG, P);
+  } catch (e) {
+    console.error('genre page', e);
+    h += `<div class="empty small"><p>This page couldn't be put together. If it keeps happening, the error below helps find out why.</p><p class="hint">${esc(String(e && e.message || e))}</p></div>`;
   }
-  if (shelfRecs.length && (g.loading || g.missing)) h += shelfHtml;
+  if (shelfRecs.length && (g.loading || g.missing || g.error)) h += shelfHtml;
   morph($('#genreBody'), h);
   tint($('#genreBody'), (((g.top || {}).albums || []).find((x) => x.cover) || {}).cover || '', (g.family ? g.family.label : g.label) + g.label);
   syncPageTabs($('#genrePage'));

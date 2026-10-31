@@ -745,8 +745,15 @@ object Core {
                 val key = msg.optString("key")
                 statsExec.execute {
                     val s = currentStats()
-                    val j = s?.genrePage(key) ?: JSONObject().put("missing", true)
+                    // A page that fails says so; else it would wait for an answer forever.
+                    val j = try {
+                        s?.genrePage(key) ?: JSONObject().put("missing", true)
+                    } catch (e: Throwable) {
+                        android.util.Log.w("HeavyRotation", "genre page $key", e)
+                        JSONObject().put("error", "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+                    }
                     push("onGenre") { j.put("key", key).put("req", msg.optInt("req")) }
+                    if (j.has("broken")) android.util.Log.w("HeavyRotation", "genre page $key: ${j.optJSONArray("broken")}")
                     // Photos for its top artists, if Deezer has them; the page comes again.
                     val top = j.optJSONObject("top")?.optJSONArray("artists")
                     val need = (0 until (top?.length() ?: 0)).map { top!!.getJSONObject(it) }.filter { it.optString("photo").isEmpty() }.map { it.getString("name") }

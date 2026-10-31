@@ -9,6 +9,7 @@ import app.recordshelf.history.Stats
 import app.recordshelf.net.DeezerClient
 import app.recordshelf.net.DzRelease
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -217,5 +218,38 @@ class DiscographyTest {
         assertEquals("La Femme d'Argent", top.getJSONArray("tracks").getJSONObject(0).getString("title"))
         assertEquals("the year from the shelf", 1990, g.getJSONObject("decades").getJSONArray("decades").getJSONObject(0).getInt("decade"))
         assertEquals(null, s.genrePage("polka"))
+    }
+
+    @Test
+    fun genrePagesOfGenresLongAgo() {
+        // Ambient and bebop from the artists' Last.fm tags, played years ago, a few plays each; this year mostly rock.
+        val b = History.Builder()
+        repeat(4) { b.add(at(2023, 3, 1 + it), "Brian Eno", "An Ending", "Apollo") }
+        repeat(2) { b.add(at(2024, 1, 3 + it), "Stars of the Lid", "Requiem for Dying Mothers", "") }
+        b.add(at(2024, 5, 2), "Charlie Parker", "Ko-Ko", "Bird")
+        b.add(at(2025, 2, 2), "Dizzy Gillespie feat. Charlie Parker", "Salt Peanuts", "")
+        repeat(3) { b.add(at(2026, 10, 1 + it), "IDLES", "Grace", "TANGK") }
+        repeat(5) { b.add(at(2026, 9, 1 + it), "Radiohead", "Treefingers", "Kid A") }
+        val h = b.build()
+        val tags = mapOf(
+            Genres.artistKey("Brian Eno") to Genres.fromTags(listOf("ambient" to 100, "electronic" to 70, "experimental" to 50), "Brian Eno"),
+            Genres.artistKey("Stars of the Lid") to Genres.fromTags(listOf("drone" to 100, "ambient" to 90), "Stars of the Lid"),
+            Genres.artistKey("Charlie Parker") to Genres.fromTags(listOf("jazz" to 100, "bebop" to 90), "Charlie Parker"),
+            Genres.artistKey("Dizzy Gillespie") to Genres.fromTags(listOf("jazz" to 100, "bebop" to 80), "Dizzy Gillespie"),
+            Genres.artistKey("IDLES") to Genres.fromTags(listOf("post-punk" to 100, "punk" to 60), "IDLES"),
+            Genres.artistKey("Radiohead") to Genres.fromTags(listOf("alternative" to 100, "ambient" to 30, "experimental" to 40), "Radiohead"),
+        )
+        val s = Stats(h, ZoneId.of("UTC"), at(2026, 10, 25), emptyList(), Genres(emptyList(), tags))
+        val opts = s.genreOptions()
+        val keys = (0 until opts.length()).flatMap { i ->
+            val o = opts.getJSONObject(i)
+            listOf(o.getString("key")) + (0 until (o.optJSONArray("subs")?.length() ?: 0)).map { o.getJSONArray("subs").getJSONObject(it).getString("key") }
+        }
+        assertTrue(keys.toString(), "ambient" in keys && "jazz:bebop" in keys)
+        for (k in keys) {
+            val g = s.genrePage(k)
+            assertTrue("$k has a page", g != null && g.getInt("plays") > 0)
+            assertTrue("$k built whole: ${g!!.optJSONArray("broken")}", !g.has("broken"))
+        }
     }
 }
