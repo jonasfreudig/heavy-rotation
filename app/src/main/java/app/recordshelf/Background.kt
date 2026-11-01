@@ -216,10 +216,12 @@ object SpinNotifier {
         val live = s.items.filter { it.state != SpinItem.SKIPPED }
         val cur = s.currentIndex(now)
         val item = if (cur >= 0) s.items[cur] else live.firstOrNull { it.startMs > now }
-        val pos = item?.let { live.indexOf(it) + 1 } ?: 0
+        // Its place on its side: "Side B, 1 of 5".
+        val side = live.filter { it.track.side == item?.track?.side }
+        val pos = item?.let { side.indexOf(it) + 1 } ?: 0
         val sub = listOfNotNull(
             item?.track?.side?.takeIf { it.isNotEmpty() }?.let { sideName(it).replaceFirstChar { c -> c.uppercase() } },
-            if (pos > 0) "$pos of ${live.size}" else null,
+            if (pos > 0) "$pos of ${side.size}" else null,
         ).joinToString(", ")
         val b = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_record)

@@ -977,7 +977,7 @@ class Stats(
         return JSONObject().put("all", h.size).put("known", known).put("families", genreOptions(30, 6))
     }
 
-    // ---- the musical atlas: universe, family tree, landscape (all time) ----
+    // ---- the musical atlas: universe and family tree (all time) ----
 
     /** Each artist's first scrobble (index), and what came right before it: an artist, -1 (nothing in that session) or -2 (around from the start). */
     private val origins: Pair<IntArray, IntArray> by lazy {
@@ -1118,23 +1118,6 @@ class Stats(
             }))
             .put("after", kept.indices.count { kept[it] && from[it] >= 0 }).put("blue", kept.indices.count { kept[it] && from[it] == -1 })
             .put("start", kept.indices.count { kept[it] && from[it] == -2 }).put("kept", kept.count { it }))
-        // The landscape: your most played artists' plays per month.
-        val tops = h.artistNames.indices.filter { l.plays[it] > 0 }.sortedByDescending { l.plays[it] }.take(Atlas.MOUNTAINS)
-        val topIndex = HashMap<Int, Int>()
-        tops.forEachIndexed { i, a -> topIndex[a] = i }
-        val counts = Array(tops.size) { IntArray(nm) }
-        for (i in 0 until h.size) topIndex[h.artist[i]]?.let { counts[it][monthKey(h.ts[i]) - m0]++ }
-        val series = tops.indices.map { i ->
-            val c = counts[i]
-            val peak = c.indices.maxByOrNull { c[it] } ?: 0
-            val s = Atlas.shape(c)
-            JSONObject().put("name", h.artistNames[tops[i]]).put("plays", l.plays[tops[i]]).put("counts", JSONArray(c.toList()))
-                .put("peak", c[peak]).put("peakAt", monthStart(m0 + peak)).put("kind", s.kind).put("months", s.months)
-                .put("genre", genreOfArtist(tops[i])).put("photo", artistPhoto(h.artistNames[tops[i]]))
-                .put("from", monthStart(m0 + (c.indexOfFirst { it > 0 }.takeIf { it >= 0 } ?: 0)))
-                .put("_peak", peak)
-        }.sortedBy { it.getInt("_peak") }.onEach { it.remove("_peak") }
-        o.put("landscape", JSONObject().put("monthsFrom", monthStart(m0)).put("months", nm).put("series", JSONArray(series)))
     }
 
     // ---- you against everyone on Last.fm (all time) ----
@@ -2832,6 +2815,13 @@ class Stats(
     }
 
     /** Your [max] most played artists with their plays, for the world map. */
+    /** The most played artists in period [r], with their plays there, for the period's map. */
+    fun mapArtistsIn(r: Range, max: Int = MAP_ARTISTS): List<Pair<String, Int>> {
+        val c = IntArray(h.artistNames.size)
+        for (i in h.lowerBound(r.from) until h.lowerBound(r.to)) c[h.artist[i]]++
+        return c.indices.filter { c[it] > 0 }.sortedByDescending { c[it] }.take(max).map { h.artistNames[it] to c[it] }
+    }
+
     fun mapArtists(max: Int = MAP_ARTISTS): List<Pair<String, Int>> {
         val l = artistLife
         return l.plays.indices.filter { l.plays[it] > 0 }.sortedByDescending { l.plays[it] }.take(max).map { h.artistNames[it] to l.plays[it] }

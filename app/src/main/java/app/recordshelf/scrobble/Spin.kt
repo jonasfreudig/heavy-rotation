@@ -48,15 +48,17 @@ class Spin(
     fun currentIndex(now: Long): Int =
         items.indexOfLast { it.state != SpinItem.SKIPPED && now >= it.startMs && now < it.endMs }
 
-    fun isOver(now: Long) = items.none { it.state == SpinItem.PLANNED } && now >= endMs()
+    /** Whether every track has played (and [linger] more has passed: time to turn the record over). */
+    fun isOver(now: Long, linger: Long = 0L) = items.none { it.state == SpinItem.PLANNED } && now >= endMs() + linger
 
     /** Marks and returns the tracks that count as listened at [now]. */
     fun takeDue(now: Long): List<SpinItem> =
         items.filter { it.state == SpinItem.PLANNED && now >= it.dueMs }.onEach { it.state = SpinItem.SCROBBLED }
 
-    /** The next moment something changes: a track starts, ends or starts to count. */
-    fun nextEventMs(now: Long): Long? {
+    /** The next moment something changes: a track starts, ends or starts to count, or the [linger] after the last one ends. */
+    fun nextEventMs(now: Long, linger: Long = 0L): Long? {
         val times = ArrayList<Long>()
+        if (linger > 0) times += endMs() + linger
         for (it in items) {
             if (it.state == SpinItem.PLANNED) times += it.dueMs
             if (it.state != SpinItem.SKIPPED) {
@@ -126,7 +128,7 @@ class Spin(
 
     /** What the UI shows: the schedule with each track's state. */
     fun toUiJson(): JSONObject = JSONObject().put("id", id).put("releaseId", releaseId).put("album", album).put("artist", artist)
-        .put("cover", cover).put("nextSide", nextSide() ?: JSONObject.NULL)
+        .put("cover", cover).put("nextSide", nextSide() ?: JSONObject.NULL).put("sides", sides.toJsonArray())
         .put(
             "items",
             JSONArray().also { a ->

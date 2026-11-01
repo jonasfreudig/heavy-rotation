@@ -13,7 +13,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.math.hypot
 
-/** The musical atlas: the universe of linked artists, the family tree of first plays, the landscape. */
+/** The musical atlas: the universe of linked artists and the family tree of first plays. */
 class AtlasTest {
     private fun day(d: Int) = LocalDateTime.of(2026, 1, 1, 20, 0).toEpochSecond(ZoneOffset.UTC) + d * 86_400L
 
@@ -73,22 +73,6 @@ class AtlasTest {
         assertEquals("start", chain.getJSONObject(2).getString("how"))
         val x = s.artist("X", s.range("all"))!!
         assertEquals("B1", x.getJSONArray("ledTo").getJSONObject(0).getString("name"))
-    }
-
-    @Test
-    fun landscapeReadsTheShapes() {
-        val l = stats().atlas().getJSONObject("landscape")
-        assertEquals("January to April", 4, l.getInt("months"))
-        val series = l.getJSONArray("series")
-        assertTrue("ordered by when they peaked", series.getJSONObject(0).getString("name").startsWith("A"))
-        assertTrue(series.getJSONObject(series.length() - 1).getString("name").startsWith("B"))
-        assertTrue((0 until series.length()).map { series.getJSONObject(it) }.all { it.getJSONArray("counts").length() == 4 })
-        // The kinds of mountain, from plays per month.
-        assertEquals(Atlas.Shape("obsession", 2), Atlas.shape(intArrayOf(0, 0, 30, 20, 1, 0, 0, 0)))
-        assertEquals(Atlas.Shape("companion", 14), Atlas.shape(IntArray(14) { 10 + it % 3 }))
-        assertEquals(Atlas.Shape("comeback", 7), Atlas.shape(intArrayOf(20, 10, 0, 0, 0, 0, 0, 0, 0, 15, 10)))
-        assertEquals(Atlas.Shape("phase", 6), Atlas.shape(intArrayOf(5, 8, 9, 7, 6, 5, 0, 0)))
-        assertEquals(Atlas.Shape("phase", 0), Atlas.shape(IntArray(3)))
     }
 
     @Test

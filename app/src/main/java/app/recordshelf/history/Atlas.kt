@@ -10,9 +10,7 @@ import kotlin.math.sqrt
  * The musical atlas, worked out from the order of your scrobbles alone:
  *  - the universe: your top artists as stars, linked when you play them back to back or in the
  *    same months, placed so linked stars sit close, and grouped into constellations;
- *  - the family tree: what you played right before your very first play of each artist;
- *  - the landscape: each top artist's plays per month as a mountain, read as a short obsession,
- *    a companion over years, a comeback after a long gap, or a phase.
+ *  - the family tree: what you played right before your very first play of each artist.
  */
 object Atlas {
     /** Plays at most this far apart (seconds) belong to one listening session. */
@@ -27,9 +25,6 @@ object Atlas {
 
     /** Artists first played this soon after the history starts were already around; how you found them is unknown. */
     const val START_GRACE = 14L * 24 * 3600
-
-    /** Mountains in the landscape. */
-    const val MOUNTAINS = 14
 
     /** Two stars linked: played back to back [together] times, [sameTime] how alike their months are (0..1), [w] the strength (0..1). */
     data class Link(val a: Int, val b: Int, val together: Int, val sameTime: Double, val w: Double)
@@ -186,35 +181,5 @@ object Atlas {
         val out = IntArray(n) { -1 }
         groups.forEachIndexed { c, g -> g.forEach { out[it] = c } }
         return out
-    }
-
-    /** The kind of mountain an artist's plays per month make, and its length in months. */
-    data class Shape(val kind: String, val months: Int)
-
-    /**
-     * Reads plays per month: a comeback (six or more quiet months between two real stretches), an
-     * obsession (most plays within four months), a companion (a year or more of active months) or a phase.
-     */
-    fun shape(counts: IntArray): Shape {
-        val total = counts.sum()
-        if (total == 0) return Shape("phase", 0)
-        val peak = counts.max()
-        val floor = max(2, (peak + 9) / 10)
-        val active = counts.indices.filter { counts[it] >= floor }
-        var gap = 0
-        var before = 0
-        var k0 = 0
-        for (k in 1 until active.size) {
-            while (k0 <= active[k - 1]) before += counts[k0++]
-            val g = active[k] - active[k - 1] - 1
-            if (g > gap && before >= total * 0.1 && total - before >= total * 0.1) gap = g
-        }
-        val top4 = counts.sortedDescending().take(4).sum()
-        return when {
-            gap >= 6 -> Shape("comeback", gap)
-            active.size <= 4 && top4 >= total * 0.75 -> Shape("obsession", active.size)
-            active.size >= 12 -> Shape("companion", active.last() - active.first() + 1)
-            else -> Shape("phase", active.size)
-        }
     }
 }

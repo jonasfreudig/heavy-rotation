@@ -84,6 +84,8 @@ object Core {
     }
 
     private const val HOUR = 3_600_000L
+    private const val SIDE_LINGER = 15 * 60_000L
+    private const val END_LINGER = 3 * 60_000L
 
     /** A genre page not built by then reports where it got stuck. */
     private const val GENRE_WAIT_SEC = 20L
@@ -298,8 +300,8 @@ object Core {
     private fun saveCountries() = synchronized(countries) { file(COUNTRIES_FILE).write(JSONObject(countries as Map<*, *>).toString()) }
 
     /** Your top artists by country: plays and the most played of them each, and how many are looked up yet. */
-    private fun worldMapJson(s: Stats): JSONObject {
-        val top = s.mapArtists()
+    /** Where the artists of [top] (names and plays) are from, as far as known: plays, artists and the top ones per country. */
+    private fun worldMapJson(top: List<Pair<String, Int>>): JSONObject {
         val known = synchronized(countries) { HashMap(countries) }
         val by = HashMap<String, MutableList<Pair<String, Int>>>()
         var looked = 0
@@ -317,7 +319,11 @@ object Core {
             .put("plays", top.sumOf { it.second }).put("placed", by.values.sumOf { l -> l.sumOf { it.second } })
     }
 
-    private fun pushWorldMap() = statsExec.execute { currentStats()?.let { s -> push("onWorldMap") { worldMapJson(s) } } }
+    private fun pushWorldMap() = statsExec.execute {
+        currentStats()?.let { s -> push("onWorldMap") { worldMapJson(s.mapArtists()) } }
+        // The period on Stats has its map too.
+        shownStats()?.let { s -> val id = statsRange; push("onStatsMap") { worldMapJson(s.mapArtistsIn(s.range(id))).put("range", id) } }
+    }
 
     /** Looks up where [names] are from, one a second (MusicBrainz's pace), the map growing every ten; stops when offline. */
     private fun lookUpCountries(names: List<String>) {
@@ -795,7 +801,7 @@ object Core {
                 }
                 val missing = synchronized(countries) { s.mapArtists().map { it.first }.filter { Text.norm(it) !in countries } }
                 lookUpCountries(missing)
-                push("onWorldMap") { worldMapJson(s) }
+                push("onWorldMap") { worldMapJson(s.mapArtists()) }
             }
             "through" -> statsExec.execute {
                 val s = currentStats()
@@ -1457,6 +1463,14 @@ object Core {
 
     private fun playSideInner(releaseId: Long, side: String) {
         val rel = loadRelease(releaseId) ?: return
+        // The side that just ended is still up: the same session goes on with the other side.
+        val s = spin
+        val now = System.currentTimeMillis()
+        if (s != null && s.releaseId == releaseId && s.isOver(now)) {
+            enqueue(s, s.flip(planTracks(rel, rel.tracks.indices.filter { rel.tracks[it].side == side }), now))
+            tickInner()
+            return
+        }
         startSpinInner(releaseId, rel.tracks.indices.filter { rel.tracks[it].side == side }, When.NOW, 0)
     }
 
@@ -1477,6 +1491,18 @@ object Core {
         flushInner()
         pushState()
         pushActivity()
+    }
+
+    /** How long a record stays up after its last track: time to turn it over, or a few minutes to see it end. */
+    private fun lingerMs(s: Spin) = if (s.nextSide() != null) SIDE_LINGER else END_LINGER
+
+    /** The record whose "side is over" note went out (its id and end), so it goes out once. */
+    private var sideDoneFor = ""
+
+    /** Music started on the phone: a record whose side has ended steps aside for it. */
+    fun phonePlays() {
+        if (spin == null) return
+        scrobExec.execute { if (spin?.isOver(System.currentTimeMillis()) == true) tickInner() }
     }
 
     private fun endSpin() {
@@ -1500,14 +1526,21 @@ object Core {
         val cur = s.currentIndex(now)
         val announce = cur >= 0 && cur != s.nowPlaying
         if (announce) s.nowPlaying = cur
-        if (s.isOver(now)) {
+        val linger = lingerMs(s)
+        // When the last track ends, the record stays up a while to be turned over, unless the phone plays something else.
+        val ended = s.isOver(now)
+        if (ended && (s.isOver(now, linger) || Phone.isPlaying())) {
             endSpin()
-            SpinNotifier.finished(ctx, s)
+            if (sideDoneFor != "${s.id}:${s.endMs()}") SpinNotifier.finished(ctx, s)
         } else {
             spinFile.write(s.toJson().toString())
             spinUi = s.toUiJson().toString()
-            SpinReceiver.schedule(ctx, s.nextEventMs(now))
-            SpinNotifier.show(ctx, s, now)
+            SpinReceiver.schedule(ctx, s.nextEventMs(now, linger))
+            if (!ended) SpinNotifier.show(ctx, s, now)
+            else if (sideDoneFor != "${s.id}:${s.endMs()}") {
+                sideDoneFor = "${s.id}:${s.endMs()}"
+                SpinNotifier.finished(ctx, s)
+            }
         }
         // The network last: the next alarm is set even when Last.fm is slow to answer.
         if (announce) sendNowPlaying(s.items[cur], now)
@@ -2579,8 +2612,12 @@ object Core {
         }
         val id = statsRange
         val shown = shownStats() ?: s
+        // The period's artists on the map; the ones not looked up yet are, one a second, and the map follows.
+        val mapTop = shown.mapArtistsIn(shown.range(id))
+        val unplaced = synchronized(countries) { mapTop.map { it.first }.filter { Text.norm(it) !in countries } }
+        if (unplaced.isNotEmpty()) lookUpCountries(unplaced)
         push("onStats") {
-            shown.compute(shown.range(id)).put("tidy", tidySummary()).put("concerts", concertsIn(s, shown.range(id))).put("genre", statsGenre).put("genreOptions", s.genreOptions())
+            shown.compute(shown.range(id)).put("map", worldMapJson(mapTop)).put("tidy", tidySummary()).put("concerts", concertsIn(s, shown.range(id))).put("genre", statsGenre).put("genreOptions", s.genreOptions())
                 .put("decade", statsDecade).put("decadeOptions", s.decadeOptions())
         }
         // Release years for the decade filter, looked up now and then as the history grows.

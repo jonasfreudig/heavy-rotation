@@ -641,6 +641,7 @@ const Mock = (() => {
     out.strip = stripOf(r);
     out.cards = fakeCards().summary;
     out.minutes = fakeMinutes(i0, i1);
+    out.map = fakeMap(i0, i1);
     out.minutes.albums = ((out.top || {}).albums || []).map((x, k) => ({ ...x, min: Math.round(x.plays * (3.2 + (k % 4) * 0.4)), byPlays: k + 1 })).sort((p, q) => q.min - p.min);
     out.milestones = fakeMilestones(i0, i1);
     // insights and personality, from the numbers above
@@ -836,26 +837,7 @@ const Mock = (() => {
     const tree = { nodes: ids.map((a) => ({ id: a, name: L.artists[a], plays: ac[a] || 0, at: L.ts[first[a]], p: from[a], d: desc[a] || 0, kept: kept(a) })),
       gateways: ids.filter((a) => (desc[a] || 0) >= 2).sort((p, q) => desc[q] - desc[p]).slice(0, 8).map((a) => ({ id: a, name: L.artists[a], d: desc[a], photo: '' })),
       after: keptIds.filter((a) => from[a] >= 0).length, blue: keptIds.filter((a) => from[a] === -1).length, start: keptIds.filter((a) => from[a] === -2).length, kept: keptIds.length };
-    // landscape
-    const shape = (c) => {
-      const total = c.reduce((s, v) => s + v, 0); if (!total) return { kind: 'phase', months: 0 };
-      const peak = Math.max(...c), floor = Math.max(2, Math.ceil(peak / 10)), act = c.map((v, i) => [v, i]).filter(([v]) => v >= floor).map(([, i]) => i);
-      let gap = 0, before = 0, k0 = 0;
-      for (let q = 1; q < act.length; q++) { while (k0 <= act[q - 1]) before += c[k0++]; const gg = act[q] - act[q - 1] - 1; if (gg > gap && before >= total * 0.1 && total - before >= total * 0.1) gap = gg; }
-      const top4 = [...c].sort((p, q) => q - p).slice(0, 4).reduce((s, v) => s + v, 0);
-      if (gap >= 6) return { kind: 'comeback', months: gap };
-      if (act.length <= 4 && top4 >= total * 0.75) return { kind: 'obsession', months: act.length };
-      if (act.length >= 12) return { kind: 'companion', months: act[act.length - 1] - act[0] + 1 };
-      return { kind: 'phase', months: act.length };
-    };
-    const monthStart = (m) => +new Date(start.getFullYear(), start.getMonth() + m, 1);
-    const series = ranked(ac).slice(0, 14).map((a) => {
-      const c = new Array(nm).fill(0);
-      L.ts.forEach((ts, i) => { if (L.a[i] === a) c[mk(ts)]++; });
-      const pk = c.indexOf(Math.max(...c));
-      return { name: L.artists[a], plays: ac[a], counts: c, peak: c[pk], peakAt: monthStart(pk), ...shape(c), genre: genreName(a), photo: '', from: monthStart(c.findIndex((v) => v > 0)), _pk: pk };
-    }).sort((p, q) => p._pk - q._pk);
-    atlasCache = { plays: L.ts.length, universe: { nodes, clusters, links: links.map((l) => [l[0], l[1], l[2], l[3], Math.round(l[4] * 1000) / 1000]), bridges, plays: plays.reduce((s, v) => s + v, 0) }, tree, landscape: { monthsFrom: monthStart(0), months: nm, series } };
+    atlasCache = { plays: L.ts.length, universe: { nodes, clusters, links: links.map((l) => [l[0], l[1], l[2], l[3], Math.round(l[4] * 1000) / 1000]), bridges, plays: plays.reduce((s, v) => s + v, 0) }, tree };
     return atlasCache;
   }
   function fakeStory(id) {
@@ -1108,6 +1090,26 @@ const Mock = (() => {
       artists: top(a).map((k) => ({ name: L.artists[k], min: Math.round(a[k] / 60), plays: ap[k], byPlays: pa(k), photo: '', cover: '' })),
       tracks: top(t).map((k) => ({ title: L.titles[k], artist: L.artists[tA[k]], album: '', cover: '', min: Math.round(t[k] / 60), plays: tp[k], len: fakeLen(k), byPlays: pt(k) })),
     };
+  }
+  /** Where the artists played between [i0] and [i1] are from (made up past a few known ones). */
+  function fakeMap(i0, i1) {
+    const L = history(), plays = {};
+    for (let i = i0; i < i1; i++) plays[L.a[i]] = (plays[L.a[i]] || 0) + 1;
+    const from = { 'Fleetwood Mac': 'GB', Khruangbin: 'US', Gorillaz: 'GB', Shame: 'GB', 'The Strokes': 'US', 'Beach House': 'US', Turnstile: 'US', Air: 'FR', IDLES: 'GB', 'Fontaines D.C.': 'IE', Bonobo: 'GB', 'Tame Impala': 'AU', 'Glass Animals': 'GB', 'Little Simz': 'GB', Portishead: 'GB', 'Frank Ocean': 'US' };
+    const pool = ['DE', 'SE', 'JP', 'CA', 'NL', 'BR', 'NO', 'ZA', 'MX', 'IS', ''];
+    const countries = {};
+    let placed = 0, all = 0;
+    Object.keys(plays).map(Number).sort((x, y) => plays[y] - plays[x]).slice(0, 300).forEach((a, k) => {
+      const name = L.artists[a], c = from[name] || pool[k % pool.length];
+      all += plays[a];
+      if (!c) return;
+      placed += plays[a];
+      const e = (countries[c] = countries[c] || { plays: 0, n: 0, artists: [] });
+      e.plays += plays[a];
+      e.n++;
+      if (e.artists.length < 8) e.artists.push({ name, plays: plays[a] });
+    });
+    return { total: Math.min(300, Object.keys(plays).length), looked: Math.min(300, Object.keys(plays).length), busy: false, countries, plays: all, placed };
   }
   function fakeMilestones(i0, i1) {
     const L = history();
@@ -1471,7 +1473,8 @@ const Mock = (() => {
     const now = Date.now();
     let changed = scrobbleDue(now, false);
     const end = Math.max(...spin.items.filter((x) => x.state !== 'skipped').map((x) => x.start + x.dur * 1000));
-    if (!spin.items.some((x) => x.state === 'planned') && now >= end) { spin = null; changed = true; }
+    // Like the app: a record whose last track ended stays up a while to be turned over.
+    if (!spin.items.some((x) => x.state === 'planned') && now >= end + (spin.nextSide ? 15 : 3) * 60e3) { spin = null; changed = true; }
     if (changed) { pushState(); pushAct(); }
   }
 
@@ -1493,7 +1496,7 @@ const Mock = (() => {
       return;
     }
     if (spin) { scrobbleDue(now, false); spin.items.forEach((x) => { if (x.state === 'planned') x.state = 'skipped'; }); }
-    spin = { id: `${rel.id}-${now}`, releaseId: rel.id, album: rel.title, artist: rel.artist, cover: '', items, nextSide: null };
+    spin = { id: `${rel.id}-${now}`, releaseId: rel.id, album: rel.title, artist: rel.artist, cover: '', items, nextSide: null, sides: [...new Set(rel.tracks.map((x) => x.side))] };
     spin.nextSide = nextSide(rel, items);
     tick();
     pushState(); pushAct(); pushColl();
@@ -1625,26 +1628,9 @@ const Mock = (() => {
         }
         case 'fixDelete': S.fix.rules = S.fix.rules.filter((x) => x.id !== m.id); pushState(); break;
         case 'rankList': later(200, () => onRankList(fakeRankList(m))); break;
-        case 'worldMap': later(300, () => {
-          const L = history(), plays = {};
-          L.a.forEach((a) => { plays[a] = (plays[a] || 0) + 1; });
-          const from = { 'Fleetwood Mac': 'GB', Khruangbin: 'US', Gorillaz: 'GB', Shame: 'GB', 'The Strokes': 'US', 'Beach House': 'US', Turnstile: 'US', Air: 'FR', IDLES: 'GB', 'Fontaines D.C.': 'IE', Bonobo: 'GB', 'Tame Impala': 'AU', 'Glass Animals': 'GB', 'Little Simz': 'GB', Portishead: 'GB', 'Frank Ocean': 'US' };
-          const pool = ['DE', 'SE', 'JP', 'CA', 'NL', 'BR', 'NO', 'ZA', 'MX', 'IS', ''];
-          const countries = {};
-          let placed = 0, all = 0;
-          Object.keys(plays).map(Number).sort((x, y) => plays[y] - plays[x]).slice(0, 300).forEach((a, k) => {
-            const name = L.artists[a], c = from[name] || pool[k % pool.length];
-            all += plays[a];
-            if (!c) return;
-            placed += plays[a];
-            const e = (countries[c] = countries[c] || { plays: 0, n: 0, artists: [] });
-            e.plays += plays[a];
-            e.n++;
-            if (e.artists.length < 8) e.artists.push({ name, plays: plays[a] });
-          });
-          onWorldMap({ total: 300, looked: 300, busy: false, countries, plays: all, placed });
-        }); break;
+        case 'worldMap': later(300, () => onWorldMap(fakeMap(0, history().ts.length))); break;
         case 'through': later(400, () => onThrough(fakeThrough())); break;
+
         case 'cards': later(250, () => { const c = fakeCards(); delete c.summary; onCards({ ...c, req: m.req }); }); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
         case 'phoneControl': {

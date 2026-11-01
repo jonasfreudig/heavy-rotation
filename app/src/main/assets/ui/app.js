@@ -39,6 +39,7 @@ const MAX_AGE_MS = 14 * 864e5;
 const SORTS = [
   { id: 'added', labels: ['Recently added', 'First added'], cmp: (a, b) => b.added - a.added },
   { id: 'artist', labels: ['Artist A–Z', 'Artist Z–A'], cmp: (a, b) => coll.compare(a._artist, b._artist) || (a.year || 9999) - (b.year || 9999) },
+  { id: 'title', labels: ['Album A–Z', 'Album Z–A'], cmp: (a, b) => coll.compare(a._title, b._title) || coll.compare(a._artist, b._artist) },
   { id: 'year', labels: ['Year, oldest', 'Year, newest'], cmp: (a, b) => (a.year || 9999) - (b.year || 9999) || coll.compare(a._artist, b._artist) },
   { id: 'plays', labels: ['Most played', 'Least played'], cmp: (a, b) => (b.plays - a.plays) || (b.spins - a.spins) || coll.compare(a._artist, b._artist) },
 ];
@@ -378,6 +379,7 @@ window.onCollection = (c) => {
   COLL = c.map((r) => Object.assign(r, {
     _s: norm([r.title, r.artist, r.label, r.year, (r.styles || []).join(' '), (r.genres || []).join(' ')].join(' ')),
     _artist: String(r.artist || '').replace(/^the\s+/i, ''),
+    _title: String(r.title || '').replace(/^the\s+/i, ''),
   }));
   renderShelf();
   if (isOpen('recordPage')) renderRecord();
@@ -1194,17 +1196,23 @@ function tickUi() {
   const now = Date.now();
   const n = spinNow(sp, now);
   const it = n.item;
-  const pct = it ? Math.min(100, ((now - it.start) / (it.dur * 1000)) * 100) : 0;
+  // Every track played: the record stays up a while, to be turned over.
+  const over = !it && !n.next && n.live.length > 0;
+  const last = over ? n.live[n.live.length - 1].side : '';
+  const overWords = last ? `${sideLabel(last)} is over` : 'The record is over';
+  const pct = it ? Math.min(100, ((now - it.start) / (it.dur * 1000)) * 100) : over ? 100 : 0;
   const left = it ? (it.start + it.dur * 1000 - now) / 1000 : 0;
   if ($('#scTitle')) {
-    $('#scTitle').textContent = it ? it.title : n.next ? n.next.title : sp.album;
-    $('#scLabel').textContent = it ? `Now spinning${it.side ? ` ${sideLabel(it.side)}` : ''}, ${fmtDur(left)} left` : n.next ? `Up next at ${fmtTime(n.next.start)}` : 'Now spinning';
+    $('#scTitle').textContent = it ? it.title : n.next ? n.next.title : over && sp.nextSide ? `Flip to ${sideLabel(sp.nextSide).replace(/^Side/, 'side')}` : sp.album;
+    $('#scLabel').textContent = it ? `Now spinning${it.side ? ` ${sideLabel(it.side)}` : ''}, ${fmtDur(left)} left` : n.next ? `Up next at ${fmtTime(n.next.start)}` : over ? overWords : 'Now spinning';
     $('#scBar').style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
   }
   if (isOpen('spinPage') && $('#spTitle')) {
-    tickTurntable(n, now);
-    $('#spTitle').textContent = it ? it.title : n.next ? n.next.title : sp.album;
-    $('#spSide').textContent = it ? [it.side ? sideLabel(it.side) : '', `${n.live.indexOf(it) + 1} of ${n.live.length}`].filter(Boolean).join(', ') : n.next ? `Starts at ${fmtTime(n.next.start)}` : '';
+    tickTurntable(n, now, sp);
+    tickSpinLyrics(sp, n);
+    $('#spTitle').textContent = it ? it.title : n.next ? n.next.title : over ? overWords : sp.album;
+    const ofSide = it ? n.live.filter((x) => x.side === it.side) : [];
+    $('#spSide').textContent = it ? [it.side ? sideLabel(it.side) : '', `${ofSide.indexOf(it) + 1} of ${ofSide.length}`].filter(Boolean).join(', ') : n.next ? `Starts at ${fmtTime(n.next.start)}` : over && sp.nextSide ? `Turn it over for ${sideLabel(sp.nextSide).replace(/^Side/, 'side')}` : '';
     $('#spBar').style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
     $('#spElapsed').textContent = it ? fmtDur((now - it.start) / 1000) : '';
     $('#spLeft').textContent = it ? '−' + fmtDur(left) : '';
@@ -1297,7 +1305,26 @@ function renderShelf() {
   // A very long shelf just changes: fading thousands of covers at once would stutter.
   if (shelfLook && look !== shelfLook && list.length <= 300) requestAnimationFrame(() => settle($('#grid')));
   shelfLook = look;
-  $('#grid').innerHTML = list.map((r) => {
+  // Sorted by name or year, the shelf comes in sections: a heading where the letter or the decade changes.
+  const secOf = SHELF_SECS[shelf.sort];
+  const secs = [];
+  const head = (r) => {
+    if (!secOf) return '';
+    const k = secOf(r);
+    if (k === secs[secs.length - 1]) return '';
+    secs.push(k);
+    return `<h3 class="shelf-sec" data-sec="${esc(k)}">${esc(k)}</h3>`;
+  };
+  $('#grid').innerHTML = list.map((r) => head(r) + recHtml(r, spinId)).join('');
+  renderShelfIndex(secs, list.length);
+  renderShelfEmpty();
+  // Discogs asks for this under its data, linked to where it lives on discogs.com.
+  const du = (ST.discogs || {}).user;
+  $('#shelfCredit').hidden = !COLL.length;
+  $('#shelfCredit button').dataset.url = du ? `https://www.discogs.com/user/${encodeURIComponent(du)}/collection` : 'https://www.discogs.com/';
+}
+/** A record on the shelf, as the view draws it. */
+function recHtml(r, spinId) {
     const cover = coverHtml(shelf.view === 'list' ? r.thumb || r.cover : r.cover || r.thumb, r.title, r.artist, '', r.id === spinId);
     if (shelf.view === 'list') {
       const meta = [r.year || '', (r.label || '').split(/ · |, /)[0], (r.format || '').split(',')[0]].filter(Boolean).join(', ');
@@ -1309,12 +1336,55 @@ function renderShelf() {
     if (shelf.sort === 'plays' || shelf.view === 'big') meta = `<small class="meta">${[shelf.view === 'big' && r.year ? r.year : '', r.plays ? plural(r.plays, 'play') : 'no plays yet'].filter(Boolean).join(', ')}</small>`;
     else if (shelf.sort === 'year' && r.year) meta = `<small class="meta">${r.year}</small>`;
     return `<button class="rec" data-id="${r.id}">${cover}${badgeChip(r.id)}<b>${esc(r.title)}</b><small>${esc(r.artist)}</small>${meta}</button>`;
-  }).join('');
-  renderShelfEmpty();
-  // Discogs asks for this under its data, linked to where it lives on discogs.com.
-  const du = (ST.discogs || {}).user;
-  $('#shelfCredit').hidden = !COLL.length;
-  $('#shelfCredit button').dataset.url = du ? `https://www.discogs.com/user/${encodeURIComponent(du)}/collection` : 'https://www.discogs.com/';
+}
+/** A name's first letter for the shelf's sections: A to Z, or # for numbers and anything else. */
+const letterOf = (s) => { const c = norm(s).replace(/^[^a-z0-9]+/, '').charAt(0).toUpperCase(); return c >= 'A' && c <= 'Z' ? c : '#'; };
+/** The section a record is in, for the sorts that have them. */
+const SHELF_SECS = {
+  artist: (r) => letterOf(r._artist),
+  title: (r) => letterOf(r._title),
+  year: (r) => (r.year ? `${Math.floor(r.year / 10) * 10}s` : 'No year'),
+};
+/** The index down the right edge of a long shelf in sections: its letters or decades, to drag along. */
+function renderShelfIndex(secs, n) {
+  const rail = $('#shelfIndex');
+  const on = secs.length > 2 && n > 30;
+  rail.hidden = !on;
+  rail.innerHTML = on ? secs.map((k) => `<i data-sec="${esc(k)}">${esc(k === 'No year' ? '–' : /^\d{4}s$/.test(k) ? k.slice(2) : k)}</i>`).join('') : '';
+}
+/** Dragging along the index: the shelf jumps to the section under the finger, its name in a bubble beside it. */
+function setupShelfIndex() {
+  const rail = $('#shelfIndex'), bubble = $('#shelfBubble');
+  let at = '';
+  const go = (y) => {
+    const items = rail.children;
+    if (!items.length) return;
+    const r = rail.getBoundingClientRect();
+    const i = Math.max(0, Math.min(items.length - 1, Math.floor(((y - r.top) / r.height) * items.length)));
+    const k = items[i].dataset.sec;
+    bubble.textContent = k;
+    bubble.style.top = `${Math.max(r.top + 28, Math.min(r.bottom - 28, y)).toFixed(0)}px`;
+    if (k === at) return;
+    at = k;
+    for (let j = 0; j < items.length; j++) items[j].classList.toggle('on', j === i);
+    const h = [...$$('#grid .shelf-sec')].find((x) => x.dataset.sec === k);
+    if (h) window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - $('#appbar').offsetHeight - 8 });
+  };
+  rail.addEventListener('pointerdown', (e) => {
+    rail.setPointerCapture(e.pointerId);
+    rail.classList.add('drag');
+    bubble.hidden = false;
+    at = '';
+    go(e.clientY);
+  });
+  rail.addEventListener('pointermove', (e) => { if (rail.classList.contains('drag')) go(e.clientY); });
+  const end = () => {
+    rail.classList.remove('drag');
+    bubble.hidden = true;
+    for (const x of rail.children) x.classList.remove('on');
+  };
+  rail.addEventListener('pointerup', end);
+  rail.addEventListener('pointercancel', end);
 }
 
 let shownCount = 0;
@@ -1427,6 +1497,9 @@ function renderNow() {
  */
 let LYR = { q: '', data: null, lines: null };
 let lyrAt = -2, lyrTimer = 0, lyrUserUntil = 0;
+/** The same for the track on the turntable (Now spinning), timed by the record's schedule. */
+let SLYR = { q: '', data: null, lines: null };
+let slyrAt = -2, slyrTimer = 0;
 /** Lines are lit this much early: the eye is a little behind the ear. */
 const LYR_LEAD = 250;
 function parseLrc(s) {
@@ -1441,20 +1514,22 @@ function parseLrc(s) {
 }
 /** Whether the screen stays on while the lyrics of a playing song are open (the switch on the lyrics; on unless turned off). */
 const lyricsAwake = () => { try { return localStorage.getItem('lyricsAwake') !== 'off'; } catch (_) { return true; } };
-const hasLyrics = () => { const d = LYR.data; return !!d && !d.missing && !d.error && !d.instrumental && !!((LYR.lines && LYR.lines.length) || d.plain); };
+const hasLyrics = (S = LYR) => { const d = S.data; return !!d && !d.missing && !d.error && !d.instrumental && !!((S.lines && S.lines.length) || d.plain); };
 let awake = false;
 /** Asks Android to keep the screen on, or to let it go, when that changes. Once a second (tickUi) and on every change. */
 function syncAwake() {
   const n = (ST.phone || {}).now;
   const m = (n && n.media) || {};
   const shown = isOpen('nowPage') || (nowStyle() === 'bar' && barLyricsOn() && !!LYR.lines && !$('#npBar').hidden);
-  const want = !!n && !ST.spin && lyricsAwake() && shown && hasLyrics() && !!(m.playing ?? n.playing);
+  // Or the words of the record on the turntable, while a track of it plays.
+  const spinning = !!ST.spin && isOpen('spinPage') && !!spinNow(ST.spin).item && hasLyrics(SLYR);
+  const want = lyricsAwake() && (spinning || (!!n && !ST.spin && shown && hasLyrics() && !!(m.playing ?? n.playing)));
   if (want === awake) return;
   awake = want;
   send({ t: 'keepAwake', on: want });
 }
-const lyricsHead = () => `<div class="lyr-head"><h2>Lyrics</h2><button class="chip lyr-awake${lyricsAwake() ? ' on' : ''}" data-lyrawake aria-pressed="${lyricsAwake()}">${icon('sun', 'i small')}Keep the screen on</button>
-  <button class="icon-btn small lyr-big" data-lyrfull aria-label="${lyrFull ? 'Smaller lyrics' : 'Lyrics over the whole screen'}" aria-pressed="${lyrFull}">${icon(lyrFull ? 'down' : 'up')}</button></div>`;
+const lyricsHead = (full = true) => `<div class="lyr-head"><h2>Lyrics</h2><button class="chip lyr-awake${lyricsAwake() ? ' on' : ''}" data-lyrawake aria-pressed="${lyricsAwake()}">${icon('sun', 'i small')}Keep the screen on</button>
+  ${full ? `<button class="icon-btn small lyr-big" data-lyrfull aria-label="${lyrFull ? 'Smaller lyrics' : 'Lyrics over the whole screen'}" aria-pressed="${lyrFull}">${icon(lyrFull ? 'down' : 'up')}</button>` : ''}</div>`;
 /** Whether the lyrics fill Now playing, with the song in a small row above them. */
 let lyrFull = false;
 /** Filling the screen, the line being sung sits this far down the lyrics (a share of their height), the next ones under it. */
@@ -1486,20 +1561,31 @@ function ensureLyrics(n) {
   LYR = { q: lq, data: null, lines: null };
   send({ t: 'lyrics', artist: n.artist, title: n.title, album: n.album || '', dur: Math.round((m.dur || n.dur || 0) / 1000), q: lq });
 }
-function lyricsHtml(canSeek) {
-  const d = LYR.data;
+/** The lyrics box: the song on the phone's ([S] = LYR), or the record's ([spin]: no seeking, no full screen). */
+function lyricsHtml(canSeek, S = LYR, spin = false) {
+  const d = S.data;
   const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
   if (!d) return '<h2>Lyrics</h2><p class="hint">Looking for the lyrics…</p>';
   if (d.error) return `<h2>Lyrics</h2><p class="hint">Couldn't reach LRCLIB for the lyrics just now.</p><button class="btn tonal small" data-lyragain>${icon('sync')}Try again</button>`;
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
-  if (LYR.lines && LYR.lines.length) {
-    return `${lyricsMini()}${lyricsHead()}
-      <div class="lyr-lines synced">${LYR.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
+  const mini = spin ? '' : lyricsMini(), head = lyricsHead(!spin);
+  if (S.lines && S.lines.length) {
+    return `${mini}${head}
+      <div class="lyr-lines synced">${S.lines.map((l) => `<p${spin ? '' : ` data-lt="${l.t}"`}>${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
   }
-  return `${lyricsMini()}${lyricsHead()}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
+  return `${mini}${head}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
 }
 window.onLyrics = (d) => {
+  if (d.q === SLYR.q) {
+    SLYR.data = d;
+    SLYR.lines = d.synced ? parseLrc(d.synced) : null;
+    const box = $('#spLyrics');
+    if (box) box.dataset.q = '';
+    if (ST.spin) tickSpinLyrics(ST.spin, spinNow(ST.spin));
+    syncAwake();
+    return;
+  }
   if (d.q !== LYR.q) return;
   LYR.data = d;
   LYR.lines = d.synced ? parseLrc(d.synced) : null;
@@ -1519,23 +1605,61 @@ function syncLyrics() {
   if (!box || !L || !n || !isOpen('nowPage')) return;
   const m = n.media || {};
   const pos = nowPos(n) + LYR_LEAD;
+  const i = lightLyrics(box, L, pos, lyrAt, lyrFull);
+  lyrAt = i;
+  if ((m.playing ?? n.playing) && i + 1 < L.length) lyrTimer = setTimeout(syncLyrics, Math.max(40, (L[i + 1].t - pos) / (m.speed || 1)));
+}
+/** Lights the line of [L] sung at [pos] in [box] (lit before: [at]) and scrolls it into view; returns its index. */
+function lightLyrics(box, L, pos, at, full) {
   let i = -1;
   while (i + 1 < L.length && L[i + 1].t <= pos) i++;
-  if (i !== lyrAt) {
-    const ps = box.children;
-    for (let k = 0; k < ps.length; k++) {
-      ps[k].classList.toggle('now', k === i);
-      ps[k].classList.toggle('past', k < i);
-    }
-    // Into the middle of the box, or near its top when the lyrics fill the screen; not while you read elsewhere in it.
-    if (i >= 0 && ps[i] && Date.now() > lyrUserUntil) {
-      const off = ps[i].getBoundingClientRect().top - box.getBoundingClientRect().top;
-      const to = lyrFull ? box.clientHeight * LYR_FULL_AT : box.clientHeight / 2 - ps[i].offsetHeight / 2;
-      box.scrollTo({ top: box.scrollTop + off - to, behavior: lyrAt === -2 ? 'auto' : 'smooth' });
-    }
-    lyrAt = i;
+  if (i === at) return i;
+  const ps = box.children;
+  for (let k = 0; k < ps.length; k++) {
+    ps[k].classList.toggle('now', k === i);
+    ps[k].classList.toggle('past', k < i);
   }
-  if ((m.playing ?? n.playing) && i + 1 < L.length) lyrTimer = setTimeout(syncLyrics, Math.max(40, (L[i + 1].t - pos) / (m.speed || 1)));
+  // Into the middle of the box, or near its top when the lyrics fill the screen; not while you read elsewhere in it.
+  if (i >= 0 && ps[i] && Date.now() > lyrUserUntil) {
+    const off = ps[i].getBoundingClientRect().top - box.getBoundingClientRect().top;
+    const to = full ? box.clientHeight * LYR_FULL_AT : box.clientHeight / 2 - ps[i].offsetHeight / 2;
+    box.scrollTo({ top: box.scrollTop + off - to, behavior: at === -2 ? 'auto' : 'smooth' });
+  }
+  return i;
+}
+/** The lyrics of the track on the turntable: asked for once per track, drawn when they come, lit along the schedule. */
+function tickSpinLyrics(sp, n) {
+  const box = $('#spLyrics');
+  if (!box || !isOpen('spinPage')) return;
+  const it = n.item;
+  if (!it) {
+    clearTimeout(slyrTimer);
+    box.hidden = true;
+    return;
+  }
+  const q = `spin|${it.artist}|${it.title}`;
+  if (q !== SLYR.q) {
+    SLYR = { q, data: null, lines: null };
+    send({ t: 'lyrics', artist: it.artist, title: it.title, album: sp.album, dur: it.dur, q });
+  }
+  box.hidden = false;
+  if (box.dataset.q !== q || box.dataset.got !== String(!!SLYR.data)) {
+    box.dataset.q = q;
+    box.dataset.got = String(!!SLYR.data);
+    box.innerHTML = lyricsHtml(false, SLYR, true);
+    slyrAt = -2;
+  }
+  syncSpinLyrics();
+}
+function syncSpinLyrics() {
+  clearTimeout(slyrTimer);
+  const sp = ST.spin, box = $('#spLyrics .lyr-lines.synced'), L = SLYR.lines;
+  if (!sp || !box || !L || !isOpen('spinPage')) return;
+  const it = spinNow(sp).item;
+  if (!it || `spin|${it.artist}|${it.title}` !== SLYR.q) return;
+  const pos = Date.now() - it.start + LYR_LEAD;
+  slyrAt = lightLyrics(box, L, pos, slyrAt, false);
+  if (slyrAt + 1 < L.length) slyrTimer = setTimeout(syncSpinLyrics, Math.max(40, L[slyrAt + 1].t - pos));
 }
 /** Once a second: the position, the time left, and what is left of the album. */
 function tickNow() {
@@ -2025,7 +2149,7 @@ function renderSpin(force) {
   const keep = $('#spinBody .tt');
   const reuse = keep && keep.dataset.key === sp.id;
   body.innerHTML = `<div class="spin-hero">
-      <div id="spinHolo">${reuse ? '' : turntableHtml(sp)}</div>
+      <div id="spinHolo">${reuse ? '' : turntableHtml(sp, spinSide(sp, spinNow(sp)))}</div>
       <div class="side" id="spSide"></div>
       <h1 id="spTitle"></h1>
       <div class="artist">${esc(sp.artist)}, ${esc(sp.album)}</div>
@@ -2036,6 +2160,7 @@ function renderSpin(force) {
       ${sp.nextSide ? `<button class="btn tonal" id="spFlip">${icon('flip')}Flip to ${esc(sp.nextSide.length <= 2 ? 'side ' + sp.nextSide : sp.nextSide)}</button>` : ''}
       <button class="btn outlined" id="spStop">${icon('stop')}Stop</button>
     </div>
+    <div class="viz np-lyrics sp-lyrics" id="spLyrics" hidden></div>
     <div class="section-head"><h2>Tracks</h2><span class="sub" id="spEnd"></span></div>
     <div class="list" id="spList"></div>
     <p class="hint">Out of step with the record? Tap the track that is playing right now, and the times after it move.</p>`;
@@ -3334,17 +3459,21 @@ function sleeveBackInner(base, rel, plays) {
 }
 
 /** Now spinning as a turntable: the record on the platter with its cover as the label. */
-function turntableHtml(sp) {
+function turntableHtml(sp, side = '') {
   const label = sp.cover ? `style="background-image:url('${cssUrl(sp.cover)}')"` : '';
-  return `<div class="tt" data-key="${esc(sp.id)}" style="--h:${hue(sp.album + sp.artist)}"><div class="tt-plinth">
-    <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-disc"><div class="tt-label" ${label}>${sp.cover ? '' : esc(sp.album)}</div></div><i class="tt-spindle"></i></div>
+  return `<div class="tt" data-key="${esc(sp.id)}" data-side="${esc(side)}" style="--h:${hue(sp.album + sp.artist)}"><div class="tt-plinth">
+    <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-rec"><div class="tt-disc"><div class="tt-label" ${label}>${sp.cover ? '' : esc(sp.album)}<span class="tt-side">${esc(side)}</span></div></div></div><i class="tt-spindle"></i></div>
     <i class="tt-counter"></i><div class="tt-arm"><i class="tube"></i><i class="head"></i></div><i class="tt-pivot"></i>
     <div class="tt-speed"><i class="on">33</i><i>45</i></div><i class="tt-start"></i></div></div>`;
 }
 /** The tonearm travels through the side as it plays (outer groove at 25°, the label at 44°); the platter turns while a track plays. */
-function tickTurntable(n, now) {
+/** The side on the turntable: the one playing, else the next one, else the last one played. */
+const spinSide = (sp, n) => ((n.item || n.next || n.live[n.live.length - 1] || {}).side || '').slice(0, 3);
+function tickTurntable(n, now, sp) {
   const tt = $('#spinBody .tt');
   if (!tt) return;
+  const up = spinSide(sp, n);
+  if (tt.dataset.side !== up) changeRecord(tt, tt.dataset.side, up, sp.sides || []);
   const side = n.item ? n.live.filter((it) => it.side === n.item.side) : [];
   let arm = 0;
   if (side.length) {
@@ -3353,6 +3482,33 @@ function tickTurntable(n, now) {
   }
   tt.style.setProperty('--arm', `${arm.toFixed(2)}deg`);
   tt.classList.toggle('spinning', !!n.item);
+}
+
+/**
+ * The next side comes up: the record turns over (A to B: up off the spindle, over, down again), or, on another
+ * record of the set (B to C), this one flies off and the next one comes in from the other side.
+ */
+function changeRecord(tt, from, to, sides) {
+  tt.dataset.side = to;
+  const rec = tt.querySelector('.tt-rec'), lbl = tt.querySelector('.tt-side');
+  const show = () => { if (lbl) lbl.textContent = to; };
+  if (!rec || !from || matchMedia('(prefers-reduced-motion: reduce)').matches) { show(); return; }
+  const a = sides.indexOf(from), b = sides.indexOf(to);
+  const sameDisc = a >= 0 && b >= 0 && Math.floor(a / 2) === Math.floor(b / 2);
+  tt.classList.add('changing');
+  const done = () => tt.classList.remove('changing');
+  if (sameDisc) {
+    const turn = rec.animate([{ transform: 'none' }, { transform: 'translateY(-7%) scale(1.07) rotateY(90deg)', offset: 0.5 }, { transform: 'none' }], { duration: 1100, easing: 'cubic-bezier(.45, 0, .3, 1)' });
+    setTimeout(show, 550);
+    turn.onfinish = turn.oncancel = done;
+    return;
+  }
+  const away = rec.animate([{ transform: 'none', opacity: 1 }, { transform: 'translate(-130%, -14%) rotate(-55deg) scale(.9)', opacity: 0 }], { duration: 560, easing: 'cubic-bezier(.5, 0, .75, 0)', fill: 'forwards' });
+  away.onfinish = () => {
+    show();
+    const back = rec.animate([{ transform: 'translate(130%, -14%) rotate(70deg) scale(.9)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 760, easing: 'cubic-bezier(.2, .8, .25, 1)' });
+    back.onfinish = back.oncancel = () => { away.cancel(); done(); };
+  };
 }
 
 // ---- page colors: song, album and artist pages take theirs from the cover or the photo ----
@@ -3547,6 +3703,10 @@ function areaViz(vals, opts) {
 /** The 24 hours as a ring around the cover or photo: longer, stronger wedges for more plays, midnight on top. */
 function clockRing(hours, img, seed) {
   const max = Math.max(1, ...hours), C = 120, r0 = 60, band = 40;
+  const ticks = () => [0, 6, 12, 18].map((hh) => {
+    const a = (hh * 15 * Math.PI) / 180;
+    return `<text x="${(C + 112 * Math.sin(a)).toFixed(1)}" y="${(C - 112 * Math.cos(a) + 4).toFixed(1)}" text-anchor="middle">${hh}</text>`;
+  }).join('');
   const pt = (r, a) => `${(C + r * Math.sin(a)).toFixed(1)},${(C - r * Math.cos(a)).toFixed(1)}`;
   const wedges = hours.map((v, i) => {
     const a0 = ((i * 15 + 1) * Math.PI) / 180, a1 = (((i + 1) * 15 - 1) * Math.PI) / 180;
@@ -3554,14 +3714,20 @@ function clockRing(hours, img, seed) {
     return `<path data-col="ah" data-i="${i}" d="M${pt(r0 + 2, a0)} L${pt(r1, a0)} A${r1.toFixed(1)},${r1.toFixed(1)} 0 0 1 ${pt(r1, a1)} L${pt(r0 + 2, a1)} A${r0 + 2},${r0 + 2} 0 0 0 ${pt(r0 + 2, a0)} Z" style="fill:var(--tint);fill-opacity:${(0.22 + 0.78 * (v / max)).toFixed(2)}"/>`;
   }).join('');
   const id = `cr${++svgSeq}`;
+  // Several covers (a genre's): a picture disc printed with them, grooves over the print, a small label in the middle.
+  const r = r0 - 4, covers = Array.isArray(img) ? img.filter(Boolean) : [];
+  if (covers.length >= 2) {
+    const four = [0, 1, 2, 3].map((k) => covers[k % covers.length]);
+    const grooves = Array.from({ length: 9 }, (_, k) => `<circle cx="${C}" cy="${C}" r="${(r - 3 - k * 4.2).toFixed(1)}"/>`).join('');
+    const disc = `<clipPath id="${id}"><circle cx="${C}" cy="${C}" r="${r}"/></clipPath><g clip-path="url(#${id})"><circle cx="${C}" cy="${C}" r="${r}" style="fill:hsl(${hue(seed || '')} 35% 40%)"/>
+      ${four.map((u, k) => `<image href="${esc(u)}" x="${C - r + (k % 2) * r}" y="${C - r + Math.floor(k / 2) * r}" width="${r}" height="${r}" preserveAspectRatio="xMidYMid slice"/>`).join('')}
+      <g class="pd-grooves">${grooves}</g></g><circle class="pd-rim" cx="${C}" cy="${C}" r="${r - 0.5}"/><circle class="pd-label" cx="${C}" cy="${C}" r="${(r * 0.26).toFixed(1)}" style="fill:hsl(${hue(seed || '')} 40% 32%)"/><circle class="pd-hole" cx="${C}" cy="${C}" r="2.6"/>`;
+    return `<svg class="ring" viewBox="0 0 240 240">${disc}<g class="wedges">${wedges}</g>${ticks()}</svg>`;
+  }
   const center = img
     ? `<clipPath id="${id}"><circle cx="${C}" cy="${C}" r="${r0 - 4}"/></clipPath><circle cx="${C}" cy="${C}" r="${r0 - 4}" style="fill:hsl(${hue(seed || '')} 35% 40%)"/><image href="${esc(img)}" x="${C - r0 + 4}" y="${C - r0 + 4}" width="${(r0 - 4) * 2}" height="${(r0 - 4) * 2}" clip-path="url(#${id})" preserveAspectRatio="xMidYMid slice"/>`
     : `<circle cx="${C}" cy="${C}" r="${r0 - 4}" style="fill:hsl(${hue(seed || '')} 35% 40%)"/><text class="ini" x="${C}" y="${C + 17}" text-anchor="middle">${esc(String(seed || '?').trim().charAt(0).toUpperCase())}</text>`;
-  const ticks = [0, 6, 12, 18].map((hh) => {
-    const a = (hh * 15 * Math.PI) / 180;
-    return `<text x="${(C + 112 * Math.sin(a)).toFixed(1)}" y="${(C - 112 * Math.cos(a) + 4).toFixed(1)}" text-anchor="middle">${hh}</text>`;
-  }).join('');
-  return `<svg class="ring" viewBox="0 0 240 240">${center}<g class="wedges">${wedges}</g>${ticks}</svg>`;
+  return `<svg class="ring" viewBox="0 0 240 240">${center}<g class="wedges">${wedges}</g>${ticks()}</svg>`;
 }
 
 /**
@@ -4189,7 +4355,7 @@ function drawGenre(g) {
       const max = Math.max(1, ...ds.map((d) => d.plays));
       P.decades = `<div class="viz"><h2>Decades</h2><div class="decades">${ds.map((d) => `<div class="dec"><span>${d.decade}s</span><i><b style="width:${(d.plays / max) * 100}%"></b></i><small>${compact(d.plays)}</small></div>`).join('')}</div></div>`;
     }
-    P.life = part(() => lifeCharts(g, 'it', '', g.label + g.label));
+    P.life = part(() => lifeCharts(g, 'it', ((g.top || {}).albums || []).map((x) => x.cover).filter(Boolean).slice(0, 4), g.label + g.label));
     P.lineup = part(() => lineupViz({ top: top, range: { kind: 'all' }, summary: { scrobbles: g.plays, artists: g.artists } },
       { title: `${g.label} lineup`, when: `${g.label}, all of your history`, sub: 'The more you played them, the bigger the name' }));
     const c = g.calendar || {};
@@ -4487,12 +4653,11 @@ function repeatViz(t) {
 }
 const runText = (t, i) => { const r = (t.runs || []).slice(-RUNS_SHOWN)[i]; return r ? `${esc(dateLabel(r.at))}: <b>${r.n} times in a row</b>` : ''; };
 
-// ---- the atlas: your artists as a universe, how you found them, the landscape of your top ones ----
+// ---- the atlas: your artists as a universe, how you found them, where they're from ----
 
 let ATLAS = null;
 let atlasView = 'universe';
 const TREE_OPEN = new Set();
-let landSel = -1;
 /** The universe on its canvas: the camera, what is picked, and the fingers on it. */
 const UNI = { cam: { x: 0, y: 0, k: 1 }, sel: -1, cluster: -1, year: 0, src: null, nodes: [], adj: [], w: 0, h: 0, dpr: 1, raf: 0, fly: null, pts: new Map(), gesture: null, lastTap: null };
 /** Constellations take the record's inks, in order; loose stars are gray. */
@@ -4516,11 +4681,11 @@ function renderAtlas() {
   const a = ATLAS;
   if (!a) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
   if (a.empty) { body.innerHTML = '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>'; return; }
+  if (!['universe', 'tree', 'map'].includes(atlasView)) atlasView = 'universe';
   if (atlasView === 'map') {
     morph(body, worldMapHtml(WORLDMAP));
     if (!WORLDMAP || !mapAsked) { mapAsked = true; send({ t: 'worldMap' }); }
   } else if (atlasView === 'tree') body.innerHTML = treeHtml(a.tree);
-  else if (atlasView === 'land') body.innerHTML = landHtml(a.landscape);
   else {
     body.innerHTML = universeHtml(a.universe);
     setupUniverse(a.universe);
@@ -4531,30 +4696,53 @@ function renderAtlas() {
 
 let WORLDMAP = null;
 let mapAsked = false;
-let mapSel = '';
+/** The country picked on the atlas's map, and on the period's map on Stats. */
+const ATLAS_MAP = { sel: '' };
+let statsMapSel = '';
+/** The period's map, as more of its artists are placed (only for the period still shown). */
+window.onStatsMap = (m) => {
+  if (!STATS || STATS.empty || m.range !== STATS.range.id) return;
+  STATS.map = m;
+  if (tab === 'stats') renderStats();
+};
+/** The period's map on Stats: nothing until some of its artists have a country. */
+function statsMapViz(s) {
+  const m = s.map;
+  if (!m || !m.total || (!Object.keys(m.countries || {}).length && m.looked >= m.total)) return '';
+  return worldMapHtml(m, { stats: true });
+}
 window.onWorldMap = (m) => {
   WORLDMAP = m;
   if (isOpen('atlasPage') && atlasView === 'map') renderAtlas();
 };
 const regionNames = (() => { try { return new Intl.DisplayNames([], { type: 'region' }); } catch (_) { return null; } })();
 const countryName = (c) => { try { return (regionNames && regionNames.of(c)) || WORLD.names[c] || c; } catch (_) { return WORLD.names[c] || c; } };
-function worldMapHtml(m) {
+/**
+ * Where artists are from, on a world map with the countries ranked under it. All time in the atlas; for a period on
+ * Stats ([o.stats]: a block of its own, its own country picked, fewer rows).
+ */
+function worldMapHtml(m, o = {}) {
   if (!m) return '<div class="lin inline indet"><i></i></div>';
   if (m.empty) return '<div class="empty"><p>Import your Last.fm history on the Stats tab first.</p></div>';
+  const mapSel = o.stats ? statsMapSel : ATLAS_MAP.sel, attr = o.stats ? 'data-smc' : 'data-mc';
   const cs = m.countries || {};
   const ranked = Object.entries(cs).sort((p, q) => q[1].plays - p[1].plays);
   const max = Math.max(1, ...ranked.map(([, c]) => c.plays));
   const shade = (p) => `color-mix(in srgb, var(--tint-text, var(--md-primary)) ${Math.round(22 + (78 * Math.log(1 + p)) / Math.log(1 + max))}%, var(--md-surface-container-high))`;
-  const paths = Object.entries(WORLD.paths).map(([k, d]) => `<path d="${d}"${cs[k] ? ` data-mc="${k}" class="on${k === mapSel ? ' sel' : ''}" style="fill:${shade(cs[k].plays)}"` : ''}/>`).join('');
+  const paths = Object.entries(WORLD.paths).map(([k, d]) => `<path d="${d}"${cs[k] ? ` ${attr}="${k}" class="on${k === mapSel ? ' sel' : ''}" style="fill:${shade(cs[k].plays)}"` : ''}/>`).join('');
   const sel = cs[mapSel];
   const detail = sel ? `<div class="wm-sel"><h3>${esc(countryName(mapSel))}</h3><span class="sub">${plural(sel.n, 'artist')}, ${num(sel.plays)} plays</span>
     <div class="chips everyone">${sel.artists.map((a) => `<button class="chip" data-artist="${esc(a.name)}">${esc(a.name)}<small class="n">${compact(a.plays)}</small></button>`).join('')}</div></div>` : '';
   const going = m.looked < m.total;
   const progress = going ? `<p class="hint">Looking up where your artists are from: ${num(m.looked)} of ${num(m.total)}${m.busy ? '' : '. More next time you open the map.'}</p>
     <div class="lin inline${m.looked ? '' : ' indet'}"><i style="width:${((m.looked / Math.max(1, m.total)) * 100).toFixed(1)}%"></i></div>` : '';
-  const placed = m.plays ? `${pct(m.placed / m.plays)} of your top ${num(m.total)} artists' plays have a country` : '';
-  const rows = ranked.slice(0, 15).map(([k, c], i) => `<button class="r${k === mapSel ? ' here' : ''}" data-mc="${k}"><span class="n">${i + 1}</span><span class="t"><b>${esc(countryName(k))}</b><small>${c.n === 1 ? esc(c.artists[0].name) : `${plural(c.n, 'artist')}, most ${esc(c.artists[0].name)}`}</small></span><span class="v cnt">${compact(c.plays)}</span>
+  const placed = !m.plays ? '' : o.stats ? `${pct(m.placed / m.plays)} of these plays have a country` : `${pct(m.placed / m.plays)} of your top ${num(m.total)} artists' plays have a country`;
+  const rows = ranked.slice(0, o.stats ? 5 : 15).map(([k, c], i) => `<button class="r${k === mapSel ? ' here' : ''}" ${attr}="${k}"><span class="n">${i + 1}</span><span class="t"><b>${esc(countryName(k))}</b><small>${c.n === 1 ? esc(c.artists[0].name) : `${plural(c.n, 'artist')}, most ${esc(c.artists[0].name)}`}</small></span><span class="v cnt">${compact(c.plays)}</span>
     <div class="bar"><i style="width:${((c.plays / max) * 100).toFixed(1)}%"></i></div></button>`).join('');
+  if (o.stats) {
+    return `<div class="viz wm-viz"><h2>Where they're from</h2><svg class="wm" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="The period's artists on a world map">${paths}</svg>
+      ${detail}${placed && !going ? `<div class="readout">${placed}</div>` : ''}${going ? progress : ''}${rows ? `<div class="rank">${rows}</div>` : ''}</div>`;
+  }
   return `<div class="viz wm-viz"><svg class="wm" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="Your artists on a world map">${paths}</svg>
     ${detail}${placed && !going ? `<div class="readout">${placed}</div>` : ''}</div>${progress}${rows ? `<div class="rank">${rows}</div>` : ''}`;
 }
@@ -4911,62 +5099,6 @@ function treeHtml(t) {
   return `<p class="uni-intro">${intro}</p>
     <div class="viz"><h2>Gateways</h2><span class="sub">Artists that led you to others you kept playing</span>
     <div class="tree">${t.gateways.map((g) => treeRow(g.id, 0)).join('') || '<p class="hint">No artist has led you to two or more others yet.</p>'}</div></div>`;
-}
-
-// -- the landscape --
-
-const LAND_KINDS = {
-  obsession: ['var(--a2)', 'Obsession', 'most plays within a few months'],
-  companion: ['var(--a3)', 'Companion', 'with you for a year or more'],
-  comeback: ['var(--a7)', 'Comeback', 'back after six quiet months or more'],
-  phase: ['var(--a1)', 'Phase', 'a stretch of months, then less'],
-};
-function spanWords(m) {
-  const y = Math.floor(m / 12), r = m % 12;
-  return [y ? plural(y, 'year') : '', r ? plural(r, 'month') : ''].filter(Boolean).join(' and ') || 'a month';
-}
-function landKindText(s) {
-  if (s.kind === 'obsession') return `${s.months <= 1 ? 'a one-month' : `a ${s.months}-month`} obsession, ${monthYear(s.peakAt)}`;
-  if (s.kind === 'companion') return `with you for ${spanWords(s.months)}`;
-  if (s.kind === 'comeback') return `back after ${s.months} months away`;
-  return `a phase of ${plural(s.months, 'busy month')}`;
-}
-function landHtml(l) {
-  const S = (l && l.series) || [];
-  if (!S.length) return '<div class="empty"><p>Not enough plays yet for a landscape.</p></div>';
-  const n = Math.max(2, l.months);
-  const W = 360, peakH = 70, gap = 25, top = 22;
-  const H = top + peakH + gap * (S.length - 1) + 26;
-  const X = (m) => 10 + (m / (n - 1)) * (W - 20);
-  const smooth = (c) => c.map((v, i) => 0.25 * (c[i - 1] ?? v) + 0.5 * v + 0.25 * (c[i + 1] ?? v));
-  const max = Math.max(1, ...S.map((s) => Math.max(...smooth(s.counts))));
-  let svg = '', names = '';
-  S.forEach((s, i) => {
-    const base = top + peakH + i * gap;
-    const c = smooth(s.counts);
-    const pts = c.map((v, m) => [X(m), base - (v / max) * peakH]);
-    const d = `${smoothPath(pts)} L${X(n - 1)},${base} L${X(0)},${base} Z`;
-    const [col] = LAND_KINDS[s.kind] || LAND_KINDS.phase;
-    const dim = landSel >= 0 && landSel !== i;
-    const haze = 0.45 + 0.5 * (i / Math.max(1, S.length - 1));
-    const pk = c.indexOf(Math.max(...c));
-    const lx = Math.max(34, Math.min(W - 34, X(pk)));
-    svg += `<g class="mtn${landSel === i ? ' on' : ''}" data-land="${i}"><path d="${d}" class="occl"/><path d="${d}" style="fill:${col};fill-opacity:${(dim ? 0.12 : haze).toFixed(2)};stroke:${col};stroke-opacity:${dim ? 0.3 : 1}"/></g>`;
-    // Names go on top of all the mountains, so the ones in front don't hide them.
-    names += `<text x="${lx.toFixed(1)}" y="${(base - (c[pk] / max) * peakH - 5).toFixed(1)}" class="${dim ? 'dim' : ''}" data-land="${i}">${esc(s.name.length > 18 ? s.name.slice(0, 17) + '…' : s.name)}</text>`;
-  });
-  const y0 = new Date(l.monthsFrom).getFullYear();
-  const m0 = new Date(l.monthsFrom).getMonth();
-  let ticks = '';
-  // Each January gets its year; the first month too when the next January is far enough away.
-  for (let m = 0; m < n; m++) if ((m0 + m) % 12 === 0 || (m === 0 && m0 <= 8)) ticks += `<text x="${X(m).toFixed(1)}" y="${H - 6}" class="yr">${y0 + Math.floor((m0 + m) / 12)}</text>`;
-  const kinds = Object.entries(LAND_KINDS).map(([k, [col, name, what]]) => [k, col, name, what, S.filter((s) => s.kind === k).length]).filter((x) => x[4]);
-  const intro = `Your ${S.length} most played artists as mountains: height is plays per month, from your first scrobble to now, the earliest peaks at the back. ${kinds.map(([, , name, , cnt]) => `${cnt} ${name.toLowerCase()}${cnt === 1 ? '' : 's'}`).join(', ')}.`;
-  return `<p class="uni-intro">${intro}</p>
-    <div class="chip-row land-kinds">${kinds.map(([, col, name, what]) => `<span class="chip static"><i class="dot" style="background:${col}"></i>${name}<small class="n">${what}</small></span>`).join('')}</div>
-    <div class="viz land"><svg viewBox="0 0 ${W} ${H}" class="landscape">${svg}${names}${ticks}</svg>
-    <div class="rank land-rows">${S.map((s, i) => `<button class="r${landSel === i ? ' on' : ''}" data-land="${i}"><span class="n"><i class="dot" style="background:${(LAND_KINDS[s.kind] || LAND_KINDS.phase)[0]}"></i></span><span class="t"><b>${esc(s.name)}</b><small>${esc(landKindText(s))}</small></span><span class="v">${compact(s.plays)}</span></button>
-      ${landSel === i ? `<div class="land-det">Peaked in ${esc(monthYear(s.peakAt))} with ${plural(s.peak, 'play')}; first played ${esc(monthYear(s.from))}. <button class="link" data-artist="${esc(s.name)}">Open ${esc(s.name)}</button></div>` : ''}`).join('')}</div></div>`;
 }
 
 /** How you found an artist, back along the chain of first plays, and who they led you to. */
@@ -5725,16 +5857,17 @@ function concertRow(c, byArtist) {
 }
 /** On an artist's page: the shows of theirs you were at. */
 /** A show as a ticket stub: the date torn off on the left, the place and a line about it. */
-function ticketHtml(date, place, line, attrs) {
+/** A show as a ticket stub; [kind] colors it: "soon" for shows to come, "went" for shows you were at, none for shows lately. */
+function ticketHtml(date, place, line, attrs, kind = '') {
   const d = new Date(`${date}T12:00:00`), thisYear = d.getFullYear() === new Date().getFullYear();
-  return `<button class="tk" ${attrs}><span class="tkd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}${thisYear ? '' : ` ${String(d.getFullYear()).slice(2)}`}</small></span>
+  return `<button class="tk${kind ? ` ${kind}` : ''}" ${attrs}><span class="tkd"><b>${d.getDate()}</b><small>${esc(d.toLocaleDateString([], { month: 'short' }))}${thisYear ? '' : ` ${String(d.getFullYear()).slice(2)}`}</small></span>
     <span class="tki"><b>${esc(place)}</b><small>${esc(line)}</small></span></button>`;
 }
 function concertsBlock(list) {
   if (!list || !list.length) return '';
   if (pageTabs()) {
     return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}</span>
-      <div class="tix">${list.map((c) => { CONCERT_BY_ID[c.id] = c; return ticketHtml(c.date, c.venue || c.city, [c.city, c.after != null ? `${plural(c.after, 'play')} after` : ''].filter(Boolean).join(', '), `data-concert="${esc(c.id)}"`); }).join('')}</div></div>`;
+      <div class="tix">${list.map((c) => { CONCERT_BY_ID[c.id] = c; return ticketHtml(c.date, c.venue || c.city, [c.city, c.after != null ? `${plural(c.after, 'play')} after` : ''].filter(Boolean).join(', '), `data-concert="${esc(c.id)}"`, 'went'); }).join('')}</div></div>`;
   }
   return `<div class="viz"><h2>You saw them live</h2><span class="sub">${list.length === 1 ? 'Once' : `${list.length} times`}, from your setlist.fm</span>
     <div class="rank concerts">${list.map((c) => concertRow(c, true)).join('')}</div></div>`;
@@ -5801,7 +5934,7 @@ function renderConcerts() {
         CONCERT_BY_ID[c.id] = c;
         const glow = c.after == null ? '' : c.running ? `${c.after} since` : `${c.after} after, ${c.before} before`;
         const hot = c.after != null && !c.running && c.after >= 5 && c.after >= 2 * c.before;
-        return `<button class="tk" data-concert="${esc(c.id)}"><span class="tkd"><b>${new Date(`${c.date}T12:00:00`).getDate()}</b><small>${esc(new Date(`${c.date}T12:00:00`).toLocaleDateString([], { month: 'short' }))}</small></span>
+        return `<button class="tk went" data-concert="${esc(c.id)}"><span class="tkd"><b>${new Date(`${c.date}T12:00:00`).getDate()}</b><small>${esc(new Date(`${c.date}T12:00:00`).toLocaleDateString([], { month: 'short' }))}</small></span>
           <span class="tki"><b>${esc(c.artist)}</b><small>${esc([c.venue, c.city].filter(Boolean).join(', '))}</small>${glow ? `<span class="tk-glow${hot ? ' hot' : ''}">${hot ? icon('fire', 'i inl') : ''}${esc(glow)}</span>` : ''}</span></button>`;
       }).join('')}</div></div>`;
     });
@@ -5913,10 +6046,8 @@ function liveHtml(name) {
   if (L.unknown || (!shows.length && !soon.length)) return '';
   let h = `<div class="viz live">${head}<span class="sub">${typ.length ? `Their usual set at their last ${plural(L.of, 'show')} with a setlist, in its usual order` : 'Their shows on setlist.fm'}</span>`;
   // Shows to come, as far as fans have added them on setlist.fm: each opens its page there.
-  if (soon.length === 1 || (soon.length && !pageTabs())) {
-    h += `<h3 class="live-h">Coming up</h3>${soon.slice(0, pageTabs() ? 1 : 5).map((s) => `<button class="live-next" data-url="${esc(s.url)}">${icon('calendar')}<span><b>${esc(showDate(s.date))}</b><small>${esc([s.venue, s.city, s.country].filter(Boolean).join(', '))}</small></span></button>`).join('')}`;
-  } else if (soon.length) {
-    h += `<h3 class="live-h">Coming up</h3><div class="tix soon">${soon.map((s) => ticketHtml(s.date, s.city || s.venue, [s.city ? s.venue : '', s.country].filter(Boolean).join(', '), `data-url="${esc(s.url)}"`)).join('')}</div>`;
+  if (soon.length) {
+    h += `<h3 class="live-h">Coming up</h3><div class="tix">${soon.map((s) => ticketHtml(s.date, s.city || s.venue, [s.city ? s.venue : '', s.country].filter(Boolean).join(', '), `data-url="${esc(s.url)}"`, 'soon')).join('')}</div>`;
   }
   const plays = (x) => (x.plays ? `<span class="v cnt">${num(x.plays)}×</span>` : '<span class="v new-tag">new</span>');
   if (typ.length && pageTabs()) {
@@ -6511,6 +6642,7 @@ const BLOCKS = {
   lineup: { name: 'Your lineup', kinds: ['day', ...SPAN], html: lineupViz },
   top: { name: 'Top lists', kinds: ['day', ...SPAN], html: chartViz },
   milestones: { name: 'Milestones', kinds: SPAN, html: milestonesViz },
+  map: { name: 'Where they\'re from', html: statsMapViz },
   taste: { name: 'Your taste', html: tasteHtml },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
   dayline: { name: 'Your day', kinds: ['day'], html: (s) => daylineViz(s) },
@@ -6522,7 +6654,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
-  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'milestones', 'taste'],
+  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'map', 'rarely', 'wishlist', 'lineup', 'top', 'milestones', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
@@ -6663,6 +6795,7 @@ const STATS_SECTIONS = [
   ['strip', 'Your rhythm', ['timeline', 'clock']],
   ['', '', ['record']],
   ['squares', '', ['decades', 'repeat']],
+  ['', '', ['map']],
   ['strip', 'In pictures', ['covers', 'lineup']],
   ['', '', ['newArtists']],
   ['squares', '', ['rarely', 'wishlist']],
@@ -7298,7 +7431,7 @@ function tastePills() {
   const concerts = (ST.setlist || {}).concerts;
   const out = [card('id="openConcerts"', 'Your concerts', concerts ? plural(concerts, 'show') : 'Concerts', concerts ? 'you were at' : 'from setlist.fm', '', 'ticket')];
   const last = [
-    card('data-atlas', 'Musical atlas', '', 'Universe, family tree, landscape, map', ATLAS_ART),
+    card('data-atlas', 'Musical atlas', '', 'Universe, family tree, map', ATLAS_ART),
   ];
   if (T) {
     const race = (T.race || {}).artists || [];
@@ -7332,7 +7465,7 @@ function tasteHtml(s, small) {
     <div class="tp-row">${tastePills()}</div>${vsMiniHtml()}${genreMapHtml(x.genreMap)}</section>`;
   return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All time</span>${intro}
     <div class="xp-tiles">
-      <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
+      <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, map</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
       <button class="xp-tile wide" id="openThrough">${THROUGH_ART}<span><b>Through the years</b><small>The race, every play, gaps, how deep you go</small></span></button>
       <button class="xp-tile wide" id="openConcerts">${TICKET_ART}<span><b>Your concerts</b><small>${(ST.setlist || {}).concerts ? `${plural(ST.setlist.concerts, 'show')} you were at, and what they did to your listening` : 'The shows you were at, from setlist.fm'}</small></span></button>
@@ -8564,7 +8697,9 @@ function build() {
     const sqg = e.target.closest('[data-sqgo]');
     if (sqg) { openSquare(sqg); return; }
     const mc = e.target.closest('#atlasBody [data-mc]');
-    if (mc) { mapSel = mapSel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
+    if (mc) { ATLAS_MAP.sel = ATLAS_MAP.sel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
+    const smc = e.target.closest('#statsBody [data-smc], #blockBody [data-smc]');
+    if (smc) { statsMapSel = statsMapSel === smc.dataset.smc ? '' : smc.dataset.smc; renderStats(); renderBlock(); return; }
     if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
     const chb = e.target.closest('[data-chby]');
     if (chb) { chartBy = chb.dataset.chby; renderStats(); renderBlock(); return; }
@@ -8600,6 +8735,7 @@ function build() {
   $('#scrim').onclick = closeSheet;
 
   $('#sortBtn').onclick = openSortSheet;
+  setupShelfIndex();
   $('#filterBtn').onclick = openFilterChoice;
   $('#searchFab').onclick = openSearch;
   $('#gSearchClose').onclick = (e) => { e.preventDefault(); closeSearch(); };
@@ -8624,7 +8760,7 @@ function build() {
   });
   // Scrolling the lyrics yourself: they leave you there for a few seconds.
   for (const ev of ['touchstart', 'wheel']) {
-    $('#nowBody').addEventListener(ev, (e) => { if (e.target.closest('.lyr-lines')) lyrUserUntil = Date.now() + 4000; }, { passive: true });
+    for (const host of ['#nowBody', '#spinBody']) $(host).addEventListener(ev, (e) => { if (e.target.closest('.lyr-lines')) lyrUserUntil = Date.now() + 4000; }, { passive: true });
   }
   $('#nowBody').addEventListener('input', (e) => { if (e.target.id === 'npSeek') tickNow(); });
   $('#nowBody').addEventListener('change', (e) => { if (e.target.id === 'npSeek') npControl('seek', +e.target.value); });
@@ -8785,8 +8921,6 @@ function build() {
     if (t.closest('[data-uni-x]')) { uniClear(); return; }
     const tr = t.closest('[data-tree]');
     if (tr) { const id = +tr.dataset.tree; if (TREE_OPEN.has(id)) TREE_OPEN.delete(id); else TREE_OPEN.add(id); renderAtlas(); return; }
-    const ld = t.closest('[data-land]');
-    if (ld && !t.closest('[data-artist]')) { const k = +ld.dataset.land; landSel = landSel === k ? -1 : k; renderAtlas(); }
   };
   const exploreClick = (e) => {
     const no = e.target.closest('[data-nope]');

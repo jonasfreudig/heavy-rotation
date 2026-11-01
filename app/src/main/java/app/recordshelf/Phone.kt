@@ -112,7 +112,10 @@ object Phone {
             .put("eligible", PlayTracker.eligible(p.meta)).put("on", enabled(pkg))
         nowPkg = pkg
         Core.pushState()
+        if (tracker.playing) Core.phonePlays()
     }
+
+    fun isPlaying() = now?.optBoolean("playing") == true
 
     fun clearNow() {
         now = null

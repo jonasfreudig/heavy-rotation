@@ -79,6 +79,17 @@ class SpinTest {
     }
 
     @Test
+    fun aSideThatEndedStaysUpToBeTurnedOver() {
+        val s = spin(listOf(pt("a", 100), pt("b", 200)))
+        s.takeDue(300_000)
+        assertTrue("every track played", s.isOver(300_000))
+        assertFalse("but it stays up a while", s.isOver(300_000, 900_000))
+        assertTrue(s.isOver(1_200_000, 900_000))
+        assertEquals("the app wakes when that while is over", 1_200_000L, s.nextEventMs(300_000, 900_000))
+        assertEquals(listOf("A", "B"), (0 until 2).map { s.toUiJson().getJSONArray("sides").getString(it) })
+    }
+
+    @Test
     fun stopCountsOnlyWhatPlayedHalfway() {
         val s = spin(listOf(pt("a", 100), pt("b", 200), pt("c", 200)))
         val counted = s.stop(160_000)

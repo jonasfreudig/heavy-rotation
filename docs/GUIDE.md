@@ -262,8 +262,9 @@ Song, album and artist pages take their colors from the cover or the artist's ph
 the header, and charts in that color. Plays over time shows plays per month as a smooth curve with
 its peak marked, and under it, on the same time axis, a barcode with one line per week since you
 first played it, stronger for more plays. Tap it for a week and its month: the week lights up in the
-barcode and the month in the curve. "Around the clock" has the 24 hours as a ring around the cover,
-with longer wedges for the hours you play it most; tap a wedge for its plays. A song's page also has
+barcode and the month in the curve. "Around the clock" has the 24 hours as a ring around the cover
+(on a genre page, a picture disc printed with its top covers), with longer wedges for the hours you
+play it most; tap a wedge for its plays. A song's page also has
 its chart run: its place among all the songs you played, month by month, number 1 on top; tap a
 month for its place and plays.
 
@@ -293,7 +294,8 @@ With setlist.fm set up, artist pages have "On stage lately": the songs of the ar
 their recent shows, in their usual order (songs played at about a third of the shows or more,
 encore songs last), with your plays of each and "new" for the ones you haven't heard. It also lists
 their shows coming up (as far as fans have added them on setlist.fm; tap one for its page there) and
-their recent shows. Tapping Make a concert playlist turns the
+their recent shows, all as ticket stubs: shows to come in a stronger shade of the page's color than
+the ones lately, and shows you were at in a color of their own. Tapping Make a concert playlist turns the
 usual set into a playlist; tap a show for a playlist of that night's setlist. Both go to TIDAL or
 through Copy list, like every playlist. Fans write the setlists on setlist.fm, so recent shows can
 still be missing.
@@ -342,8 +344,9 @@ with more of it.
 
 #### Your musical atlas
 
-The Musical atlas tile, under Your taste at the end of the Stats tab, opens three views of your
-whole history, worked out from the order of your scrobbles.
+The Musical atlas tile, under Your taste at the end of the Stats tab, opens your whole history as a
+universe, a family tree and a map (see below). The first two are worked out from the order of your
+scrobbles.
 
 - Universe shows your 150 most played artists as stars, sized by plays. Two stars are linked when
   you often play them back to back (in the same listening session, relative to how much you play
@@ -361,10 +364,6 @@ whole history, worked out from the order of your scrobbles.
   with radio or autoplay the new artist was the app's pick. Artists from the first two weeks of your
   history have no known origin. Artist pages show the same under "How you found them": the chain
   back as far as it goes, and who they led you to.
-- Landscape shows your 14 most played artists as mountains of plays per month, the earliest peaks
-  at the back. Each artist is labeled an obsession (most plays within a few months), a companion (a
-  year or more), a comeback (six quiet months or more, then back) or a phase. Tap a mountain or a
-  row for its peak.
 
 Play counts are song plays: an album's "124 plays" means 124 scrobbles of its songs. Record and
 album pages turn that into "≈ 12 times through" when the number of songs is known.
@@ -388,7 +387,8 @@ it starts); the hours in Totals are counted the same way. Milestones lists round
 The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the
 countries ranked below it. Tap a country for its artists. The countries come from MusicBrainz, one
 artist a second, so the first time takes about five minutes; the map fills in as they arrive and
-the answers stay on the phone.
+the answers stay on the phone. Stats has the same map for the period you pick, "Where they're from",
+with the five countries you played most then; its artists are looked up as they come.
 
 #### You vs everyone
 
@@ -553,9 +553,12 @@ Rows that scroll sideways and charts you can scrub keep their own swipes. In an 
 the setlist comes in two columns and the shows scroll sideways as ticket stubs.
 
 The number of records on the shelf sits next to its title. One line under the title has the sort
-order (tap it for the others: recently or first added, artist A–Z or Z–A, year, plays), the filter
+order (tap it for the others: recently or first added, artist A–Z or Z–A, album A–Z or Z–A, year,
+plays), the filter
 button, and three views: the grid of covers, big covers two to a row with year and plays, and a
-list with year, label, format, two styles and plays.
+list with year, label, format, two styles and plays. Sorted by artist, album or year, the shelf
+has a heading for each letter or decade, and a long one an index down the right edge: drag along it
+to jump to a letter or a decade.
 
 What is playing right now, on the turntable or in a music app on the phone, shows as a sleeve with
 the record half out of it, turning while it plays. Settings → Look → Now playing puts it in one of
@@ -632,6 +635,13 @@ what you play: a side, the whole record, or chosen tracks. Then choose when:
 
 If the timing drifts from the record, tap the track that is actually playing on the Now spinning
 page; the times after it move.
+
+Now spinning has the lyrics of the track playing, from LRCLIB, lit line by line along the schedule,
+and keeps the screen on while they show (Keep the screen on switches that off). When the last track
+of a side ends, the record stays up for 15 minutes so you can turn it over and tap Flip (3 minutes
+when it was the last side), unless the phone starts playing something else. When the next side
+starts, the record on the turntable turns over; when it is on another record of the set (side B to
+side C), the record flies off and the next one comes in.
 
 Offline, scrobbles wait on the phone and go out automatically once it is online again (also after
 a reboot). Activity, the clock button at the top, shows what was sent, what waits, and what Last.fm ignored and why.
