@@ -456,7 +456,7 @@ window.onBack = () => {
   if (!$('#story').hidden) { closeStory(); return true; }
   if (sheetOpen()) { closeSheet(); return true; }
   // Lyrics over the whole screen: back makes them small again first.
-  if (lyrFull && pageStack[pageStack.length - 1] === 'nowPage') { setLyrFull(false); return true; }
+  if (lyrFull && ['nowPage', 'spinPage'].includes(pageStack[pageStack.length - 1])) { setLyrFull(false); return true; }
   if (pageStack.length) { closePage(mine && fx.kind === 'page' ? fx : null); return true; }
   if (searching()) { closeSearch(); return true; }
   if (tab !== 'shelf') { showTab('shelf'); return true; }
@@ -712,7 +712,8 @@ function backTarget() {
   if (!$('#story').hidden) return { el: $('#story'), kind: 'page', under: top ? [top] : homeLayers() };
   if (sheetOpen()) return { el: $('#sheetBody'), kind: 'sheet' };
   // Lyrics over the whole screen: a swipe moves them down, like a sheet, and back makes them small again.
-  if (lyrFull && top && top.id === 'nowPage' && $('#npLyrics')) return { el: $('#npLyrics'), kind: 'sheet' };
+  const lyrBox = top && (top.id === 'nowPage' ? $('#npLyrics') : top.id === 'spinPage' ? $('#spLyrics') : null);
+  if (lyrFull && lyrBox) return { el: lyrBox, kind: 'sheet' };
   if (top) {
     const prev = pageStack.length > 1 ? $('#' + pageStack[pageStack.length - 2]) : null;
     // The same kind of page right under it is this very element, which back fills with the earlier
@@ -1210,7 +1211,13 @@ function tickUi() {
   if (isOpen('spinPage') && $('#spTitle')) {
     tickTurntable(n, now, sp);
     tickSpinLyrics(sp, n);
-    $('#spTitle').textContent = it ? it.title : n.next ? n.next.title : over ? overWords : sp.album;
+    // The track playing opens its song's page; the other states are just words.
+    const titleKey = it ? `t|${it.artist}|${it.title}` : `w|${n.next ? n.next.title : over ? overWords : sp.album}`;
+    const tEl = $('#spTitle');
+    if (tEl.dataset.key !== titleKey) {
+      tEl.dataset.key = titleKey;
+      tEl.innerHTML = it ? `<button class="sp-title" ${trackAttrs(it.artist, it.title, { album: sp.album, cover: sp.cover })}>${esc(it.title)}</button>` : esc(titleKey.slice(2));
+    }
     const ofSide = it ? n.live.filter((x) => x.side === it.side) : [];
     $('#spSide').textContent = it ? [it.side ? sideLabel(it.side) : '', `${ofSide.indexOf(it) + 1} of ${ofSide.length}`].filter(Boolean).join(', ') : n.next ? `Starts at ${fmtTime(n.next.start)}` : over && sp.nextSide ? `Turn it over for ${sideLabel(sp.nextSide).replace(/^Side/, 'side')}` : '';
     $('#spBar').style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
@@ -1401,6 +1408,7 @@ let nowSig = '';
 function openNow() {
   lyrFull = false;
   $('#nowPage').classList.remove('lyr-full');
+  $('#spinPage').classList.remove('lyr-full');
   openPage('nowPage');
   nowSig = '';
   renderNow();
@@ -1531,7 +1539,20 @@ let lyrFull = false;
 const LYR_FULL_AT = 0.12;
 function setLyrFull(on) {
   lyrFull = on;
-  $('#nowPage').classList.toggle('lyr-full', on);
+  // The record's lyrics on Now spinning, or the phone's on Now playing.
+  const spin = on ? pageStack[pageStack.length - 1] === 'spinPage' : isOpen('spinPage');
+  $('#nowPage').classList.toggle('lyr-full', on && !spin);
+  $('#spinPage').classList.toggle('lyr-full', on && spin);
+  if (spin) {
+    const sb = $('#spLyrics');
+    if (sb) {
+      for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) sb.style[k] = '';
+      sb.innerHTML = lyricsHtml(false, SLYR, true);
+      slyrAt = -2;
+      syncSpinLyrics();
+    }
+    return;
+  }
   const n = (ST.phone || {}).now, box = $('#npLyrics');
   // Where a back swipe left it: back in its place in the page.
   if (box) for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) box.style[k] = '';
@@ -1548,6 +1569,12 @@ function lyricsMini() {
   const pp = n.media && m.canPlay !== false ? `<button class="icon-btn np-ctl" data-np="${playing ? 'pause' : 'play'}" aria-label="${playing ? 'Pause' : 'Play'}">${icon(playing ? 'pause' : 'play')}</button>` : '';
   return `<div class="lyr-mini">${coverHtml(n.cover, n.album || n.title, n.artist, 'tiny')}<span><b>${esc(n.title)}</b><small>${esc(n.artist)}</small></span>${pp}</div>`;
 }
+/** The record's track in one row over its lyrics when they fill the screen: the cover, the title, the record. */
+function spinLyricsMini() {
+  const sp = ST.spin, it = sp && spinNow(sp).item;
+  if (!lyrFull || !it) return '';
+  return `<div class="lyr-mini">${coverHtml(sp.cover, sp.album, sp.artist, 'tiny')}<span><b>${esc(it.title)}</b><small>${esc(it.artist)}, ${esc(sp.album)}</small></span></div>`;
+}
 /** The lyrics of the song on the phone, asked for once per song (for Now playing and the bar). */
 function ensureLyrics(n) {
   const lq = `${n.artist}|${n.title}`;
@@ -1556,7 +1583,7 @@ function ensureLyrics(n) {
   LYR = { q: lq, data: null, lines: null };
   send({ t: 'lyrics', artist: n.artist, title: n.title, album: n.album || '', dur: Math.round((m.dur || n.dur || 0) / 1000), q: lq });
 }
-/** The lyrics box: the song on the phone's ([S] = LYR), or the record's ([spin]: no seeking, no full screen). */
+/** The lyrics box: the song on the phone's ([S] = LYR), or the record's ([spin]: a tapped line moves its schedule there). */
 function lyricsHtml(canSeek, S = LYR, spin = false) {
   const d = S.data;
   const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
@@ -1564,10 +1591,10 @@ function lyricsHtml(canSeek, S = LYR, spin = false) {
   if (d.error) return `<h2>Lyrics</h2><p class="hint">Couldn't reach LRCLIB for the lyrics just now.</p><button class="btn tonal small" data-lyragain>${icon('sync')}Try again</button>`;
   if (d.missing) return `<h2>Lyrics</h2><p class="hint">No lyrics found for this song.</p>${credit}`;
   if (d.instrumental) return `<h2>Lyrics</h2><p class="hint">An instrumental: nothing to sing along to.</p>${credit}`;
-  const mini = spin ? '' : lyricsMini(), head = lyricsHead(!spin);
+  const mini = spin ? spinLyricsMini() : lyricsMini(), head = lyricsHead();
   if (S.lines && S.lines.length) {
     return `${mini}${head}
-      <div class="lyr-lines synced">${S.lines.map((l) => `<p${spin ? '' : ` data-lt="${l.t}"`}>${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
+      <div class="lyr-lines synced">${S.lines.map((l) => `<p data-lt="${l.t}">${l.text ? esc(l.text) : '<span class="lyr-gap">♪</span>'}</p>`).join('')}</div>${credit}`;
   }
   return `${mini}${head}<div class="lyr-lines">${esc(d.plain).split('\n').map((l) => `<p>${l || '&nbsp;'}</p>`).join('')}</div>${credit}`;
 }
@@ -1653,7 +1680,7 @@ function syncSpinLyrics() {
   const it = spinNow(sp).item;
   if (!it || `spin|${it.artist}|${it.title}` !== SLYR.q) return;
   const pos = Date.now() - it.start + LYR_LEAD;
-  slyrAt = lightLyrics(box, L, pos, slyrAt, false);
+  slyrAt = lightLyrics(box, L, pos, slyrAt, lyrFull);
   if (slyrAt + 1 < L.length) slyrTimer = setTimeout(syncSpinLyrics, Math.max(40, L[slyrAt + 1].t - pos));
 }
 /** Once a second: the position, the time left, and what is left of the album. */
@@ -2151,7 +2178,7 @@ function renderSpin(force) {
       <div id="spinHolo">${reuse ? '' : turntableHtml(sp, spinSide(sp, spinNow(sp)))}</div>
       <div class="side" id="spSide"></div>
       <h1 id="spTitle"></h1>
-      <div class="artist">${esc(sp.artist)}, ${esc(sp.album)}</div>
+      <div class="artist"><button class="artist-link" data-artist="${esc(sp.artist)}">${esc(sp.artist)}</button><span class="dot">,</span><button class="artist-link" ${albumAttrs(sp.artist, sp.album)} data-cover="${esc(sp.cover || '')}">${esc(sp.album)}</button></div>
       <div class="bar"><i id="spBar"></i></div>
       <div class="times"><span id="spElapsed"></span><span id="spLeft"></span></div>
     </div>
@@ -9137,6 +9164,17 @@ function build() {
   };
 
   $('#spinBody').onclick = (e) => {
+    // A line of the lyrics: the track is at that line now, and the schedule moves to match.
+    const lt = e.target.closest('#spLyrics [data-lt]');
+    if (lt && ST.spin) {
+      const it = spinNow(ST.spin).item;
+      if (it) {
+        lyrUserUntil = 0;
+        send({ t: 'spinResync', i: ST.spin.items.indexOf(it), at: +lt.dataset.lt });
+        toast('The record follows that line now');
+      }
+      return;
+    }
     if (e.target.closest('#spFlip')) { send({ t: 'spinFlip' }); toast(`${sideLabel(ST.spin.nextSide)} started`); return; }
     if (e.target.closest('#spStop')) {
       confirmSheet('Stop scrobbling?', 'Tracks that have played at least halfway still count. The rest are dropped.', 'Stop', () => send({ t: 'spinStop' }));

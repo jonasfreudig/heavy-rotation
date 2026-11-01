@@ -924,3 +924,6 @@ html.locked .page { overflow: hidden; }
 .card-pill { padding-left: 10px; }
 .tcard.album .tc-st span { min-width: 0; }
 .tcard.album .tc-st b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Now spinning: the track's title opens its page, looking like the title it is. */
+.sp-title { font: inherit; color: inherit; letter-spacing: inherit; text-align: center; padding: 0; }

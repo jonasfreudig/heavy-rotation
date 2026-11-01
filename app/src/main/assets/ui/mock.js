@@ -1586,7 +1586,8 @@ const Mock = (() => {
         }
         case 'spinResync': {
           if (!spin) break;
-          const now = Date.now();
+          // At a line of the lyrics: the track started that long ago.
+          const now = Date.now() - Math.max(0, m.at || 0);
           let t = now, prev = null;
           for (let i = m.i; i < spin.items.length; i++) {
             const it = spin.items[i];

@@ -649,7 +649,10 @@ If the timing drifts from the record, tap the track that is actually playing on 
 page; the times after it move.
 
 Now spinning has the lyrics of the track playing, from LRCLIB, lit line by line along the schedule,
-and keeps the screen on while they show (Keep the screen on switches that off). When the last track
+and keeps the screen on while they show (Keep the screen on switches that off). The arrow next to it
+lets them fill the screen, as on Now playing. Tap the line being sung to sync: the track is at that
+line now, and the tracks after it move with it. The track's title opens its song page, the artist and
+the album theirs. When the last track
 of a side ends, the record stays up for 15 minutes so you can turn it over and tap Flip (3 minutes
 when it was the last side), unless the phone starts playing something else. When the next side
 starts, the record on the turntable turns over; when it is on another record of the set (side B to

@@ -1140,8 +1140,10 @@ object Core {
             "spinFlip" -> scrobExec.execute { flipInner() }
             "spinResync" -> {
                 val i = msg.optInt("i", -1)
+                // From a line of the lyrics: the track has been playing that long already.
+                val into = msg.optLong("at", 0L).coerceAtLeast(0L)
                 scrobExec.execute {
-                    spin?.resync(i, System.currentTimeMillis())
+                    spin?.resync(i, System.currentTimeMillis() - into)
                     tickInner()
                 }
             }
