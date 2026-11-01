@@ -153,13 +153,13 @@ document.addEventListener('animationstart', (e) => {
  *
  * Collector cards move too, more cheaply, since a page can have a dozen on screen: each frame
  * that moves them costs a restyle, a paint and a commit of the whole page. So their angle goes
- * straight into the card's transform and its lights' backgrounds (no variables that its contents
- * would inherit and restyle with), at most about 60 times a second, and not while the page scrolls.
+ * straight into the card's transform and its lights' (no variables that its contents would
+ * inherit and restyle with), at most about 60 times a second, and not while the page scrolls.
  */
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
   // Collector cards near the screen (an observer keeps the list), and those of them in what's on top now.
-  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], cardAt: 0, scrollAt: 0, settleT: 0,
+  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], cardAt: 0, scrollAt: 0, settleT: 0, scrolledTo: new WeakMap(),
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
@@ -273,26 +273,34 @@ const Tilt = {
     c._ty = y;
     const m = Math.min(1, Math.hypot(x, y));
     c.style.transform = `perspective(700px) rotateX(${(y * -8).toFixed(2)}deg) rotateY(${(x * 10).toFixed(2)}deg)`;
-    // The light runs over the card inside its lights: moving them instead, the card would have to clip them.
-    c._lt.style.backgroundPosition = `${(50 + 54 * x).toFixed(1)}% ${(50 + 40.5 * y).toFixed(1)}%`;
-    c._lt.style.opacity = ((0.15 + m * 0.65) * e).toFixed(3);
+    // The glints only move and fade (see look.css), mostly across their slant, which is where they show it.
+    c._lt.style.transform = `translate(${(x * -15).toFixed(2)}%, ${(y * -8).toFixed(2)}%) rotate(18deg)`;
+    c._lt.style.opacity = ((0.25 + m * 0.65) * e).toFixed(3);
     if (c._fl) {
-      c._fl.style.backgroundPosition = `${(50 - 58.5 * x).toFixed(1)}% ${(50 - 45 * y).toFixed(1)}%`;
-      c._fl.style.opacity = (0.28 + m * 0.4).toFixed(3);
+      c._fl.style.transform = `translate(${(x * 22).toFixed(2)}%, ${(y * 10).toFixed(2)}%) rotate(18deg)`;
+      c._fl.style.opacity = (0.25 + m * 0.4).toFixed(3);
     }
   },
   /** Whether the page scrolled within the last 150 ms. */
   scrolling(now = performance.now()) { return now - this.scrollAt < 150; },
   /** A scroll anywhere: the cards wait, and once it stops the ones that came near join (see watchCards). */
-  scrolled() {
+  scrolled(el) {
     if (!this.on) return;
+    // A row that snaps to its cards moves by a fraction of a pixel as one of them tilts: that is no scroll, or the cards
+    // would hold still and start again over and over. Only 2 px from where the box last scrolled to count.
+    const box = el === document ? document.scrollingElement : el;
+    if (box) {
+      const was = this.scrolledTo.get(box) || [0, 0];
+      if (Math.abs(box.scrollLeft - was[0]) < 2 && Math.abs(box.scrollTop - was[1]) < 2) return;
+      this.scrolledTo.set(box, [box.scrollLeft, box.scrollTop]);
+    }
     this.scrollAt = performance.now();
     clearTimeout(this.settleT);
     this.settleT = setTimeout(() => this.refresh(), 170);
   },
 };
 window.onTilt = (x, y) => { Tilt.seen = true; Tilt.tx = x; Tilt.ty = y; };
-document.addEventListener('scroll', () => Tilt.scrolled(), { capture: true, passive: true });
+document.addEventListener('scroll', (e) => Tilt.scrolled(e.target), { capture: true, passive: true });
 
 /**
  * Segmented controls, tabs and the tab bar: one pill (a dot under the period tabs) slides to the
