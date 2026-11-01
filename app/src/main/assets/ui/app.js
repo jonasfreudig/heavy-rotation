@@ -1550,7 +1550,8 @@ function syncAwake() {
   const m = (n && n.media) || {};
   const shown = isOpen('nowPage') || (nowStyle() === 'bar' && barLyricsOn() && !!LYR.lines && !$('#npBar').hidden);
   // Or the words of the record on the turntable, while a track of it plays.
-  const spinning = !!ST.spin && isOpen('spinPage') && !!spinNow(ST.spin).item && hasLyrics(SLYR);
+  const spinShown = isOpen('spinPage') || (nowStyle() === 'bar' && barLyricsOn() && !!SLYR.lines && !$('#npBar').hidden);
+  const spinning = !!ST.spin && spinShown && !!spinNow(ST.spin).item && hasLyrics(SLYR);
   const want = lyricsAwake() && (spinning || (!!n && !ST.spin && shown && hasLyrics() && !!(m.playing ?? n.playing)));
   if (want === awake) return;
   awake = want;
@@ -1630,6 +1631,7 @@ window.onLyrics = (d) => {
     const box = $('#spLyrics');
     if (box) box.dataset.q = '';
     if (ST.spin) tickSpinLyrics(ST.spin, spinNow(ST.spin));
+    tickNpBar();
     syncAwake();
     return;
   }
@@ -1684,11 +1686,7 @@ function tickSpinLyrics(sp, n) {
     box.hidden = true;
     return;
   }
-  const q = `spin|${it.artist}|${it.title}`;
-  if (q !== SLYR.q) {
-    SLYR = { q, data: null, lines: null };
-    send({ t: 'lyrics', artist: it.artist, title: it.title, album: sp.album, dur: it.dur, q });
-  }
+  const q = askSpinLyrics(sp, it);
   box.hidden = false;
   if (box.dataset.q !== q || box.dataset.got !== String(!!SLYR.data)) {
     box.dataset.q = q;
@@ -1697,6 +1695,15 @@ function tickSpinLyrics(sp, n) {
     slyrAt = -2;
   }
   syncSpinLyrics();
+}
+/** The lyrics of track [it] of the record [sp], asked for once (for Now spinning and the bar); their key. */
+function askSpinLyrics(sp, it) {
+  const q = `spin|${it.artist}|${it.title}`;
+  if (q !== SLYR.q) {
+    SLYR = { q, data: null, lines: null };
+    send({ t: 'lyrics', artist: it.artist, title: it.title, album: sp.album, dur: it.dur, q });
+  }
+  return q;
 }
 function syncSpinLyrics() {
   clearTimeout(slyrTimer);
@@ -1789,14 +1796,23 @@ function npControl(action, arg = 0) {
 // ---- what plays now in the bottom bar, and as a small pill at the top ----
 
 const barLyricsOn = () => { try { return localStorage.getItem('barLyrics') === 'on'; } catch (_) { return false; } };
-/** The line being sung now ('♪' between lines), or null without timed lyrics for this song. */
-function lyricLineNow(n) {
-  const L = LYR.lines;
-  if (!L || !L.length || LYR.q !== `${n.artist}|${n.title}`) return null;
-  const pos = nowPos(n) + LYR_LEAD;
+/** The line of [L] sung at [pos] ('♪' between lines), and how long until the next one. */
+function lineAt(L, pos) {
   let i = -1;
   while (i + 1 < L.length && L[i + 1].t <= pos) i++;
   return { text: i >= 0 && L[i].text ? L[i].text : '♪', next: i + 1 < L.length ? L[i + 1].t - pos : 0 };
+}
+/** The line being sung now on the phone, or null without timed lyrics for this song. */
+function lyricLineNow(n) {
+  const L = LYR.lines;
+  if (!L || !L.length || LYR.q !== `${n.artist}|${n.title}`) return null;
+  return lineAt(L, nowPos(n) + LYR_LEAD);
+}
+/** The same for track [t] on the turntable, along the record's schedule. */
+function spinLineNow(t) {
+  const L = SLYR.lines;
+  if (!L || !L.length || SLYR.q !== `spin|${t.artist}|${t.title}`) return null;
+  return lineAt(L, Date.now() - t.start + LYR_LEAD);
 }
 /** Something plays now: the record spinning, else the song on the phone. */
 const nowItem = () => {
@@ -1815,15 +1831,16 @@ function renderNpBar() {
   if (!it) { bar.hidden = true; barSig = ''; return; }
   bar.hidden = false;
   const n = it.phone, m = (n && n.media) || {};
-  const lyr = !!n && barLyricsOn();
-  if (lyr) ensureLyrics(n);
+  // Lyrics in the bar for the song on the phone and for the record's track alike.
+  const lyr = barLyricsOn();
+  if (lyr && n) ensureLyrics(n);
   const sig = [it.title, it.artist, it.cover, it.playing, lyr, !!n && !!n.media && m.canPlay !== false, !!it.spin].join('|');
   if (sig === barSig) { tickNpBar(); return; }
   barSig = sig;
   // With lyrics on, the line being sung gets the room: no play and pause (it's on Now playing, a tap away).
   bar.classList.toggle('lyr-mode', lyr);
   bar.innerHTML = `<button class="npb-open" id="npbOpen" aria-label="${esc(`${it.title} by ${it.artist}, open`)}">${coverHtml(it.cover, it.album || it.title, it.artist)}<span class="t"><b id="npbLine">${esc(it.title)}</b><small id="npbSub">${esc(it.artist)}${n ? `, ${esc(n.app)}` : ', on the turntable'}</small></span></button>
-    ${n ? `<button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>` : ''}
+    <button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>
     ${n && n.media && m.canPlay !== false && !lyr ? `<button class="npb-btn npb-pp" id="npbPp" aria-label="${it.playing ? 'Pause' : 'Play'}">${icon(it.playing ? 'pause' : 'play')}</button>` : ''}
     <i class="npb-prog"><i id="npbProg"></i></i>`;
   tickNpBar();
@@ -1840,8 +1857,16 @@ function tickNpBar() {
   if (it.spin) {
     const x = spinNow(it.spin, Date.now()), t = x.item;
     pct = t ? Math.min(100, ((Date.now() - t.start) / (t.dur * 1000)) * 100) : 0;
-    const want = t ? t.title : it.spin.album;
-    if (line && line.textContent !== want) line.textContent = want;
+    if (t && barLyricsOn()) askSpinLyrics(it.spin, t);
+    const l = t && barLyricsOn() ? spinLineNow(t) : null;
+    const want = l ? l.text : t ? t.title : it.spin.album;
+    if (line && line.textContent !== want) {
+      line.textContent = want;
+      line.classList.toggle('lyr', !!l);
+      sub.hidden = !!l;
+      sub.textContent = `${it.artist}, on the turntable`;
+    }
+    if (l && l.next > 0) barTimer = setTimeout(tickNpBar, Math.max(40, l.next));
   } else {
     const n = it.phone, m = n.media || {}, dur = m.dur || n.dur || 0;
     pct = dur ? Math.min(100, (nowPos(n) / dur) * 100) : 0;

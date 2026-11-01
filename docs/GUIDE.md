@@ -580,8 +580,9 @@ Explore a small pill next to the title shows the song with its record turning, a
 the very top shows how far it is. In the corner is the record peeking out above the search button,
 on every tab. In the bar grows the bottom bar into a bigger pill with the cover, the song, play and
 pause and the progress, above the tabs. Its lyrics button gives the bar to the line being sung, one
-line at a time on up to two lines; play and pause make room for it then (they are on Now playing, a
-tap away), and the screen stays on while the lyrics show. Tap any of them for Now
+line at a time on up to two lines, for a song on the phone and a record's track alike; play and pause
+make room for it then (they are on Now playing, a tap away), and the screen stays on while the lyrics
+show. Tap any of them for Now
 spinning or, for the phone, Now playing. Now playing
 has the song's exact position (drag to seek), play/pause and skip, what the app plays next (with
 the playlist's or mix's name) when the app shares its queue, and the whole album the song is on,
