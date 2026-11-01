@@ -1347,13 +1347,38 @@ const SHELF_SECS = {
   title: (r) => letterOf(r._title),
   year: (r) => (r.year ? `${Math.floor(r.year / 10) * 10}s` : 'No year'),
 };
-/** The index down the right edge of a long shelf in sections: its letters or decades, to drag along. */
+/**
+ * The index down the right edge of a long shelf in sections: its letters or decades, to drag along. It shows while
+ * the shelf scrolls (and while you drag it); where they would be tight, every other one is a dot.
+ */
 function renderShelfIndex(secs, n) {
   const rail = $('#shelfIndex');
   const on = secs.length > 2 && n > 30;
   rail.hidden = !on;
-  rail.innerHTML = on ? secs.map((k) => `<i data-sec="${esc(k)}">${esc(k === 'No year' ? '–' : /^\d{4}s$/.test(k) ? k.slice(2) : k)}</i>`).join('') : '';
+  const tight = on && (window.innerHeight - 220) / secs.length < 24;
+  rail.innerHTML = on ? secs.map((k, i) => `<i data-sec="${esc(k)}"${tight && i % 2 ? ' class="dot"' : ''}>${esc(k === 'No year' ? '–' : /^\d{4}s$/.test(k) ? k.slice(2) : k)}</i>`).join('') : '';
+  railAt();
 }
+let railTimer = 0, railFrame = 0;
+/** The shelf scrolled: the index comes in (and goes a moment after it stops), the section in view marked on it. */
+function railShow() {
+  const rail = $('#shelfIndex');
+  if (rail.hidden || tab !== 'shelf') return;
+  rail.classList.add('show');
+  clearTimeout(railTimer);
+  railTimer = setTimeout(() => { if (!rail.classList.contains('drag')) rail.classList.remove('show'); }, 1500);
+  railAt();
+}
+function railAt() {
+  const rail = $('#shelfIndex');
+  if (rail.hidden || rail.classList.contains('drag')) return;
+  const line = $('#appbar').offsetHeight + 24;
+  let k = '';
+  for (const h of $$('#grid .shelf-sec')) { if (h.getBoundingClientRect().top > line) break; k = h.dataset.sec; }
+  if (!k) { const first = $('#grid .shelf-sec'); k = first ? first.dataset.sec : ''; }
+  for (const x of rail.children) x.classList.toggle('on', x.dataset.sec === k);
+}
+window.addEventListener('scroll', () => { if (!railFrame) railFrame = requestAnimationFrame(() => { railFrame = 0; railShow(); }); }, { passive: true });
 /** Dragging along the index: the shelf jumps to the section under the finger, its name in a bubble beside it. */
 function setupShelfIndex() {
   const rail = $('#shelfIndex'), bubble = $('#shelfBubble');
@@ -1383,7 +1408,7 @@ function setupShelfIndex() {
   const end = () => {
     rail.classList.remove('drag');
     bubble.hidden = true;
-    for (const x of rail.children) x.classList.remove('on');
+    railShow();
   };
   rail.addEventListener('pointerup', end);
   rail.addEventListener('pointercancel', end);

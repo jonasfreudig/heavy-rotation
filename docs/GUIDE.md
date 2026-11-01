@@ -569,8 +569,9 @@ order (tap it for the others: recently or first added, artist A–Z or Z–A, al
 plays), the filter
 button, and three views: the grid of covers, big covers two to a row with year and plays, and a
 list with year, label, format, two styles and plays. Sorted by artist, album or year, the shelf
-has a heading for each letter or decade, and a long one an index down the right edge: drag along it
-to jump to a letter or a decade.
+has a heading for each letter or decade, and a long one an index down the right edge while it
+scrolls, the section you're in marked: drag along it to jump to a letter or a decade. Where they
+would be tight, every other one is a dot.
 
 What is playing right now, on the turntable or in a music app on the phone, shows as a sleeve with
 the record half out of it, turning while it plays. Settings → Look → Now playing puts it in one of

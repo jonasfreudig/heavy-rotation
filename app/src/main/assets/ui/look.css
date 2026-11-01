@@ -876,11 +876,18 @@ html.locked .page { overflow: hidden; }
 .shelf-sec { grid-column: 1 / -1; margin: 12px 2px -4px; font: 650 22px/28px var(--display, var(--font)); letter-spacing: -.01em; }
 .shelf-sec:first-child { margin-top: 0; }
 .grid.list .shelf-sec { margin-bottom: 4px; }
-.shelf-index { position: fixed; z-index: 5; right: 0; top: calc(var(--inset-top) + 80px); bottom: calc(var(--nav-h) + var(--inset-bottom) + 24px); width: 18px;
-  display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; border-radius: 9px 0 0 9px; touch-action: none; user-select: none; -webkit-user-select: none; }
-.shelf-index i { font: 600 9.5px/1 var(--mono); font-style: normal; color: var(--md-on-surface-variant); }
-.shelf-index i.on { color: var(--md-primary); transform: scale(1.4); }
-.shelf-index.drag { background: color-mix(in srgb, var(--md-surface-container-highest) 88%, transparent); }
+.shelf-index { position: fixed; z-index: 5; right: 4px; top: calc(var(--inset-top) + 92px); bottom: calc(var(--nav-h) + var(--inset-bottom) + 36px); width: 24px; padding: 6px 0;
+  display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; border-radius: 12px; touch-action: none; user-select: none; -webkit-user-select: none;
+  background: color-mix(in srgb, var(--md-surface-container-highest) 90%, transparent); box-shadow: 0 2px 10px rgb(0 0 0 / .12);
+  opacity: 0; pointer-events: none; transition: opacity .25s; }
+/* In while the shelf scrolls or a finger is on it; out a moment after. */
+.shelf-index.show, .shelf-index.drag { opacity: 1; pointer-events: auto; }
+.shelf-index i { font: 600 10px/1 var(--mono); font-style: normal; color: var(--md-on-surface-variant); transition: color .15s, transform .15s; }
+.shelf-index i.dot { font-size: 0; }
+.shelf-index i.dot::after { content: ''; display: block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .6; }
+.shelf-index i.on { color: var(--md-primary); transform: scale(1.35); }
+.shelf-index i.dot.on { font-size: 10px; }
+.shelf-index i.dot.on::after { display: none; }
 .shelf-bubble { position: fixed; z-index: 7; right: 34px; min-width: 56px; height: 56px; margin-top: -28px; padding: 0 14px; box-sizing: border-box; border-radius: 28px 28px 6px 28px;
   display: grid; place-items: center; font: 650 24px/1 var(--display, var(--font)); pointer-events: none;
   background: var(--md-primary-container); color: var(--md-on-primary-container); box-shadow: 0 6px 18px rgb(0 0 0 / .22); }
