@@ -153,8 +153,8 @@ document.addEventListener('animationstart', (e) => {
  *
  * Collector cards move too, more cheaply, since a page can have a dozen on screen: each frame
  * that moves them costs a restyle, a paint and a commit of the whole page. So their angle goes
- * straight into the card's transform and its two lights' (no variables that its contents would
- * inherit and restyle with), at most about 60 times a second, and not while the page scrolls.
+ * straight into the card's transform and its lights' backgrounds (no variables that its contents
+ * would inherit and restyle with), at most about 60 times a second, and not while the page scrolls.
  */
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
@@ -273,10 +273,11 @@ const Tilt = {
     c._ty = y;
     const m = Math.min(1, Math.hypot(x, y));
     c.style.transform = `perspective(700px) rotateX(${(y * -8).toFixed(2)}deg) rotateY(${(x * 10).toFixed(2)}deg)`;
-    c._lt.style.transform = `translate(${(x * -24).toFixed(2)}%, ${(y * -18).toFixed(2)}%)`;
+    // The light runs over the card inside its lights: moving them instead, the card would have to clip them.
+    c._lt.style.backgroundPosition = `${(50 + 54 * x).toFixed(1)}% ${(50 + 40.5 * y).toFixed(1)}%`;
     c._lt.style.opacity = ((0.15 + m * 0.65) * e).toFixed(3);
     if (c._fl) {
-      c._fl.style.transform = `translate(${(x * 26).toFixed(2)}%, ${(y * 20).toFixed(2)}%)`;
+      c._fl.style.backgroundPosition = `${(50 - 58.5 * x).toFixed(1)}% ${(50 - 45 * y).toFixed(1)}%`;
       c._fl.style.opacity = (0.28 + m * 0.4).toFixed(3);
     }
   },
