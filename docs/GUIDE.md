@@ -141,7 +141,7 @@ song, the day in covers, what you had on repeat, artists new that day (as cards)
 same date in other years (tap one to see that day), your streak and how much came off vinyl, the
 day's lineup when four artists or more played, and the top 10.
 
-A week shows its seven days, the week before in outline, and each day on a 24-hour strip. Charts of
+A week shows its seven days as bars in your top artists' colors, the week before as a line on each, and each day on a 24-hour strip in the same colors. Charts of
 change over the period (the river, phases, genre drift) appear once the period has four days with
 music.
 
@@ -154,17 +154,19 @@ Settings → Look → Stats picks how a week, month, year or all time looks:
   that size. Tap a card and its block opens on its own page for the same period, with all it has:
   every new artist, every song on repeat, up to 16 artists in who you played when. The bigger
   charts stay full size on the page.
-- Sections mixes three forms. Highlights, top lists, who you played when, your record and new
-  artists stand on their own, full size. Time listened and days and streaks, decades and on repeat,
-  and rarely played records and the wishlist come as pairs of squares with a number or a name each;
-  tap one and its block opens under the pair, tap it again to close it. Milestones is a pill with
-  the biggest one. Related blocks of about the same height sit side by side in a strip: your week
+- Sections mixes several forms. Highlights, your chart, who you played when, your record and new
+  artists stand on their own, full size. Decades and on repeat, and rarely played records and the
+  wishlist, come as pairs of squares; tap one and its block opens under the pair, tap it again to
+  close it. Days and streaks is a pill with the period's days and your longest run, and milestones
+  a pill with the biggest one; they open the same way. Related blocks of about the same height sit side by side in a strip: your week
   and your days, the river and genre drift, listening over time and when you listen, in covers and
   your lineup. Swipe sideways or tap a name above to move between them. A strip is as tall as its
   tallest block, so it keeps its size while you swipe, and keeps showing the block you picked when
   you change the period, as do opened squares. A sideways swipe on a chart in a strip moves to the
-  next block (taps on it work as usual). Your taste comes as small cards: your concerts as a
-  ticket, each part of Through the years, you vs everyone and the atlas. Sections replaced the
+  next block (taps on it work as usual). Your taste comes as small cards (your concerts as a
+  ticket, each part of Through the years, the atlas), then you vs everyone with how mainstream your
+  artists are; tap a tier for its artists. Rows of covers or cards run out of their card to the
+  screen's edges as you scroll them, in every view. Sections replaced the
   Classic page in 0.93; Classic users get Sections.
 
 A day is short, so it always shows its blocks full size.
@@ -190,7 +192,7 @@ time per month, quarter or year. These are the blocks for the chosen period:
   on repeat; your genres as a cloud of words; vinyl; your longest streak as a row of days; and a
   summary printed like the back of a record sleeve. If your setlist.fm concerts are set up, the
   period's shows appear as ticket stubs.
-- Totals shows plays, hours (about 3.5 minutes a track), artists and new artists, each with the
+- Totals shows plays, hours (from the time between plays, see Time below), artists and new artists, each with the
   change against the period before. For a period still running (this week, this month) it compares
   with the same stretch of the previous one: Monday to Wednesday against last Monday to Wednesday.
 - Highlights describes the period in sentences: more or less than last time, whether your top
@@ -239,7 +241,8 @@ time per month, quarter or year. These are the blocks for the chosen period:
 - Your chart has your most played songs, albums and artists like a hit parade (swipe sideways on
   the list to move between them, here and on the whole list): each with how it
   moved since the period before (up, down, new or the same) and where it stood then ("was 3"). All
-  time has nothing to compare with, so it is a plain top 10.
+  time has nothing to compare with, so it is a plain top 10. Plays and Time, at the top right,
+  switch between ranking by plays and by time listened.
 - Your taste, at the end, looks at all of your history, whatever the period: the musical atlas, you
   vs everyone, your concerts and the genre map.
 
@@ -377,10 +380,10 @@ artists with 50 plays or more that have been quiet for 90 days or longer, and th
 that ended in a comeback. Old favorites are artists you still play whose plays lie two years back
 on average; newcomers have the newest plays on average.
 
-Two Stats blocks follow the period you pick. Time listened ranks artists and songs by time instead
-of plays. Scrobbles carry no length, so each song's length is the usual time from it to the next
-play (Last.fm dates a play when it starts). Milestones lists round numbers: your 10,000th play, an
-artist's 500th, a song's 100th.
+Your chart can rank by time listened instead of plays (Time, at its top right). Scrobbles carry no
+length, so each song's length is the usual time from it to the next play (Last.fm dates a play when
+it starts); the hours in Totals are counted the same way. Milestones lists round numbers: your
+10,000th play, an artist's 500th, a song's 100th.
 
 The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the
 countries ranked below it. Tap a country for its artists. The countries come from MusicBrainz, one
@@ -395,11 +398,14 @@ the first time) for your 200 most played artists and 150 most played songs, plus
 played songs by your 25 top artists. It keeps them on the phone and looks them up again once a
 month. Other artists, songs and albums are looked up when you open their page.
 
-The You vs everyone tile, next to the Musical atlas tile, opens the comparison:
+The You vs everyone tile, next to the Musical atlas tile, opens the comparison (in sections, Your
+taste shows its first part right on the page):
 
 - "How mainstream your artists are" splits your plays by how many listeners the artist has
   (1M+, 250K–1M, 50K–250K, 10K–50K, under 10K), with the line "half of your plays go to artists
-  with fewer than … listeners".
+  with fewer than … listeners". Tap a tier for its 60 artists you played most, with their listeners
+  and when you first played them; Found first sorts them by that date. Last.fm only gives today's
+  counts, so the list can't say how big an artist was when you found them.
 - "A bigger fan than most" lists artists you play many times more than their average listener
   does. The average is all their plays divided by all their listeners; a few heavy listeners pull it
   up, so most people played less. The bar is you, the tick is the average listener.

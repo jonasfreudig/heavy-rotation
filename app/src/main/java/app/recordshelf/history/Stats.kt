@@ -108,6 +108,9 @@ class Stats(
         const val VS_LIST = 10
         const val FAN_MIN = 10
         const val GEM_MIN = 20
+        /** Artists listed per tier of you vs everyone, the first of them with photos. */
+        const val TIER_LIST = 60
+        const val TIER_PHOTOS = 12
 
         /** Listener tiers, from household names down to the underground. */
         val VS_TIERS = longArrayOf(1_000_000, 250_000, 50_000, 10_000, 0)
@@ -305,7 +308,7 @@ class Stats(
             .put("wishlist", wishlist(i0, i1))
             .put("top", top(i0, i1, TOP_MAX, prev?.let { h.lowerBound(it.from) } ?: -1, prev?.let { h.lowerBound(it.to) } ?: -1))
             .put("cards", cardsSummary())
-            .put("minutes", minutes(i0, i1))
+            .put("minutes", minutes(i0, i1, TOP_MAX))
             .put("milestones", milestones(i0, i1))
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
@@ -470,10 +473,12 @@ class Stats(
         val n = i1 - i0
         var newArtists = 0
         artists.stream().forEach { if (firstTs[it] in r.from until r.to) newArtists++ }
+        var sec = 0L
+        for (i in i0 until i1) sec += trackSec[h.track[i]]
         return JSONObject().put("scrobbles", n).put("artists", artists.cardinality()).put("tracks", tracks.cardinality())
             .put("albums", albums.cardinality()).put("days", days).put("spanDays", spanDays)
             .put("perDay", Math.round(n * 10.0 / spanDays) / 10.0)
-            .put("hours", Math.round(n * MINUTES_PER_PLAY / 60))
+            .put("hours", Math.round(sec / 3600.0))
             .put("newArtists", newArtists).put("historyStartsHere", h.size > 0 && historyStart in r.from until r.to)
     }
 
@@ -1203,8 +1208,15 @@ class Stats(
             tierArtists[k]++
             if (tierTop[k] < 0 || l.plays[a] > l.plays[tierTop[k]]) tierTop[k] = a
         }
+        val byTier = known.groupBy { (_, g) -> VS_TIERS.indexOfFirst { g.listeners >= it } }
         o.put("tiers", JSONArray(VS_TIERS.indices.map { k ->
+            // Each tier's artists, most played first: when you first and last played them, and how big they are now.
+            val list = byTier[k].orEmpty().sortedByDescending { l.plays[it.first] }.take(TIER_LIST).mapIndexed { n, (a, g) ->
+                JSONObject().put("name", h.artistNames[a]).put("mine", l.plays[a]).put("listeners", g.listeners)
+                    .put("first", l.first[a] * 1000).put("last", l.last[a] * 1000).put("photo", if (n < TIER_PHOTOS) artistPhoto(h.artistNames[a]) else "")
+            }
             JSONObject().put("min", VS_TIERS[k]).put("plays", tierPlays[k]).put("artists", tierArtists[k]).put("top", if (tierTop[k] >= 0) h.artistNames[tierTop[k]] else "")
+                .put("list", JSONArray(list))
         }))
         // Half of your plays go to artists with fewer listeners than this.
         var acc = 0
@@ -1222,9 +1234,9 @@ class Stats(
     }
 
     /** Artists in the comparisons without a photo yet. */
-    fun vsNeedingPhotos(vs: JSONObject): List<String> = listOf("fans", "shares", "gems", "taste").flatMap { k ->
+    fun vsNeedingPhotos(vs: JSONObject): List<String> = listOf("fans", "shares", "gems", "taste", "tiers").flatMap { k ->
         val a = vs.optJSONArray(k) ?: JSONArray()
-        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("photo").isEmpty() }.map { it.optString("name").ifEmpty { it.optString("artist") } }
+        (0 until a.length()).map { a.getJSONObject(it) }.flatMap { o -> o.optJSONArray("list")?.let { l -> (0 until minOf(TIER_PHOTOS, l.length())).map { l.getJSONObject(it) } } ?: listOf(o) }.filter { it.optString("photo").isEmpty() }.map { it.optString("name").ifEmpty { it.optString("artist") } }
     }.distinct().filter { it.isNotEmpty() && photoKey(it) !in albumImages }
 
     /** Whether a scrobble's main genre is [key], the same genre the shares and the drift count it under. */
@@ -2749,12 +2761,14 @@ class Stats(
         IntArray(med.size) { t -> med[t].takeIf { it > 0 } ?: artistMed[h.trackArtist[t]] ?: (MINUTES_PER_PLAY * 60).toInt() }
     }
 
-    /** Time listened between plays [i0] and [i1] (estimated, see [trackSec]), and the artists and songs with the most of it, each with its place by plays. */
+    /** Time listened between plays [i0] and [i1] (estimated, see [trackSec]), and the artists, songs and albums with the most of it, each with its place by plays. */
     fun minutes(i0: Int, i1: Int, max: Int = 10): JSONObject {
         val aSec = LongArray(h.artistNames.size)
         val aPlays = IntArray(h.artistNames.size)
         val tSec = LongArray(h.trackTitles.size)
         val tPlays = IntArray(h.trackTitles.size)
+        val lSec = LongArray(h.albumTitles.size)
+        val lPlays = IntArray(h.albumTitles.size)
         var total = 0L
         for (i in i0 until i1) {
             val sec = trackSec[h.track[i]].toLong()
@@ -2763,18 +2777,22 @@ class Stats(
             aPlays[h.artist[i]]++
             tSec[h.track[i]] += sec
             tPlays[h.track[i]]++
+            h.album[i].takeIf { it >= 0 }?.let { lSec[it] += sec; lPlays[it]++ }
         }
         fun places(p: IntArray): Map<Int, Int> = p.indices.filter { p[it] > 0 }.sortedByDescending { p[it] }.withIndex().associate { (k, x) -> x to k + 1 }
         val aPlace = places(aPlays)
         val tPlace = places(tPlays)
+        val lPlace = places(lPlays)
         val topA = aSec.indices.filter { aSec[it] > 0 }.sortedByDescending { aSec[it] }.take(max)
         val topT = tSec.indices.filter { tSec[it] > 0 }.sortedByDescending { tSec[it] }.take(max)
+        val topL = lSec.indices.filter { lSec[it] > 0 }.sortedByDescending { lSec[it] }.take(max)
         return JSONObject().put("total", total / 60)
             .put("artists", JSONArray(topA.map { a ->
                 JSONObject().put("name", h.artistNames[a]).put("min", aSec[a] / 60).put("plays", aPlays[a]).put("byPlays", aPlace[a] ?: 0)
                     .put("photo", artistPhoto(h.artistNames[a])).put("cover", artistPicture(a))
             }))
             .put("tracks", JSONArray(topT.map { t -> trackJson(t).put("min", tSec[t] / 60).put("plays", tPlays[t]).put("len", trackSec[t]).put("byPlays", tPlace[t] ?: 0) }))
+            .put("albums", JSONArray(topL.map { al -> albumJson(al).put("min", lSec[al] / 60).put("plays", lPlays[al]).put("byPlays", lPlace[al] ?: 0) }))
     }
 
     private class Milestone(val i: Int, val kind: String, val n: Int)

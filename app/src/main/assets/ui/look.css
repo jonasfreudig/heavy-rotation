@@ -704,8 +704,10 @@ html.locked .page { overflow: hidden; }
 .sw-toc button { flex: none; padding: 6px 12px; border-radius: 16px; font: 500 13px/18px var(--font); color: var(--md-on-surface-variant);
   background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); transition: background .2s, color .2s; }
 .sw-toc button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
-/* As tall as its tallest block, each block's card stretched to it, so nothing changes size while swiped. */
-.sw-strip { display: flex; align-items: stretch; gap: 10px; overflow: auto hidden; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
+/* As tall as its tallest block, each block's card stretched to it, so nothing changes size while swiped. Room above
+   and below for the cards' shadows; the names and dots stay on top of it. */
+.sw-strip { display: flex; align-items: stretch; gap: 10px; overflow: auto hidden; scroll-snap-type: x mandatory; margin: -24px -16px -40px; padding: 24px 16px 40px; scrollbar-width: none; }
+.sw-toc, .sw-dots { position: relative; z-index: 1; }
 .sw-strip::-webkit-scrollbar { display: none; }
 .sw-page { flex: none; width: calc(100% - 26px); display: flex; flex-direction: column; scroll-snap-align: center; scroll-snap-stop: always; }
 .sw-page > :last-child { flex: 1 0 auto; }
@@ -715,6 +717,9 @@ html.locked .page { overflow: hidden; }
 .sw-dots { display: flex; justify-content: center; gap: 5px; margin-top: 10px; }
 .sw-dots i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--md-on-surface) 20%, transparent); transition: width .2s, background .2s; }
 .sw-dots i.on { width: 16px; background: var(--md-primary); }
+/* Rows that scroll sideways run out of their card to the screen's edges. */
+.viz :is(.xcards, .tcards, .covers, .na-row, .tix, .chip-row) { margin-inline: -32px; padding-inline: 32px; scroll-padding-inline: 32px; }
+.viz .tix.grid { margin-inline: 0; padding-inline: 0; }
 /* Rows that scroll sideways on their own wrap here, and a sideways swipe on a chart moves to the next block (taps still work). */
 .sw-page :is(.xcards, .tcards, .covers, .na-row, .tix, .chip-row) { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; scroll-snap-type: none; }
 .sw-page :is(.heat, .stack, .river svg, .area, .ring, .tline, .barcode, .cols, .ch-rows, .rank, .chart-run) { touch-action: pan-x pan-y; }
@@ -743,6 +748,61 @@ html.locked .page { overflow: hidden; }
 .sq-open > .viz { margin: 10px 0 0; }
 /* The square says what it is: the block's own heading would say it twice. */
 .sq-open > .viz > h2:first-child { display: none; }
+
+.sq-pill.pic { flex-wrap: wrap; row-gap: 10px; padding: 10px 14px 14px 10px; border-radius: 24px; }
+.sq-pill.pic > span:not(.sq-more, .sq-wide) { flex: 1; padding-right: 34px; }
+.sq-pill.pic .sq-more { top: 16px; margin-top: 0; }
+.sq-wide { flex: 1 0 100%; display: block; padding: 0 2px; }
+/* Decades as bars, the biggest in the accent color. */
+.sq-dec { display: flex; gap: 4px; height: 50px; margin: 8px 0 4px; }
+.sq-pic > .sq-dec { flex: 1; width: auto; height: 50px; margin: 0; border-radius: 0; box-shadow: none; }
+.sq-dec i { position: relative; flex: 1; min-width: 0; }
+.sq-dec b { position: absolute; left: 0; right: 0; bottom: 13px; height: calc((100% - 13px) * var(--f)); margin: 0; border-radius: 3px; background: color-mix(in srgb, var(--md-primary) 28%, transparent); }
+.sq-dec i.on b { background: var(--tint-text, var(--md-primary)); }
+.tp .sq-dec small { position: absolute; left: -2px; right: -2px; bottom: 0; display: block; font: 500 9px/11px var(--mono); text-align: center; overflow: visible; }
+.tp.sq.on .sq-dec small { opacity: 1; }
+/* On repeat: the song's cover fills the square. */
+.tp.sq.bg { overflow: hidden; color: #fff; box-shadow: none; }
+.sq-bg { position: absolute; inset: 0; }
+.sq-bg .cover { width: 100%; height: 100%; border-radius: 0; }
+.tp.sq.bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / .25), rgb(0 0 0 / .05) 35%, rgb(0 0 0 / .7)); }
+.tp.sq.bg > :not(.sq-bg) { position: relative; z-index: 1; }
+.tp.sq.bg > .sq-more { position: absolute; background: rgb(255 255 255 / .22); color: #fff; }
+.tp.sq.bg .tp-l, .tp.sq.bg small { color: rgb(255 255 255 / .88); }
+.tp.sq.bg.on { box-shadow: 0 0 0 3px var(--md-primary); }
+.tp.sq small b { display: block; margin: 0; font: 600 13.5px/18px var(--font); color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The week's bars in bands, an artist each. */
+.wk .cl .v.bands { display: flex; flex-direction: column-reverse; gap: 2px; background: none; }
+.wk .cl .v.bands b { display: block; min-height: 2px; border-radius: 3px; }
+.wk .cl .v.bands b:last-child { border-radius: 6px 6px 3px 3px; }
+.wk .cl .v.bands b:first-child { border-radius: 3px 3px 6px 6px; }
+.wk .cl .v.bands b:only-child { border-radius: 6px; }
+/* Your chart by plays or by time. */
+.ch-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ch-head h2 { margin: 0; }
+.seg.tiny { flex: none; margin: 0; }
+.seg.tiny button { flex: none; height: 28px; padding: 0 12px; font-size: 12.5px; }
+.ch-r.timed { grid-template-columns: 28px 42px minmax(0, 1fr) auto; }
+.ch-time { font: 600 12px/16px var(--mono, var(--font)); padding: 3px 8px; border-radius: 10px; background: var(--md-secondary-container); color: var(--md-on-secondary-container); white-space: nowrap; }
+/* The record spins in the first time it comes into view. */
+.rec-wrap canvas.spin-wait { opacity: 0; }
+.rec-wrap canvas.spin-in { animation: rec-in .85s cubic-bezier(.2, .8, .25, 1) both; }
+@keyframes rec-in { from { opacity: 0; transform: rotate(-160deg) scale(.72); } 50% { opacity: 1; } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rec-wrap canvas.spin-wait { opacity: 1; } .rec-wrap canvas.spin-in { animation: none; } }
+/* You vs everyone on Stats, its tiers opening their artists. */
+.vs-mini .vs-line { margin: 6px 0 0; font-size: 15px; line-height: 21px; }
+.vs-mini .vs-line b { color: var(--tint-text, var(--md-primary)); }
+.vs-mini .btn .i { width: 18px; height: 18px; margin: 0 -4px 0 2px; }
+.vs-mini.wait { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; color: inherit; }
+.vs-mini.wait > svg:first-child { flex: none; width: 92px; height: 40px; }
+.vs-mini.wait > span { flex: 1; min-width: 0; }
+.vs-mini.wait b { display: block; font: 640 18px/24px var(--display, var(--font)); }
+.vs-mini.wait small { color: var(--md-on-surface-variant); font-size: 13px; }
+.vs-mini.wait > .i { flex: none; color: var(--md-on-surface-variant); }
+.tierlist button.tr { grid-template-columns: 14px 1fr auto 18px; width: 100%; margin: -4px -8px; padding: 4px 8px; box-sizing: content-box; border-radius: 12px; text-align: left; color: inherit; }
+.tierlist button.tr > .i { width: 18px; height: 18px; color: var(--md-on-surface-variant); }
+.tierlist button.tr.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.tierlist button.tr.on > .i { transform: rotate(90deg); }
 
 /* Your taste in sections: a small card each for what opens a page of its own. */
 .tp-row { display: flex; gap: 10px; overflow-x: auto; margin: 4px -16px 14px; padding: 2px 16px 6px; scrollbar-width: none; }

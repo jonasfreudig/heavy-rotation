@@ -395,7 +395,7 @@ class StatsTest {
         val c = s.compute(m)
         assertEquals(10, c.getJSONObject("summary").getInt("scrobbles"))
         assertEquals(4, c.getJSONObject("summary").getJSONObject("prev").getInt("scrobbles"))
-        assertEquals("10 plays of about 3.5 minutes", 1L, c.getJSONObject("summary").getLong("hours"))
+        assertEquals("hours counted like time listened", Math.round(c.getJSONObject("minutes").getLong("total") / 60.0), c.getJSONObject("summary").getLong("hours"))
         val tl = c.getJSONObject("timeline")
         assertEquals("day", tl.getString("unit"))
         assertEquals("October 1 to today", 25, tl.getJSONArray("counts").length())

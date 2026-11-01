@@ -2777,7 +2777,19 @@ function setSpot(id, k) {
 
 function themeColor(name) { return getComputedStyle(document.documentElement).getPropertyValue('--md-' + name).trim(); }
 
-function drawRecords() { $$('canvas[data-record]').forEach(drawRecord); }
+const recSpun = new WeakSet();
+const recSeen = new IntersectionObserver((es) => es.forEach((e) => {
+  if (!e.isIntersecting) return;
+  recSeen.unobserve(e.target);
+  e.target.classList.replace('spin-wait', 'spin-in');
+  e.target.addEventListener('animationend', () => e.target.classList.remove('spin-in'), { once: true });
+}), { threshold: 0.3 });
+function drawRecords() {
+  $$('canvas[data-record]').forEach((c) => {
+    drawRecord(c);
+    if (!recSpun.has(c)) { recSpun.add(c); c.classList.add('spin-wait'); recSeen.observe(c); }
+  });
+}
 
 function recordGeometry(c, rec) {
   const W = c.width, R = W / 2 - W * 0.01;
@@ -4963,16 +4975,49 @@ function globalTopHtml(a) {
     <div class="rank">${top.map((x) => `<button class="r${x.mine ? '' : ' unheard'}" ${trackAttrs(a.name, x.title)}><span class="n">${x.rank}</span><span class="t"><b>${esc(x.title)}</b><small>${compact(x.plays)} plays worldwide</small></span><span class="v${x.mine ? ' cnt' : ''}">${x.mine ? `${num(x.mine)}×` : 'not yet'}</span></button>`).join('')}</div></div>`;
 }
 
-function openVs() {
+/** The tier open on the page (-1: none), its artists by your plays or by when you found them. */
+let vsTier = -1, vsSort = 'plays';
+function openVs(tier) {
+  if (tier != null) vsTier = tier;
   openPage('vsPage');
   renderVs();
   send({ t: 'vs' });
+  if (tier != null) requestAnimationFrame(() => { const el = $('#vsTierOpen'); if (el) el.scrollIntoView({ block: 'start' }); });
 }
 window.onVs = (v) => {
   VS = v;
   if (isOpen('vsPage')) renderVs();
   renderVsCard();
+  if (tab === 'stats' && STATS && !STATS.empty && $('#statsBody .vs-mini')) renderStats();
 };
+/** The tiers as a bar and a row each; [attr] makes a row a button ("data-vsgo" on Stats, "data-vstier" on the page). */
+function tiersHtml(v, attr) {
+  const tiers = v.tiers || [];
+  const tot = Math.max(1, tiers.reduce((s, t) => s + t.plays, 0));
+  return `<div class="tierbar">${tiers.map((t, k) => (t.plays ? `<i style="flex:${t.plays};background:${tierColor(k)}" title="${esc(VS_TIERS[k][0])}"></i>` : '')).join('')}</div>
+    <div class="tierlist">${tiers.map((t, k) => (t.artists ? `<button class="tr${k === vsTier && attr === 'data-vstier' ? ' on' : ''}" ${attr}="${k}"><span class="sw" style="background:${tierColor(k)}"></span><span class="nm"><b>${VS_TIERS[k][0]}</b><small>${VS_TIERS[k][1]}, ${plural(t.artists, 'artist')}${t.top ? `, most: ${esc(t.top)}` : ''}</small></span><span class="pc">${pct(t.plays / tot)}</span>${icon('chevron-right')}</button>` : '')).join('')}</div>`;
+}
+/** One tier's artists: how big they are now, your plays, and since when. */
+function tierArtistsHtml(v) {
+  const t = (v.tiers || [])[vsTier];
+  if (!t || !(t.list || []).length) return '';
+  const list = t.list.slice().sort(vsSort === 'first' ? (a, b) => a.first - b.first : (a, b) => b.mine - a.mine);
+  const more = t.artists > t.list.length ? `<p class="hint">Your ${t.list.length} most played of ${num(t.artists)}.</p>` : '';
+  return `<div class="viz" id="vsTierOpen"><div class="ch-head"><h2>${VS_TIERS[vsTier][0]}</h2><div class="seg tiny" role="tablist">${[['plays', 'Most played'], ['first', 'Found first']].map(([k, l]) => `<button data-vssort="${k}" class="${k === vsSort ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <span class="sub">${VS_TIERS[vsTier][1]} on Last.fm today</span>
+    <div class="rank">${list.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.mine, 'play')}, since ${esc(monthYear(a.first))}</small></span><span class="v">${compact(a.listeners)}</span></button>`).join('')}</div>${more}</div>`;
+}
+/** You vs everyone on Stats: the middle artist and the tiers, each opening its artists on the page. */
+let vsAsked = false;
+function vsMiniHtml() {
+  const v = VS;
+  if (!v && !vsAsked) { vsAsked = true; send({ t: 'vs' }); }
+  if (!v || v.empty || !v.lastfm || !v.knownArtists) {
+    return `<button class="viz vs-mini wait" id="openVs">${VS_ART}<span><b>You vs everyone</b><small>${v && !v.lastfm ? 'Connect Last.fm in Settings to compare' : 'Compared with all of Last.fm'}</small></span>${icon('chevron-right')}</button>`;
+  }
+  return `<div class="viz vs-mini"><div class="ch-head"><h2>You vs everyone</h2><button class="btn text small" id="openVs">All of it${icon('chevron-right')}</button></div>
+    <p class="vs-line">Half of your plays go to artists with fewer than <b>${compact(v.median)}</b> listeners.</p>${tiersHtml(v, 'data-vsgo')}</div>`;
+}
 let vsRetry = 0;
 /**
  * While the counts are being looked up, the page shows how far; when that ends it asks again. A lookup
@@ -5017,12 +5062,8 @@ function renderVs() {
   let h = `<div class="vs-hero page-hero"><i class="glow"></i><span class="k">You vs everyone</span>
     <h1>Half of your plays go to artists with fewer than <em>${compact(v.median)}</em> listeners</h1>
     <div class="meta">Against everyone on Last.fm, all time. Counts are known for ${pct(cover)} of your plays.</div></div>${busy}`;
-  // How mainstream: tiers from household names to the underground
-  const tiers = v.tiers || [];
-  const tot = Math.max(1, tiers.reduce((s, t) => s + t.plays, 0));
-  h += `<div class="viz"><h2>How mainstream your artists are</h2>
-    <div class="tierbar">${tiers.map((t, k) => (t.plays ? `<i style="flex:${t.plays};background:${tierColor(k)}" title="${esc(VS_TIERS[k][0])}"></i>` : '')).join('')}</div>
-    <div class="tierlist">${tiers.map((t, k) => `<div class="tr"><span class="sw" style="background:${tierColor(k)}"></span><span class="nm"><b>${VS_TIERS[k][0]}</b><small>${VS_TIERS[k][1]}, ${plural(t.artists, 'artist')}${t.top ? `, most: <button class="link" data-artist="${esc(t.top)}">${esc(t.top)}</button>` : ''}</small></span><span class="pc">${pct(t.plays / tot)}</span></div>`).join('')}</div></div>`;
+  // How mainstream: tiers from household names to the underground, one opened to its artists
+  h += `<div class="viz"><h2>How mainstream your artists are</h2><span class="sub">Tap one for its artists</span>${tiersHtml(v, 'data-vstier')}</div>${tierArtistsHtml(v)}`;
   // Bigger fan than most
   const fans = v.fans || [];
   if (fans.length) {
@@ -6374,7 +6415,7 @@ function numbersHtml(s) {
   const sm = s.summary, pv = sm.prev || {}, k = s.range.kind, run = s.range.running;
   return `<div class="tiles">
       ${tile('Plays', compact(sm.scrobbles), `${sm.perDay} a day`, deltaHtml(sm.scrobbles, pv.scrobbles, k, run), 'music', k === 'week' ? 'data-goblock="week"' : 'data-goblock="timeline"')}
-      ${tile('Hours', `≈${compact(sm.hours)}`, 'at ~3.5 min a track', deltaHtml(sm.hours, pv.hours, k, run), 'schedule')}
+      ${tile('Hours', `≈${compact(sm.hours)}`, 'from the time between plays', deltaHtml(sm.hours, pv.hours, k, run), 'schedule')}
       ${tile('Artists', compact(sm.artists), `${compact(sm.tracks)} different tracks`, deltaHtml(sm.artists, pv.artists, k, run), 'heart', `${rankAttrs('artists', s.range.id)} data-rshown="1"`)}
       ${tile('New artists', sm.historyStartsHere ? '–' : compact(sm.newArtists), sm.historyStartsHere ? 'your history starts here' : sm.newArtists ? 'first time ever' : 'only familiar names', sm.historyStartsHere ? '' : deltaHtml(sm.newArtists, pv.newArtists, k, run), 'explore', sm.newArtists ? 'data-goblock="newArtists"' : '')}
     </div>`;
@@ -6422,7 +6463,6 @@ const BLOCKS = {
   covers: { name: 'In covers', kinds: ['day', ...SPAN], html: coverWallViz },
   lineup: { name: 'Your lineup', kinds: ['day', ...SPAN], html: lineupViz },
   top: { name: 'Top lists', kinds: ['day', ...SPAN], html: chartViz },
-  minutes: { name: 'Time listened', kinds: SPAN, html: minutesViz },
   milestones: { name: 'Milestones', kinds: SPAN, html: milestonesViz },
   taste: { name: 'Your taste', html: tasteHtml },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
@@ -6435,7 +6475,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
-  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'minutes', 'milestones', 'taste'],
+  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'rarely', 'wishlist', 'lineup', 'top', 'milestones', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
@@ -6567,7 +6607,7 @@ function goBlock(id) {
 const STATS_SECTIONS = [
   ['', '', ['story', 'numbers', 'cards', 'tidy', 'highlights']],
   ['strip', 'Day by day', ['week', 'days']],
-  ['squares', '', ['minutes', 'streaks']],
+  ['pill', '', ['streaks']],
   ['', '', ['top']],
   ['pill', '', ['milestones']],
   ['strip', 'Over time', ['river', 'genres']],
@@ -6582,26 +6622,20 @@ const STATS_SECTIONS = [
 ];
 /** What a block says as a square: a big word or number and a line under it (HTML), or null when it has nothing. */
 const SQUARES = {
-  minutes: (s) => {
-    const m = s.minutes;
-    if (!m || !m.total || !(m.artists || []).length) return null;
-    return { big: hoursMin(m.total), line: `${esc(m.artists[0].name)} most, ${hoursMin(m.artists[0].min)}` };
-  },
-  streaks: (s) => {
-    const st = s.streaks || {};
-    if (!st.longest) return null;
-    return { big: plural(st.longest, 'day'), line: `in a row, ${st.longest > 1 ? `${esc(shortDate(st.longestFrom))} to ${esc(shortDate(st.longestTo))}` : esc(shortDate(st.longestFrom))}` };
-  },
   decades: (s) => {
     const x = s.decades || {}, ds = x.decades || [];
     if (ds.length < 2) return null;
     const known = Math.max(1, x.known);
-    const [p, q] = [...ds].sort((u, v) => v.plays - u.plays);
-    return { big: `${p.decade}s`, line: `${pct(p.plays / known)} of plays, then the ${q.decade}s` };
+    const [p] = [...ds].sort((u, v) => v.plays - u.plays);
+    // The decades side by side as bars, the biggest in the accent color.
+    const top = Math.max(...ds.map((d) => d.plays));
+    const pic = `<span class="sq-dec">${ds.map((d) => `<i class="${d === p ? 'on' : ''}"><b style="--f:${Math.max(0.05, d.plays / top).toFixed(3)}"></b><small>${String(d.decade).slice(2)}</small></i>`).join('')}</span>`;
+    return { pic, big: `${p.decade}s`, line: `${pct(p.plays / known)} of plays` };
   },
   repeat: (s) => {
     const x = repeatList(s)[0];
-    return x ? { big: esc(x.track), sm: true, line: `${esc(x.artist)}, ${esc(repeatWords(x))}` } : null;
+    // The song's cover fills the square.
+    return x ? { bg: coverHtml(x.cover, x.album || x.track, x.artist), big: `${Math.max(x.week, x.run)}×`, line: `<b>${esc(x.track)}</b>${esc(x.artist)}` } : null;
   },
   rarely: (s) => {
     const r = s.rarely || {}, items = r.items || [];
@@ -6618,6 +6652,13 @@ const SQUARES = {
 };
 /** What a block says as a pill: one line and a few words after it. */
 const PILLS = {
+  streaks: (s) => {
+    const st = s.streaks || {};
+    if (!st.longest) return null;
+    const when = st.longest > 1 ? `${esc(shortDate(st.longestFrom))} to ${esc(shortDate(st.longestTo))}` : esc(shortDate(st.longestFrom));
+    const now = s.range.running && st.current ? `Today is day ${st.current}` : '';
+    return { ic: 'fire', line: `${plural(st.longest, 'day')} in a row`, more: now ? `${when}. ${now}` : when, pic: dayStrip(s) };
+  },
   milestones: (s) => {
     const ms = s.milestones || [];
     if (!ms.length) return null;
@@ -6648,8 +6689,8 @@ function sectionsHtml(ids, s, mark) {
       const tile = ([id, t]) => {
         const on = open && open[0] === id;
         const more = `<span class="sq-more" aria-hidden="true">${icon('chevron-right')}</span>`;
-        if (kind === 'pill') return `<button class="sq-pill${on ? ' on' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${icon(t.ic)}<span><b>${t.line}</b>${t.more ? `<small>${t.more}</small>` : ''}</span>${more}</button>`;
-        return `<button class="tp sq${on ? ' on' : ''}" data-sqgo="${id}" aria-expanded="${!!on}"><span class="tp-l">${esc(BLOCKS[id].name)}</span>${t.pic ? `<span class="sq-pic">${t.pic}</span>` : ''}<b class="${t.sm ? 'sm' : ''}">${t.big}</b><small>${t.line}</small>${more}</button>`;
+        if (kind === 'pill') return `<button class="sq-pill${on ? ' on' : ''}${t.pic ? ' pic' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${icon(t.ic)}<span><b>${t.line}</b>${t.more ? `<small>${t.more}</small>` : ''}</span>${more}${t.pic ? `<span class="sq-wide">${t.pic}</span>` : ''}</button>`;
+        return `<button class="tp sq${on ? ' on' : ''}${t.bg ? ' bg' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${t.bg ? `<span class="sq-bg" aria-hidden="true">${t.bg}</span>` : ''}<span class="tp-l">${esc(BLOCKS[id].name)}</span>${t.pic ? `<span class="sq-pic">${t.pic}</span>` : ''}<b class="${t.sm ? 'sm' : ''}">${t.big}</b><small>${t.line}</small>${more}</button>`;
       };
       h += `<div class="sq-sec" data-sq="${key}"><div class="sq-row${tiles.length === 1 ? ' one' : ''}">${tiles.map(tile).join('')}</div>${open ? `<div class="sq-open" data-blk="${open[0]}">${open[1]}</div>` : ''}</div>`;
       return;
@@ -7190,7 +7231,6 @@ function tastePills() {
   const concerts = (ST.setlist || {}).concerts;
   const out = [card('id="openConcerts"', 'Your concerts', concerts ? plural(concerts, 'show') : 'Concerts', concerts ? 'you were at' : 'from setlist.fm', '', 'ticket')];
   const last = [
-    card('id="openVs"', 'You vs everyone', '', '<span id="vsTileLine">Compared with all of Last.fm</span>', VS_ART),
     card('data-atlas', 'Musical atlas', '', 'Universe, family tree, landscape, map', ATLAS_ART),
   ];
   if (T) {
@@ -7222,7 +7262,7 @@ function tasteHtml(s, small) {
   const x = EXPLORE || {}, tail = x.tail || {};
   const intro = tail.artists ? `<p class="xp-intro">You've played <b>${num(tail.artists)}</b> artists${tail.few ? `, <b>${num(tail.few)}</b> of them fewer than ${tail.fewPlays} times` : ''}.</p>` : '';
   if (small) return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All time</span>${intro}
-    <div class="tp-row">${tastePills()}</div>${genreMapHtml(x.genreMap)}</section>`;
+    <div class="tp-row">${tastePills()}</div>${vsMiniHtml()}${genreMapHtml(x.genreMap)}</section>`;
   return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All time</span>${intro}
     <div class="xp-tiles">
       <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, landscape</small></button>
@@ -7243,26 +7283,6 @@ const ordinal = (n) => `${num(n)}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th'
 const hoursMin = (min) => (min >= 120 ? `${num(Math.round(min / 60))} h` : fmtLong(min * 60));
 /** Its place by plays, when that isn't its place by time. */
 const byPlaysNote = (x, place) => (x.byPlays && x.byPlays !== place ? `, ${ordinal(x.byPlays)} by plays` : '');
-
-function minutesViz(s) {
-  const m = s.minutes;
-  if (!m || !m.total || !(m.artists || []).length) return '';
-  const seg = minutesSeg === 'tracks' && (m.tracks || []).length ? 'tracks' : 'artists';
-  const list = (seg === 'tracks' ? m.tracks : m.artists).slice(0, 8);
-  const max = Math.max(1, list[0].min);
-  const rows = list.map((x, i) => {
-    const attrs = seg === 'tracks' ? trackAttrs(x.artist, x.title, { album: x.album }) : `data-artist="${esc(x.name)}"`;
-    const pic = seg === 'tracks' ? coverHtml(x.cover, x.album || x.title, x.artist, 'tiny') : coverHtml(x.photo || x.cover, x.name, x.name, 'tiny round');
-    const sub = seg === 'tracks' ? `${esc(x.artist)}, ${fmtDur(x.len)} long` : `${plural(x.plays, 'play')}${byPlaysNote(x, i + 1)}`;
-    return `<button class="r pl-r mn-r" ${attrs}><span class="n">${i + 1}</span>${pic}<span class="t"><b>${esc(seg === 'tracks' ? x.title : x.name)}</b><small>${sub}${seg === 'tracks' ? byPlaysNote(x, i + 1) : ''}</small></span>
-      <span class="v cnt">${hoursMin(x.min)}</span><div class="bar"><i style="width:${((x.min / max) * 100).toFixed(1)}%"></i></div></button>`;
-  }).join('');
-  return `<div class="viz minutes-viz"><h2>Time listened</h2><span class="sub">Estimated from the time between plays</span>
-    <div class="mn-total"><b>${hoursMin(m.total)}</b><span>in ${esc(periodName(s.range))}</span></div>
-    <div class="seg small" role="tablist"><button data-mnseg="artists" class="${seg === 'artists' ? 'on' : ''}">Artists</button><button data-mnseg="tracks" class="${seg === 'tracks' ? 'on' : ''}">Songs</button></div>
-    <div class="rank">${rows}</div></div>`;
-}
-let minutesSeg = 'artists';
 
 function milestoneText(x) {
   if (x.kind === 'scrobble') return x.n === 1 ? 'Your first play' : `Your ${ordinal(x.n)} play`;
@@ -7534,9 +7554,28 @@ function moveHtml(rank, last) {
   return last > rank ? `<span class="mv up" aria-label="up ${last - rank}">▲ ${last - rank}</span>` : `<span class="mv down" aria-label="down ${rank - last}">▼ ${rank - last}</span>`;
 }
 /** Top lists as a chart: each place with how it moved since the period before, and where it stood then. */
+/** Your chart ranked by plays or by time listened. */
+let chartBy = 'plays';
 function chartViz(s) {
   const top = s.top;
   if (!top) return '';
+  const m = s.minutes || {}, timed = (m.artists || []).length > 0;
+  const by = timed && s.range.kind !== 'day' ? chartBy : 'plays';
+  const switcher = by === chartBy && timed && s.range.kind !== 'day' ? `<div class="seg tiny ch-by" role="tablist">${[['plays', 'Plays'], ['time', 'Time']].map(([v, l]) => `<button data-chby="${v}" class="${v === by ? 'on' : ''}">${l}</button>`).join('')}</div>` : '';
+  const kinds = `<div class="seg small" id="topSeg">${['tracks', 'albums', 'artists'].map((t) =>
+    `<button data-top="${t}" class="${t === topKind ? 'on' : ''}">${{ tracks: 'Songs', albums: 'Albums', artists: 'Artists' }[t]}</button>`).join('')}</div>`;
+  if (by === 'time') {
+    const all = m[topKind] || [], list = all.slice(0, topN('stats'));
+    const rows = list.map((x, i) => {
+      const art = topKind === 'artists';
+      const open = topKind === 'tracks' ? trackAttrs(x.artist, x.title, { album: x.album, cover: x.cover }) : topKind === 'albums' ? `${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}"` : `data-artist="${esc(x.name)}"`;
+      const pic = art ? coverHtml(x.photo || x.cover, x.name, x.name, 'round') : coverHtml(x.cover, x.album || x.title, x.artist);
+      return `<button class="ch-r timed${i === 0 ? ' one' : ''}" ${open}><span class="ch-n">${i + 1}</span>${pic}
+        <span class="t"><b>${esc(art ? x.name : x.title)}</b><small>${art ? '' : `${esc(x.artist)}, `}${num(x.plays)}×${byPlaysNote(x, i + 1)}</small></span><span class="ch-time">${hoursMin(x.min)}</span></button>`;
+    }).join('');
+    return `<div class="viz"><div class="ch-head"><h2>Your chart</h2>${switcher}</div>${kinds}
+      <span class="sub ch-sub">${hoursMin(m.total)} in all, from the time between plays</span><div class="ch-rows">${rows || '<p class="hint">Nothing in this period.</p>'}</div>${topMore('stats', all.length)}</div>`;
+  }
   const all = top[topKind] || [], list = all.slice(0, topN('stats'));
   const k = s.range.kind, cmp = !!top.compared;
   const rows = list.map((x, i) => {
@@ -7548,8 +7587,7 @@ function chartViz(s) {
       <span class="t"><b>${esc(name)}</b><small>${art ? '' : `${esc(x.artist)}, `}${num(x.plays)}×</small></span>${cmp ? `<span class="ch-lw" aria-label="${x.last ? `number ${x.last} ${esc(lastWord(k))}` : `not played ${esc(lastWord(k))}`}">was<b>${x.last || '–'}</b></span>` : ''}</button>`;
   }).join('');
   const sub = cmp ? `Up and down since ${lastWord(k)}, and where each stood then` : 'Most played first';
-  return `<div class="viz"><h2>${cmp ? 'Your chart' : `Top ${list.length > 10 ? list.length : 10}`}</h2><div class="seg small" id="topSeg">${['tracks', 'albums', 'artists'].map((t) =>
-    `<button data-top="${t}" class="${t === topKind ? 'on' : ''}">${{ tracks: 'Songs', albums: 'Albums', artists: 'Artists' }[t]}</button>`).join('')}</div>
+  return `<div class="viz"><div class="ch-head"><h2>${cmp ? 'Your chart' : `Top ${list.length > 10 ? list.length : 10}`}</h2>${switcher}</div>${kinds}
     <span class="sub ch-sub">${sub}</span><div class="ch-rows">${rows || '<p class="hint">Nothing in this period.</p>'}</div>${topMore('stats', all.length)}
     ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}<button class="btn text" ${rankAttrs(topKind, statsRange)} data-rshown="1">${icon('view-list')}The whole list</button></div>` : ''}</div>`;
 }
@@ -7633,11 +7671,17 @@ function weekViz(s) {
   const w = s.week;
   if (!w) return '';
   const max = Math.max(1, ...w.days.map((v) => v || 0), ...w.last);
+  // Each bar in bands, the top artists' colors from the bottom up as in Your days, everyone else on top.
+  const bands = (i) => {
+    const c = [0, 0, 0, 0, 0, 0];
+    ((w.strips || [])[i] || []).forEach(([, k]) => { c[k] = (c[k] || 0) + 1; });
+    return [1, 2, 3, 4, 5, 0].filter((k) => c[k]).map((k) => `<b style="flex:${c[k]};background:${k ? `var(--a${k})` : 'color-mix(in srgb, var(--md-on-surface) 30%, transparent)'}"></b>`).join('');
+  };
   const cols = w.days.map((v, i) => `<div class="d${i === w.today ? ' today' : ''}${v == null ? ' ahead' : ''}" data-col="wk" data-i="${i}">
-    <div class="cl">${v ? `<i class="v" style="height:${((v / max) * 100).toFixed(1)}%"></i>` : ''}${w.last[i] ? `<i class="last" style="bottom:${((w.last[i] / max) * 100).toFixed(1)}%"></i>` : ''}</div><span>${DOW_LETTER[i]}</span></div>`).join('');
+    <div class="cl">${v ? `<i class="v${(w.strips || [])[i] ? ' bands' : ''}" style="height:${((v / max) * 100).toFixed(1)}%">${bands(i)}</i>` : ''}${w.last[i] ? `<i class="last" style="bottom:${((w.last[i] / max) * 100).toFixed(1)}%"></i>` : ''}</div><span>${DOW_LETTER[i]}</span></div>`).join('');
   const t = w.today;
   const def = t >= 0 ? `Today so far: <b>${plural(w.days[t] || 0, 'play')}</b>; last ${DOW_LONG[t].replace(/s$/, '')}: ${w.last[t]} in all` : weekText(w, w.days.indexOf(Math.max(...w.days.map((v) => v || 0))));
-  return `<div class="viz"><h2>Your week</h2><div class="wk">${cols}</div><div class="readout" id="ro-wk">${def}</div></div>`;
+  return `<div class="viz"><h2>Your week</h2><div class="wk">${cols}</div><div class="readout" id="ro-wk">${def}</div>${legendHtml(w.artists || [])}</div>`;
 }
 const weekText = (w, i) => `${DOW_LONG[i].replace(/s$/, '')}: <b>${plural(w.days[i] || 0, 'play')}</b>; a week earlier: ${w.last[i]}`;
 
@@ -8438,6 +8482,12 @@ function build() {
     const gb = e.target.closest('[data-goblock]');
     if (gb) { goBlock(gb.dataset.goblock); return; }
     if (e.target.closest('#openVs')) { openVs(); return; }
+    const vg = e.target.closest('[data-vsgo]');
+    if (vg) { openVs(+vg.dataset.vsgo); return; }
+    const vt = e.target.closest('#vsBody [data-vstier]');
+    if (vt) { vsTier = vsTier === +vt.dataset.vstier ? -1 : +vt.dataset.vstier; renderVs(); if (vsTier >= 0) requestAnimationFrame(() => $('#vsTierOpen').scrollIntoView({ block: 'start', behavior: 'smooth' })); return; }
+    const vso = e.target.closest('#vsBody [data-vssort]');
+    if (vso) { vsSort = vso.dataset.vssort; renderVs(); return; }
     if (e.target.closest('#openConcerts')) { openConcerts(); return; }
     if (e.target.closest('#openThrough')) { openThrough(); return; }
     const thr = e.target.closest('[data-through]');
@@ -8449,8 +8499,8 @@ function build() {
     const mc = e.target.closest('#atlasBody [data-mc]');
     if (mc) { mapSel = mapSel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
     if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
-    const mns = e.target.closest('[data-mnseg]');
-    if (mns) { minutesSeg = mns.dataset.mnseg; renderStats(); return; }
+    const chb = e.target.closest('[data-chby]');
+    if (chb) { chartBy = chb.dataset.chby; renderStats(); renderBlock(); return; }
     // A day or month from outside Stats (On this day on Explore): Stats for it.
     const dd = e.target.closest('[data-day]');
     if (dd && !e.target.closest('#statsBody, #blockBody')) {

@@ -641,6 +641,7 @@ const Mock = (() => {
     out.strip = stripOf(r);
     out.cards = fakeCards().summary;
     out.minutes = fakeMinutes(i0, i1);
+    out.minutes.albums = ((out.top || {}).albums || []).map((x, k) => ({ ...x, min: Math.round(x.plays * (3.2 + (k % 4) * 0.4)), byPlays: k + 1 })).sort((p, q) => q.min - p.min);
     out.milestones = fakeMilestones(i0, i1);
     // insights and personality, from the numbers above
     const n = sm.scrobbles;
@@ -705,8 +706,8 @@ const Mock = (() => {
     const ac = counts(0, L.ts.length, (L2, i) => L2.a[i]);
     const known = ranked(ac).map((a) => ({ a, name: L.artists[a], photo: '', ...globalOf(L.artists[a], ac[a]) }));
     const mins = [1e6, 25e4, 5e4, 1e4, 0];
-    const tiers = mins.map((min) => ({ min, plays: 0, artists: 0, top: '' }));
-    known.forEach((x) => { const t = tiers[mins.findIndex((m) => x.listeners >= m)]; t.plays += x.mine; t.artists++; if (!t.top) t.top = x.name; });
+    const tiers = mins.map((min) => ({ min, plays: 0, artists: 0, top: '', list: [] }));
+    known.forEach((x) => { const t = tiers[mins.findIndex((m) => x.listeners >= m)]; t.plays += x.mine; t.artists++; if (!t.top) t.top = x.name; if (t.list.length < 60) t.list.push({ name: x.name, mine: x.mine, listeners: x.listeners, first: L.first[x.a], last: Date.now() - (x.a % 40) * DAY, photo: '' }); });
     const knownPlays = known.reduce((s, x) => s + x.mine, 0);
     let acc = 0;
     const median = known.slice().sort((p, q) => p.listeners - q.listeners).find((x) => (acc += x.mine) * 2 >= knownPlays).listeners;
@@ -1100,7 +1101,7 @@ const Mock = (() => {
     }
     const place = (p) => { const o = Object.keys(p).map(Number).sort((x, y) => p[y] - p[x]); return (k) => o.indexOf(k) + 1; };
     const pa = place(ap), pt = place(tp);
-    const top = (m) => Object.keys(m).map(Number).sort((x, y) => m[y] - m[x]).slice(0, 10);
+    const top = (m) => Object.keys(m).map(Number).sort((x, y) => m[y] - m[x]).slice(0, 100);
     return {
       total: Math.round(total / 60),
       artists: top(a).map((k) => ({ name: L.artists[k], min: Math.round(a[k] / 60), plays: ap[k], byPlays: pa(k), photo: '', cover: '' })),

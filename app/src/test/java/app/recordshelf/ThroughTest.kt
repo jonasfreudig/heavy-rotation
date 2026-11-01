@@ -20,7 +20,7 @@ class ThroughTest {
         // "Long" takes 10 minutes before the next play, "Short" 2; the last "Short" has nothing after it and keeps its usual length.
         for (k in 0 until 4) {
             val t0 = at(2026, 10, 1 + k)
-            b.add(t0, "A", "Long", "")
+            b.add(t0, "A", "Long", "Slow Side")
             b.add(t0 + 600, "B", "Short", "")
             b.add(t0 + 720, "B", "Short", "")
         }
@@ -33,6 +33,10 @@ class ThroughTest {
         assertEquals("by plays it is second", 2, tracks.getJSONObject(0).getInt("byPlays"))
         assertEquals(120, tracks.getJSONObject(1).getInt("len"))
         assertEquals(40 + 16, m.getLong("total"))
+        val albums = m.getJSONArray("albums")
+        assertEquals("only the album that is known", 1, albums.length())
+        assertEquals("Slow Side", albums.getJSONObject(0).getString("title"))
+        assertEquals(40, albums.getJSONObject(0).getLong("min"))
     }
 
     @Test
