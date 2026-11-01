@@ -499,6 +499,18 @@ their next tier (and the ones a few plays from becoming a card at all), and lays
 tier. New this month shows the cards that reached their tier this month; By artist sorts them by
 artist instead. Tap a tier's count to jump to it, and a card for its song's page.
 
+Albums are cards too, on the binder's Albums side, by how many times you played them through:
+bronze at twice, silver at 5 times, gold at 10 and holo at 20. Only an album's songs played as an
+album count, three or more of them in a row (each within 20 minutes of the last), over the songs of
+it you know; a single on shuffle doesn't add up. A side of a record counts as half a time through
+when it is half the songs. Album and record pages wear their card like a song's page: the cover in
+the tier's frame, a line under the title with the times through, and the card on the back of the
+cover (a record on your shelf keeps its tracklist there and gets the card as a sticker). Records on
+your shelf also have a badge for what they are right now: heavy rotation (your most played of the
+last two weeks), new arrival (added this month), lost favorite (one of your most played, quiet for
+half a year), worn in (your three most played) or still sealed (never played). It shows on the shelf's
+cover, next to the card under the record's title, and as a sticker on its card in the binder.
+
 #### Tidy up: videos and app sounds
 
 A scrobbler that listened to every app may have sent things that aren't music: "HBO Max", a game

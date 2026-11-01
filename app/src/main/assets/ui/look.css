@@ -894,3 +894,33 @@ html.locked .page { overflow: hidden; }
 .ring .pd-rim { fill: none; stroke: rgb(0 0 0 / .45); stroke-width: 1.5; }
 .ring .pd-label { stroke: rgb(255 255 255 / .25); stroke-width: 1; }
 .ring .pd-hole { fill: var(--md-surface); }
+
+/* ---- album cards: square covers, the record's badge as a sticker on the cover; the binder's songs or albums ---- */
+.tcard.album .tc-img { height: auto; aspect-ratio: 1; }
+.tc-badge { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(255 255 255 / .92); color: #2a2238; box-shadow: 0 2px 6px rgb(0 0 0 / .3); }
+.tc-badge .rbadge { position: static; width: 22px; height: 22px; box-shadow: none; }
+.tc-badge .rbadge svg { width: 15px; height: 15px; }
+.tc-badge.shelf .i { width: 16px; height: 16px; }
+.bd-kind { margin: 4px 0 6px; }
+/* The card on the line under an album's title. */
+.card-pill { color: #2a2238; background: linear-gradient(160deg, #fff8ec, #f1e6d6); }
+.card-pill.cb-bronze { background: linear-gradient(160deg, #f6e2cf, #dfb894); }
+.card-pill.cb-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }
+.card-pill.cb-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
+.card-pill.cb-holo { background: linear-gradient(135deg, #f3c9ff, #b6e3ff 25%, #c6ffd6 45%, #fff1b3 65%, #ffc6dd 85%, #f3c9ff); }
+.card-pill .cb-dot { width: 10px; height: 10px; margin: 0; flex: none; }
+.cb-dot.cb-base { background: rgb(0 0 0 / .2); }
+/* A record's card as a round sticker on the back of its sleeve, like the ones shops put on. */
+.sleeve-back .sb-sticker { position: absolute; right: 12px; top: 40px; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px; height: 64px;
+  border-radius: 50%; transform: rotate(10deg); color: #2a2238; text-align: center; box-shadow: 0 3px 8px rgb(0 0 0 / .3); background: linear-gradient(160deg, #f6e2cf, #dfb894); }
+.sleeve-back .sb-sticker.cb-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }
+.sleeve-back .sb-sticker.cb-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
+.sleeve-back .sb-sticker.cb-holo { background: conic-gradient(#f3c9ff, #b6e3ff, #c6ffd6, #fff1b3, #ffc6dd, #f3c9ff); }
+.sleeve-back .sb-sticker b { font: 800 12px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.sleeve-back .sb-sticker small { margin-top: 3px; padding: 0 6px; font: 500 8px/1.15 var(--mono); }
+/* The card and the badge on the line under a title: each on one line, the second under the first when both don't fit. */
+.rbadge-line { flex-wrap: wrap; gap: 6px; }
+.rbadge-line .rbadge-pill { white-space: nowrap; }
+.card-pill { padding-left: 10px; }
+.tcard.album .tc-st span { min-width: 0; }
+.tcard.album .tc-st b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

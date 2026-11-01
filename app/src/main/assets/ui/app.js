@@ -1260,12 +1260,6 @@ function badgeChip(id) {
   const b = BADGES[id];
   return b && BADGE[b.k] ? badgeMark(b.k).replace('<i ', `<i title="${BADGE[b.k][0]}" `) : '';
 }
-function badgeLine(id) {
-  const b = id && BADGES[id];
-  if (!b || !BADGE[b.k]) return '';
-  const [name, , say] = BADGE[b.k];
-  return `<div class="rbadge-line"><span class="rbadge-pill b-${b.k}">${badgeMark(b.k)}<b>${name}:</b> ${esc(say(b))}</span></div>`;
-}
 /** Asks again when the history or the shelf changed (and on a new day: two weeks move on). */
 function askBadges() {
   const hs = ST.history || {};
@@ -1286,6 +1280,7 @@ window.onBadges = (b) => {
   });
   if (isOpen('recordPage')) renderRecord();
   if (isOpen('albumPage')) renderAlbum();
+  if (isOpen('cardsPage') && CARDBOOK && CARDBOOK.kind === 'albums') renderCardbook();
 };
 
 function renderShelf() {
@@ -1961,17 +1956,21 @@ function renderRecord() {
   const plays = (rel && rel.plays) || base.plays || 0;
   const spins = (rel && rel.spins) || base.spins || 0;
   const coverUrl = info.cover || base.cover || base.thumb;
+  if (title && !acardAsked.has(recordId) && (ST.history || {}).count) { acardAsked.add(recordId); send({ t: 'albumCard', id: recordId, artist, title }); }
+  const card = ACARD[recordId] || null;
+  const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
+  $('#recordBody').dataset.tier = tier;
   // Keep the moving sleeve across re-renders, so the record doesn't slide out again.
   const holoKey = `${recordId}|${coverUrl || ''}`;
   const keep = $('#recordBody [data-holo]');
   const reuse = keep && keep.dataset.key === holoKey;
-  let h = `<div class="hero">
+  let h = `<div class="hero page-hero">${tier ? '<i class="tier-glow"></i>' : ''}
       <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, rel: recordId, key: holoKey })}</div>
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
-      ${badgeLine(recordId)}
-      <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')}${rel && rel.tracks.length && plays >= rel.tracks.length ? `, ≈${Math.round(plays / rel.tracks.length)}× through` : ' on Last.fm'}${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
+      ${cardLine(card, recordId)}
+      <div class="stats">${plays ? `<button class="chip link" data-url="${esc(lastfmUrl(artist, title))}">${plural(plays, 'play')} on Last.fm${icon('open')}</button>` : ''}${spins ? `<span class="chip static">${plural(spins, 'spin')} logged here</span>` : ''}${(ST.history || {}).count ? `<button class="chip link" ${albumAttrs(artist, title)} data-cover="${esc(coverUrl || '')}">${icon('chart')}Your stats</button>` : ''}</div>
       ${listenRow('albums', artist, title)}
     </div>
     <div class="record-actions"><button class="btn filled big" id="scrobbleBtn" ${rel && rel.tracks.length ? '' : 'disabled'}>${icon('play')}Scrobble</button></div>
@@ -2001,7 +2000,7 @@ function renderRecord() {
   tint($('#recordBody'), coverUrl, title + artist);
   if (reuse) $('#recHolo').appendChild(keep);
   const sb = $('#recHolo .sleeve-back');
-  if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays);
+  if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays, card);
   renderRecordSpinNote();
   Tilt.refresh();
 }
@@ -3329,7 +3328,9 @@ function fillSleeveBacks() {
     const r = REL[id];
     const rel = r && r.tracks ? r : null;
     if (!rel && !relAsked.has(id)) { relAsked.add(id); send({ t: 'openRelease', id }); }
-    const html = sleeveBackInner(base, rel, (rel && rel.plays) || base.plays || 0);
+    // The album's card, as a sticker: the album page's, or one asked for the record.
+    const card = ALBUM && ALBUM.card && (ALBUM.card.owned === id || shelfIdOf(ALBUM.artist, ALBUM.title) === id) ? ALBUM.card : ACARD[id];
+    const html = sleeveBackInner(base, rel, (rel && rel.plays) || base.plays || 0, card);
     if (sb.dataset.filled !== html) { sb.innerHTML = html; sb.dataset.filled = html; }
   });
 }
@@ -3434,8 +3435,8 @@ function turnSleeve(el) {
 // A record that has slid out of its sleeve stays out when the page draws again.
 document.addEventListener('animationend', (e) => { if (e.animationName === 'discOut') { const h = e.target.closest('.holo'); if (h) h.classList.add('settled'); } });
 
-/** What the back of a record's sleeve says: the tracklist by side, label and format, and your plays as a stamp. */
-function sleeveBackInner(base, rel, plays) {
+/** What the back of a record's sleeve says: the tracklist by side, label and format, your plays as a stamp, and its card as a sticker. */
+function sleeveBackInner(base, rel, plays, card) {
   const tracks = (rel && rel.tracks) || [];
   const sides = [];
   tracks.forEach((t) => {
@@ -3455,7 +3456,8 @@ function sleeveBackInner(base, rel, plays) {
   return `<div class="sb-head"><b>${esc(info.title || base.title || '')}</b><i>${esc(info.artist || base.artist || '')}<br>${info.year || base.year || ''}</i></div>
     <div class="sb-cols${one ? ' one' : ''}">${list}</div>
     <div class="sb-foot"><small>${esc([labelText(info.label || base.label), info.format || base.format].filter(Boolean).join(', '))}</small><span class="barcode"></span></div>
-    ${plays ? `<div class="sb-notes">played ${num(plays)}×</div>` : ''}`;
+    ${plays ? `<div class="sb-notes">played ${num(plays)}×</div>` : ''}
+    ${card && card.tier >= 0 ? `<div class="sb-sticker cb-${TIER_KEYS[card.tier]}"><b>${TIER_NAMES[card.tier]}</b><small>${esc(timesThrough(card.through))}</small></div>` : ''}`;
 }
 
 /** Now spinning as a turntable: the record on the platter with its cover as the label. */
@@ -4498,10 +4500,15 @@ function renderAlbum() {
   const info = a.info || {};
   const cover = info.cover || a.cover;
   const shelfId = info.owned || shelfIdOf(a.artist, a.title);
-  let h = `<div class="hero page-hero"><i class="glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
+  // Its card: the tier's frame and glow, on the line under the title, and on the back (a record's sleeve keeps its tracklist and gets a sticker).
+  const card = a.card || null;
+  const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
+  $('#albumBody').dataset.tier = tier;
+  const back = card && !shelfId ? { cls: `cb-${tier || 'base'}`, html: albumCardBackHtml({ ...card, title: a.title }) } : null;
+  let h = `<div class="hero page-hero"><i class="glow"></i>${tier ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, card: back, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
-    ${badgeLine(shelfId)}
+    ${cardLine(card, shelfId)}
     ${genreChips(a.genres)}
     ${listenRow('albums', a.artist, a.title)}
     ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
@@ -4521,7 +4528,7 @@ function renderAlbum() {
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
     const songs = a.dzInfo && !a.dzInfo.error && a.dzInfo.tracks ? a.dzInfo.tracks.length : 0;
-    if (songs) P.tiles += `<p class="hint center">Plays count songs, not whole albums: ${num(a.plays)} song plays are about ${a.plays >= songs ? `${num(Math.round(a.plays / songs))} times` : 'less than once'} through its ${plural(songs, 'song')}.</p>`;
+    if (card && card.plays) P.tiles += `<p class="hint center">Plays count songs, not whole albums. Times through count only its songs played as an album, three or more in a row, so a single on shuffle doesn't add up.</p>`;
     const tl = a.trackList || [];
     P.period = periodBlock(r, a.rangeTracks, 'album', (x) => trackAttrs(a.artist, x.title, { album: a.title, cover }));
     P.shape = trackShapeViz(a);
@@ -7298,26 +7305,83 @@ function tierCard(x, corner, second) {
 
 /** The tiers as the app counts them, bronze first. */
 const TIER_KEYS = ['bronze', 'silver', 'gold', 'holo'];
+const TIER_NAMES = ['Bronze', 'Silver', 'Gold', 'Holo'];
+/** An album's card tiers by times played through (as the app counts them: runs of its songs, three or more). */
+const ALBUM_TIERS = [2, 5, 10, 20];
+/** "7.5 times through", "12 times through", "once through" */
+const timesThrough = (t) => (t >= 0.95 && t < 1.05 ? 'once through' : `${t >= 10 ? Math.round(t) : String(Math.round(t * 10) / 10)} times through`);
+/** A record's badge as a sticker on its card; a record on your shelf without one gets a small record. */
+function cardSticker(owned) {
+  if (!owned) return '';
+  const b = BADGES[owned];
+  return b && BADGE[b.k] ? `<span class="tc-badge" title="${BADGE[b.k][0]}">${badgeMark(b.k)}</span>` : `<span class="tc-badge shelf" title="On your shelf">${icon('album')}</span>`;
+}
+/** An album's card in the binder's grid: its cover, title, times through and artist, and its record's badge. */
+const albumBinderCard = (x) => `<button class="tcard album ${TIER_KEYS[x.tier] || 'base'}" ${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}"><span class="tc-top"><b>${esc(x.title)}</b></span>
+  <span class="tc-img">${coverHtml(x.cover, x.title, x.artist)}${cardSticker(x.owned)}</span><span class="tc-st"><span><b>${esc(timesThrough(x.through).replace(' times through', '×').replace('once through', '1×'))}</b>${esc(x.artist)}</span></span></button>`;
+/** An album card with the way to its next tier (for Almost there). */
+function albumTierCard(x) {
+  const k = x.tier;
+  const next = ALBUM_TIERS[k + 1];
+  const from = k >= 0 ? ALBUM_TIERS[k] : 0;
+  const prog = next ? Math.round(((x.through - from) / (next - from)) * 100) : 100;
+  return `<button class="tcard album ${TIER_KEYS[k] || 'base'}" ${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}"><span class="tc-top"><b>${esc(x.title)}</b></span>
+    <span class="tc-img">${coverHtml(x.cover, x.title, x.artist)}${cardSticker(x.owned)}</span>${k >= 0 ? `<span class="tc-type">${TIER_NAMES[k]}</span>` : ''}
+    <span class="tc-st"><span><b>${esc(String(Math.round(x.through * 10) / 10))}×</b>through</span><span><b>${esc(x.artist)}</b>artist</span></span>
+    <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${Math.max(0, prog)}%"></i></span><small>${esc(String(Math.round((next - x.through) * 10) / 10))} more to ${(k >= 0 ? TIER_NAMES[k + 1] : 'Bronze').toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
+}
+/** The back of an album's cover: its card, or how far it is from being one, and the way to all of them. */
+function albumCardBackHtml(c) {
+  const k = c.tier, t = c.through || 0;
+  const next = ALBUM_TIERS[k + 1];
+  const from = k >= 0 ? ALBUM_TIERS[k] : 0;
+  const prog = next ? Math.round(((t - from) / (next - from)) * 100) : 100;
+  const at = c.tierAt || [];
+  const goal = !next ? 'The top tier' : k < 0 ? `${String(Math.round((next - t) * 10) / 10)} more times through and it's a card` : `${String(Math.round((next - t) * 10) / 10)} more times through to ${TIER_NAMES[k + 1].toLowerCase()}`;
+  const steps = ALBUM_TIERS.map((n, i) => `<li class="${at[i] ? 'done' : ''}"><i class="cb-dot cb-${TIER_KEYS[i]}"></i><b>${TIER_NAMES[i]}</b><small>${at[i] ? esc(monthYear(at[i])) : `at ${n}×`}</small></li>`).join('');
+  return `<div class="cb-top"><span>${k < 0 ? 'Not a card yet' : `${TIER_NAMES[k]} album card`}</span><small>${plural(c.plays || 0, 'play')}</small></div>
+    <b class="cb-t">${esc(c.title)}</b>
+    <div class="cb-big"><b>${esc(String(Math.round(t * 10) / 10))}</b><span>times through</span></div>
+    <div class="cb-goal"><span class="tc-bar"><i style="width:${Math.max(0, prog)}%"></i></span><small>${goal}</small></div>
+    <ol class="cb-steps">${steps}</ol>
+    <button class="cb-link" data-cardbook="albums">All your cards${icon('chevron-right')}</button>`;
+}
+/** Under an album's or a record's title: its card and its record's badge, side by side. The card opens the binder at the albums. */
+function cardLine(card, shelfId) {
+  const b = shelfId && BADGES[shelfId];
+  const k = card ? card.tier : -1;
+  const c = card && card.through >= 0.5 ? `<button class="rbadge-pill card-pill cb-${TIER_KEYS[k] || 'base'}" data-cardbook="albums"><i class="cb-dot cb-${TIER_KEYS[k] || 'base'}"></i><b>${k >= 0 ? `${TIER_NAMES[k]} card:` : 'Not a card yet:'}</b> ${esc(timesThrough(card.through))}</button>` : '';
+  const badge = b && BADGE[b.k] ? `<span class="rbadge-pill b-${b.k}">${badgeMark(b.k)}<b>${BADGE[b.k][0]}:</b> ${esc(BADGE[b.k][2](b))}</span>` : '';
+  return c || badge ? `<div class="rbadge-line">${c}${badge}</div>` : '';
+}
+/** Album cards of records, for the record page and the sleeve's sticker (by release id), asked for once a visit. */
+const ACARD = {};
+const acardAsked = new Set();
+window.onAlbumCard = (c) => {
+  ACARD[c.id] = c.title ? c : null;
+  if (isOpen('recordPage') && recordId === c.id) renderRecord();
+};
 /** "3 holo, 6 gold, 6 silver, 15 bronze" from counts bronze first. */
 const tierCounts = (counts) => counts.map((n, k) => (n ? `${num(n)} ${TIER_KEYS[k]}` : '')).filter(Boolean).reverse().join(', ');
 /** On Stats: a few of your best cards fanned out, and what you hold. Opens the binder. */
 function cardsRowHtml(s) {
   const c = s.cards;
-  if (!c || !c.total) return '';
+  if (!c || (!c.total && !c.albums)) return '';
   const fan = c.best.map((x) => `<i class="tcard song ${TIER_KEYS[x.tier]}"><span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span></i>`).join('');
-  return `<button class="cards-row" data-cardbook><span class="cr-fan">${fan}</span><span class="cr-tx"><b>Your cards</b><small>${tierCounts(c.counts)}${c.fresh ? `. ${num(c.fresh)} new this month` : ''}</small></span>${icon('chevron-right')}</button>`;
+  return `<button class="cards-row" data-cardbook><span class="cr-fan">${fan}</span><span class="cr-tx"><b>Your cards</b><small>${[tierCounts(c.counts), c.albums ? plural(c.albums, 'album card') : ''].filter(Boolean).join(', ')}${c.fresh ? `. ${num(c.fresh)} new this month` : ''}</small></span>${icon('chevron-right')}</button>`;
 }
 let CARDBOOK = null;
-function openCardbook() {
+function openCardbook(kind) {
   openPage('cardsPage');
-  CARDBOOK = { loading: true, req: ++REQ, view: 'all', open: {} };
+  CARDBOOK = { loading: true, req: ++REQ, view: 'all', open: {}, kind: kind === 'albums' ? 'albums' : 'songs' };
+  askBadges();
   renderCardbook();
   send({ t: 'cards', req: CARDBOOK.req });
 }
 window.onCards = (j) => {
   const B = CARDBOOK;
   if (!B || j.req !== B.req) return;
-  Object.assign(B, { loading: false, cards: j.cards || [], almost: j.almost || [], artists: j.artists || 0, monthFrom: j.monthFrom || 0 });
+  Object.assign(B, { loading: false, cards: j.cards || [], almost: j.almost || [], artists: j.artists || 0, monthFrom: j.monthFrom || 0, albums: j.albums || [], albumsAlmost: j.albumsAlmost || [] });
   renderCardbook();
 };
 /** A card in the binder's grid: the cover, the title, its plays and artist. */
@@ -7329,14 +7393,16 @@ function renderCardbook() {
   const B = CARDBOOK;
   if (!B || !isOpen('cardsPage')) return;
   if (B.loading) { morph($('#cardsBody'), '<div class="lin inline indet"><i></i></div>'); return; }
+  const kinds = `<div class="seg small bd-kind" role="tablist">${[['songs', 'Songs'], ['albums', 'Albums']].map(([k, l]) => `<button data-cbkind="${k}" class="${B.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  if (B.kind === 'albums') { renderAlbumBook(B, kinds); Tilt.refresh(); return; }
   const cards = B.cards;
   if (!cards.length) {
-    morph($('#cardsBody'), `<div class="empty">${icon('album', 'i big')}<p>No cards yet. A song becomes a bronze card at its 10th play, silver at 25, gold at 50 and holo at 100.</p></div>`);
+    morph($('#cardsBody'), `${kinds}<div class="empty">${icon('album', 'i big')}<p>No cards yet. A song becomes a bronze card at its 10th play, silver at 25, gold at 50 and holo at 100.</p></div>`);
     return;
   }
   const tiers = CARD_TIERS.map(([, k, l]) => ({ k, l, list: cards.filter((x) => cardTier(x.plays)[1] === k) }));
   const fresh = cards.filter((x) => x.reached >= B.monthFrom);
-  let h = `<div class="viz"><h2>Your cards</h2><span class="sub">${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}. Bronze at 10 plays, silver at 25, gold at 50, holo at 100.</span>
+  let h = `${kinds}<div class="viz"><h2>Your cards</h2><span class="sub">${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}. Bronze at 10 plays, silver at 25, gold at 50, holo at 100.</span>
     <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
   // The cards a few plays from their next tier, and the songs a few from becoming one.
   const toGo = (x) => { const n = CARD_TIERS.slice().reverse().find(([m]) => m > x.plays); return n ? n[0] - x.plays : Infinity; };
@@ -7361,6 +7427,38 @@ function renderCardbook() {
   }
   morph($('#cardsBody'), h);
   Tilt.refresh();
+}
+/** The binder's albums: what you hold of each tier, the ones almost at their next, and every album card by tier. */
+function renderAlbumBook(B, kinds) {
+  const cards = B.albums;
+  if (!cards.length) {
+    morph($('#cardsBody'), `${kinds}<div class="empty">${icon('album', 'i big')}<p>No album cards yet. An album becomes a bronze card once you've played it through twice, silver at 5 times, gold at 10 and holo at 20. Only its songs played as an album count: three or more of them in a row.</p></div>`);
+    return;
+  }
+  const tiers = [3, 2, 1, 0].map((k) => ({ k: TIER_KEYS[k], l: TIER_NAMES[k], list: cards.filter((x) => x.tier === k) }));
+  const fresh = cards.filter((x) => x.reached >= B.monthFrom);
+  let h = `${kinds}<div class="viz"><h2>Your album cards</h2><span class="sub">${plural(cards.length, 'album')}. Bronze when you've played it through twice, silver at 5 times, gold at 10, holo at 20. Records on your shelf carry their badge.</span>
+    <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
+  const almost = B.albumsAlmost || [];
+  if (almost.length) h += `<div class="viz"><h2>Almost there</h2><span class="sub">Less than once through from their next tier</span><div class="tcards">${almost.slice(0, 20).map(albumTierCard).join('')}</div></div>`;
+  h += `<div class="chips bd-chips">${[['all', 'All'], ['fresh', `New this month${fresh.length ? ` (${num(fresh.length)})` : ''}`], ['artist', 'By artist']].map(([k, l]) => `<button class="chip${B.view === k ? ' on' : ''}" data-cbview="${k}">${l}</button>`).join('')}</div>`;
+  const section = (key, title, list, link = '') => {
+    if (!list.length) return '';
+    const shown = B.open[key] ? list : list.slice(0, BINDER_SHOWN);
+    return `<div class="bd-sec" data-cbsec="${esc(key)}"><h2>${link || esc(title)} <small>${num(list.length)}</small></h2><div class="bd-grid">${shown.map(albumBinderCard).join('')}</div>
+      ${shown.length < list.length ? `<button class="btn text" data-cbmore="${esc(key)}">Show all ${num(list.length)}</button>` : ''}</div>`;
+  };
+  if (B.view === 'artist') {
+    const by = new Map();
+    cards.forEach((x) => { if (!by.has(x.artist)) by.set(x.artist, []); by.get(x.artist).push(x); });
+    h += [...by.entries()].sort((a, b) => b[1].length - a[1].length || b[1][0].through - a[1][0].through)
+      .map(([a, list]) => section(`aa:${a}`, a, list, `<button class="artist-link" data-artist="${esc(a)}">${esc(a)}</button>`)).join('');
+  } else {
+    const pool = B.view === 'fresh' ? fresh : cards;
+    h += tiers.map((t) => section(t.k, t.l, pool.filter((x) => x.tier === TIER_KEYS.indexOf(t.k)))).join('')
+      || `<p class="hint">No album reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
+  }
+  morph($('#cardsBody'), h);
 }
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
@@ -8597,7 +8695,10 @@ function build() {
     }
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
-    if (e.target.closest('[data-cardbook]')) { openCardbook(); return; }
+    const cbk = e.target.closest('[data-cardbook]');
+    if (cbk) { openCardbook(cbk.dataset.cardbook); return; }
+    const cbkind = e.target.closest('#cardsPage [data-cbkind]');
+    if (cbkind) { CARDBOOK.kind = cbkind.dataset.cbkind; CARDBOOK.view = 'all'; renderCardbook(); return; }
     const flip = e.target.closest('[data-flip]');
     if (flip) { turnSleeve(flip); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }

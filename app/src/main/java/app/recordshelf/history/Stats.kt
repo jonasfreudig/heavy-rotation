@@ -62,6 +62,15 @@ class Stats(
         /** Songs this many plays short of bronze show as almost there, before they are cards. */
         const val CARD_ALMOST = 3
 
+        /** An album's card tiers by times played through: bronze, silver, gold and holo. */
+        val ALBUM_TIERS = doubleArrayOf(2.0, 5.0, 10.0, 20.0)
+
+        /** Different songs of one album in a row that count as listening to the album (fewer are just its songs). */
+        const val ALBUM_RUN_MIN = 3
+
+        /** The songs an album has, at least, when its times through are worked out (a single isn't played through once a play). */
+        const val ALBUM_SONGS_MIN = 4
+
         /** A new artist you "kept": played this often since. */
         const val KEPT_PLAYS = 10
         const val OBSESSION_MIN = 7
@@ -2342,7 +2351,7 @@ class Stats(
         globals.album(h.artistNames[h.albumArtist[al]], h.albumTitles[al])?.let { o.put("global", vsJson(all[al], it)) }
         // Its songs as a river, over all your time with it.
         pageRiver(o.getLong("first") / 1000, { h.album[it] == al }, { h.track[it] }, { h.trackTitles[it] })?.let { o.put("river", it) }
-        return o.put("info", albumJson(al)).put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
+        return o.put("info", albumJson(al)).put("card", albumCardJson(al)).put("title", h.albumTitles[al]).put("artist", h.artistNames[h.albumArtist[al]])
             .put("rank", rank(all, al)).put("albums", all.count { it > 0 })
             .put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("plays", inRange[al]).put("rank", rank(inRange, al)))
             .put("trackList", JSONArray(tracks.entries.sortedByDescending { it.value }.map { (t, c) -> JSONObject().put("title", h.trackTitles[t]).put("plays", c) }))
@@ -2476,8 +2485,9 @@ class Stats(
     private val monthFromSec get() = date(nowSec).withDayOfMonth(1).atStartOfDay(zone).toEpochSecond()
 
     /**
-     * Every card, most played first, with when it reached its tier; the songs a few plays short of bronze; and
-     * where this month began, so the page can tell the cards new this month.
+     * Every card, most played first, with when it reached its tier; the songs a few plays short of bronze; the
+     * albums' cards and the ones almost at their next tier; and where this month began, so the page can tell the
+     * cards new this month.
      */
     fun cards(): JSONObject {
         val almost = trackPlays.indices.filter { trackPlays[it] in CARD_TIERS[0] - CARD_ALMOST until CARD_TIERS[0] }
@@ -2486,7 +2496,61 @@ class Stats(
             .put("artists", cardSongs.map { h.trackArtist[it] }.distinct().size)
             .put("cards", JSONArray(cardSongs.map { trackJson(it).put("reached", cardReached[it] * 1000) }))
             .put("almost", JSONArray(almost.map { trackJson(it) }))
+            // Albums too, by times played through; and the ones less than once from their next tier.
+            .put("albums", JSONArray(cardAlbums.map { albumCardJson(it) }))
+            .put("albumsAlmost", JSONArray(albumThrough.first.indices.filter { al ->
+                val t = albumThrough.first[al]
+                val next = ALBUM_TIERS.firstOrNull { it > t }
+                next != null && t >= 1.0 && next - t <= 1.0
+            }.sortedByDescending { albumThrough.first[it] }.take(TOP_MAX).map { albumCardJson(it) }))
     }
+
+    /**
+     * How many times you went through each album, and when it reached each card tier (seconds, 0 not yet). Only
+     * listening to the album counts: runs of its songs (three different ones or more, each within 20 minutes of the
+     * one before), each run's different songs over the album's songs you know.
+     */
+    private val albumThrough: Pair<DoubleArray, Array<LongArray>> by lazy {
+        val sum = IntArray(h.albumTitles.size)
+        val at = Array(h.albumTitles.size) { LongArray(ALBUM_TIERS.size) }
+        var i = 0
+        while (i < h.size) {
+            val al = h.album[i]
+            var j = i + 1
+            while (j < h.size && h.album[j] == al && h.ts[j] - h.ts[j - 1] <= 20 * 60) j++
+            if (al >= 0) {
+                val distinct = (i until j).map { h.track[it] }.toSet().size
+                if (distinct >= ALBUM_RUN_MIN) {
+                    val songs = maxOf(ALBUM_SONGS_MIN, albumSongs[al]).toDouble()
+                    val before = sum[al] / songs
+                    sum[al] += distinct
+                    for (k in ALBUM_TIERS.indices) if (before < ALBUM_TIERS[k] && sum[al] / songs >= ALBUM_TIERS[k]) at[al][k] = h.ts[j - 1]
+                }
+            }
+            i = j
+        }
+        DoubleArray(h.albumTitles.size) { sum[it] / maxOf(ALBUM_SONGS_MIN, albumSongs[it]).toDouble() } to at
+    }
+
+    /** An album's card tier (0 bronze to 3 holo; -1 not a card yet). */
+    private fun albumTierOf(through: Double) = ALBUM_TIERS.indexOfLast { through >= it }
+
+    private val cardAlbums: List<Int> by lazy {
+        val t = albumThrough.first
+        t.indices.filter { t[it] >= ALBUM_TIERS[0] }.sortedWith(compareByDescending<Int> { t[it] }.thenBy { h.albumTitles[it].lowercase() })
+    }
+
+    /** An album as a card: its plays, times through (to a tenth), tier, and when it reached each tier so far. */
+    private fun albumCardJson(al: Int): JSONObject {
+        val through = albumThrough.first[al]
+        val tier = albumTierOf(through)
+        return albumJson(al).put("plays", albumPlays[al]).put("through", Math.round(through * 10) / 10.0).put("tier", tier)
+            .put("tierAt", JSONArray(albumThrough.second[al].filter { it > 0 }.map { it * 1000 }))
+            .put("reached", if (tier >= 0) albumThrough.second[al][tier] * 1000 else 0)
+    }
+
+    /** The card of the album [artist] – [title], or null when you never played it. */
+    fun albumCard(artist: String, title: String): JSONObject? = findAlbum(artist, title).takeIf { it >= 0 }?.let { albumCardJson(it) }
 
     /** For the Stats row: how many cards of each tier (bronze first), how many reached their tier this month, and the top card's cover of each tier held. */
     fun cardsSummary(): JSONObject {
@@ -2500,7 +2564,10 @@ class Stats(
             if (best[k] < 0) best[k] = t
             if (cardReached[t] >= from) fresh++
         }
+        val albumCounts = IntArray(ALBUM_TIERS.size)
+        for (al in cardAlbums) albumCounts[albumTierOf(albumThrough.first[al])]++
         return JSONObject().put("total", cardSongs.size).put("counts", JSONArray(counts.toList())).put("fresh", fresh)
+            .put("albums", cardAlbums.size).put("albumCounts", JSONArray(albumCounts.toList()))
             .put("best", JSONArray(best.toList().mapIndexedNotNull { k, t -> if (t < 0) null else trackJson(t).put("tier", k) }.reversed()))
     }
 

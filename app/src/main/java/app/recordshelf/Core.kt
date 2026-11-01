@@ -780,6 +780,11 @@ object Core {
                 val covers = s.listNeedingImages(kind).take(60)
                 if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
             }
+            // A record's card on its page (the record page has no stats of its own to carry it).
+            "albumCard" -> statsExec.execute {
+                val card = if (prefs.historyDone) currentStats()?.albumCard(msg.optString("artist"), msg.optString("title")) else null
+                push("onAlbumCard") { (card ?: JSONObject()).put("id", msg.optLong("id")) }
+            }
             "badges" -> statsExec.execute {
                 val j = if (prefs.historyDone) currentStats()?.shelfBadges() else null
                 push("onBadges") { j ?: JSONObject() }

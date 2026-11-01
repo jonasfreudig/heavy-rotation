@@ -1037,6 +1037,7 @@ const Mock = (() => {
     delete tc[-1];
     return { ...life, title, artist: L.artists[a], rank: rankIn(all, a), albums: Object.keys(all).length,
       info: { title, artist: L.artists[a], cover: '', key: '', owned: a % 3 === 0 ? 1 : 0 },
+      card: fakeAlbumCard(title, L.artists[a], a % 3 === 0 ? 1 : 0, a % 8),
       range: { ...r, plays: c[a] || 0, rank: rankIn(c, a) },
       trackList: Object.entries(tc).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ title: L.titles[k], plays: v })),
       rangeTracks: rangeSongs(a), genres: [GENRES[Math.max(0, genreOf(a))] || 'Indie Rock', 'Jazz'].filter((g, i, x) => x.indexOf(g) === i),
@@ -1184,6 +1185,15 @@ const Mock = (() => {
       },
     };
   }
+  /** A made-up album card: the first records of the shelf played through most, the rest from their names. */
+  function fakeAlbumCard(title, artist, owned, k = 99) {
+    const h = [...(title + artist)].reduce((s, c) => (s * 31 + c.charCodeAt(0)) % 997, 7);
+    const through = [24, 13, 11, 7.5, 5.4, 3.2, 2.4, 1.6][k] ?? Math.round((0.4 + (h % 40) / 10) * 10) / 10;
+    const tiers = [2, 5, 10, 20];
+    const tierAt = tiers.filter((n) => through >= n).map((n, i) => Date.now() - (400 - i * 90) * DAY);
+    const tier = tierAt.length - 1;
+    return { title, artist, cover: '', key: '', owned: owned || 0, plays: Math.round(through * 11), through, tier, tierAt, reached: tier >= 0 ? tierAt[tier] : 0 };
+  }
   function fakeCards() {
     const L = history();
     const n = {}, at = {}, tArtist = {}, tiers = [10, 25, 50, 100];
@@ -1200,12 +1210,16 @@ const Mock = (() => {
     const monthFrom = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
     const counts = [0, 0, 0, 0], best = [];
     cards.forEach((t) => { const k = tiers.filter((m) => n[t] >= m).length - 1; counts[k]++; if (!best[k]) best[k] = { ...song(t), tier: k }; });
+    const all = coll.slice(0, 16).map((r, k) => fakeAlbumCard(r.title, r.artist, k % 3 ? r.id : 0, k));
+    const albums = all.filter((x) => x.tier >= 0).sort((p, q) => q.through - p.through);
     return {
       monthFrom,
+      albums,
+      albumsAlmost: all.filter((x) => { const nx = [2, 5, 10, 20].find((n) => n > x.through); return nx && x.through >= 1 && nx - x.through <= 1; }),
       artists: new Set(cards.map((t) => tArtist[t])).size,
       cards: cards.map((t) => ({ ...song(t), reached: at[t] })),
       almost: ids.filter((t) => n[t] >= 7 && n[t] < 10).sort((x, y) => n[y] - n[x]).slice(0, 100).map(song),
-      summary: { total: cards.length, counts, fresh: cards.filter((t) => at[t] >= monthFrom).length, best: best.filter(Boolean).reverse() },
+      summary: { total: cards.length, counts, fresh: cards.filter((t) => at[t] >= monthFrom).length, best: best.filter(Boolean).reverse(), albums: albums.length },
     };
   }
   function fakeRankList(m) {
@@ -1671,6 +1685,7 @@ const Mock = (() => {
         case 'dzAlbum': later(250, () => onDzAlbum({ ...fakeDzAlbum(m.id), req: m.req })); break;
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
+        case 'albumCard': later(150, () => { const k = coll.findIndex((x) => x.id === m.id); onAlbumCard({ ...fakeAlbumCard(m.title, m.artist, m.id, k), id: m.id }); }); break;
         case 'explore': {
           const x = fakeExplore();
           later(300, () => onExplore({ ...x, counts: { lost: x.lostArtists.length, lostAlbums: x.lostAlbums.length, regulars: x.regulars.length, oneDay: x.oneDay.length, deepCuts: x.deepCuts.length } }));
