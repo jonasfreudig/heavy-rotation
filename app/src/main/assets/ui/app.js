@@ -126,8 +126,10 @@ function holoCover(url, title, artist, opts = {}) {
   const lbl = url ? `background-image:url('${cssUrl(url)}')` : '';
   const disc = withDisc ? `<div class="disc"><div class="vinyl"><i class="lbl" style="--h:${hue((title || '') + (artist || ''))};${lbl}"></i></div></div>` : '';
   const sheen = owned ? '<i class="sheen"></i>' : '';
-  const back = opts.back ? '<div class="sleeve-back"></div>' : '';
-  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''} ${opts.back && turnHintDue() ? 'nudge' : ''}" data-holo ${opts.back ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
+  // The back: a record's tracklist (filled in when it comes), or what [opts.card] gives (a song's card).
+  const back = opts.card ? `<div class="sleeve-back card-back ${opts.card.cls}">${opts.card.html}</div>` : opts.back ? '<div class="sleeve-back"></div>' : '';
+  const turns = !!(opts.back || opts.card);
+  return `<div class="holo ${owned ? 'foil' : 'plain'} ${withDisc ? 'with-disc' : ''} ${opts.frame ? 'framed' : ''} ${turns && turnHintDue() ? 'nudge' : ''}" data-holo ${turns ? 'data-flip' : ''} ${opts.rel ? `data-rel="${opts.rel}"` : ''} data-key="${esc(opts.key || url || title)}" data-cover="${esc(url || '')}" style="--h:${hue((title || '') + (artist || ''))}">
     <div class="h3d">${disc}<div class="sleeve">${coverHtml(url, title, artist, 'big')}<span class="fx">${sheen}<i class="glare"></i></span></div>${back}</div></div>`;
 }
 
@@ -150,15 +152,44 @@ document.addEventListener('animationstart', (e) => {
  */
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
+  // Collector cards near the screen (an observer keeps the list), and those of them in what's on top now.
+  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [],
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
     return pref && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   },
+  /** Starts watching the cards drawn since last time; one coming near the screen or leaving it refreshes. */
+  watchCards() {
+    if (!this.cardIo) {
+      this.cardIo = new IntersectionObserver((es) => {
+        es.forEach((e) => { if (e.isIntersecting) this.cards.add(e.target); else this.cards.delete(e.target); });
+        this.refresh();
+      }, { rootMargin: '80px 0px' });
+    }
+    $$('.tcard:not(i)').forEach((c) => { if (!this.cardSeen.has(c)) { this.cardSeen.add(c); this.cardIo.observe(c); } });
+  },
   refresh() {
     const top = pageStack[pageStack.length - 1];
-    this.els = !$('#story').hidden ? $$('#story [data-holo]') : top ? $$(`#${top} [data-holo]`) : [];
-    const want = this.els.length > 0 && this.allowed();
+    const story = !$('#story').hidden;
+    this.els = story ? $$('#story [data-holo]') : top ? $$(`#${top} [data-holo]`) : [];
+    this.watchCards();
+    this.cards.forEach((c) => { if (!c.isConnected) this.cards.delete(c); });
+    // Only the cards in the page on top (or the tab, with no page open) move; each is a layer of its own while it does.
+    const scope = top ? $(`#${top}`) : null;
+    const live = story ? [] : [...this.cards].filter((c) => (scope ? scope.contains(c) : !c.closest('.page')));
+    const want = (this.els.length > 0 || live.length > 0) && this.allowed();
+    this.live.forEach((c) => { if (!want || !live.includes(c)) { c.classList.remove('tilting'); c._tx = null; } });
+    this.live = want ? live : [];
+    // Drawn again, a card lost its class and its angle: both come back before the next frame.
+    this.live.forEach((c) => {
+      c.classList.add('tilting');
+      c._tx = this.x;
+      c._ty = this.y;
+      c.style.setProperty('--tx', this.x.toFixed(3));
+      c.style.setProperty('--ty', this.y.toFixed(3));
+      c.style.setProperty('--m', Math.min(1, Math.hypot(this.x, this.y)).toFixed(3));
+    });
     if (want !== this.on) {
       this.on = want;
       send({ t: 'tilt', on: want });
@@ -201,6 +232,14 @@ const Tilt = {
       el.style.setProperty('--tx', x.toFixed(3));
       el.style.setProperty('--ty', y.toFixed(3));
       el.style.setProperty('--m', Math.min(1, Math.hypot(x, y)).toFixed(3));
+    }
+    for (const c of this.live) {
+      if (Math.abs(this.x - (c._tx ?? 9)) < 0.004 && Math.abs(this.y - (c._ty ?? 9)) < 0.004) continue;
+      c._tx = this.x;
+      c._ty = this.y;
+      c.style.setProperty('--tx', this.x.toFixed(3));
+      c.style.setProperty('--ty', this.y.toFixed(3));
+      c.style.setProperty('--m', Math.min(1, Math.hypot(this.x, this.y)).toFixed(3));
     }
     this.raf = requestAnimationFrame((t) => this.step(t));
   },
@@ -3158,7 +3197,7 @@ function shelfIdOf(artist, title) {
 /** The backs of shelf records on album and song pages: their tracklist, once the release is loaded (asked for once). */
 const relAsked = new Set();
 function fillSleeveBacks() {
-  $$('.holo[data-rel] .sleeve-back').forEach((sb) => {
+  $$('.holo[data-rel] .sleeve-back:not(.card-back)').forEach((sb) => {
     const id = +sb.closest('.holo').dataset.rel;
     if (!id || sb.closest('#recHolo')) return; // the record page fills its own
     const base = COLL.find((x) => x.id === id) || {};
@@ -3242,6 +3281,12 @@ function keepSleeve(old, fresh) {
     const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
     if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
     old.dataset.cover = fresh.dataset.cover;
+  }
+  // A song's card comes with its page's numbers, after the sleeve: it goes on the back then, and follows them.
+  const fb = fresh.querySelector('.card-back'), ob = old.querySelector('.card-back');
+  if (fb && !ob) { old.querySelector('.h3d').append(fb); old.setAttribute('data-flip', ''); } else if (fb && ob) {
+    if (ob.className !== fb.className) ob.className = fb.className;
+    if (ob.innerHTML !== fb.innerHTML) ob.innerHTML = fb.innerHTML;
   }
   return true;
 }
@@ -4229,7 +4274,9 @@ function renderTrack() {
   // Its card's tier shows on the cover: a frame of the tier's metal, its glow behind, and a record of it if you own the album.
   const tier = t.loading || t.missing ? '' : cardTier(t.plays || 0)[1];
   $('#trackBody').dataset.tier = tier === 'base' ? '' : tier;
-  let h = `<div class="hero page-hero"><i class="glow"></i>${tier && tier !== 'base' ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, back: !!shelfId, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
+  // Its back is the song's card: plays, the way to the next tier, when it reached each one.
+  const card = t.loading || t.missing ? null : { cls: `cb-${tier}`, html: cardBackHtml(t) };
+  let h = `<div class="hero page-hero"><i class="glow"></i>${tier && tier !== 'base' ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, card, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">,</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${genreChips(t.genres)}
@@ -6583,6 +6630,7 @@ function afterStats() {
   if (gm) { gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
   if ($('#vsTileLine')) { renderVsCard(); if (!VS) send({ t: 'vs' }); }
   syncStrips($('#statsBody'));
+  Tilt.refresh();
   if (statsGoTo && $(`#statsBody [data-blk="${statsGoTo}"]`)) { const id = statsGoTo; statsGoTo = ''; requestAnimationFrame(() => goBlock(id)); }
 }
 /** To block [id]: scrolled to on the page, or opened on its own page when it's a card. */
@@ -6874,6 +6922,7 @@ function renderBlock() {
   const h = b && (b.kinds || SPAN).includes(STATS.range.kind) ? (b.page || b.html)(STATS) : '';
   morph($('#blockBody'), h || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
   drawRecords();
+  Tilt.refresh();
 }
 
 // ---- the period day by day, who you played when, new artists, songs on repeat, decades ----
@@ -7071,6 +7120,23 @@ function tierWords(plays) {
   const next = CARD_TIERS.slice().reverse().find(([n]) => n > plays);
   return next ? `${label} card, ${plural(next[0] - plays, 'play')} to ${next[2].toLowerCase()}. ` : `${label} card, the top tier. `;
 }
+/** The back of a song's cover: its card, or how far it is from being one, and the way to all of them. */
+function cardBackHtml(t) {
+  const plays = t.plays || 0;
+  const [, tier, label] = cardTier(plays);
+  const next = CARD_TIERS.slice().reverse().find(([n]) => n > plays);
+  const from = (CARD_TIERS.slice().reverse().filter(([n]) => n <= plays).pop() || [0])[0];
+  const prog = next ? Math.round(((plays - from) / (next[0] - from)) * 100) : 100;
+  const at = t.tierAt || [];
+  const goal = !next ? 'The top tier' : tier === 'base' ? `${plural(next[0] - plays, 'more play')} and it's a card` : `${plural(next[0] - plays, 'play')} to ${next[2].toLowerCase()}`;
+  const steps = CARD_TIERS.slice().reverse().map(([n, k, l], i) => `<li class="${at[i] ? 'done' : ''}"><i class="cb-dot cb-${k}"></i><b>${l}</b><small>${at[i] ? esc(monthYear(at[i])) : `at ${n}`}</small></li>`).join('');
+  return `<div class="cb-top"><span>${tier === 'base' ? 'Not a card yet' : `${label} card`}</span><small>#${num(t.rank)} of ${num(t.tracks)}</small></div>
+    <b class="cb-t">${esc(t.title)}</b>
+    <div class="cb-big"><b>${num(plays)}</b><span>${plays === 1 ? 'play' : 'plays'}</span></div>
+    <div class="cb-goal"><span class="tc-bar"><i style="width:${prog}%"></i></span><small>${goal}</small></div>
+    <ol class="cb-steps">${steps}</ol>
+    <button class="cb-link" data-cardbook>All your cards${icon('chevron-right')}</button>`;
+}
 /**
  * An artist's songs as collector cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100, each with how
  * far it is to the next tier. Songs played fewer than three times stay out.
@@ -7161,6 +7227,7 @@ function renderCardbook() {
       || `<p class="hint">No song reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
   }
   morph($('#cardsBody'), h);
+  Tilt.refresh();
 }
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
@@ -8397,10 +8464,10 @@ function build() {
     }
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
+    if (e.target.closest('[data-cardbook]')) { openCardbook(); return; }
     const flip = e.target.closest('[data-flip]');
     if (flip) { turnSleeve(flip); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }
-    if (e.target.closest('[data-cardbook]')) { openCardbook(); return; }
     const cbv = e.target.closest('#cardsPage [data-cbview]');
     if (cbv) { CARDBOOK.view = cbv.dataset.cbview; renderCardbook(); return; }
     const cbm = e.target.closest('#cardsPage [data-cbmore]');

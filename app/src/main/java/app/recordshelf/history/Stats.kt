@@ -2246,7 +2246,8 @@ class Stats(
     /**
      * One song: its life in plays, rank, the album it's on, what you tend to play right after it,
      * where in a listening session it sits (opener, middle, closer, against how often any song
-     * does) and its runs on repeat (back to back, within 20 minutes of each other).
+     * does), its runs on repeat (back to back, within 20 minutes of each other) and when it
+     * reached each card tier.
      */
     fun track(artist: String, title: String, r: Range): JSONObject? {
         val t = findTrack(artist, title)
@@ -2264,6 +2265,9 @@ class Stats(
         val runs = JSONArray()
         var run = 0
         var runAt = 0L
+        // When it reached each card tier (bronze, silver, gold, holo).
+        val tierAt = JSONArray()
+        var count = 0
         for (i in 0 until h.size) {
             all[h.track[i]]++
             if (i in i0 until i1) inRange[h.track[i]]++
@@ -2275,6 +2279,7 @@ class Stats(
             val at = if (starts && ends) 3 else if (starts) 0 else if (ends) 2 else 1
             sitsAll[at]++
             if (h.track[i] != t) continue
+            if (++count in CARD_TIERS) tierAt.put(h.ts[i] * 1000)
             sits[at]++
             if (i > 0 && h.track[i - 1] == t && h.ts[i] - h.ts[i - 1] < 1200) {
                 run++
@@ -2295,7 +2300,7 @@ class Stats(
             .put("next", JSONArray(next.entries.sortedByDescending { it.value }.take(5).map { (n, c) -> JSONObject().put("title", h.trackTitles[n]).put("artist", h.artistNames[h.trackArtist[n]]).put("count", c) }))
             .put("sits", JSONObject().put("open", sits[0]).put("middle", sits[1]).put("close", sits[2]).put("alone", sits[3])
                 .put("baseOpen", sitsAll[0].toDouble() / inSessions).put("baseClose", sitsAll[2].toDouble() / inSessions))
-            .put("runs", runs)
+            .put("runs", runs).put("tierAt", tierAt)
         if (al >= 0) o.put("album", albumJson(al))
         val artistName = h.artistNames[h.trackArtist[t]]
         o.put("genres", JSONArray(genres.of(artistName, if (al >= 0) h.albumKeys[al] else null).first.map { Genres.label(it) }))

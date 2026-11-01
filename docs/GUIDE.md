@@ -488,7 +488,10 @@ and Show all opens the rest. Your cards show their songs as collector cards with
 bronze at 10 plays, silver at 25, gold at 50 and holo at 100, each with how many plays it still
 needs for the next tier. A song's own page wears its card too: from bronze on, its cover sits in a frame of
 that metal with a soft glow behind it, the record sliding out is pressed in the same metal when the
-album is on your shelf, and the line under the numbers says how far the next tier is.
+album is on your shelf, and the line under the numbers says how far the next tier is. Tap the
+cover to turn it over to the card: its plays, the way to the next tier, the month it reached each
+one, and All your cards. A song played fewer than 10 times says how many plays it needs to become
+one.
 
 All your cards are in one binder: Your cards on the Stats tab (under the numbers) or All your
 cards on an artist page. It counts what you hold of each tier, shows the songs a few plays from
@@ -599,7 +602,8 @@ that show one (Android 15 does by default). The app icon is a record whose groov
 the app's colors, turning in to the label. On Android 13 and later it can follow your wallpaper
 colors (themed icons).
 
-On a record page, or the album or song page of a record you own, tap the sleeve to turn it over.
+On a record page, or the album page of a record you own, tap the sleeve to turn it over (a song
+page turns over to the song's card instead, see Your cards).
 The record rolls back into the sleeve first and rolls out again after you turn it back. The back
 has the tracklist by side, the label and format, a barcode, and your plays stamped on it. Now
 spinning shows the record on a turntable: the cover is the label, the platter turns while a track
@@ -610,7 +614,8 @@ plays, and the tonearm moves from the outer groove toward the label as the side 
 Big covers tilt and catch the light as you move the phone. Records on your shelf also get holo foil
 wherever they show up (record page, Now spinning, album and song pages, the story), and the record
 slides out of its sleeve and spins while a side plays. Albums you don't own only tilt. Artist photos
-sit in a frame that tilts too. The motion sensor runs only while such a page is open. Switch the
+sit in a frame that tilts too, and so do the collector cards on screen, with the light running
+over them. The motion sensor runs only while such a page or card is showing. Switch the
 effect off in Settings → Look → Moving covers. The "plays on Last.fm" chip on a record page opens
 your Last.fm library for that album (in the Last.fm app if it's installed).
 

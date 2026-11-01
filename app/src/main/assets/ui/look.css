@@ -717,8 +717,8 @@ html.locked .page { overflow: hidden; }
 .sw-dots { display: flex; justify-content: center; gap: 5px; margin-top: 10px; }
 .sw-dots i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--md-on-surface) 20%, transparent); transition: width .2s, background .2s; }
 .sw-dots i.on { width: 16px; background: var(--md-primary); }
-/* Rows that scroll sideways run out of their card to the screen's edges. */
-.viz :is(.xcards, .tcards, .covers, .na-row, .tix, .chip-row) { margin-inline: -32px; padding-inline: 32px; scroll-padding-inline: 32px; }
+/* Rows of collector cards and tickets run out of their card to the screen's edges. */
+.viz :is(.tcards, .tix) { margin-inline: -32px; padding-inline: 32px; scroll-padding-inline: 32px; }
 .viz .tix.grid { margin-inline: 0; padding-inline: 0; }
 /* Rows that scroll sideways on their own wrap here, and a sideways swipe on a chart moves to the next block (taps still work). */
 .sw-page :is(.xcards, .tcards, .covers, .na-row, .tix, .chip-row) { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; scroll-snap-type: none; }
@@ -822,3 +822,38 @@ html.locked .page { overflow: hidden; }
 .tp.ticket .tp-l, .tp.ticket small { color: inherit; opacity: .8; }
 .tp.ticket b, .tp.ticket small { padding-right: 34%; }
 .tp svg + small { margin-top: auto; }
+
+/* ---- collector cards on screen tilt with the phone, the light running over them (see Tilt) ---- */
+.tcard.tilting { transform: perspective(700px) rotateX(calc(var(--ty, 0) * -8deg)) rotateY(calc(var(--tx, 0) * 10deg)); will-change: transform; }
+.tcard.tilting::before { content: ''; position: absolute; inset: -40%; z-index: 3; pointer-events: none; will-change: transform, opacity;
+  background: linear-gradient(115deg, transparent 40%, rgb(255 255 255 / .5) 50%, transparent 60%);
+  transform: translate(calc(var(--tx, 0) * -24%), calc(var(--ty, 0) * -18%)); opacity: calc(.15 + var(--m, 0) * .65); }
+.tcard:is(.holo, .foil).tilting::after { inset: -40%; will-change: transform, opacity;
+  transform: translate(calc(var(--tx, 0) * 26%), calc(var(--ty, 0) * 20%)); opacity: calc(.28 + var(--m, 0) * .4); }
+
+/* ---- the back of a song's cover: its card ---- */
+.holo .sleeve-back.card-back { padding: 14px 16px 12px; color: #2a2238; background: linear-gradient(160deg, #fff8ec, #f1e6d6); }
+.card-back.cb-bronze { background: linear-gradient(160deg, #f6e2cf, #dfb894); }
+.card-back.cb-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }
+.card-back.cb-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
+.card-back.cb-holo { background: linear-gradient(135deg, #f3c9ff, #b6e3ff 25%, #c6ffd6 45%, #fff1b3 65%, #ffc6dd 85%, #f3c9ff); }
+.cb-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 600 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.cb-top small { font: inherit; letter-spacing: .02em; opacity: .6; }
+.cb-t { display: block; margin-top: 6px; font: 700 18px/22px var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-big { display: flex; align-items: baseline; gap: 6px; margin-top: auto; }
+.cb-big b { font: 700 38px/1 var(--display); letter-spacing: -.02em; }
+.cb-big span { font: 500 11px/1 var(--mono); opacity: .7; }
+.cb-goal { margin-top: 6px; }
+.cb-goal small { display: block; margin-top: 3px; font: 500 10px/13px var(--mono); opacity: .75; }
+.cb-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 9px 0 0; padding: 7px 0 0; list-style: none; border-top: 1px solid rgb(0 0 0 / .14); }
+.cb-steps li { display: flex; flex-direction: column; min-width: 0; opacity: .45; }
+.cb-steps li.done { opacity: 1; }
+.cb-steps b { font: 600 10.5px/13px var(--font); }
+.cb-steps small { font: 400 9px/12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-dot { width: 9px; height: 9px; margin-bottom: 3px; border-radius: 50%; background: #8a5a30; }
+.cb-dot.cb-silver { background: #9aa1ad; }
+.cb-dot.cb-gold { background: #c79a2e; }
+.cb-dot.cb-holo { background: conic-gradient(#f3c9ff, #b6e3ff, #c6ffd6, #fff1b3, #ffc6dd, #f3c9ff); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .2); }
+.cb-link { position: relative; z-index: 1; align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; margin: 8px 0 0 -6px; padding: 4px 4px 4px 8px; border-radius: 10px;
+  font: 600 12px/16px var(--font); color: inherit; background: rgb(0 0 0 / .07); }
+.cb-link .i { width: 16px; height: 16px; }
