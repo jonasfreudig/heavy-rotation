@@ -113,11 +113,14 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 
 /* ---- Now spinning on a turntable: the platter turns, the tonearm travels through the side ---- */
 .tt { --arm: 0deg; padding: 6px 0 2px; }
+/* The turntable takes the record's colors: the plinth in a deep shade of its cover's main color, the mat, the 33 and the headshell in its brightest. */
 .tt-plinth { position: relative; width: min(100%, 360px); aspect-ratio: 1.25; margin: 6px auto 0; border-radius: 24px;
-  background: linear-gradient(155deg, hsl(var(--h) 16% 26%), hsl(var(--h) 20% 12%) 70%);
+  --tt-body: var(--glow-d, hsl(var(--h) 16% 22%)); --tt-accent: var(--tint-d, hsl(var(--h) 55% 60%));
+  background: linear-gradient(155deg, color-mix(in srgb, var(--tt-body) 88%, #fff 12%), color-mix(in srgb, var(--tt-body) 55%, #000) 70%);
+  transition: background .6s;
   box-shadow: 0 22px 40px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 -2px 0 rgba(0, 0, 0, .35); }
 .tt-platter { position: absolute; left: 10%; top: 10%; height: 80%; aspect-ratio: 1; border-radius: 50%;
-  background: radial-gradient(circle, #2a2a2e 0 64%, #0c0c0e 64.5% 100%); box-shadow: 0 6px 14px rgba(0, 0, 0, .55), 0 0 0 3px rgba(255, 255, 255, .06); }
+  background: radial-gradient(circle, color-mix(in srgb, var(--tt-body) 45%, #18181b) 0 64%, #0c0c0e 64.5% 100%); box-shadow: 0 6px 14px rgba(0, 0, 0, .55), 0 0 0 3px rgba(255, 255, 255, .06); }
 .tt-strobe { position: absolute; inset: 0; border-radius: 50%; background: repeating-conic-gradient(rgba(220, 220, 225, .55) 0 1.4deg, transparent 1.4deg 4deg);
   -webkit-mask: radial-gradient(circle, transparent 0 95%, #000 95.5% 98.5%, transparent 99%); mask: radial-gradient(circle, transparent 0 95%, #000 95.5% 98.5%, transparent 99%); }
 /* The record on the platter, as one piece to turn over or swap for the next (changeRecord). */
@@ -138,13 +141,13 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .tt-arm { position: absolute; left: 86%; top: 15%; width: 0; height: 70%; transform-origin: 0 0; transform: rotate(var(--arm)); transition: transform 1.4s cubic-bezier(.3, .7, .2, 1); z-index: 3; }
 .tt-arm .tube { position: absolute; left: -2.5px; top: 0; width: 5px; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f2f2f4, #9a9aa2 60%, #6a6a70); box-shadow: 4px 6px 8px rgba(0, 0, 0, .45); }
 .tt-arm .head { position: absolute; left: -9px; bottom: -14px; width: 18px; height: 26px; border-radius: 4px; background: linear-gradient(#2c2c30, #111); box-shadow: 3px 5px 7px rgba(0, 0, 0, .5); }
-.tt-arm .head::after { content: ''; position: absolute; left: 3px; right: 3px; top: 4px; height: 3px; border-radius: 2px; background: hsl(var(--h) 70% 55%); }
+.tt-arm .head::after { content: ''; position: absolute; left: 3px; right: 3px; top: 4px; height: 3px; border-radius: 2px; background: var(--tt-accent); }
 .tt-pivot { position: absolute; left: 86%; top: 15%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; z-index: 4;
   background: radial-gradient(circle at 38% 34%, #f5f5f7, #9c9ca4 45%, #4a4a50); box-shadow: 0 4px 8px rgba(0, 0, 0, .5); }
 .tt-counter { position: absolute; left: 86%; top: 2%; width: 14px; height: 18px; margin-left: -7px; border-radius: 3px; background: linear-gradient(#cfcfd4, #6c6c72); z-index: 4; }
 .tt-speed { position: absolute; right: 6%; bottom: 8%; display: flex; gap: 6px; }
 .tt-speed i { font: 500 10px/18px var(--mono); padding: 0 7px; border-radius: 9px; font-style: normal; color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .07); }
-.tt-speed i.on { color: #fff; background: hsl(var(--h) 55% 45%); }
+.tt-speed i.on { color: #111; background: var(--tt-accent); }
 .tt-start { position: absolute; left: 3.5%; bottom: 6%; width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(#3a3a40, #1b1b1f); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
 .tt-led { position: absolute; left: 4.5%; top: 6%; width: 7px; height: 7px; border-radius: 50%; background: #3a3a3a; }
 .tt.spinning .tt-led { background: #ff5a4a; box-shadow: 0 0 10px #ff5a4a; }
@@ -927,3 +930,10 @@ html.locked .page { overflow: hidden; }
 
 /* Now spinning: the track's title opens its page, looking like the title it is. */
 .sp-title { font: inherit; color: inherit; letter-spacing: inherit; text-align: center; padding: 0; }
+
+/* The shelf as a list: the rows are the cards, so the list holding them is none (it shares the name "list" with the lists that are),
+   with room between rows for their shadows. */
+#grid.list { gap: 12px; overflow: visible; border-radius: 0; background: none; box-shadow: none; }
+#grid.list > .shelf-sec { box-shadow: none; }
+:root[data-look="soft"] #grid.list .rec { box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }
+:root[data-look="glass"] #grid.list .rec { box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }

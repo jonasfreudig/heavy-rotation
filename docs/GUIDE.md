@@ -622,7 +622,9 @@ page turns over to the song's card instead, see Your cards).
 The record rolls back into the sleeve first and rolls out again after you turn it back. The back
 has the tracklist by side, the label and format, a barcode, and your plays stamped on it. Now
 spinning shows the record on a turntable: the cover is the label, the platter turns while a track
-plays, and the tonearm moves from the outer groove toward the label as the side goes on.
+plays, and the tonearm moves from the outer groove toward the label as the side goes on. The
+turntable takes the record's colors: its body a deep shade of the cover's main color, the speed
+button and the headshell its brightest.
 
 ### Moving covers
 
