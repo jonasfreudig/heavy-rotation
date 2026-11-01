@@ -634,7 +634,8 @@ Big covers tilt and catch the light as you move the phone. Records on your shelf
 wherever they show up (record page, Now spinning, album and song pages, the story), and the record
 slides out of its sleeve and spins while a side plays. Albums you don't own only tilt. Artist photos
 sit in a frame that tilts too, and so do the collector cards on screen, with the light running
-over them. The motion sensor runs only while such a page or card is showing. Switch the
+over them. While you scroll, the cards hold still; once you stop, the ones that came onto the
+screen settle into the angle. The motion sensor runs only while such a page or card is showing. Switch the
 effect off in Settings → Look → Moving covers. The "plays on Last.fm" chip on a record page opens
 your Last.fm library for that album (in the Last.fm app if it's installed).
 

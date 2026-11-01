@@ -150,11 +150,16 @@ document.addEventListener('animationstart', (e) => {
  * Moving covers: the phone's tilt (from MainActivity, ~30 per second, only while a big
  * cover is showing) eases the sleeves on the top page around. A mouse or a sideways drag
  * tilts them too; without any sensor they sway gently on their own.
+ *
+ * Collector cards move too, more cheaply, since a page can have a dozen on screen: each frame
+ * that moves them costs a restyle, a paint and a commit of the whole page. So their angle goes
+ * straight into the card's transform and its two lights' (no variables that its contents would
+ * inherit and restyle with), at most about 60 times a second, and not while the page scrolls.
  */
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
   // Collector cards near the screen (an observer keeps the list), and those of them in what's on top now.
-  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [],
+  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], cardAt: 0, scrollAt: 0, settleT: 0,
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
@@ -165,7 +170,8 @@ const Tilt = {
     if (!this.cardIo) {
       this.cardIo = new IntersectionObserver((es) => {
         es.forEach((e) => { if (e.isIntersecting) this.cards.add(e.target); else this.cards.delete(e.target); });
-        this.refresh();
+        // Mid-scroll the cards that came near wait until it stops (see scrolled).
+        if (!this.scrolling()) this.refresh();
       }, { rootMargin: '80px 0px' });
     }
     $$('.tcard:not(i)').forEach((c) => { if (!this.cardSeen.has(c)) { this.cardSeen.add(c); this.cardIo.observe(c); } });
@@ -180,17 +186,9 @@ const Tilt = {
     const scope = top ? $(`#${top}`) : null;
     const live = story ? [] : [...this.cards].filter((c) => (scope ? scope.contains(c) : !c.closest('.page')));
     const want = (this.els.length > 0 || live.length > 0) && this.allowed();
-    this.live.forEach((c) => { if (!want || !live.includes(c)) { c.classList.remove('tilting'); c._tx = null; } });
+    this.live.forEach((c) => { if (!want || !live.includes(c)) this.lay(c); });
     this.live = want ? live : [];
-    // Drawn again, a card lost its class and its angle: both come back before the next frame.
-    this.live.forEach((c) => {
-      c.classList.add('tilting');
-      c._tx = this.x;
-      c._ty = this.y;
-      c.style.setProperty('--tx', this.x.toFixed(3));
-      c.style.setProperty('--ty', this.y.toFixed(3));
-      c.style.setProperty('--m', Math.min(1, Math.hypot(this.x, this.y)).toFixed(3));
-    });
+    this.live.forEach((c) => this.lift(c));
     if (want !== this.on) {
       this.on = want;
       send({ t: 'tilt', on: want });
@@ -234,18 +232,66 @@ const Tilt = {
       el.style.setProperty('--ty', y.toFixed(3));
       el.style.setProperty('--m', Math.min(1, Math.hypot(x, y)).toFixed(3));
     }
-    for (const c of this.live) {
-      if (Math.abs(this.x - (c._tx ?? 9)) < 0.004 && Math.abs(this.y - (c._ty ?? 9)) < 0.004) continue;
-      c._tx = this.x;
-      c._ty = this.y;
-      c.style.setProperty('--tx', this.x.toFixed(3));
-      c.style.setProperty('--ty', this.y.toFixed(3));
-      c.style.setProperty('--m', Math.min(1, Math.hypot(this.x, this.y)).toFixed(3));
+    // The cards hold still while the page scrolls, and take a new angle at most every 14 ms (each frame at 60 Hz,
+    // every other one at 120).
+    if (this.live.length && now - this.cardAt >= 14 && !this.scrolling(now)) {
+      this.cardAt = now;
+      for (const c of this.live) this.pose(c);
     }
     this.raf = requestAnimationFrame((t) => this.step(t));
   },
+  /** A card starts to move: a layer of its own, its lights on top. One that just came near eases in from lying flat. */
+  lift(c) {
+    c.classList.add('tilting');
+    // Drawn again, a card lost its class, its lights and its angle: they all come back before the next frame. (A light
+    // the drawing made into something else of the card's is that now; a new one goes on.)
+    const mine = (el, cls) => el && el.parentNode === c && el.className === cls;
+    const light = (el, cls) => { if (mine(el, cls)) return el; const n = document.createElement('i'); n.className = cls; c.append(n); return n; };
+    if (c.matches('.holo, .foil')) c._fl = light(c._fl, 'tc-fl');
+    else if (c._fl) { if (mine(c._fl, 'tc-fl')) c._fl.remove(); c._fl = null; }
+    c._lt = light(c._lt, 'tc-lt');
+    if (c._k == null) c._k = 0;
+    c._tx = null;
+    this.pose(c);
+  },
+  /** A card that stops moving lies flat again, without its lights, and starts from flat next time. */
+  lay(c) {
+    c.classList.remove('tilting');
+    c.style.removeProperty('transform');
+    for (const [el, cls] of [[c._lt, 'tc-lt'], [c._fl, 'tc-fl']]) if (el && el.parentNode === c && el.className === cls) el.remove();
+    c._lt = c._fl = null;
+    c._k = null;
+    c._tx = null;
+  },
+  /** A card's angle and its lights for the phone's tilt; [_k] grows from 0 to 1 as it comes in. */
+  pose(c) {
+    const k = c._k < 1 ? (c._k = Math.min(1, c._k + 0.08)) : 1;
+    const e = k * k * (3 - 2 * k);
+    const x = this.x * e, y = this.y * e;
+    if (k >= 1 && Math.abs(x - (c._tx ?? 9)) < 0.004 && Math.abs(y - (c._ty ?? 9)) < 0.004) return;
+    c._tx = x;
+    c._ty = y;
+    const m = Math.min(1, Math.hypot(x, y));
+    c.style.transform = `perspective(700px) rotateX(${(y * -8).toFixed(2)}deg) rotateY(${(x * 10).toFixed(2)}deg)`;
+    c._lt.style.transform = `translate(${(x * -24).toFixed(2)}%, ${(y * -18).toFixed(2)}%)`;
+    c._lt.style.opacity = ((0.15 + m * 0.65) * e).toFixed(3);
+    if (c._fl) {
+      c._fl.style.transform = `translate(${(x * 26).toFixed(2)}%, ${(y * 20).toFixed(2)}%)`;
+      c._fl.style.opacity = (0.28 + m * 0.4).toFixed(3);
+    }
+  },
+  /** Whether the page scrolled within the last 150 ms. */
+  scrolling(now = performance.now()) { return now - this.scrollAt < 150; },
+  /** A scroll anywhere: the cards wait, and once it stops the ones that came near join (see watchCards). */
+  scrolled() {
+    if (!this.on) return;
+    this.scrollAt = performance.now();
+    clearTimeout(this.settleT);
+    this.settleT = setTimeout(() => this.refresh(), 170);
+  },
 };
 window.onTilt = (x, y) => { Tilt.seen = true; Tilt.tx = x; Tilt.ty = y; };
+document.addEventListener('scroll', () => Tilt.scrolled(), { capture: true, passive: true });
 
 /**
  * Segmented controls, tabs and the tab bar: one pill (a dot under the period tabs) slides to the
@@ -2367,9 +2413,10 @@ function tickPhone() {
   const n = (ST.phone || {}).now;
   if (!n) return;
   const listened = n.listened + (n.playing ? Date.now() - n.at : 0);
-  // The shelf's now-playing card: how far into the song (listened time stands in for the position).
+  // The shelf's now-playing card: how far into the song (listened time stands in for the position). Under a page it
+  // waits: each move is a second of animation, and it slides to where the song is once the page goes.
   const nb = $('#phNowBar');
-  if (nb && n.dur > 0) nb.style.transform = `scaleX(${Math.min(1, listened / n.dur).toFixed(4)})`;
+  if (nb && n.dur > 0 && !nb.closest('.covered')) nb.style.transform = `scaleX(${Math.min(1, listened / n.dur).toFixed(4)})`;
   const bar = $('#pnBar'), text = $('#pnText');
   if (!bar) return;
   const left = Math.max(0, n.threshold - listened);

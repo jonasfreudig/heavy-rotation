@@ -834,13 +834,13 @@ html.locked .page { overflow: hidden; }
 .tp.ticket b, .tp.ticket small { padding-right: 34%; }
 .tp svg + small { margin-top: auto; }
 
-/* ---- collector cards on screen tilt with the phone, the light running over them (see Tilt) ---- */
-.tcard.tilting { transform: perspective(700px) rotateX(calc(var(--ty, 0) * -8deg)) rotateY(calc(var(--tx, 0) * 10deg)); will-change: transform; }
-.tcard.tilting::before { content: ''; position: absolute; inset: -40%; z-index: 3; pointer-events: none; will-change: transform, opacity;
-  background: linear-gradient(115deg, transparent 40%, rgb(255 255 255 / .5) 50%, transparent 60%);
-  transform: translate(calc(var(--tx, 0) * -24%), calc(var(--ty, 0) * -18%)); opacity: calc(.15 + var(--m, 0) * .65); }
-.tcard:is(.holo, .foil).tilting::after { inset: -40%; will-change: transform, opacity;
-  transform: translate(calc(var(--tx, 0) * 26%), calc(var(--ty, 0) * 20%)); opacity: calc(.28 + var(--m, 0) * .4); }
+/* ---- collector cards on screen tilt with the phone, the light running over them (see Tilt, which sets their angles) ---- */
+.tcard.tilting { will-change: transform; }
+.tc-lt, .tc-fl { position: absolute; inset: -40%; pointer-events: none; will-change: transform, opacity; }
+.tc-lt { z-index: 3; opacity: 0; background: linear-gradient(115deg, transparent 40%, rgb(255 255 255 / .5) 50%, transparent 60%); }
+/* A holo or foil card's rainbow, moving: the one painted on it stands down meanwhile. */
+.tc-fl { opacity: .28; background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
+.tcard:is(.holo, .foil).tilting::after { content: none; }
 
 /* ---- the back of a song's cover: its card ---- */
 .holo .sleeve-back.card-back { padding: 14px 16px 12px; color: #2a2238; background: linear-gradient(160deg, #fff8ec, #f1e6d6); }
