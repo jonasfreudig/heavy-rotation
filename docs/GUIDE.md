@@ -124,7 +124,8 @@ Open the Stats tab and tap Import history. The app copies all your scrobbles fro
 phone, 200 per request. A long history takes a few minutes the first time, roughly one minute per
 20,000 scrobbles. You can use other apps meanwhile; a notification shows the progress. If the
 import is interrupted, it continues where it stopped the next time you open the app. After that,
-only new scrobbles are fetched, at most every 30 minutes, when you open the app.
+only new scrobbles are fetched: when you open the app or the Stats tab (at most once a minute), and
+a few seconds after the app itself scrobbles something while it's open.
 
 At the top, pick Day, Week, Month, Year or All, with the filter next to them. Below come the
 period's name and its plays against the period before, and a strip of all the periods of that kind

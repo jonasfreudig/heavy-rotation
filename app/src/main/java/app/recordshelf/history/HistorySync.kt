@@ -76,6 +76,12 @@ class HistorySync(
 
         /** An empty page is asked for again this often before it counts as the end. */
         const val EMPTY_RETRIES = 2
+
+        /**
+         * A scrobble carries the time its song started and comes once it has played, so a refresh
+         * fetches again from this long (seconds) before the last one ended.
+         */
+        const val RECENT_SEC = 3600L
     }
 
     /** Where the refresh of a finished import stands, kept between runs. */
@@ -90,21 +96,21 @@ class HistorySync(
     }
 
     /**
-     * Brings a finished import up to [now]. Last.fm takes scrobbles up to [late] seconds late (a
-     * phone that was offline, a record logged afterwards), so that much before the last refresh
-     * is counted again each time ([count]: how many Last.fm has in a stretch), and walked again
-     * when Last.fm has more there than the store. A walk cut short goes on from where it stopped
-     * the next time, so no stretch is left out. Returns how many scrobbles were new.
+     * Brings a finished import up to [now]. What came since the last refresh is always fetched
+     * (from [RECENT_SEC] before it). Last.fm also takes scrobbles up to [late] seconds late (a
+     * phone that was offline, a record logged afterwards), so the stretch before that is counted
+     * each time ([count]: how many Last.fm has in a stretch) and walked again when Last.fm has
+     * more there than the store. Counting it all together once hid new scrobbles: one edited or
+     * deleted on Last.fm stays here, and the counts came out even. A walk cut short goes on from
+     * where it stopped the next time, so no stretch is left out. Returns how many scrobbles were new.
      */
     fun refresh(st: RefreshState, now: Long, late: Long, count: (from: Long, to: Long) -> Int = { f, t -> fetch(f, t).total }): Int {
         if (st.cursor <= 0) {
             val to = now + 60
-            val from = maxOf(1L, (st.syncedTo.takeIf { it > 0 } ?: store.newest()) - late)
-            if (count(from, to) <= store.countBetween(from, to)) {
-                st.syncedTo = to
-                return 0
-            }
-            st.from = from
+            val since = st.syncedTo.takeIf { it > 0 } ?: store.newest()
+            val recent = maxOf(1L, since - minOf(late, RECENT_SEC))
+            val early = maxOf(1L, since - late)
+            st.from = if (early < recent && count(early, recent) > store.countBetween(early, recent)) early else recent
             st.to = to
             st.cursor = to
         }

@@ -210,8 +210,21 @@ object Core {
     @Volatile private var compareJson: String? = null
 
     // ---- history and stats ----
-    /** Network work for the history: import, sync, tags, covers. */
+    /** Network work for the history: import, check, tags, covers. */
     private val historyExec = serial()
+
+    /**
+     * Fetching new scrobbles ([refreshHistoryInner]), on a line of its own: behind covers, counts or
+     * release years it waited minutes.
+     */
+    private val refreshExec = serial()
+
+    /** The history database looked over at the start (on [historyExec]); a refresh waits for that. */
+    private val historyReady = java.util.concurrent.CountDownLatch(1)
+
+    /** When new scrobbles were last asked for, and whether a fetch is waiting to start ([refreshHistorySoon]). */
+    @Volatile private var refreshTried = 0L
+    private val refreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** Computing stats, so a long import doesn't hold them up. */
     private val statsExec = serial()
@@ -534,24 +547,28 @@ object Core {
             Phone.refresh(ctx)
             ready = true
             historyExec.execute {
-                // Covers once fetched from Last.fm go (its terms leave artwork out); Deezer's come instead.
-                db.dropImagesFrom("lastfm")
-                // Covers and photos none was found for: tried again after a month (Deezer adds and renames).
-                db.dropMissedImages(System.currentTimeMillis() - 30 * 24 * HOUR)
-                // Lookups used to take a same-named single's cover for the album; those come again as pages need them.
-                if (!prefs.coversRechecked) {
-                    db.dropImagesFrom("dzcdn")
-                    prefs.coversRechecked = true
+                try {
+                    // Covers once fetched from Last.fm go (its terms leave artwork out); Deezer's come instead.
+                    db.dropImagesFrom("lastfm")
+                    // Covers and photos none was found for: tried again after a month (Deezer adds and renames).
+                    db.dropMissedImages(System.currentTimeMillis() - 30 * 24 * HOUR)
+                    // Lookups used to take a same-named single's cover for the album; those come again as pages need them.
+                    if (!prefs.coversRechecked) {
+                        db.dropImagesFrom("dzcdn")
+                        prefs.coversRechecked = true
+                    }
+                    histCount = db.count()
+                    // Settings back without their history (Android's cloud backup leaves the database out): import again.
+                    if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
+                        prefs.historyDone = false
+                        prefs.historyCursor = 0
+                        prefs.refreshCursor = 0
+                        prefs.historySyncedTo = 0
+                    }
+                    pushState()
+                } finally {
+                    historyReady.countDown()
                 }
-                histCount = db.count()
-                // Settings back without their history (Android's cloud backup leaves the database out): import again.
-                if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
-                    prefs.historyDone = false
-                    prefs.historyCursor = 0
-                    prefs.refreshCursor = 0
-                    prefs.historySyncedTo = 0
-                }
-                pushState()
             }
         }
     }
@@ -592,9 +609,9 @@ object Core {
         if (prefs.lastfmSession.isNotEmpty() && collection.isNotEmpty() && System.currentTimeMillis() - prefs.playsUpdated > 12 * HOUR) {
             syncExec.execute { refreshPlaysInner() }
         }
-        // An import that was interrupted continues; a finished one picks up new scrobbles now and then.
+        // An import that was interrupted continues; a finished one picks up new scrobbles.
         if (prefs.historyCursor > 0 && !importing && !prefs.importPaused) historyExec.execute { importInner() }
-        else if (prefs.historyDone && System.currentTimeMillis() - prefs.historyLastSync > HOUR / 2) historyExec.execute { refreshHistoryInner() }
+        else refreshHistorySoon()
         // Once a week the whole history is counted against Last.fm, and a year that comes up short fetched again.
         if (prefs.historyDone && !checking && System.currentTimeMillis() - prefs.historyChecked > 7 * 24 * HOUR) {
             historyExec.execute { checkHistoryInner(repair = true, quiet = true) }
@@ -675,6 +692,7 @@ object Core {
                 // Stepping through periods quickly: only the last one asked for is worked out.
                 val ask = ++statsAsks
                 statsExec.execute { if (ask == statsAsks) statsInner() }
+                refreshHistorySoon()
             }
             "artist" -> {
                 val name = msg.optString("name")
@@ -1601,6 +1619,8 @@ object Core {
         if (r.retry && !fromJob) FlushJob.schedule(ctx)
         pushState()
         pushActivity()
+        // With the app open, what Last.fm just took is in the stats soon after: fetched back, in the names Last.fm keeps.
+        if (r.sent > 0 && ui != null) main.postDelayed({ refreshHistorySoon(now = true) }, 5000L)
         return r
     }
 
@@ -1731,7 +1751,7 @@ object Core {
             }
             if (prefs.historyDone) {
                 importing = false
-                refreshHistoryInner(force = true)
+                refreshExec.execute { refreshHistoryInner(force = true) }
             }
         } catch (e: LastfmException) {
             histError = if (e.retryable) "Last.fm is busy. The import continues where it stopped next time you open the app." else (e.message ?: "Last.fm error ${e.code}")
@@ -1765,8 +1785,26 @@ object Core {
         }
     }
 
-    /** Fetches the scrobbles since the history was last known to be whole (see [HistorySync.refresh]), then rebuilds the stats. On [historyExec]. */
+    /**
+     * New scrobbles from Last.fm when the app comes to the front or Stats are asked for: one or two
+     * small requests, at most once a minute (Last.fm asks for at most 5 a second), or [now] after a
+     * scrobble from here.
+     */
+    private fun refreshHistorySoon(now: Boolean = false) {
+        if (!prefs.historyDone || importing) return
+        val t = System.currentTimeMillis()
+        if (!now && t - refreshTried < 60_000L) return
+        if (!refreshQueued.compareAndSet(false, true)) return
+        refreshTried = t
+        refreshExec.execute {
+            refreshQueued.set(false)
+            refreshHistoryInner()
+        }
+    }
+
+    /** Fetches the scrobbles since the history was last known to be whole (see [HistorySync.refresh]), then rebuilds the stats. On [refreshExec]. */
     private fun refreshHistoryInner(force: Boolean = false) {
+        historyReady.await()
         val c = lastfm()
         val user = prefs.lastfmUser
         if (c == null || user.isEmpty() || !prefs.historyDone) return
@@ -1789,7 +1827,7 @@ object Core {
             history = History.from(db, hidden())
             dropStats()
             statsExec.execute { statsInner() }
-            fetchTagsInner(c)
+            historyExec.execute { fetchTagsInner(c) }
         }
     }
 

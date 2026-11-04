@@ -133,12 +133,31 @@ class HistorySyncTest {
         val now = base + 1000 * 180L
         lfm.calls = 0
         assertEquals(0, sync.refresh(st, now, 14 * 86_400L))
-        assertEquals("nothing new: one count", 1, lfm.calls)
+        assertEquals("nothing new: a count and the last hour's page", 2, lfm.calls)
         // A record logged afterwards for yesterday evening: older than the newest scrobble stored.
         lfm.all = lfm.all + RecentTrack("Late", "Vinyl", "", now - 86_400)
         assertEquals(1, sync.refresh(st, now + 600, 14 * 86_400L))
         assertEquals(1001, store.count())
         assertEquals(0L, st.cursor)
+    }
+
+    @Test
+    fun refreshGetsNewScrobblesWhileAnOldOneIsGoneFromLastfm() {
+        val lfm = FakeLastfm(history(), inclusive = true)
+        val store = MemoryStore()
+        val sync = HistorySync(lfm::fetch, store) { }
+        sync.walk(0, base + 10_000_000)
+        val st = State()
+        val now = base + 1000 * 180L
+        sync.refresh(st, now, 14 * 86_400L)
+        // Two scrobbles of last week deleted on Last.fm (still here), then two songs played: the counts come out even.
+        lfm.all = lfm.all.filter { it.title != "Track 900" && it.title != "Track 901" } +
+            listOf(RecentTrack("New", "One", "", now + 120), RecentTrack("New", "Two", "", now + 360))
+        assertEquals(2, sync.refresh(st, now + 600, 14 * 86_400L))
+        // A song that started before that refresh and was scrobbled after it.
+        lfm.all = lfm.all + RecentTrack("New", "Long", "", now + 540)
+        assertEquals(1, sync.refresh(st, now + 900, 14 * 86_400L))
+        assertEquals(1003, store.count())
     }
 
     @Test
