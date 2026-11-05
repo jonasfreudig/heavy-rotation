@@ -36,6 +36,8 @@ class Stats(
     private val albumYears: Map<String, Int> = emptyMap(),
     /** Last.fm's all-time counts for everyone, for the comparisons. */
     @Volatile private var globals: Globals = Globals(),
+    /** Songs' real lengths in seconds ([lengthKey]), kept when this app scrobbled them. */
+    private val songLengths: Map<String, Int> = emptyMap(),
 ) {
     /** New covers, photos or Last.fm counts arrived: the same stats, now with them (nothing else is worked out again). */
     fun withPictures(images: Map<String, String>, g: Globals) {
@@ -128,8 +130,14 @@ class Stats(
         const val ARTIST_PHOTO = "@artist:"
         fun photoKey(name: String) = ARTIST_PHOTO + Text.norm(name)
 
+        /** A song's key among the real lengths kept (see [trackSec]). */
+        fun lengthKey(artist: String, title: String) = Text.norm(artist).removePrefix("the ") + "|" + Text.normLoose(title)
+
         /** Scrobbles carry no length; "hours" assume an average track. */
         const val MINUTES_PER_PLAY = 3.5
+
+        /** Fewer gaps to the next play than this don't prove a song long: one pause after it is enough. */
+        private const val TRUSTED_GAPS = 3
 
         /** A listening session ends after half an hour without a play. */
         private const val SESSION_GAP = 30 * 60L
@@ -897,7 +905,7 @@ class Stats(
         val family = key.substringBefore(':')
         // A style that is no play's main one: its family's page instead.
         if (sub.size == 0) return if (':' in key) genrePage(family) else null
-        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals)
+        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals, songLengths)
         val o = s.life { true } ?: return null
         // Each part on its own: one that fails on some history leaves the rest of the page, and says why.
         val broken = ArrayList<String>()
@@ -2799,21 +2807,34 @@ class Stats(
     // ---- time listened, milestones, and all of your history in charts (Through the years) ----
 
     /**
-     * Each song's length in seconds as your plays tell it: the median time to the next play when one came within
-     * half an hour (Last.fm dates a play when it starts). A song never followed that soon takes its artist's usual
-     * length, else [MINUTES_PER_PLAY].
+     * Each song's length in seconds: the real one when this app scrobbled it, else as your plays tell it, the
+     * median time to the next play when one came within half an hour (Last.fm dates a play when it starts; of an
+     * even number, the shorter middle one). Told by fewer than [TRUSTED_GAPS] plays, a song longer than twice its
+     * artist's usual length (of songs whose length is sure, else [MINUTES_PER_PLAY]) takes that usual length: there
+     * was a pause after it. A song never followed that soon takes its artist's usual length, else [MINUTES_PER_PLAY].
      */
     private val trackSec: IntArray by lazy {
-        val gaps = arrayOfNulls<ArrayList<Int>>(h.trackTitles.size)
+        val n = h.trackTitles.size
+        val gaps = arrayOfNulls<ArrayList<Int>>(n)
         for (i in 0 until h.size - 1) {
             val g = h.ts[i + 1] - h.ts[i]
             if (g in MIN_TRACK_SEC..SESSION_GAP) (gaps[h.track[i]] ?: ArrayList<Int>().also { gaps[h.track[i]] = it }).add(g.toInt())
         }
-        val med = IntArray(h.trackTitles.size) { t -> gaps[t]?.sorted()?.let { it[it.size / 2] } ?: 0 }
-        val byArtist = HashMap<Int, MutableList<Int>>()
-        for (t in med.indices) if (med[t] > 0) byArtist.getOrPut(h.trackArtist[t]) { ArrayList() } += med[t]
-        val artistMed = byArtist.mapValues { (_, v) -> v.sorted()[v.size / 2] }
-        IntArray(med.size) { t -> med[t].takeIf { it > 0 } ?: artistMed[h.trackArtist[t]] ?: (MINUTES_PER_PLAY * 60).toInt() }
+        fun median(v: List<Int>) = v.sorted()[(v.size - 1) / 2]
+        fun byArtist(len: IntArray) = len.indices.filter { len[it] > 0 }.groupBy { h.trackArtist[it] }.mapValues { (_, ts) -> median(ts.map { len[it] }) }
+        val med = IntArray(n) { t -> gaps[t]?.let { median(it) } ?: 0 }
+        val sure = IntArray(n) { t ->
+            songLengths[lengthKey(h.artistNames[h.trackArtist[t]], h.trackTitles[t])]
+                ?: if ((gaps[t]?.size ?: 0) >= TRUSTED_GAPS) med[t] else 0
+        }
+        val usual = byArtist(sure)
+        val fallback = (MINUTES_PER_PLAY * 60).toInt()
+        val guess = IntArray(n) { t ->
+            val u = usual[h.trackArtist[t]] ?: fallback
+            if (sure[t] > 0) sure[t] else if (med[t] > 2 * u) u else med[t]
+        }
+        val artistGuess = byArtist(guess)
+        IntArray(n) { t -> guess[t].takeIf { it > 0 } ?: artistGuess[h.trackArtist[t]] ?: fallback }
     }
 
     /** Time listened between plays [i0] and [i1] (estimated, see [trackSec]), and the artists, songs and albums with the most of it, each with its place by plays. */

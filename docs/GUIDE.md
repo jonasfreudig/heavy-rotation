@@ -306,7 +306,8 @@ To set it up, log in to [setlist.fm](https://www.setlist.fm) (a free account), o
 non-commercial use; any application name will do), then paste the key in Settings → setlist.fm.
 
 To bring in your own concerts, add your setlist.fm username there too. The shows you marked "I was
-there" on setlist.fm come in, and are fetched again once a week or when you tap Update now. They
+there" on setlist.fm come in, and are fetched again when you open Your concerts and the last look is
+an hour old, when you open Explore and it's a week old, or when you tap Update now. They
 show on the artist's page under "You saw them live", under Your taste on the Stats tab, in the
 period's Highlights, and as ticket stubs in the period's story. "Your concerts" opens with your
 latest stubs fanned out, then the afterglow: the shows that sent you back to an artist's music
@@ -380,9 +381,12 @@ artists with 50 plays or more that have been quiet for 90 days or longer, and th
 that ended in a comeback. Old favorites are artists you still play whose plays lie two years back
 on average; newcomers have the newest plays on average.
 
-Your chart can rank by time listened instead of plays (Time, at its top right). Scrobbles carry no
-length, so each song's length is the usual time from it to the next play (Last.fm dates a play when
-it starts); the hours in Totals are counted the same way. Milestones lists round numbers: your
+Your chart can rank by time listened instead of plays (Time, at its top right). Scrobbles on
+Last.fm carry no length, so the app keeps the real one of every song it scrobbles itself, as your
+music app or the record reports it. Any other song's length is the usual time from it to the next
+play (Last.fm dates a play when it starts). A song heard only once or twice that comes out at more
+than twice its artist's usual length gets the usual length instead, since that was a pause after
+it. The hours in Totals are counted the same way. Milestones lists round numbers: your
 10,000th play, an artist's 500th, a song's 100th.
 
 The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the

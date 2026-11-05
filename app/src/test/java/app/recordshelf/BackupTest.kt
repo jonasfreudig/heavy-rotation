@@ -40,6 +40,9 @@ class BackupTest {
         override fun vinyl(): List<Listen> = vinyl.toList()
         override fun addVinyl(rows: List<Listen>) { vinyl += rows }
         override fun clearVinyl() = vinyl.clear()
+        val lengths = HashMap<String, Int>()
+        override fun lengths(): Map<String, Int> = lengths
+        override fun saveLength(trackKey: String, sec: Int) { lengths[trackKey] = sec }
     }
 
     private fun source(): Pair<FakeDb, File> {
@@ -53,6 +56,7 @@ class BackupTest {
         db.saveTags("nobody", emptyList())
         db.saveImage("air|moon safari", "https://img/air.jpg")
         db.addVinyl(listOf(Listen("Air", "La Femme d'Argent", 1_700_000_200, "Moon Safari")))
+        db.saveLength("air|la femme dargent", 430)
         val dir = tmp.newFolder("from")
         File(dir, "hidden.json").writeText("""{"tracks":["dubz"]}""")
         File(dir, "queue.json").writeText("[1,2,3]")
@@ -88,6 +92,7 @@ class BackupTest {
         assertEquals("looked up, nothing found: kept so it isn't asked again", emptyList<String>(), db.tags["nobody"])
         assertEquals("https://img/air.jpg", db.images["air|moon safari"])
         assertEquals("the record plays come along", listOf("La Femme d'Argent"), db.vinyl.map { it.title })
+        assertEquals("and the songs' lengths", 430, db.lengths["air|la femme dargent"])
         assertEquals("""{"tracks":["dubz"]}""", File(dir, "hidden.json").readText())
         assertEquals("""{"id":42}""", File(dir, "releases/42.json").readText())
         assertEquals("the queue still to send stays as it was", "[9]", File(dir, "queue.json").readText())

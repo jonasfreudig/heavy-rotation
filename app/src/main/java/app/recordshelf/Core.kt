@@ -1139,8 +1139,14 @@ object Core {
             }
             "concertsRefresh" -> concertExec.execute { fetchConcertsInner() }
             "concerts" -> {
-                statsExec.execute { push("onConcerts") { concertsPageJson() } }
-                concertsMaybeDue()
+                statsExec.execute {
+                    push("onConcerts") { concertsPageJson() }
+                    // Photos of the artists you saw that no page has looked up yet; the page comes again with them.
+                    val known = db.images().keys
+                    val photos = concerts().map { it.artist }.distinctBy { Text.norm(it) }.filter { Stats.photoKey(it) !in known }
+                    if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { handle(msg) } }
+                }
+                concertsMaybeDue(CONCERTS_PAGE_EVERY)
             }
             "saveDiscogs" -> connectDiscogs(msg.optString("token").trim(), msg.optString("user").trim().removePrefix("@"))
             "discogsDisconnect" -> syncExec.execute {
@@ -1601,7 +1607,10 @@ object Core {
     private fun enqueue(s: Spin, due: List<SpinItem>) {
         if (due.isEmpty()) return
         val now = System.currentTimeMillis()
-        val added = queue.add(due.map { QueuedScrobble(UUID.randomUUID().toString(), fixed(it.track.toScrobble(it.startMs)), "vinyl", now) })
+        val items = due.map { it to QueuedScrobble(UUID.randomUUID().toString(), fixed(it.track.toScrobble(it.startMs)), "vinyl", now) }
+        // A length the record page only guessed ("≈3:30") isn't kept as the song's.
+        items.forEach { (item, q) -> if (!item.track.estimated) keepLength(q.s) }
+        val added = queue.add(items.map { it.second })
         added.forEach { activity.add(it, s.cover, "waiting") }
         activity.save()
     }
@@ -1649,6 +1658,7 @@ object Core {
         val app = Phone.label(ctx, pkg)
         scrobExec.execute {
             val q = QueuedScrobble(UUID.randomUUID().toString(), fixed(s), "phone", System.currentTimeMillis())
+            keepLength(q.s)
             if (mode == Phone.SHADOW) {
                 activity.add(q, "", "shadow", "", app)
                 activity.save()
@@ -1658,6 +1668,15 @@ object Core {
                 activity.save()
                 flushInner()
             }
+        }
+    }
+
+    /** A song's real length, for the time listened in Stats: Last.fm keeps none. */
+    private fun keepLength(s: Scrobble) {
+        if (s.duration !in 30..7200) return
+        try {
+            db.saveLength(Stats.lengthKey(s.artist, s.track), s.duration)
+        } catch (_: Exception) {
         }
     }
 
@@ -1938,6 +1957,8 @@ object Core {
     @Volatile private var concertsError = ""
     private val concertExec = serial()
     private const val CONCERTS_EVERY = 7 * 24 * HOUR
+    /** On the concerts page, a show just marked on setlist.fm comes soon: one request for 20 shows. */
+    private const val CONCERTS_PAGE_EVERY = HOUR
     private const val CONCERT_PAGES = 50
 
     private fun concerts(): List<Show> = concertList ?: run {
@@ -1950,9 +1971,9 @@ object Core {
         list.also { concertList = it }
     }
 
-    /** Fetched again once a week, when Explore or the concerts page is opened. */
-    private fun concertsMaybeDue() {
-        if (prefs.setlistUser.isNotEmpty() && prefs.setlistKey.isNotEmpty() && System.currentTimeMillis() - prefs.concertsAt > CONCERTS_EVERY) {
+    /** Fetched again when Explore is opened and they are a week old, when the concerts page is and they are [every] old. */
+    private fun concertsMaybeDue(every: Long = CONCERTS_EVERY) {
+        if (!concertsBusy && prefs.setlistUser.isNotEmpty() && prefs.setlistKey.isNotEmpty() && System.currentTimeMillis() - prefs.concertsAt > every) {
             concertExec.execute { fetchConcertsInner() }
         }
     }
@@ -2153,7 +2174,7 @@ object Core {
         // Kept only if nothing changed meanwhile: else a slow build would put older stats over newer ones.
         val gen = statsGen
         val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { if (statsGen == gen) history = it } else return null
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot())
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths())
             .also {
                 if (statsGen == gen) {
                     stats = it
@@ -2189,7 +2210,7 @@ object Core {
         val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
         // Only the record plays among the scrobbles shown (at the same second as one of them).
         val vinyl = vinylListens().filter { v -> sub.lowerBound(v.ts).let { it < sub.size && sub.ts[it] == v.ts } }
-        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot())
+        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths())
             .also {
                 filteredStats = it
                 filteredKey = key

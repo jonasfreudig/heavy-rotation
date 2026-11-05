@@ -6066,7 +6066,9 @@ function renderConcerts() {
           <span class="gb"><i class="b" style="width:${((c.before / max) * 100).toFixed(1)}%"></i><em>${c.before} before</em></span><span class="gb"><i class="a" style="width:${((c.after / max) * 100).toFixed(1)}%"></i><em>${c.after} after</em></span></span>
           <span class="gx">${c.before ? `×${(c.after / c.before).toFixed(c.after / c.before >= 10 ? 0 : 1)}` : `+${c.after}`}</span></button>`; }).join('')}</div></div>`;
     }
-    if (most.length) h += `<div class="viz"><h2>Seen most</h2><div class="xcards">${most.map(([a, n]) => `<button class="xcard round" data-artist="${esc(a)}">${coverHtml(artistPhotoOf(STATS || {}, a), a, a, 'round')}<b>${esc(a)}</b><small class="meta">${plural(n, 'show')}</small></button>`).join('')}</div></div>`;
+    // Each show brings its artist's photo: the Stats period's top artists may not include them.
+    const photoOf = (a) => (shows.find((c) => c.artist === a && c.photo) || {}).photo || artistPhotoOf(STATS || {}, a);
+    if (most.length) h += `<div class="viz"><h2>Seen most</h2><div class="xcards">${most.map(([a, n]) => `<button class="xcard round" data-artist="${esc(a)}">${coverHtml(photoOf(a), a, a, 'round')}<b>${esc(a)}</b><small class="meta">${plural(n, 'show')}</small></button>`).join('')}</div></div>`;
     const years = {};
     shows.forEach((c) => { (years[c.date.slice(0, 4)] = years[c.date.slice(0, 4)] || []).push(c); });
     Object.keys(years).sort().reverse().forEach((y) => {

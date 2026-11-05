@@ -12,7 +12,7 @@ import app.recordshelf.scrobble.Listen
  * genre tags and album cover URLs. A scrobble is identified by time, artist and track, so
  * importing the same page twice changes nothing.
  */
-class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), BackupDb {
+class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 3), BackupDb {
     private companion object {
         /** Scrobbles read per query by [forEach]. */
         const val CHUNK = 5000
@@ -26,11 +26,16 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), Ba
         db.execSQL("CREATE TABLE artist_tags (artist TEXT PRIMARY KEY, tags TEXT NOT NULL, fetched INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE album_images (album TEXT PRIMARY KEY, url TEXT NOT NULL, fetched INTEGER NOT NULL)")
         createVinyl(db)
+        createLengths(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createVinyl(db)
+        if (oldVersion < 3) createLengths(db)
     }
+
+    /** Songs' real lengths in seconds, as the player or the record reported them when this app scrobbled them. */
+    private fun createLengths(db: SQLiteDatabase) = db.execSQL("CREATE TABLE track_lengths (track TEXT PRIMARY KEY, sec INTEGER NOT NULL)")
 
     /** Every record play scrobbled from this app; the activity log only keeps the latest. */
     private fun createVinyl(db: SQLiteDatabase) = db.execSQL(
@@ -175,5 +180,18 @@ class HistoryDb(ctx: Context) : SQLiteOpenHelper(ctx, "history.db", null, 2), Ba
             "INSERT OR REPLACE INTO album_images (album, url, fetched) VALUES (?, ?, ?)",
             arrayOf(albumKey, url, System.currentTimeMillis()),
         )
+    }
+
+    /** Seconds per song key ([app.recordshelf.history.Stats.lengthKey]). */
+    override fun lengths(): Map<String, Int> {
+        val out = HashMap<String, Int>()
+        readableDatabase.rawQuery("SELECT track, sec FROM track_lengths", null).use { c ->
+            while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+        }
+        return out
+    }
+
+    override fun saveLength(trackKey: String, sec: Int) {
+        writableDatabase.execSQL("INSERT OR REPLACE INTO track_lengths (track, sec) VALUES (?, ?)", arrayOf<Any>(trackKey, sec))
     }
 }

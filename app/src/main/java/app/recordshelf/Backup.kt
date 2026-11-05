@@ -26,11 +26,15 @@ interface BackupDb : HistoryStore {
     fun vinyl(): List<Listen> = emptyList()
     fun addVinyl(rows: List<Listen>) {}
     fun clearVinyl() {}
+
+    /** Songs' real lengths, kept when this app scrobbled them. */
+    fun lengths(): Map<String, Int> = emptyMap()
+    fun saveLength(trackKey: String, sec: Int) {}
 }
 
 /**
  * Everything worth keeping in one zip file: the Last.fm history (with the genre tags and
- * covers looked up for it), the app's files (activity log, collection, hide list, tracklists,
+ * covers looked up for it, and the song lengths kept), the app's files (activity log, collection, hide list, tracklists,
  * release years, Last.fm counts and other caches), the settings and the page's own settings.
  *
  * Keys, tokens and logins are left out on purpose (the file may be shared or synced, and
@@ -44,6 +48,7 @@ object Backup {
     private const val VINYL = "history/vinyl.tsv"
     private const val TAGS = "history/tags.json"
     private const val IMAGES = "history/images.json"
+    private const val LENGTHS = "history/lengths.json"
     private const val PREFS = "prefs.json"
     private const val UI = "ui.json"
     private const val FILES = "files/"
@@ -80,6 +85,7 @@ object Backup {
             put(VINYL, vinyl.joinToString("") { "${it.ts}\t${field(it.artist)}\t${field(it.title)}\t${field(it.album)}\n" })
             put(TAGS, JSONObject(db.tags().mapValues { JSONArray(it.value) }).toString())
             put(IMAGES, JSONObject(db.images()).toString())
+            put(LENGTHS, JSONObject(db.lengths()).toString())
             put(PREFS, prefsJson(prefs).toString())
             put(UI, ui.toString())
             for (f in files) {
@@ -115,7 +121,7 @@ object Backup {
                             while (true) if (row(r.readLine() ?: break) != null) n++
                             if (e.name == SCROBBLES) scrobbles = n else vinyl = n
                         }
-                        e.name == PREFS || e.name == UI || e.name == TAGS || e.name == IMAGES -> {
+                        e.name == PREFS || e.name == UI || e.name == TAGS || e.name == IMAGES || e.name == LENGTHS -> {
                             JSONObject(zip.readBytes().decodeToString())
                             if (e.name == PREFS) prefs = true
                         }
@@ -175,6 +181,7 @@ object Backup {
         var files = 0
         val tags = HashMap<String, List<String>>()
         val images = HashMap<String, String>()
+        val lengths = HashMap<String, Int>()
         val root = filesDir.canonicalFile
         var historyCleared = false
         var vinyl: List<Listen>? = null
@@ -190,6 +197,7 @@ object Backup {
                         for (k in o.keys()) o.getJSONArray(k).let { a -> tags[k] = (0 until a.length()).map { a.getString(it) } }
                     }
                     e.name == IMAGES -> JSONObject(zip.readBytes().decodeToString()).let { o -> for (k in o.keys()) images[k] = o.getString(k) }
+                    e.name == LENGTHS -> JSONObject(zip.readBytes().decodeToString()).let { o -> for (k in o.keys()) lengths[k] = o.getInt(k) }
                     e.name == SCROBBLES -> {
                         db.clear()
                         historyCleared = true
@@ -227,6 +235,7 @@ object Backup {
         vinyl?.let { db.addVinyl(it) }
         for ((k, v) in tags) db.saveTags(k, v)
         for ((k, v) in images) db.saveImage(k, v)
+        for ((k, v) in lengths) db.saveLength(k, v)
         return Restored(scrobbles, files, prefs, ui)
     }
 

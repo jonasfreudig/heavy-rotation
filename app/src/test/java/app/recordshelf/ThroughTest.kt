@@ -40,6 +40,34 @@ class ThroughTest {
     }
 
     @Test
+    fun aPauseAfterASongHeardOnceOrTwiceIsntItsLength() {
+        val b = History.Builder()
+        // "I Am Woman" twice: the next song 3 minutes after the first, 27 minutes after the second (a pause).
+        b.add(at(2026, 10, 1), "Emmy", "I Am Woman", "")
+        b.add(at(2026, 10, 1, 180), "Other", "Next", "")
+        b.add(at(2026, 10, 2), "Emmy", "I Am Woman", "")
+        b.add(at(2026, 10, 2, 1620), "Other", "Next", "")
+        // "Once" was only ever followed after 25 minutes; "Epic", three times 12 minutes, really is that long.
+        b.add(at(2026, 10, 3), "Solo", "Once", "")
+        b.add(at(2026, 10, 3, 1500), "Other", "Next", "")
+        for (k in 0 until 3) {
+            b.add(at(2026, 10, 4 + k), "Prog", "Epic", "")
+            b.add(at(2026, 10, 4 + k, 720), "Other", "Next", "")
+        }
+        // "Kept" came with its real length when this app scrobbled it.
+        b.add(at(2026, 10, 8), "Emmy", "Kept", "")
+        b.add(at(2026, 10, 8, 1700), "Other", "Next", "")
+        val h = b.build()
+        val s = Stats(h, ZoneId.of("UTC"), at(2026, 10, 30), songLengths = mapOf(Stats.lengthKey("Emmy", "Kept") to 200))
+        val tracks = s.minutes(0, h.size, 20).getJSONArray("tracks")
+        val len = (0 until tracks.length()).associate { tracks.getJSONObject(it).let { o -> o.getString("title") to o.getInt("len") } }
+        assertEquals("of two gaps, the shorter", 180, len["I Am Woman"])
+        assertEquals("one long gap: the usual length", (Stats.MINUTES_PER_PLAY * 60).toInt(), len["Once"])
+        assertEquals("three plays agree: a long song", 720, len["Epic"])
+        assertEquals("the real length", 200, len["Kept"])
+    }
+
+    @Test
     fun milestonesOfEverythingArtistsAndSongs() {
         val b = History.Builder()
         repeat(1_000) { b.add(at(2025, 1, 1, it * 300L), if (it < 120) "A" else "B", if (it < 60) "One" else "Two", "") }
