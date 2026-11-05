@@ -2195,8 +2195,12 @@ function renderRecord() {
   $('#recordBody').innerHTML = h;
   tint($('#recordBody'), coverUrl, title + artist);
   if (reuse) $('#recHolo').appendChild(keep);
+  // The back: the album card's way up the tiers, as on every album; the tracklist while there is no card.
   const sb = $('#recHolo .sleeve-back');
-  if (sb) sb.innerHTML = sleeveBackInner(base, rel, plays, card);
+  if (sb) {
+    sb.className = `sleeve-back${card ? ` card-back cb-${tier || 'base'}` : ''}`;
+    sb.innerHTML = card ? albumCardBackHtml({ ...card, title }) : sleeveBackInner(base, rel, plays, null);
+  }
   renderRecordSpinNote();
   Tilt.refresh();
 }
@@ -4701,11 +4705,12 @@ function renderAlbum() {
   const info = a.info || {};
   const cover = info.cover || a.cover;
   const shelfId = info.owned || shelfIdOf(a.artist, a.title);
-  // Its card: the tier's frame and glow, on the line under the title, and on the back (a record's sleeve keeps its tracklist and gets a sticker).
+  // Its card: the tier's frame and glow, on the line under the title, and on the back, a record's sleeve too (its
+  // tracklist only while there is no card).
   const card = a.card || null;
   const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
   $('#albumBody').dataset.tier = tier;
-  const back = card && !shelfId ? { cls: `cb-${tier || 'base'}`, html: albumCardBackHtml({ ...card, title: a.title }) } : null;
+  const back = card ? { cls: `cb-${tier || 'base'}`, html: albumCardBackHtml({ ...card, title: a.title }) } : null;
   let h = `<div class="hero page-hero"><i class="glow"></i>${tier ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, card: back, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
