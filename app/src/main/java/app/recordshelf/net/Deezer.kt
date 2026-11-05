@@ -53,8 +53,13 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
 
     private fun q(s: String) = Http.enc(s).replace("+", "%20")
 
-    /** The artist with exactly this name, the most followed one if several share it; null if none. */
-    fun findArtist(name: String): DzArtist? {
+    /**
+     * The artist with exactly this name, the most followed one if several share it; else, for a credit naming
+     * several ("D'Angelo & The Vanguard"), the first of them, as Deezer often has those. Null if none.
+     */
+    fun findArtist(name: String): DzArtist? = artistNamed(name) ?: Text.leadArtist(name)?.let { artistNamed(it) }
+
+    private fun artistNamed(name: String): DzArtist? {
         val data = get("/search/artist?q=${q(name)}&limit=10").optJSONArray("data") ?: return null
         return (0 until data.length()).map { data.getJSONObject(it) }
             .filter { Text.norm(it.optString("name")) == Text.norm(name) }
@@ -77,11 +82,15 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
     fun trackCover(artist: String, title: String): String? {
         val want = Text.normLoose(title)
         val who = Text.norm(artist).removePrefix("the ")
-        val data = get("/search/track?q=${q("artist:\"$artist\" track:\"$title\"")}&limit=15").optJSONArray("data") ?: return null
-        return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
-            val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
-            Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
-        }?.optJSONObject("album")?.optString("cover_big")?.takeIf { it.startsWith("https://") }
+        fun pick(asked: String): String? {
+            val data = get("/search/track?q=${q("artist:\"$asked\" track:\"$title\"")}&limit=15").optJSONArray("data") ?: return null
+            return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
+                val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
+                Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
+            }?.optJSONObject("album")?.optString("cover_big")?.takeIf { it.startsWith("https://") }
+        }
+        // A credit naming several is often filed under the first alone.
+        return pick(artist) ?: Text.leadArtist(artist, pairs = true)?.let { pick(it) }
     }
 
     /** Artists without a photo come with an empty image id: ".../images/artist//500x500-...". */
@@ -132,7 +141,10 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
             return bestRelease(theirs.filter { Text.normLoose(it.optString("title")) == want })
                 ?: bestRelease(theirs.filter { sameButEdition(Text.normLoose(it.optString("title")), want) })
         }
+        // Deezer has Black Messiah by "D'Angelo", where Last.fm has "D'Angelo & The Vanguard": the first artist of a
+        // credit naming several is asked last.
         return pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title")
+            ?: Text.leadArtist(artist, pairs = true)?.let { pick("artist:\"$it\" album:\"$title\"") }
     }
 
     /** One album with its tracklist, label and genres. */

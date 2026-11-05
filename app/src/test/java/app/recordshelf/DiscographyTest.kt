@@ -86,6 +86,41 @@ class DiscographyTest {
     }
 
     @Test
+    fun aCreditOfSeveralFindsTheFirstArtistsPictures() {
+        // Deezer has Black Messiah and its photo by "D'Angelo" alone.
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                val q = r.params["q"].orEmpty()
+                val first = q.contains("artist:\"D'Angelo\"")
+                when {
+                    r.path == "/search/artist" && q == "D'Angelo" ->
+                        Res(200, """{"data":[{"id":1,"name":"D'Angelo","picture_big":"https://photo","nb_fan":159953}]}""")
+                    r.path == "/search/album" && first -> Res(
+                        200,
+                        """{"data":[{"id":2,"title":"Black Messiah","record_type":"album","nb_tracks":12,"cover_big":"https://cover","artist":{"name":"D'Angelo"}}]}""",
+                    )
+                    r.path == "/search/track" && first ->
+                        Res(200, """{"data":[{"title":"Really Love","artist":{"name":"D'Angelo"},"album":{"cover_big":"https://cover"}}]}""")
+                    r.path.startsWith("/search/") -> Res(200, """{"data":[]}""")
+                    else -> Res(404, "")
+                }
+            }
+            val d = DeezerClient(server.base)
+            for (credit in listOf("D'Angelo & The Vanguard", "D'Angelo and the Vanguard", "D'Angelo, The Vanguard", "D'Angelo feat. Q-Tip")) {
+                assertEquals(credit, "https://photo", d.artistPhoto(credit))
+                assertEquals(credit, "https://cover", d.albumCover(credit, "Black Messiah"))
+                assertEquals(credit, "https://cover", d.trackCover(credit, "Really Love"))
+            }
+            assertEquals("the album's title still has to match", null, d.albumCover("D'Angelo & The Vanguard", "Voodoo"))
+            assertEquals("a duo isn't given the photo of one of them", null, d.artistPhoto("D'Angelo & Kenny"))
+            assertEquals("its album is", "https://cover", d.albumCover("D'Angelo & Kenny", "Black Messiah"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun anEditionMatchesItsAlbumButAnotherAlbumDoesNot() {
         assertEquals(true, app.recordshelf.net.sameButEdition("rumours super deluxe", "rumours"))
         assertEquals(true, app.recordshelf.net.sameButEdition("ok computer", "ok computer 2017 remaster"))

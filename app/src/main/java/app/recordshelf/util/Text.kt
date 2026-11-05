@@ -9,6 +9,9 @@ object Text {
     private val nonAlnum = Regex("[^\\p{L}\\p{N}]+")
     private val spaces = Regex("\\s+")
     private val quotes = Regex("['‘’ʼ`]")
+    private val bandOrGuest = """\s*,\s+|\s+(?:&|and|\+)\s+the\s+|\s*\(?\b(?:feat\.?|ft\.|featuring)\s+"""
+    private val firstOfTwo = Regex("""$bandOrGuest|\s+(?:&|and|\+)\s+""", RegexOption.IGNORE_CASE)
+    private val firstOfBand = Regex(bandOrGuest, RegexOption.IGNORE_CASE)
 
     /** Lowercase, no accents, one kind of quote, "&" as "and", punctuation as single spaces. */
     fun norm(s: String): String {
@@ -23,6 +26,17 @@ object Text {
     fun normLoose(s: String): String {
         val cut = s.replace(brackets, " ").substringBefore(" - ")
         return norm(cut.ifBlank { s })
+    }
+
+    /**
+     * The first artist of a credit naming several: "D'Angelo" for "D'Angelo & The Vanguard", "D'Angelo, The Vanguard"
+     * or "D'Angelo feat. Q-Tip", which a catalog often files under the first alone. With [pairs], "A & B" too (for an
+     * album or a song, whose title still has to match). Null for a single name. Only worth asking once the whole
+     * credit found nothing: "Tyler, The Creator" and "Simon & Garfunkel" are one artist each.
+     */
+    fun leadArtist(credit: String, pairs: Boolean = false): String? {
+        val m = (if (pairs) firstOfTwo else firstOfBand).find(credit) ?: return null
+        return credit.substring(0, m.range.first).trim().takeIf { it.isNotEmpty() }
     }
 
     /** Key for "is this the same album" across services. */

@@ -97,6 +97,10 @@ class Prefs(ctx: Context) : TidalStore {
     var coversRechecked: Boolean
         get() = app.getBoolean("coversRechecked", false)
         set(v) = app.edit().putBoolean("coversRechecked", v).apply()
+    /** Pictures and artists none was found for were looked up again once, when lookups began to try a credit's first artist. */
+    var creditsRechecked: Boolean
+        get() = app.getBoolean("creditsRechecked", false)
+        set(v) = app.edit().putBoolean("creditsRechecked", v).apply()
 
     var sleepSong: Boolean
         get() = app.getBoolean("sleepSong", false)

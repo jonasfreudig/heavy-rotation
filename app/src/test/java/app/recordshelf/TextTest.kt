@@ -28,4 +28,19 @@ class TextTest {
         assertEquals("simon and garfunkel", Text.norm("Simon & Garfunkel"))
         assertEquals("dont stop", Text.norm("Don’t Stop!"))
     }
+
+    @Test
+    fun theFirstArtistOfACredit() {
+        assertEquals("D'Angelo", Text.leadArtist("D'Angelo & The Vanguard"))
+        assertEquals("D'Angelo", Text.leadArtist("D'Angelo and the Vanguard"))
+        assertEquals("D'Angelo", Text.leadArtist("D'Angelo, The Vanguard"))
+        assertEquals("Kendrick Lamar", Text.leadArtist("Kendrick Lamar feat. SZA"))
+        assertEquals("Kendrick Lamar", Text.leadArtist("Kendrick Lamar (ft. SZA)"))
+        assertEquals("Florence", Text.leadArtist("Florence + the Machine"))
+        assertEquals("a duo, for a photo", null, Text.leadArtist("Simon & Garfunkel"))
+        assertEquals("Simon", Text.leadArtist("Simon & Garfunkel", pairs = true))
+        assertEquals(null, Text.leadArtist("Defeated Sanity"))
+        assertEquals(null, Text.leadArtist("Daft Punk"))
+        assertEquals(null, Text.leadArtist("IDLES"))
+    }
 }

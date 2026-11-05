@@ -557,6 +557,19 @@ object Core {
                         db.dropImagesFrom("dzcdn")
                         prefs.coversRechecked = true
                     }
+                    // Lookups began to try the first artist of a credit naming several ("D'Angelo & The Vanguard"):
+                    // the pictures and discographies none was found for come again as pages need them.
+                    if (!prefs.creditsRechecked) {
+                        db.dropMissedImages(Long.MAX_VALUE)
+                        runCatching {
+                            synchronized(discoLock) {
+                                val cache = JSONObject(file(DISCO_FILE).read() ?: "{}")
+                                cache.keys().asSequence().toList().filter { !cache.getJSONObject(it).has("artist") }.forEach { cache.remove(it) }
+                                file(DISCO_FILE).write(cache.toString())
+                            }
+                        }
+                        prefs.creditsRechecked = true
+                    }
                     histCount = db.count()
                     // Settings back without their history (Android's cloud backup leaves the database out): import again.
                     if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
