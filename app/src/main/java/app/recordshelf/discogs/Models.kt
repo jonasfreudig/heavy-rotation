@@ -1,5 +1,6 @@
 package app.recordshelf.discogs
 
+import app.recordshelf.util.Text
 import app.recordshelf.util.objects
 import app.recordshelf.util.str
 import app.recordshelf.util.strings
@@ -27,6 +28,20 @@ data class CollectionItem(
         .put("artist", artist).put("year", year).put("added", addedMs).put("thumb", thumb).put("cover", cover)
         .put("format", format).put("label", label).put("genres", genres.toJsonArray()).put("styles", styles.toJsonArray())
         .put("master", masterId)
+
+    /** The album's usual cover, as looked up on Deezer and kept in [images] by album key; "" until then or if it has none. */
+    fun usualCover(images: Map<String, String>): String = images[Text.albumKey(artist, title)].orEmpty()
+
+    /**
+     * The picture this record shows: the album's usual cover, or your copy's own (Discogs) when you chose it ([own]) or
+     * the album has no other. A white sleeve of a special pressing would otherwise stand for the album everywhere.
+     */
+    fun face(images: Map<String, String>, own: Boolean): String =
+        (if (own) "" else usualCover(images)).ifEmpty { cover.ifEmpty { thumb } }
+
+    /** The same, small: for the shelf's tiles and lists. */
+    fun faceThumb(images: Map<String, String>, own: Boolean): String =
+        (if (own) "" else usualCover(images).replace("/500x500-", "/250x250-")).ifEmpty { thumb.ifEmpty { cover } }
 
     companion object {
         fun fromJson(o: JSONObject) = CollectionItem(

@@ -87,6 +87,11 @@ body::before { content: ''; position: fixed; left: -25%; right: -25%; top: -12%;
 .holo.flipped .vinyl { rotate: -42deg; transition: rotate .34s cubic-bezier(.5, 0, .7, .4); }
 .holo.with-disc.flipped .sleeve, .holo.with-disc.flipped .sleeve-back { transition-delay: .3s; }
 .holo[data-flip] { cursor: pointer; }
+/* Under a record's sleeve: which picture it shows, the album's usual cover or your copy's own. */
+.face-pick { display: inline-flex; gap: 2px; margin: 14px auto 2px; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.face-pick button { display: flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border-radius: 999px; font: 500 12.5px/16px var(--font); color: var(--md-on-surface-variant); transition: background-color .2s, color .2s; }
+.face-pick button.on { background: var(--md-surface-container-highest); color: var(--md-on-surface); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
+.face-pick .cover.tiny { width: 28px; height: 28px; flex: none; margin: 0; border-radius: 50%; }
 .sleeve-back .sb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1.5px solid #1f1b16; padding-bottom: 5px; }
 .sleeve-back .sb-head b { font: 800 italic 16px/1.05 var(--display); font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 36; letter-spacing: -.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sleeve-back .sb-head i { flex: none; max-width: 48%; font: 400 9.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; font-style: normal; text-align: right; }

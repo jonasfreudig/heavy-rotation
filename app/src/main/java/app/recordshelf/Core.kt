@@ -441,8 +441,9 @@ object Core {
     private fun refreshPictures() {
         val images = db.images()
         val g = globalsSnapshot()
-        stats?.withPictures(images, g)
-        filteredStats?.withPictures(images, g)
+        val own = prefs.ownCovers
+        stats?.withPictures(images, g, own)
+        filteredStats?.withPictures(images, g, own)
     }
 
     /**
@@ -570,6 +571,8 @@ object Core {
                         }
                         prefs.creditsRechecked = true
                     }
+                    // The usual covers of records on the shelf not looked up yet (after this, so the database is ready).
+                    lookUpShelfCovers()
                     histCount = db.count()
                     // Settings back without their history (Android's cloud backup leaves the database out): import again.
                     if (histCount == 0 && (prefs.historyDone || prefs.historyCursor > 0)) {
@@ -1138,6 +1141,13 @@ object Core {
                 if (user.isNotEmpty()) concertExec.execute { fetchConcertsInner() }
             }
             "concertsRefresh" -> concertExec.execute { fetchConcertsInner() }
+            "coverChoice" -> statsExec.execute {
+                // A record shows your copy's own picture from now on, or the album's usual cover again.
+                val id = msg.optLong("id")
+                prefs.ownCovers = if (msg.optBoolean("own")) prefs.ownCovers + id else prefs.ownCovers - id
+                pushCollection()
+                picturesArrived(null)
+            }
             "concerts" -> {
                 statsExec.execute {
                     push("onConcerts") { concertsPageJson() }
@@ -1367,6 +1377,7 @@ object Core {
         file("collection.json").write(CollectionItem.listToJson(list).toString())
         prefs.lastSync = System.currentTimeMillis()
         pushCollection()
+        lookUpShelfCovers()
         refreshPlaysInner()
     }
 
@@ -1486,7 +1497,7 @@ object Core {
         val now = System.currentTimeMillis()
         val starts = Planner.starts(tracks, mode, at, now)
         val s = Spin(
-            "$releaseId-$now", releaseId, rel.title, rel.artist, rel.thumb.ifEmpty { rel.cover }, rel.sides,
+            "$releaseId-$now", releaseId, rel.title, rel.artist, collection.firstOrNull { it.releaseId == releaseId }?.let { faceOf(it) } ?: rel.thumb.ifEmpty { rel.cover }, rel.sides,
             tracks.zip(starts).map { (t, st) -> SpinItem(t, st) }.toMutableList(),
         )
         spinCounts = spinCounts + (releaseId.toString() to (spinCounts[releaseId.toString()] ?: 0) + 1)
@@ -2174,7 +2185,7 @@ object Core {
         // Kept only if nothing changed meanwhile: else a slow build would put older stats over newer ones.
         val gen = statsGen
         val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { if (statsGen == gen) history = it } else return null
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths())
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
             .also {
                 if (statsGen == gen) {
                     stats = it
@@ -2210,7 +2221,7 @@ object Core {
         val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
         // Only the record plays among the scrobbles shown (at the same second as one of them).
         val vinyl = vinylListens().filter { v -> sub.lowerBound(v.ts).let { it < sub.size && sub.ts[it] == v.ts } }
-        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths())
+        return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
             .also {
                 filteredStats = it
                 filteredKey = key
@@ -2950,14 +2961,39 @@ object Core {
         }, 100)
     }
 
+    /**
+     * The shelf for the page, each record with the picture it shows (cover and thumb), your copy's own ("own", "ownThumb")
+     * and the album's usual cover ("usual", "" if none), and which of them it shows ("face").
+     */
     private fun pushCollection() = push("onCollection") {
         val sp = spinCounts
         val pl = plays
+        val images = try { db.images() } catch (_: Exception) { emptyMap() }
+        val own = prefs.ownCovers
         JSONArray().also { a ->
             collection.forEach { c ->
-                a.put(c.toJson().put("plays", pl[Text.albumKey(c.artist, c.title)] ?: 0).put("spins", sp[c.releaseId.toString()] ?: 0))
+                val mine = c.releaseId in own
+                val usual = c.usualCover(images)
+                a.put(c.toJson().put("plays", pl[Text.albumKey(c.artist, c.title)] ?: 0).put("spins", sp[c.releaseId.toString()] ?: 0)
+                    .put("cover", c.face(images, mine)).put("thumb", c.faceThumb(images, mine))
+                    .put("own", c.cover.ifEmpty { c.thumb }).put("ownThumb", c.thumb.ifEmpty { c.cover }).put("usual", usual)
+                    .put("face", if (mine || usual.isEmpty()) "own" else "usual"))
             }
         }
+    }
+
+    /** The picture record [c] shows (see [CollectionItem.face]); its usual cover read alone, as the widget asks often. */
+    private fun faceOf(c: CollectionItem): String {
+        val key = Text.albumKey(c.artist, c.title)
+        val usual = try { db.image(key) } catch (_: Exception) { null }
+        return c.face(if (usual != null) mapOf(key to usual) else emptyMap(), c.releaseId in prefs.ownCovers)
+    }
+
+    /** The albums' usual covers for the records on your shelf, from Deezer: once each ("" kept when it has none), then the shelf again. */
+    private fun lookUpShelfCovers() = historyExec.execute {
+        val tried = db.images().keys
+        val missing = collection.map { Triple(it.artist, it.title, Text.albumKey(it.artist, it.title)) }.filter { it.third !in tried }.distinctBy { it.third }
+        if (missing.isNotEmpty()) fetchImagesInner(missing) { pushCollection() }
     }
 
     private fun pushActivity() {
@@ -3007,7 +3043,7 @@ object Core {
     private fun coverOf(artist: String, album: String): String {
         if (album.isBlank()) return ""
         val key = Text.albumKey(artist, album)
-        return collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { it.cover.ifEmpty { it.thumb } }
+        return collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { faceOf(it) }
             ?: try { db.image(key).orEmpty() } catch (_: Exception) { "" }
     }
 
@@ -3020,6 +3056,7 @@ object Core {
         val a = activity.toJson()
         val owned = collection.associateBy { Text.albumKey(it.artist, it.title) }
         val images = db.images()
+        val own = prefs.ownCovers
         val missing = LinkedHashMap<String, Triple<String, String, String>>()
         for (i in 0 until a.length()) {
             val e = JSONObject(a.getJSONObject(i).toString())
@@ -3027,7 +3064,7 @@ object Core {
             val album = e.optString("album")
             if (e.optString("cover").isNotEmpty() || album.isBlank()) continue
             val key = Text.albumKey(e.optString("artist"), album)
-            val c = owned[key]?.let { it.cover.ifEmpty { it.thumb } } ?: images[key]
+            val c = owned[key]?.let { it.face(images, it.releaseId in own) } ?: images[key]
             if (c == null) missing[key] = Triple(e.optString("artist"), album, key) else if (c.isNotEmpty()) e.put("cover", c)
         }
         if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing.values.toList().takeLast(COVER_BATCH)) { pushActivity() } }
@@ -3112,7 +3149,7 @@ object Core {
         } else {
             nowCover = key to ""
             webExec.execute {
-                val owned = collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { it.cover.ifEmpty { it.thumb } }
+                val owned = collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { faceOf(it) }
                 val url = owned ?: db.images()[key] ?: try {
                     deezer.albumCover(artist, album).orEmpty().also {
                         db.saveImage(key, it)

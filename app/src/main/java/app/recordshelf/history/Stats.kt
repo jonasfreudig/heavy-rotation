@@ -38,11 +38,17 @@ class Stats(
     @Volatile private var globals: Globals = Globals(),
     /** Songs' real lengths in seconds ([lengthKey]), kept when this app scrobbled them. */
     private val songLengths: Map<String, Int> = emptyMap(),
+    /** The records of yours showing their own picture, not the album's usual cover (release ids; see [CollectionItem.face]). */
+    @Volatile private var ownCovers: Set<Long> = emptySet(),
 ) {
-    /** New covers, photos or Last.fm counts arrived: the same stats, now with them (nothing else is worked out again). */
-    fun withPictures(images: Map<String, String>, g: Globals) {
+    /**
+     * New covers, photos or Last.fm counts arrived, or a record's picture was switched ([own]): the same stats, now with
+     * them (nothing else is worked out again).
+     */
+    fun withPictures(images: Map<String, String>, g: Globals, own: Set<Long> = ownCovers) {
         albumImages = images
         globals = g
+        ownCovers = own
     }
 
     companion object {
@@ -914,7 +920,7 @@ class Stats(
         val family = key.substringBefore(':')
         // A style that is no play's main one: its family's page instead.
         if (sub.size == 0) return if (':' in key) genrePage(family) else null
-        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals, songLengths)
+        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals, songLengths, ownCovers)
         val o = s.life { true } ?: return null
         // Each part on its own: one that fails on some history leaves the rest of the page, and says why.
         val broken = ArrayList<String>()
@@ -1538,7 +1544,7 @@ class Stats(
         rows.sortedWith(compareBy<Row> { it.plays }.thenBy { it.last }).take(max).forEach {
             a.put(
                 JSONObject().put("id", it.c.releaseId).put("title", it.c.title).put("artist", it.c.artist)
-                    .put("cover", it.c.cover.ifEmpty { it.c.thumb }).put("plays", it.plays).put("last", it.last * 1000),
+                    .put("cover", face(it.c)).put("plays", it.plays).put("last", it.last * 1000),
             )
         }
         return JSONObject().put("items", a).put("owned", rows.size).put("unplayed", rows.count { it.plays == 0 })
@@ -1637,7 +1643,11 @@ class Stats(
     /** The record of yours album [al] is: same artist and title, the main artist's (a duo's record), or a compilation's. */
     private fun owned(al: Int): CollectionItem? = ownedKeys[h.albumKeys[al]] ?: ownedByAlbum[al]
 
-    private fun cover(al: Int) = owned(al)?.let { it.cover.ifEmpty { it.thumb } } ?: albumImages[h.albumKeys[al]] ?: ""
+    /** An album's picture: your record's (see [face]), else the album's cover looked up on Deezer. */
+    private fun cover(al: Int) = owned(al)?.let { face(it) } ?: albumImages[h.albumKeys[al]] ?: ""
+
+    /** The picture a record of yours shows: the album's usual cover unless you chose your copy's. */
+    private fun face(c: CollectionItem) = c.face(albumImages, c.releaseId in ownCovers)
 
     /** The artist's photo (Deezer), "" until it was looked up or if there is none. */
     fun artistPhoto(name: String) = albumImages[photoKey(name)].orEmpty()
@@ -2132,7 +2142,7 @@ class Stats(
                     .put("cover", trackAlbum[it.key].let { al -> if (al >= 0) cover(al) else "" })
             }))
             .put("albums", JSONArray(albums.entries.sortedByDescending { it.value }.take(5).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)).put("owned", owned(it.key) != null) }))
-            .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", it.cover.ifEmpty { it.thumb }).put("year", it.year) }))
+            .put("owned", JSONArray(owned.map { JSONObject().put("id", it.releaseId).put("title", it.title).put("artist", it.artist).put("cover", face(it)).put("year", it.year) }))
             .put("genres", JSONArray(genres.of(h.artistNames[a], null).first.map { Genres.label(it) }))
             .put("rangeTracks", JSONArray(rangeTracks.entries.sortedByDescending { it.value }.take(RANGE_LIST).map { JSONObject().put("title", h.trackTitles[it.key]).put("plays", it.value) }))
             .put("rangeAlbums", JSONArray(rangeAlbums.entries.sortedByDescending { it.value }.take(3).map { JSONObject().put("title", h.albumTitles[it.key]).put("plays", it.value).put("cover", cover(it.key)) }))
@@ -2798,7 +2808,7 @@ class Stats(
         val bestNew = fresh.maxByOrNull { ap[it] }
         val vinylIn = vinyl.filter { it.ts in r.from until r.to }
         val vinylTop = vinylIn.groupBy { Text.albumKey(it.artist, it.album) }.entries.sortedByDescending { it.value.size }.take(3)
-            .map { (k, v) -> JSONObject().put("title", v[0].album).put("artist", v[0].artist).put("plays", v.size).put("cover", ownedKeys[k]?.let { it.cover.ifEmpty { it.thumb } } ?: "") }
+            .map { (k, v) -> JSONObject().put("title", v[0].album).put("artist", v[0].artist).put("plays", v.size).put("cover", ownedKeys[k]?.let { face(it) } ?: "") }
         return out
             .put("personality", personality(r, i0, i1))
             .put("artists", JSONArray(topA.map { JSONObject().put("name", h.artistNames[it]).put("plays", ap[it]).put("share", ap[it].toDouble() / n).put("days", aDays[it]).put("cover", artistPhoto(h.artistNames[it]).ifEmpty { artistCover(it) }) }))

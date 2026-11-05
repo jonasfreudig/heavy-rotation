@@ -2140,6 +2140,24 @@ function trackGroups(tracks) {
 }
 const lenOf = (t) => (t.dur > 0 ? t.dur : ST.prefs.defaultTrackSec);
 
+/** Under a record's sleeve: the album's usual cover or your copy's own picture, for the record everywhere ('' when it has one). */
+function facePick(r, title, artist) {
+  if (!r.usual || !r.own || r.usual === r.own) return '';
+  const pick = (face, url, label) => `<button class="${r.face === face ? 'on' : ''}" data-face="${face}" role="radio" aria-checked="${r.face === face}">${coverHtml(url, title, artist, 'tiny')}<span>${label}</span></button>`;
+  return `<div class="face-pick" role="radiogroup" aria-label="The record's picture">${pick('usual', r.usual, 'Usual cover')}${pick('own', r.ownThumb || r.own, 'Your copy')}</div>`;
+}
+/** A record's picture switched: shown at once on the shelf and its page, kept by the app (which sends the shelf again). */
+function setFace(id, face) {
+  const r = COLL.find((x) => x.id === id);
+  if (!r || r.face === face) return;
+  r.face = face;
+  r.cover = face === 'own' ? r.own : r.usual;
+  r.thumb = face === 'own' ? r.ownThumb || r.own : r.usual.replace('/500x500-', '/250x250-');
+  send({ t: 'coverChoice', id, own: face === 'own' });
+  renderRecord();
+  renderShelf();
+}
+
 function renderRecord() {
   const base = COLL.find((r) => r.id === recordId) || {};
   const r = REL[recordId];
@@ -2151,7 +2169,8 @@ function renderRecord() {
   const tags = [...new Set([...(info.genres || []), ...(info.styles || [])])];
   const plays = (rel && rel.plays) || base.plays || 0;
   const spins = (rel && rel.spins) || base.spins || 0;
-  const coverUrl = info.cover || base.cover || base.thumb;
+  // The picture the record shows (the album's usual cover, or your copy's), not the release's own from Discogs.
+  const coverUrl = base.cover || info.cover || base.thumb;
   if (title && !acardAsked.has(recordId) && (ST.history || {}).count) { acardAsked.add(recordId); send({ t: 'albumCard', id: recordId, artist, title }); }
   const card = ACARD[recordId] || null;
   const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
@@ -2162,6 +2181,7 @@ function renderRecord() {
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero page-hero">${tier ? '<i class="tier-glow"></i>' : ''}
       <div id="recHolo">${reuse ? '' : holoCover(coverUrl, title, artist, { owned: true, back: true, rel: recordId, key: holoKey })}</div>
+      ${facePick(base, title, artist)}
       <h1>${esc(title)}</h1>
       <div class="artist"><button class="artist-link" data-artist="${esc(artist)}">${esc(artist)}</button></div>
       <div class="meta">${esc(meta)}</div>
@@ -8940,6 +8960,8 @@ function build() {
   $('#syncBtn').onclick = () => { send({ t: 'sync' }); toast('Syncing your collection…'); };
   document.addEventListener('click', (e) => {
     if (e.target.closest('#settingsPage [data-histcheck]')) { openHistoryCheck(); return; }
+    const face = e.target.closest('#recordPage [data-face]');
+    if (face) { setFace(recordId, face.dataset.face); return; }
     if (e.target.closest('[data-hcfix]')) {
       HCHECK = { busy: true, step: 'Fetching the missing years…' };
       $('#hcBody').innerHTML = hcHtml();

@@ -97,6 +97,10 @@ class Prefs(ctx: Context) : TidalStore {
     var coversRechecked: Boolean
         get() = app.getBoolean("coversRechecked", false)
         set(v) = app.edit().putBoolean("coversRechecked", v).apply()
+    /** The records showing your copy's own picture instead of the album's usual cover (release ids; the switch on the record page). */
+    var ownCovers: Set<Long>
+        get() = app.getString("ownCovers", "").orEmpty().split(',').mapNotNull { it.toLongOrNull() }.toSet()
+        set(v) = app.edit().putString("ownCovers", v.joinToString(",")).apply()
     /** Pictures and artists none was found for were looked up again once, when lookups began to try a credit's first artist. */
     var creditsRechecked: Boolean
         get() = app.getBoolean("creditsRechecked", false)

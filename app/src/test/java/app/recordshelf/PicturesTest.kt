@@ -1,11 +1,14 @@
 package app.recordshelf
 
 import app.recordshelf.MiniHttp.Res
+import app.recordshelf.discogs.CollectionItem
+import app.recordshelf.history.Genres
 import app.recordshelf.history.History
 import app.recordshelf.history.Range
 import app.recordshelf.history.Stats
 import app.recordshelf.net.DeezerClient
 import app.recordshelf.util.Palette
+import app.recordshelf.util.Text
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.fail
@@ -80,5 +83,26 @@ class PicturesTest {
         assertEquals(3, a.getJSONArray("weeks").length())
         assertEquals("https://photo/idles.jpg", s.top(0, 3, 5).getJSONArray("artists").getJSONObject(0).getString("photo"))
         assertEquals("looked up already", emptyList<String>(), s.artistsNeedingPhotos("all"))
+    }
+
+    @Test
+    fun aRecordShowsTheAlbumsUsualCoverUnlessYouChoseYourCopy() {
+        // A pressing in a plain white sleeve: Discogs pictures that sleeve.
+        val c = CollectionItem(7, 1, "Dogrel", "Fontaines D.C.", 2019, 0, "https://discogs/white-150.jpg", "https://discogs/white.jpg", "LP", "", listOf("Rock"), emptyList(), 0)
+        val usual = "https://cdn-images.dzcdn.net/images/cover/abc/500x500-000000-80-0-0.jpg"
+        val key = Text.albumKey("Fontaines D.C.", "Dogrel")
+        val images = mapOf(key to usual)
+        assertEquals(usual, c.face(images, own = false))
+        assertEquals("a smaller one for the shelf's tiles", "https://cdn-images.dzcdn.net/images/cover/abc/250x250-000000-80-0-0.jpg", c.faceThumb(images, own = false))
+        assertEquals("https://discogs/white.jpg", c.face(images, own = true))
+        assertEquals("https://discogs/white-150.jpg", c.faceThumb(images, own = true))
+        assertEquals("no other cover: your copy's", "https://discogs/white.jpg", c.face(mapOf(key to ""), own = false))
+        val b = History.Builder()
+        b.add(at(2026, 10, 5), "Fontaines D.C.", "Big", "Dogrel")
+        val h = b.build()
+        fun albumCover(own: Set<Long>) = Stats(h, ZoneId.of("UTC"), at(2026, 10, 25), listOf(c), Genres(listOf(c), emptyMap()), albumImages = images, ownCovers = own)
+            .top(0, 1, 5).getJSONArray("albums").getJSONObject(0).getString("cover")
+        assertEquals("the charts show the usual cover", usual, albumCover(emptySet()))
+        assertEquals("or your copy's, as chosen", "https://discogs/white.jpg", albumCover(setOf(7L)))
     }
 }

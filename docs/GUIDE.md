@@ -632,6 +632,11 @@ that show one (Android 15 does by default). The app icon is a record whose groov
 the app's colors, turning in to the label. On Android 13 and later it can follow your wallpaper
 colors (themed icons).
 
+Your records show the album's usual cover (from Deezer), the one you know it by, everywhere in the
+app. A pressing of your own can look quite different (a plain white sleeve, say): under the sleeve on
+its record page, Usual cover and Your copy pick which of the two the record shows, on the shelf and
+everywhere else. Without a usual cover on Deezer it shows your copy's picture from Discogs.
+
 On a record page, or the album page of a record you own, tap the sleeve to turn it over (a song
 page turns over to the song's card instead, see Your cards).
 The record rolls back into the sleeve first and rolls out again after you turn it back. The back
