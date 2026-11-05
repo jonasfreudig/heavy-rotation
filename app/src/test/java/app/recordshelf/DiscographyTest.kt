@@ -257,6 +257,23 @@ class DiscographyTest {
     }
 
     @Test
+    fun anArtistStillPlayedInAnotherGenreIsntOneToRediscover() {
+        // Surprise Chef's soul record last played in April, their jazz record all of October; Air quiet since spring.
+        val b = History.Builder()
+        repeat(12) { b.add(at(2026, 3, 1 + it), "Surprise Chef", "Velvet Jacket", "Daylight Savings") }
+        repeat(12) { b.add(at(2026, 3, 14 + it), "Air", "La Femme d'Argent", "Moon Safari") }
+        repeat(10) { b.add(at(2026, 10, 1 + it), "Surprise Chef", "Iced Vovos", "Education & Recreation") }
+        val shelf = listOf(
+            CollectionItem(1, 1, "Daylight Savings", "Surprise Chef", 2023, 0, "", "", "LP", "", listOf("Funk / Soul"), listOf("Soul"), 0),
+            CollectionItem(2, 2, "Moon Safari", "Air", 1998, 0, "", "", "LP", "", listOf("Funk / Soul"), listOf("Soul"), 0),
+            CollectionItem(3, 3, "Education & Recreation", "Surprise Chef", 2025, 0, "", "", "LP", "", listOf("Jazz"), listOf("Jazz-Funk"), 0),
+        )
+        val s = Stats(b.build(), ZoneId.of("UTC"), at(2026, 10, 25), shelf, Genres(shelf, emptyMap()))
+        val lost = s.genrePage("Funk / Soul")!!.getJSONArray("lost")
+        assertEquals(listOf("Air"), (0 until lost.length()).map { lost.getJSONObject(it).getString("name") })
+    }
+
+    @Test
     fun genrePagesOfGenresLongAgo() {
         // Ambient and bebop from the artists' Last.fm tags, played years ago, a few plays each; this year mostly rock.
         val b = History.Builder()

@@ -432,6 +432,14 @@ body.bar-away .np-peek { transform: translateY(46px) rotate(-14deg); }
 .search-dock .search { margin: 0; height: 62px; border-radius: 31px; padding: 0 6px 0 20px; box-shadow: 0 12px 32px rgba(0, 0, 0, .28); }
 .search-dock .search input { color: var(--md-on-surface); }
 body.searching :is(.navbar, .search-fab, .np-peek, .bottom-fade) { display: none; }
+/* The tabs, the search circle and what plays stay over every page, in the order they have over the tabs: a tab,
+   search or the lyrics in the bar are a tap away however deep you went. Not over the players or the welcome. */
+.bottom-fade, .npb, .np-peek { z-index: 500; }
+.navbar, .search-fab { z-index: 501; }
+body.dock-off :is(.navbar, .search-fab, .npb, .np-peek, .bottom-fade) { visibility: hidden; }
+.page, .page.has-backdrop > .page-body { padding-bottom: calc(var(--nav-h) + var(--inset-bottom) + 16px); }
+.page.has-backdrop { padding-bottom: 0; }
+:is(#nowPage, #spinPage, #welcomePage):not(.has-backdrop), :is(#nowPage, #spinPage, #welcomePage).has-backdrop > .page-body { padding-bottom: calc(var(--inset-bottom) + 32px); }
 .search-hint { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 18vh 24px 0; text-align: center; color: var(--md-on-surface-variant); }
 .search-hint .i.big { width: 44px; height: 44px; opacity: .5; }
 .search-hint p { margin: 0; font-size: 15px; line-height: 22px; }

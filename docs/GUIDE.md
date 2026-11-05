@@ -335,7 +335,8 @@ Genre names are buttons: the styles on a record page, the genres on an artist pa
 of the genre charts on the Stats tab. Each opens that genre's page. It shows how much of your
 listening the genre makes up and where it ranks, its plays and artists, since when you've played it
 and its biggest day. Below come your top artists (with photos), albums and songs in it; Rediscover,
-the artists and albums of that genre you loved and haven't played for half a year or more;
+the artists and albums of that genre you loved and haven't played for half a year or more (an
+artist you still play under another genre isn't among them);
 "Everyone in …", every artist you played in it; when its music came out; its plays over time and
 hours; and the records on your shelf with that genre or style. "Full stats for
 …" opens the Stats tab for that genre. The page takes the colors of the genre's most played album,
@@ -587,7 +588,9 @@ three places. On the shelf is a line at the top of the shelf, with the progress;
 Explore a small pill next to the title shows the song with its record turning, and a thin line at
 the very top shows how far it is. In the corner is the record peeking out above the search button,
 on every tab. In the bar grows the bottom bar into a bigger pill with the cover, the song, play and
-pause and the progress, above the tabs. Its lyrics button gives the bar to the line being sung, one
+pause and the progress, above the tabs. The tabs, the search button and the bar stay at the bottom
+of every page too, Now playing and Now spinning aside: tap a tab to go straight back to it however
+many pages deep you are, and search closes the pages the same way. Its lyrics button gives the bar to the line being sung, one
 line at a time on up to two lines, for a song on the phone and a record's track alike; play and pause
 make room for it then (they are on Now playing, a tap away), and the screen stays on while the lyrics
 show. Tap any of them for Now
@@ -597,7 +600,7 @@ the playlist's or mix's name) when the app shares its queue, and the whole album
 with how much of the album is left (tracklists from Deezer), and the song's lyrics from LRCLIB.
 Timed lyrics light up line by line as the song goes (tap a line to jump there). While the lyrics of a
 playing song are open, the screen stays on; switch Keep the screen on off, on the lyrics, to let it
-turn off as usual. The arrow next to it lets the lyrics take over the screen, bigger, with the song
+turn off as usual. The lyrics lie on the song's cover, blurred and darkened. The arrow next to it lets the lyrics take over the screen, bigger, with the song
 in one row above them (cover, title, play and pause); the arrow or back makes them small again. Tap
 the app's name to open the app on
 its own player screen. Apps that work with Android Auto usually share their queue. The chart button

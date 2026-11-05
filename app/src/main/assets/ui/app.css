@@ -1399,6 +1399,25 @@ details.more[open] summary { margin-bottom: 6px; }
 @keyframes lyrUp { from { transform: translateY(40px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { :is(#nowPage, #spinPage).lyr-full .np-lyrics { animation: none; } }
 
+/*
+ * The lyrics on the song's cover: the page's small softened picture stretched over the card (blurred
+ * for free, as the page's backdrop), a dark veil over it, the words in white and the line being sung bright.
+ */
+.np-lyrics > .lyr-bg { display: none; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover { isolation: isolate; overflow: hidden; color: #fff; background: #303030; }
+:is(#nowPage, #spinPage):not(.lyr-full) .np-lyrics.on-cover { position: relative; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover > .lyr-bg { display: block; position: absolute; z-index: -2; left: -8%; top: -8%; width: 116%; height: 116%; opacity: 0; pointer-events: none; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover > .lyr-bg.ready { opacity: 1; transition: opacity .45s; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgb(0 0 0 / .34), rgb(0 0 0 / .5)); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover :is(h2, .lyr-lines p, .lyr-mini b, .icon-btn) { color: #fff; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover :is(.hint, .credit, .lyr-mini small) { color: rgb(255 255 255 / .72); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover .lyr-lines.synced p { color: rgb(255 255 255 / .4); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover .lyr-lines.synced p.past { color: rgb(255 255 255 / .26); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover .lyr-lines.synced p.now { color: #fff; text-shadow: 0 0 22px rgb(255 255 255 / .28); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover :is(.chip, .btn) { color: #fff; background: rgb(255 255 255 / .14); border-color: transparent; box-shadow: none; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover .chip.on { background: rgb(255 255 255 / .26); }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover .lyr-mini { border-bottom-color: rgb(255 255 255 / .18); }
+
 /* Your chart: each place with how it moved since the period before, and where it stood then. */
 .ch-sub { margin-top: 10px; }
 .ch-rows { display: grid; gap: 2px; margin-top: 4px; border-radius: 16px; overflow: hidden; }

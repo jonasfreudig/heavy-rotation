@@ -941,7 +941,9 @@ class Stats(
             .put("general", part("general") { maxOf(0, famPlays - subKeys.indices.filter { subKeys[it].startsWith("$family:") }.sumOf { subTotals[it] }) } ?: 0)
             .put("shelf", JSONArray(part("shelf") { collection.filter { genres.owns(it, key) }.map { it.releaseId }.distinct() }.orEmpty()))
             .put("artists", sub.artistNames.size).put("rank", rank).put("top", part("top") { s.top(0, sub.size, TOP_MAX) } ?: JSONObject())
-            .put("lost", ex?.optJSONArray("lostArtists") ?: JSONArray()).put("lostAlbums", ex?.optJSONArray("lostAlbums") ?: JSONArray())
+            // Quiet in this genre isn't quiet: Surprise Chef's soul album went quiet while you played their jazz.
+            .put("lost", part("lost") { s.lostArtistsJson { name -> artistIndex[Text.norm(name)]?.let { artistLife.last[it] >= sinceSec } ?: false } } ?: JSONArray())
+            .put("lostAlbums", ex?.optJSONArray("lostAlbums") ?: JSONArray())
             .put("decades", part("decades") { s.decades(0, sub.size) } ?: JSONObject())
             .put("calendar", part("calendar") {
                 val d = date(nowSec)
@@ -2427,6 +2429,10 @@ class Stats(
         l.plays.indices.filter { l.plays[it] >= LOST_MIN && l.last[it] < sinceSec }.sortedByDescending { l.plays[it] }
     }
     private val lostArtists: List<Int> get() = lostArtistsAll.take(EXPLORE_MAX)
+
+    /** The artists gone quiet, but not those [stillPlayed] says you still play (elsewhere than this history). */
+    fun lostArtistsJson(stillPlayed: (String) -> Boolean): JSONArray =
+        exploreArtists(lostArtistsAll.filter { !stillPlayed(h.artistNames[it]) }.take(EXPLORE_MAX))
 
     /** Albums (several different tracks played) gone quiet for half a year or more. */
     private val lostAlbumsAll: List<Int> by lazy {

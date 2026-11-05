@@ -736,6 +736,43 @@ function closePage(swipe = null) {
 }
 
 /**
+ * Every page closes at once (a tab or search tapped over them): the top one slides away and the
+ * ones under it, hidden behind it anyway, go with it. Pages shown again further down forget that.
+ */
+function closeAllPages() {
+  if (!pageStack.length) return;
+  uncover();
+  const topId = pageStack[pageStack.length - 1];
+  const ids = new Set(pageStack);
+  pageStack.length = 0;
+  pageSaved.length = 0;
+  for (const id of ids) {
+    const p = $('#' + id);
+    p._restore = null;
+    if (id === topId) continue;
+    if (p._closing) p._closing.cancel();
+    p._closing = null;
+    p.hidden = true;
+    p.inert = false;
+    p.style.transform = '';
+    p.style.borderRadius = '';
+  }
+  const p = $('#' + topId);
+  if (!p._closing) {
+    p.inert = true;
+    const a = animateOut(p, 'slide', () => { if (p._closing === a) { p.hidden = true; p.inert = false; p._closing = null; } });
+    p._closing = a;
+  }
+  if (ids.has('settingsPage')) showKeyForm = false;
+  Tilt.refresh();
+  syncBack();
+  coverSoon();
+}
+
+/** The pages that are a player or a start of their own: the tabs, search and the bar stay off them. */
+const DOCKLESS = new Set(['nowPage', 'spinPage', 'welcomePage']);
+
+/**
  * Whether back stays in the app (a layer to close, or a tab to leave for the shelf). Android
  * only previews the way out of the app with its back swipe when it doesn't.
  */
@@ -746,6 +783,7 @@ function syncBack() {
   const v = canGoBack();
   if (v !== backSent && Native) send({ t: 'canBack', v });
   backSent = v;
+  document.body.classList.toggle('dock-off', DOCKLESS.has(pageStack[pageStack.length - 1]));
   // Nothing behind a sheet, the story or search scrolls along with them.
   document.documentElement.classList.toggle('locked', sheetOpen() || !$('#story').hidden);
   document.documentElement.classList.toggle('locked-root', searching());
@@ -1567,6 +1605,7 @@ function renderNow() {
   if (!hasMedia) h += `<p class="hint">${esc(n.app)} doesn't share its controls or queue with other apps.</p>`;
   else if (!q.length) h += `<p class="hint">${esc(n.app)} doesn't share what it plays next, so here is the album.</p>`;
   keepHolo(body, h);
+  fillLyrics($('#npLyrics'));
   tint(body, n.cover || '', (n.album || n.title) + n.artist);
   lyrAt = -2;
   tickNow();
@@ -1628,7 +1667,7 @@ function setLyrFull(on) {
     const sb = $('#spLyrics');
     if (sb) {
       for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) sb.style[k] = '';
-      sb.innerHTML = lyricsHtml(false, SLYR, true);
+      fillLyrics(sb, lyricsHtml(false, SLYR, true), true);
       slyrAt = -2;
       syncSpinLyrics();
     }
@@ -1638,7 +1677,7 @@ function setLyrFull(on) {
   // Where a back swipe left it: back in its place in the page.
   if (box) for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) box.style[k] = '';
   if (!n || !box) return;
-  box.innerHTML = lyricsHtml((n.media || {}).canSeek);
+  fillLyrics(box, lyricsHtml((n.media || {}).canSeek));
   lyrAt = -2;
   syncLyrics();
 }
@@ -1666,6 +1705,29 @@ function ensureLyrics(n) {
 }
 /** The lyrics box: the song on the phone's ([S] = LYR), or the record's ([spin]: a tapped line moves its schedule there). */
 function lyricsHtml(canSeek, S = LYR, spin = false) {
+  return `<canvas class="lyr-bg" width="48" height="72" aria-hidden="true"></canvas>${lyricsInner(canSeek, S, spin)}`;
+}
+/** The cover the lyrics card lies on: the record's, or the song's on the phone. */
+const lyricsCover = (spin) => (spin ? (ST.spin || {}).cover : ((ST.phone || {}).now || {}).cover) || '';
+/** Fills the lyrics card [box] and lays it on its cover, blurred (the page's backdrop picture, stretched once more). */
+function fillLyrics(box, html, spin = false) {
+  if (!box) return;
+  if (html != null) box.innerHTML = html;
+  const url = lyricsCover(spin), cv = box.querySelector(':scope > .lyr-bg');
+  box.classList.toggle('on-cover', !!url && !!cv);
+  if (!url || !cv) return;
+  if (cv.dataset.url === url) return;
+  cv.dataset.url = url;
+  cv.classList.remove('ready');
+  softPicture(url, (soft) => {
+    if (cv.dataset.url !== url) return;
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, cv.width, cv.height);
+    c.drawImage(soft, 0, 0);
+    cv.classList.add('ready');
+  });
+}
+function lyricsInner(canSeek, S, spin) {
   const d = S.data;
   const credit = '<button class="credit inline-link" data-url="https://lrclib.net">Lyrics from LRCLIB</button>';
   if (!d) return '<h2>Lyrics</h2><p class="hint">Looking for the lyrics…</p>';
@@ -1698,7 +1760,7 @@ window.onLyrics = (d) => {
   syncAwake();
   const box = $('#npLyrics'), n = (ST.phone || {}).now;
   if (!box || !n) return;
-  box.innerHTML = lyricsHtml((n.media || {}).canSeek);
+  fillLyrics(box, lyricsHtml((n.media || {}).canSeek));
   lyrAt = -2;
   syncLyrics();
 };
@@ -1746,7 +1808,7 @@ function tickSpinLyrics(sp, n) {
   if (box.dataset.q !== q || box.dataset.got !== String(!!SLYR.data)) {
     box.dataset.q = q;
     box.dataset.got = String(!!SLYR.data);
-    box.innerHTML = lyricsHtml(false, SLYR, true);
+    fillLyrics(box, lyricsHtml(false, SLYR, true), true);
     slyrAt = -2;
   }
   syncSpinLyrics();
@@ -1977,6 +2039,8 @@ let searchTimer = 0;
 const searching = () => document.body.classList.contains('searching');
 let searchOut = null;
 function openSearch() {
+  // From a page, like a tab: search opens on the tabs, the pages go.
+  closeAllPages();
   if (searchOut) { searchOut.cancel(); searchOut = null; }
   $('#searchPage').inert = $('#searchDock').inert = false;
   $('#searchPage').hidden = false;
@@ -3727,12 +3791,16 @@ function setBackdrop(el, url) {
     bd.classList.add('ready');
   };
   if (BACKDROPS.has(url)) { show(BACKDROPS.get(url), true); return; }
+  softPicture(url, (soft) => { if (bd.dataset.url === url) show(soft, false); });
+}
+/** The picture at [url] shrunk to 48 by 72, softened and made more colorful, for [done] (once loaded; kept). */
+function softPicture(url, done) {
+  if (BACKDROPS.has(url)) { done(BACKDROPS.get(url)); return; }
   const img = new Image();
   img.onload = () => {
-    if (bd.dataset.url !== url) return;
     const small = document.createElement('canvas');
-    small.width = cv.width;
-    small.height = cv.height;
+    small.width = 48;
+    small.height = 72;
     const sx = small.getContext('2d');
     sx.imageSmoothingQuality = 'high';
     sx.filter = 'saturate(1.6)';
@@ -3740,14 +3808,14 @@ function setBackdrop(el, url) {
     const side = Math.min(img.width, img.height);
     sx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, small.width, small.height);
     const soft = document.createElement('canvas');
-    soft.width = cv.width;
-    soft.height = cv.height;
+    soft.width = small.width;
+    soft.height = small.height;
     const fx = soft.getContext('2d');
     fx.filter = 'blur(3px)';
     fx.drawImage(small, 0, 0);
     if (BACKDROPS.size > 80) BACKDROPS.delete(BACKDROPS.keys().next().value);
     BACKDROPS.set(url, soft);
-    show(soft, false);
+    done(soft);
   };
   img.src = url;
 }
@@ -8854,6 +8922,12 @@ function build() {
   $('#tabs').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    // Over pages: straight back to that tab, however many pages deep.
+    if (pageStack.length) {
+      closeAllPages();
+      if (b.dataset.tab !== tab) showTab(b.dataset.tab);
+      return;
+    }
     if (b.dataset.tab === tab) window.scrollTo({ top: 0, behavior: 'smooth' });
     else showTab(b.dataset.tab);
   };
@@ -8939,7 +9013,7 @@ function build() {
       // Asked again: the song's lyrics from scratch.
       const n = (ST.phone || {}).now;
       LYR = { q: '', data: null, lines: null };
-      if (n) { ensureLyrics(n); const box = $('#npLyrics'); if (box) box.innerHTML = lyricsHtml((n.media || {}).canSeek); }
+      if (n) { ensureLyrics(n); const box = $('#npLyrics'); if (box) fillLyrics(box, lyricsHtml((n.media || {}).canSeek)); }
       return;
     }
     if (e.target.closest('[data-lyrfull]')) { setLyrFull(!lyrFull); return; }
