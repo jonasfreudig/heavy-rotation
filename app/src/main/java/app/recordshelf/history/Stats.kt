@@ -166,7 +166,15 @@ class Stats(
 
     private val rules = zone.rules
     private val ownedKeys: Map<String, CollectionItem> = collection.associateBy { Text.albumKey(it.artist, it.title) }
-    private val albumIndex: Map<String, Int> by lazy { h.albumKeys.withIndex().associate { (i, k) -> k to i } }
+    private val albumIndex: Map<String, Int> by lazy {
+        val m = h.albumKeys.withIndex().associate { (i, k) -> k to i }
+        // A longer edition's name finds the album it counts as.
+        m + h.editionOf.mapNotNull { (e, k) -> m[k]?.let { e to it } }
+    }
+
+    /** The album an edition counts as ("Skinty Fia" for "Skinty Fia go deo"), null for an album of its own or one not played. */
+    fun editionRoot(artist: String, title: String): String? =
+        h.editionOf[Text.albumKey(artist, title)]?.let { albumIndex[it] }?.let { h.albumTitles[it] }
     private val artistIndex: Map<String, Int> by lazy { h.artistNames.withIndex().associate { (i, n) -> Text.norm(n) to i } }
     private val historyStart get() = if (h.size > 0) h.ts[0] else nowSec
 

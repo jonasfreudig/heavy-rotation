@@ -15,10 +15,13 @@ object Discography {
 
     private val TYPES = listOf("album", "ep", "single", "compile")
 
-    /** Folds editions together (the earliest is the record), albums first, then EPs, singles, compilations; newest first within each. */
-    fun merge(releases: List<DzRelease>): List<Entry> {
+    /**
+     * Folds editions together (the earliest is the record), albums first, then EPs, singles, compilations; newest first within
+     * each. [editionOf]: the album a title is an edition of in your plays ("Skinty Fia" for "Skinty Fia go deo"), else null.
+     */
+    fun merge(releases: List<DzRelease>, editionOf: (String) -> String? = { null }): List<Entry> {
         val groups = LinkedHashMap<String, MutableList<DzRelease>>()
-        for (r in releases) groups.getOrPut(r.type + "|" + Text.normLoose(r.title)) { ArrayList() } += r
+        for (r in releases) groups.getOrPut(r.type + "|" + Text.normLoose(editionOf(r.title) ?: r.title)) { ArrayList() } += r
         return groups.values.map { eds -> eds.sortedBy { it.date.ifEmpty { "9999" } }.let { Entry(it.first(), it) } }
             .sortedWith(compareBy<Entry> { TYPES.indexOf(it.release.type).let { i -> if (i < 0) TYPES.size else i } }.thenByDescending { it.release.date })
     }

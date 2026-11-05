@@ -282,7 +282,9 @@ Album and song pages show their genres too: the album's own when Last.fm knows t
 you open the page, if the album isn't among your most played), otherwise the artist's.
 
 Artist pages show the whole discography from Deezer's catalog: albums, EPs, singles and
-compilations, with editions folded together ("Romance" and its deluxe edition are one record). Each
+compilations, with editions folded together ("Romance" and its deluxe edition are one record). An
+edition whose title adds words to the album's ("Skinty Fia go deo") counts as that album everywhere
+in your stats when the songs you played from it are mostly the album's, extra versions included. Each
 title shows your plays, a foil star if it's on your shelf and "New" for the last two months; titles
 you haven't heard are dimmed. Records of theirs you played that Deezer doesn't list, such as a live
 album, come last under Also played. Filter by Most played (everything you played in one row, most

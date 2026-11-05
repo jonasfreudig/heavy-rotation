@@ -257,6 +257,31 @@ class DiscographyTest {
     }
 
     @Test
+    fun aLongerEditionCountsAsTheAlbum() {
+        val b = History.Builder()
+        // Skinty Fia mostly; from Skinty Fia go deo, one of its songs and a live version of another.
+        repeat(5) { b.add(at(2026, 4, 1 + it), "Fontaines D.C.", "Jackie Down the Line", "Skinty Fia") }
+        repeat(3) { b.add(at(2026, 4, 10 + it), "Fontaines D.C.", "Big Shot", "Skinty Fia") }
+        b.add(at(2026, 5, 1), "Fontaines D.C.", "Big Shot", "Skinty Fia go deo")
+        b.add(at(2026, 5, 2), "Fontaines D.C.", "Jackie Down the Line (Live at Alexandra Palace)", "Skinty Fia go deo")
+        // Led Zeppelin II shares no songs with Led Zeppelin: two albums.
+        b.add(at(2026, 5, 3), "Led Zeppelin", "Good Times Bad Times", "Led Zeppelin")
+        b.add(at(2026, 5, 4), "Led Zeppelin", "Whole Lotta Love", "Led Zeppelin II")
+        val h = b.build()
+        assertEquals(listOf("Skinty Fia", "Led Zeppelin", "Led Zeppelin II"), h.albumTitles.toList())
+        val s = Stats(h, ZoneId.of("UTC"), at(2026, 10, 25))
+        assertEquals("every play counts for the album", 10, s.albumPlaysOf("Fontaines D.C.", "Skinty Fia"))
+        assertEquals("the edition's name finds it", 10, s.albumPlaysOf("Fontaines D.C.", "Skinty Fia go deo"))
+        assertEquals("Skinty Fia", s.editionRoot("Fontaines D.C.", "Skinty Fia go deo"))
+        assertEquals(null, s.editionRoot("Led Zeppelin", "Led Zeppelin II"))
+        assertEquals(1, s.albumPlaysOf("Led Zeppelin", "Led Zeppelin II"))
+        assertEquals("a genre's plays know it too", 10, Stats(h.filter { true }, ZoneId.of("UTC"), at(2026, 10, 25)).albumPlaysOf("Fontaines D.C.", "Skinty Fia go deo"))
+        val d = Discography.merge(listOf(rel(2, "Skinty Fia go deo", "album", "2023-04-21"), rel(1, "Skinty Fia", "album", "2022-04-22"))) { s.editionRoot("Fontaines D.C.", it) }
+        assertEquals("one record on the discography", listOf("Skinty Fia"), d.map { it.release.title })
+        assertEquals(2, d[0].editions.size)
+    }
+
+    @Test
     fun anArtistStillPlayedInAnotherGenreIsntOneToRediscover() {
         // Surprise Chef's soul record last played in April, their jazz record all of October; Air quiet since spring.
         val b = History.Builder()

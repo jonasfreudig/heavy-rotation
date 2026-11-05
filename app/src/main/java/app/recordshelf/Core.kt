@@ -2300,7 +2300,7 @@ object Core {
         val releases = (0 until rel.length()).map { DzRelease.fromJson(rel.getJSONObject(it)) }
         val s = currentStats()
         val shelf = collection.associateBy { Text.albumKey(it.artist, it.title) }
-        val items = Discography.json(Discography.merge(releases), { t -> s?.albumPlaysOf(name, t) ?: 0 }, { t -> shelf[Text.albumKey(name, t)]?.releaseId ?: 0L })
+        val items = Discography.json(Discography.merge(releases) { t -> s?.editionRoot(name, t) }, { t -> s?.albumPlaysOf(name, t) ?: 0 }, { t -> shelf[Text.albumKey(name, t)]?.releaseId ?: 0L })
         return JSONObject().put("artist", DzArtist.fromJson(artist).toJson()).put("items", items)
     }
 

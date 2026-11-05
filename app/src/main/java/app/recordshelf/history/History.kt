@@ -28,6 +28,10 @@ class History private constructor(
 ) {
     val size get() = ts.size
 
+    /** The album keys of longer editions counted as the album they extend, with that album's key ("…|skinty fia go deo", "…|skinty fia"). */
+    var editionOf: Map<String, String> = emptyMap()
+        private set
+
     /** Scrobbles left out because the user hid them ([Hidden]). */
     var hiddenPlays = 0
         private set
@@ -36,7 +40,7 @@ class History private constructor(
     fun filter(keep: (Int) -> Boolean): History {
         val b = Builder()
         for (i in 0 until size) if (keep(i)) b.add(ts[i], artistNames[artist[i]], trackTitles[track[i]], if (album[i] >= 0) albumTitles[album[i]] else "", if (also[i] >= 0) artistNames[also[i]] else "")
-        return b.build().also { it.hiddenPlays = hiddenPlays }
+        return b.build().also { it.hiddenPlays = hiddenPlays; it.editionOf = editionOf + it.editionOf }
     }
 
     /** First index with ts >= [t]. */
@@ -110,10 +114,61 @@ class History private constructor(
                 alA = IntArray(order.size) { alA[order[it]] }
                 soA = IntArray(order.size) { soA[order[it]] }
             }
+            val into = editions(alA, trA)
+            if (into.indices.all { into[it] == it }) {
+                return History(
+                    tsA, arA, trA, alA, artistNames.toTypedArray(), trackTitles.toTypedArray(), trackArtist.toArray(),
+                    albumTitles.toTypedArray(), albumArtist.toArray(), albumKeys.toTypedArray(), soA,
+                )
+            }
+            // The editions go; every other album gets its new number, and the editions' plays the album's.
+            val kept = into.indices.filter { into[it] == it }
+            val newId = IntArray(into.size).also { n -> kept.forEachIndexed { k, x -> n[x] = k } }
+            for (i in alA.indices) if (alA[i] >= 0) alA[i] = newId[into[alA[i]]]
+            val artistA = albumArtist.toArray()
             return History(
                 tsA, arA, trA, alA, artistNames.toTypedArray(), trackTitles.toTypedArray(), trackArtist.toArray(),
-                albumTitles.toTypedArray(), albumArtist.toArray(), albumKeys.toTypedArray(), soA,
-            )
+                Array(kept.size) { albumTitles[kept[it]] }, IntArray(kept.size) { artistA[kept[it]] }, Array(kept.size) { albumKeys[kept[it]] }, soA,
+            ).also { h -> h.editionOf = into.indices.filter { into[it] != it }.associate { albumKeys[it] to albumKeys[into[it]] } }
+        }
+
+        /**
+         * Longer editions counted as the album they extend: the same artist's album with its title and more words
+         * ("Skinty Fia go deo", "Skinty Fia"), when at least half the songs you played from the smaller of the two you
+         * played from the other too, extra versions ("Jackie Down the Line (Live)") as their song. Albums whose titles
+         * only start alike (Led Zeppelin II) share no songs and stay apart. Each album's number, or the one it counts as.
+         */
+        private fun editions(alA: IntArray, trA: IntArray): IntArray {
+            val into = IntArray(albumKeys.size) { it }
+            // The albums whose title starts with another one's whole title: the shortest such first.
+            val pairs = albumKeys.indices.mapNotNull { b ->
+                val k = albumKeys[b]
+                val from = k.indexOf('|') + 1
+                val shorter = generateSequence(k.indexOf(' ', from)) { k.indexOf(' ', it + 1).takeIf { n -> n > 0 } }
+                    .takeWhile { it > 0 }.mapNotNull { albumIds[k.substring(0, it)] }.toList()
+                if (shorter.isEmpty()) null else b to shorter
+            }
+            if (pairs.isEmpty()) return into
+            val wanted = HashSet<Int>().also { w -> pairs.forEach { (b, s) -> w += b; w += s } }
+            val loose = HashMap<Int, String>()
+            val songs = HashMap<Int, HashSet<String>>()
+            for (i in alA.indices) {
+                val al = alA[i]
+                if (al < 0 || al !in wanted) continue
+                songs.getOrPut(al) { HashSet() } += loose.getOrPut(trA[i]) { Text.normLoose(trackTitles[trA[i]]) }
+            }
+            for ((b, shorter) in pairs.sortedBy { albumKeys[it.first].length }) {
+                val sb = songs[b] ?: continue
+                for (a in shorter) {
+                    val sa = songs[a] ?: continue
+                    val shared = sb.count { it in sa }
+                    if (shared > 0 && shared * 2 >= minOf(sa.size, sb.size)) {
+                        into[b] = into[a]
+                        break
+                    }
+                }
+            }
+            return into
         }
     }
 
