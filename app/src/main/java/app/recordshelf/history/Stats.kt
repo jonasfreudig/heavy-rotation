@@ -327,6 +327,7 @@ class Stats(
             .put("cards", cardsSummary())
             .put("minutes", minutes(i0, i1, TOP_MAX))
             .put("milestones", milestones(i0, i1))
+            .put("race", monthRace(r, i0, i1) ?: JSONObject.NULL)
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
@@ -2937,28 +2938,45 @@ class Stats(
     private fun artistBrief(a: Int) = JSONObject().put("name", h.artistNames[a]).put("plays", artistLife.plays[a])
         .put("photo", artistPhoto(h.artistNames[a])).put("cover", artistPicture(a))
 
-    /** The artists of the race, each with their plays so far at the end of every month: the [RACE_TOP] of any month, [RACE_MAX] at most. */
+    /** The race of your whole history, month by month. */
     private fun race(): JSONObject {
         val m0 = monthKey(h.ts[0])
         val n = maxOf(monthKey(nowSec), monthKey(h.ts[h.size - 1])) - m0 + 1
+        return JSONObject().put("from", monthStart(m0)).put("months", n).put("artists", raceArtists(0, h.size, n) { monthKey(it) - m0 })
+    }
+
+    /** The race of a month, day by day up to today; null for other periods. */
+    fun monthRace(r: Range, i0: Int, i1: Int): JSONObject? {
+        if (r.kind != "month" || i1 <= i0) return null
+        val d0 = day(r.from)
+        val n = (minOf(day(minOf(r.to, nowSec + 1) - 1), d0 + date(r.from).lengthOfMonth() - 1) - d0 + 1).toInt()
+        if (n < 2) return null
+        return JSONObject().put("from", r.from * 1000).put("days", n).put("artists", raceArtists(i0, i1, n) { (day(it) - d0).toInt() })
+    }
+
+    /**
+     * The artists of a race over plays [i0] to [i1] in [n] steps ([step] of a play's time), each with their plays so
+     * far at the end of every step: the [RACE_TOP] of any step, [RACE_MAX] at most.
+     */
+    private fun raceArtists(i0: Int, i1: Int, n: Int, step: (Long) -> Int): JSONArray {
         val cum = IntArray(h.artistNames.size)
+        val seen = LinkedHashSet<Int>()
         val inTop = HashSet<Int>()
-        var i = 0
+        var i = i0
         for (m in 0 until n) {
-            while (i < h.size && monthKey(h.ts[i]) - m0 <= m) cum[h.artist[i++]]++
-            cum.indices.filter { cum[it] > 0 }.sortedByDescending { cum[it] }.take(RACE_TOP).forEach { inTop += it }
+            while (i < i1 && step(h.ts[i]) <= m) h.artist[i++].let { cum[it]++; seen += it }
+            seen.sortedByDescending { cum[it] }.take(RACE_TOP).forEach { inTop += it }
         }
         val shown = inTop.sortedByDescending { cum[it] }.take(RACE_MAX)
         val row = shown.withIndex().associate { (k, a) -> a to k }
         val series = Array(shown.size) { IntArray(n) }
         val run = IntArray(shown.size)
-        i = 0
+        i = i0
         for (m in 0 until n) {
-            while (i < h.size && monthKey(h.ts[i]) - m0 <= m) row[h.artist[i++]]?.let { run[it]++ }
+            while (i < i1 && step(h.ts[i]) <= m) row[h.artist[i++]]?.let { run[it]++ }
             for (k in shown.indices) series[k][m] = run[k]
         }
-        return JSONObject().put("from", monthStart(m0)).put("months", n)
-            .put("artists", JSONArray(shown.mapIndexed { k, a -> artistBrief(a).put("cum", JSONArray(series[k].toList())) }))
+        return JSONArray(shown.mapIndexed { k, a -> artistBrief(a).put("cum", JSONArray(series[k].toList())) })
     }
 
     /** Every play: per day, the plays of each of the [SCATTER_ARTISTS] most played artists (in order of their first play), and of everyone else. */

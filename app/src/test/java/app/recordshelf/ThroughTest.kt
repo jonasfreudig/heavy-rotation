@@ -68,6 +68,25 @@ class ThroughTest {
     }
 
     @Test
+    fun aMonthsRaceGoesDayByDayUpToToday() {
+        val b = History.Builder()
+        // October 2026: A on the 1st and the 3rd, B three times on the 2nd; September's play isn't in it.
+        b.add(at(2026, 9, 30), "A", "x", "")
+        b.add(at(2026, 10, 1), "A", "x", "")
+        for (k in 0 until 3) b.add(at(2026, 10, 2, k * 300L), "B", "y", "")
+        b.add(at(2026, 10, 3), "A", "x", "")
+        val s = Stats(b.build(), ZoneId.of("UTC"), at(2026, 10, 5))
+        val r = s.compute(s.range("m2026-10")).getJSONObject("race")
+        assertEquals("up to today, the 5th", 5, r.getInt("days"))
+        val a = r.getJSONArray("artists")
+        val cum = (0 until a.length()).associate { a.getJSONObject(it).let { o -> o.getString("name") to o.getJSONArray("cum").let { c -> (0 until c.length()).map { c.getInt(it) } } } }
+        assertEquals(listOf(1, 1, 2, 2, 2), cum["A"])
+        assertEquals(listOf(0, 3, 3, 3, 3), cum["B"])
+        assertEquals("a past month has all its days", 30, s.compute(s.range("m2026-09")).getJSONObject("race").getInt("days"))
+        assertTrue("months only", s.compute(s.range("y2026")).isNull("race"))
+    }
+
+    @Test
     fun milestonesOfEverythingArtistsAndSongs() {
         val b = History.Builder()
         repeat(1_000) { b.add(at(2025, 1, 1, it * 300L), if (it < 120) "A" else "B", if (it < 60) "One" else "Two", "") }

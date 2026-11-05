@@ -389,6 +389,9 @@ than twice its artist's usual length gets the usual length instead, since that w
 it. The hours in Totals are counted the same way. Milestones lists round numbers: your
 10,000th play, an artist's 500th, a song's 100th.
 
+A month has its own race under your chart: your top 10 artists of the month by plays so far, day
+by day up to today. Press play to watch the days add up, or drag the slider.
+
 The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the
 countries ranked below it. Tap a country for its artists. The countries come from MusicBrainz, one
 artist a second, so the first time takes about five minutes; the map fills in as they arrive and

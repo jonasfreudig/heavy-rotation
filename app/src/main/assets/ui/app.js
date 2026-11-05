@@ -6784,6 +6784,7 @@ const BLOCKS = {
   lineup: { name: 'Your lineup', kinds: ['day', ...SPAN], html: lineupViz },
   top: { name: 'Top lists', kinds: ['day', ...SPAN], html: chartViz },
   milestones: { name: 'Milestones', kinds: SPAN, html: milestonesViz },
+  race: { name: 'The race', kinds: ['month'], html: statsRaceHtml },
   map: { name: 'Where they\'re from', html: statsMapViz },
   taste: { name: 'Your taste', html: tasteHtml },
   today: { name: 'Today so far', kinds: ['day'], html: (s) => todayViz(s) },
@@ -6796,7 +6797,7 @@ const BLOCKS = {
 };
 const DEFAULT_ORDER = {
   day: ['today', 'dayline', 'firstLatest', 'covers', 'repeats', 'highlights', 'newToday', 'onThisDay', 'dayFacts', 'lineup', 'top'],
-  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'map', 'rarely', 'wishlist', 'lineup', 'top', 'milestones', 'taste'],
+  span: ['story', 'numbers', 'cards', 'tidy', 'highlights', 'week', 'record', 'covers', 'timeline', 'river', 'days', 'clock', 'streaks', 'who', 'newArtists', 'repeat', 'genres', 'decades', 'map', 'rarely', 'wishlist', 'lineup', 'top', 'race', 'milestones', 'taste'],
 };
 /** Blocks up to 0.58 that live on in today's (habits and phases in Who you played when, obsessions in On repeat). */
 const OLD_BLOCKS = { pulse: 'who', habits: 'who', obsessions: 'repeat' };
@@ -6931,6 +6932,7 @@ const STATS_SECTIONS = [
   ['strip', 'Day by day', ['week', 'days']],
   ['pill', '', ['streaks']],
   ['', '', ['top']],
+  ['', '', ['race']],
   ['pill', '', ['milestones']],
   ['strip', 'Over time', ['river', 'genres']],
   ['', '', ['who']],
@@ -7766,66 +7768,103 @@ function renderThrough() {
   if (at) $('#throughPage').scrollTop = at.offsetTop - 72;
 }
 
-// -- the race: your top artists by plays so far, month by month --
+// -- the race: your top artists by plays so far, month by month (Through the years) or day by day (a month on Stats) --
 
 const RACE_ROWS = 10;
-const monthOf = (r, m) => { const d = new Date(r.from); return new Date(d.getFullYear(), d.getMonth() + m, 1); };
-function raceHtml(r) {
-  if (!r || !(r.artists || []).length || r.months < 2) return '';
-  const bars = r.artists.map((a, k) => `<button class="rc-bar" data-artist="${esc(a.name)}" data-k="${k}" style="--h:${hue(a.name)}">
-    ${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="rc-name">${esc(a.name)}</span><span class="rc-n"></span></button>`).join('');
-  return `<div class="viz race-viz" data-tp="race"><h2>The race</h2>
-    <div class="rc-when" id="rcWhen"></div>
-    <div class="rc-track" id="rcTrack" style="height:${RACE_ROWS * 34}px">${bars}</div>
-    <div class="rc-ctl"><button class="icon-btn" data-race aria-label="Play">${icon(RACE.playing ? 'pause' : 'play')}</button>
-      <input type="range" id="rcSlider" min="0" max="${r.months - 1}" value="${Math.max(0, RACE.m)}" aria-label="Month"></div></div>`;
+/** The month race of the Stats tab, where it is and whether it plays; [key]: the month it is for. */
+const RACE_STATS = { m: -1, timer: 0, playing: false, key: '' };
+const RACES = { through: RACE, stats: RACE_STATS };
+const raceOf = (id) => (id === 'through' ? THROUGH && THROUGH.race : STATS && STATS.race) || null;
+const raceSteps = (r) => r.months || r.days;
+function raceWhen(r, m) {
+  const d = new Date(r.from);
+  return r.days ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + m).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'long' })
+    : new Date(d.getFullYear(), d.getMonth() + m, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
 }
-function drawRace() {
-  const r = THROUGH && THROUGH.race;
-  const track = $('#rcTrack');
-  if (!r || !track) return;
-  const m = Math.max(0, Math.min(r.months - 1, RACE.m));
+/** Where each bar is at step [m]: its row (RACE_ROWS: out of the top), its length and its plays. */
+function racePlaces(r, m) {
   const order = r.artists.map((a, k) => [k, a.cum[m]]).filter((x) => x[1] > 0).sort((p, q) => q[1] - p[1]);
   const place = new Map(order.map(([k], i) => [k, i]));
   const max = Math.max(1, order.length ? order[0][1] : 1);
-  track.querySelectorAll('.rc-bar').forEach((b) => {
-    const k = +b.dataset.k, i = place.has(k) ? place.get(k) : RACE_ROWS;
-    const v = r.artists[k].cum[m];
-    b.style.transform = `translateY(${Math.min(i, RACE_ROWS) * 34}px)`;
-    b.style.setProperty('--f', (v / max).toFixed(3));
-    b.classList.toggle('out', i >= RACE_ROWS);
-    b.querySelector('.rc-n').textContent = num(v);
-  });
-  $('#rcWhen').textContent = monthOf(r, m).toLocaleDateString([], { month: 'long', year: 'numeric' });
-  const sl = $('#rcSlider');
-  if (sl && +sl.value !== m) sl.value = m;
+  return r.artists.map((a, k) => ({ i: place.has(k) ? Math.min(place.get(k), RACE_ROWS) : RACE_ROWS, f: (a.cum[m] / max).toFixed(3), v: a.cum[m] }));
 }
-function raceStep() {
-  const r = THROUGH && THROUGH.race;
-  if (!r || !isOpen('throughPage')) { raceStop(); return; }
-  if (RACE.m >= r.months - 1) { raceStop(); return; }
-  RACE.m++;
-  drawRace();
+/** The race [id] as it stands, so drawing the page again doesn't move its bars. */
+function raceHtml(r, id = 'through') {
+  if (!r || !(r.artists || []).length || raceSteps(r) < 2) return '';
+  const st = RACES[id], n = raceSteps(r);
+  const m = Math.max(0, Math.min(n - 1, st.m));
+  const at = racePlaces(r, m);
+  const bars = r.artists.map((a, k) => `<button class="rc-bar${at[k].i >= RACE_ROWS ? ' out' : ''}" data-artist="${esc(a.name)}" data-k="${k}" style="--h:${hue(a.name)};--f:${at[k].f};transform:translateY(${at[k].i * 34}px)">
+    ${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="rc-name">${esc(a.name)}</span><span class="rc-n">${num(at[k].v)}</span></button>`).join('');
+  return `<div class="viz race-viz" data-tp="race" data-race-id="${id}"><h2>The race</h2>${r.days ? '<span class="sub">Your top artists by plays so far, day by day</span>' : ''}
+    <div class="rc-when">${esc(raceWhen(r, m))}</div>
+    <div class="rc-track" style="height:${RACE_ROWS * 34}px">${bars}</div>
+    <div class="rc-ctl"><button class="icon-btn" data-race aria-label="${st.playing ? 'Pause' : 'Play'}">${icon(st.playing ? 'pause' : 'play')}</button>
+      <input type="range" class="rc-slider" min="0" max="${n - 1}" value="${m}" aria-label="${r.days ? 'Day' : 'Month'}"></div></div>`;
 }
-function racePlay() {
-  const r = THROUGH && THROUGH.race;
+function drawRace(id = 'through') {
+  const r = raceOf(id), st = RACES[id];
   if (!r) return;
-  if (RACE.m >= r.months - 1) RACE.m = 0;
-  RACE.playing = true;
-  clearInterval(RACE.timer);
-  // A whole history in about 20 seconds, but no month faster than a fifth of a second.
-  RACE.timer = setInterval(raceStep, Math.max(200, Math.round(20000 / r.months)));
-  drawRace();
-  syncRaceButton();
+  const m = Math.max(0, Math.min(raceSteps(r) - 1, st.m));
+  const at = racePlaces(r, m);
+  document.querySelectorAll(`[data-race-id="${id}"]`).forEach((box) => {
+    box.querySelectorAll('.rc-bar').forEach((b) => {
+      const p = at[+b.dataset.k];
+      b.style.transform = `translateY(${p.i * 34}px)`;
+      b.style.setProperty('--f', p.f);
+      b.classList.toggle('out', p.i >= RACE_ROWS);
+      b.querySelector('.rc-n').textContent = num(p.v);
+    });
+    box.querySelector('.rc-when').textContent = raceWhen(r, m);
+    const sl = box.querySelector('.rc-slider');
+    if (sl && +sl.value !== m) sl.value = m;
+  });
 }
-function raceStop() {
-  clearInterval(RACE.timer);
-  RACE.playing = false;
-  syncRaceButton();
+/** Whether race [id] is on screen: its page open, and on Stats, still the period shown. */
+function raceShown(id) {
+  const box = document.querySelector(`[data-race-id="${id}"]`);
+  return !!box && !!box.offsetParent && (id !== 'through' || isOpen('throughPage'));
 }
-function syncRaceButton() {
-  const b = $('#throughPage [data-race]');
-  if (b) { b.innerHTML = icon(RACE.playing ? 'pause' : 'play'); b.setAttribute('aria-label', RACE.playing ? 'Pause' : 'Play'); }
+function raceStep(id) {
+  const r = raceOf(id), st = RACES[id];
+  if (!r || !raceShown(id) || st.m >= raceSteps(r) - 1) { raceStop(id); return; }
+  st.m++;
+  drawRace(id);
+}
+function racePlay(id = 'through') {
+  const r = raceOf(id), st = RACES[id];
+  if (!r) return;
+  const n = raceSteps(r);
+  if (st.m >= n - 1) st.m = 0;
+  st.playing = true;
+  clearInterval(st.timer);
+  // A whole history in about 20 seconds and a month in about 12, no step faster than a fifth of a second; the first
+  // days of a month don't crawl.
+  const ms = Math.max(200, Math.round((r.days ? 12000 : 20000) / n));
+  st.timer = setInterval(() => raceStep(id), r.days ? Math.min(800, ms) : ms);
+  drawRace(id);
+  syncRaceButton(id);
+}
+function raceStop(id = 'through') {
+  const st = RACES[id];
+  clearInterval(st.timer);
+  st.playing = false;
+  syncRaceButton(id);
+}
+function syncRaceButton(id) {
+  const st = RACES[id];
+  document.querySelectorAll(`[data-race-id="${id}"] [data-race]`).forEach((b) => { b.innerHTML = icon(st.playing ? 'pause' : 'play'); b.setAttribute('aria-label', st.playing ? 'Pause' : 'Play'); });
+}
+/** The month race on Stats: at the latest day when it's a month not shown before. */
+function statsRaceHtml(s) {
+  const r = s.race;
+  if (!r || thin(s)) return '';
+  if (RACE_STATS.key !== s.range.id) {
+    raceStop('stats');
+    RACE_STATS.key = s.range.id;
+    RACE_STATS.m = r.days - 1;
+  }
+  return raceHtml(r, 'stats');
 }
 
 // -- every play: one row per artist, a dot per day they played --
@@ -8936,7 +8975,8 @@ function build() {
     if (mc) { ATLAS_MAP.sel = ATLAS_MAP.sel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
     const smc = e.target.closest('#statsBody [data-smc], #blockBody [data-smc]');
     if (smc) { statsMapSel = statsMapSel === smc.dataset.smc ? '' : smc.dataset.smc; renderStats(); renderBlock(); return; }
-    if (e.target.closest('#throughPage [data-race]')) { if (RACE.playing) raceStop(); else racePlay(); return; }
+    const rcb = e.target.closest('[data-race-id] [data-race]');
+    if (rcb) { const id = rcb.closest('[data-race-id]').dataset.raceId; if (RACES[id].playing) raceStop(id); else racePlay(id); return; }
     const chb = e.target.closest('[data-chby]');
     if (chb) { chartBy = chb.dataset.chby; renderStats(); renderBlock(); return; }
     // A day or month from outside Stats (On this day on Explore): Stats for it.
@@ -9119,11 +9159,14 @@ function build() {
   $('#albumBody').onclick = (e) => { const rec = e.target.closest('[data-rec]'); if (rec) openRecord(+rec.dataset.rec, rec); };
   $('#genreBody').addEventListener('pointerdown', (e) => onVizPointer(e, GENRE));
   $('#throughBody').addEventListener('click', (e) => { if (e.target.id === 'scCanvas') scatterTap(e); });
-  $('#throughBody').addEventListener('input', (e) => {
-    if (e.target.id !== 'rcSlider') return;
-    raceStop();
-    RACE.m = +e.target.value;
-    drawRace();
+  // The race's slider, on Through the years and on a month in Stats.
+  document.addEventListener('input', (e) => {
+    const box = e.target.classList && e.target.classList.contains('rc-slider') && e.target.closest('[data-race-id]');
+    if (!box) return;
+    const id = box.dataset.raceId;
+    raceStop(id);
+    RACES[id].m = +e.target.value;
+    drawRace(id);
   });
   $('#genreBody').onclick = (e) => {
     const rec = e.target.closest('[data-rec]');
