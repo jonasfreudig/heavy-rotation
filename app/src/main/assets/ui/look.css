@@ -764,6 +764,9 @@ html.locked .page { overflow: hidden; }
   background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); color: var(--md-on-surface-variant); }
 .sq-more .i { width: 18px; height: 18px; transform: rotate(90deg); }
 .on > .sq-more .i { transform: rotate(-90deg); }
+/* A square or pill turns as its block opens under it (morph keeps them, so these run). */
+.sq-more .i { transition: transform .25s cubic-bezier(.2, 0, 0, 1); }
+.tp.sq, .sq-pill { transition: background-color .2s, color .2s, box-shadow .2s; }
 .sq-row > * { min-width: 0; }
 .sq-pic { display: flex; margin: 8px 0 2px; }
 .sq-pic > * { flex: none; width: 34px; height: 34px; margin-right: -8px; border-radius: 6px; font-size: 13px; box-shadow: 0 0 0 2px var(--md-surface-container); }

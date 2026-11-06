@@ -1589,8 +1589,7 @@ body.searching .npb { display: none; }
 .npb-open .cover { flex: none; width: 46px; height: 46px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
 .npb-open .t { min-width: 0; }
 .npb-open b { display: block; font: 600 15px/19px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.npb-open b.lyr { font: italic 600 16.5px/20px var(--display, var(--font)); letter-spacing: -.01em; animation: lyrIn .35s cubic-bezier(.2, 0, 0, 1); }
-@keyframes lyrIn { from { opacity: 0; transform: translateY(6px); } }
+.npb-open b.lyr { font: italic 600 16.5px/20px var(--display, var(--font)); letter-spacing: -.01em; }
 .npb-open small { display: block; font: 400 12px/16px var(--mono, var(--font)); color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .npb-btn { flex: none; width: 42px; height: 42px; margin-top: 2px; border-radius: 50%; display: grid; place-items: center; }
 .npb-btn .i { width: 22px; height: 22px; }
@@ -1670,6 +1669,8 @@ body.searching .npb { display: none; }
 .ps-c i { width: 12px; border-radius: 4px; background: color-mix(in srgb, var(--md-primary) 42%, transparent); }
 .ps-c span { font: 500 11px/1 var(--mono, var(--font)); white-space: nowrap; }
 .ps-c.on { background: var(--md-primary); color: var(--md-on-primary); }
+.ps-c { transition: background-color .22s, color .22s; }
+.ps-c i { transform-origin: bottom; transition: background-color .22s; }
 .ps-c.on i { background: var(--md-on-primary); }
 .ps-y { flex: none; align-self: stretch; display: flex; align-items: center; justify-content: center; padding: 0 2px; font: 600 10.5px/1 var(--mono, var(--font));
   color: var(--md-on-surface-variant); writing-mode: vertical-rl; transform: rotate(180deg); opacity: .8; }

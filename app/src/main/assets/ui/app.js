@@ -445,7 +445,12 @@ window.onRelease = (r) => {
   const old = REL[r.id];
   if ((r.loading || r.error) && old && old.tracks) return;
   REL[r.id] = r;
-  if (isOpen('recordPage') && recordId === r.id) renderRecord();
+  if (isOpen('recordPage') && recordId === r.id) {
+    // The tracklist takes the place of its grey lines, fading in.
+    const wait = !!$('#recordBody .skeleton');
+    renderRecord();
+    if (wait) $$('#recordBody .side-head, #recordBody .list, #recordBody .note').forEach(settle);
+  }
   fillSleeveBacks();
 };
 window.onToast = (m) => toast(m);
@@ -1225,7 +1230,16 @@ function showNow(it, sig) {
   const corner = nowStyle() === 'corner';
   if (!it || nowStyle() === 'bar') { spinCardSig = ''; slot.innerHTML = ''; peek.hidden = true; peek.innerHTML = ''; return; }
   sig += corner ? '|c' : '|l';
-  if (sig === spinCardSig) return;
+  if (sig === spinCardSig) {
+    // Play and pause change in place: the record stops or turns on, nothing slides in again.
+    const el = corner ? $('#npPeek') : slot.firstElementChild;
+    if (el) {
+      el.classList.toggle('playing', !!it.playing);
+      const lb = el.querySelector('.np-txt small');
+      if (lb && !it.labelId && lb.textContent !== (it.label || '')) lb.textContent = it.label || '';
+    }
+    return;
+  }
   spinCardSig = sig;
   const art = npArt(it.cover, it.album || it.title, it.artist);
   if (corner) {
@@ -1272,7 +1286,7 @@ function renderPhoneNow() {
   const n = (ST.phone || {}).now;
   if (!n || !n.title) { showNow(null); return; }
   showNow({ cover: n.cover, title: n.title, album: n.album, artist: n.artist, playing: n.playing, label: `${n.playing ? 'Now playing' : 'Paused'} in ${n.app}`,
-    attrs: 'data-nowpage', barId: 'phNowBar' }, ['p', n.pkg, n.artist, n.title, n.cover || '', n.playing].join('|'));
+    attrs: 'data-nowpage', barId: 'phNowBar' }, ['p', n.pkg, n.artist, n.title, n.cover || ''].join('|'));
   tickPhone();
 }
 
@@ -1333,7 +1347,23 @@ function sorted() {
 
 /** A quick settle (fade and rise) for content that was just swapped for something else. */
 function settle(el) {
-  if (el && el.offsetParent) el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
+  if (el && el.offsetParent && moving()) el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE_OUT });
+}
+/** Whether things may move (Android's "remove animations" is off). */
+const moving = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** A line of text that just changed comes in: up a little, fading in. */
+function lineIn(el) {
+  if (el && moving()) el.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE_OUT });
+}
+/** Play or pause on [btn], swapped in place when it changes: the new icon grows in from small. */
+function setPlayIcon(btn, playing) {
+  if (!btn) return;
+  const name = playing ? 'pause' : 'play', use = btn.querySelector('use');
+  if (use && use.getAttribute('href') === `#i-${name}`) return;
+  btn.innerHTML = icon(name);
+  btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  if (btn.dataset.np) btn.dataset.np = playing ? 'pause' : 'play';
+  if (moving()) btn.firstElementChild.animate([{ transform: 'scale(.55)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: EASE_OUT });
 }
 let shelfLook = '';
 /*
@@ -1523,6 +1553,8 @@ function renderShelfEmpty() {
 /** The album of what plays, from Deezer: asked once per album ([q] is "artist|album"). */
 let NOWALB = { q: '', data: null };
 let nowSig = '';
+/** The song Now playing last showed, and whether it played. */
+let nowWas = { song: '', playing: false };
 function openNow() {
   lyrFull = false;
   $('#nowPage').classList.remove('lyr-full');
@@ -1537,7 +1569,11 @@ function openNow() {
 window.onNowAlbum = (a) => {
   if (a.q !== NOWALB.q) return;
   NOWALB.data = a;
-  if (isOpen('nowPage')) renderNow();
+  if (!isOpen('nowPage')) return;
+  renderNow();
+  // The album in place of "looking up the album…", fading in.
+  const head = $('#npAlbumLeft') && $('#npAlbumLeft').closest('.section-head');
+  if (head) [head, head.nextElementSibling].forEach(settle);
 };
 /** Where the song is now: the app's own position, carried forward while it plays; else the listened time. */
 function nowPos(n) {
@@ -1613,6 +1649,10 @@ function renderNow() {
   if (hold) hold.remove();
   keepHolo(body, h);
   if (hold && sheet) $('#npLyrics').before(hold);
+  // Play turned to pause (or back) on the same song: the new icon grows in.
+  const song = `${n.artist}|${n.title}`, big = body.querySelector('.np-ctl.big svg');
+  if (big && nowWas.song === song && nowWas.playing !== playing && moving()) big.animate([{ transform: 'scale(.55)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: EASE_OUT });
+  nowWas = { song, playing };
   fillLyrics($('#npLyrics'));
   tint(body, n.cover || '', (n.album || n.title) + n.artist);
   lyrAt = -2;
@@ -1809,7 +1849,10 @@ window.onLyrics = (d) => {
   syncAwake();
   const box = $('#npLyrics'), n = (ST.phone || {}).now;
   if (!box || !n) return;
+  // The words (or the word that there are none) in place of "Looking for the lyrics…", fading in.
+  const wait = !box.querySelector('.lyr-lines');
   fillLyrics(box, lyricsHtml((n.media || {}).canSeek));
+  if (wait) settle(box.querySelector('.lyr-lines, .hint'));
   lyrAt = -2;
   syncLyrics();
 };
@@ -1855,9 +1898,11 @@ function tickSpinLyrics(sp, n) {
   const q = askSpinLyrics(sp, it);
   box.hidden = false;
   if (box.dataset.q !== q || box.dataset.got !== String(!!SLYR.data)) {
+    const arrived = box.dataset.got === 'false' && !!SLYR.data;
     box.dataset.q = q;
     box.dataset.got = String(!!SLYR.data);
     fillLyrics(box, lyricsHtml(false, SLYR, true), true);
+    if (arrived) settle(box.querySelector('.lyr-lines, .hint'));
     slyrAt = -2;
   }
   syncSpinLyrics();
@@ -2000,16 +2045,17 @@ function renderNpBar() {
   // Lyrics in the bar for the song on the phone and for the record's track alike.
   const lyr = barLyricsOn();
   if (lyr && n) ensureLyrics(n);
-  const sig = [it.title, it.artist, it.cover, it.playing, lyr, !!n && !!n.media && m.canPlay !== false, !!it.spin].join('|');
-  if (sig === barSig) { tickNpBar(); return; }
+  // Play and pause change in place (no new bar, so the cover doesn't blink); a new song or the lyrics switch rebuild it.
+  const sig = [it.title, it.artist, it.cover, lyr, !!n && !!n.media && m.canPlay !== false, !!it.spin].join('|');
+  if (sig === barSig) { setPlayIcon($('#npbPp'), it.playing); tickNpBar(); return; }
   barSig = sig;
   // With lyrics on, the line being sung gets the room: no play and pause (it's on Now playing, a tap away).
   // The lyrics button stays at the right end either way, so tapping it twice never lands on pause.
   bar.classList.toggle('lyr-mode', lyr);
-  bar.innerHTML = `<button class="npb-open" id="npbOpen" aria-label="${esc(`${it.title} by ${it.artist}, open`)}">${coverHtml(it.cover, it.album || it.title, it.artist)}<span class="t"><b id="npbLine">${esc(it.title)}</b><small id="npbSub">${esc(it.artist)}${n ? `, ${esc(n.app)}` : ', on the turntable'}</small></span></button>
+  morph(bar, `<button class="npb-open" id="npbOpen" aria-label="${esc(`${it.title} by ${it.artist}, open`)}">${coverHtml(it.cover, it.album || it.title, it.artist)}<span class="t"><b id="npbLine">${esc(it.title)}</b><small id="npbSub">${esc(it.artist)}${n ? `, ${esc(n.app)}` : ', on the turntable'}</small></span></button>
     ${n && n.media && m.canPlay !== false && !lyr ? `<button class="npb-btn npb-pp" id="npbPp" aria-label="${it.playing ? 'Pause' : 'Play'}">${icon(it.playing ? 'pause' : 'play')}</button>` : ''}
     <button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>
-    <i class="npb-prog"><i id="npbProg"></i></i>`;
+    <i class="npb-prog"><i id="npbProg"></i></i>`);
   tickNpBar();
 }
 /** The bar's progress, the record's track, or the line being sung (on time for the next one). */
@@ -2032,6 +2078,7 @@ function tickNpBar() {
       line.classList.toggle('lyr', !!l);
       sub.hidden = !!l;
       sub.textContent = `${it.artist}, on the turntable`;
+      lineIn(line);
     }
     if (l && l.next > 0) barTimer = setTimeout(tickNpBar, Math.max(40, l.next));
   } else {
@@ -2045,6 +2092,7 @@ function tickNpBar() {
       // Only the words while there are some; the song's name and artist come back between songs or without them.
       sub.hidden = !!l;
       sub.textContent = `${n.artist}, ${n.app}`;
+      lineIn(line);
     }
     if (l && l.next > 0 && it.playing) barTimer = setTimeout(tickNpBar, Math.max(40, l.next / (m.speed || 1)));
   }
@@ -2863,20 +2911,30 @@ function renderStrip(s) {
   if (box.hidden) { stripSig = ''; return; }
   const sig = [st.kind, items[0].id, items.length, items[items.length - 1].plays, s.range.id].join('|');
   if (sig === stripSig) return;
-  const fresh = !stripSig.startsWith(`${st.kind}|`);
+  const fresh = !stripSig.startsWith(`${st.kind}|`), first = !stripSig;
   stripSig = sig;
   const max = Math.max(1, ...items.map((x) => x.plays));
   let h = '', year = null;
   for (const x of items) {
     const y = new Date(x.start).getFullYear();
     if (st.kind !== 'year' && y !== year) { h += `<span class="ps-y" aria-hidden="true">${y}</span>`; year = y; }
-    h += `<button class="ps-c${x.id === s.range.id ? ' on' : ''}" data-period="${x.id}" aria-label="${esc(`${periodLabel(x.start, st.kind)}, ${plural(x.plays, 'play')}`)}"><i style="height:${(3 + (x.plays / max) * 34).toFixed(1)}px"></i><span>${esc(stripLabel(x, st.kind))}</span></button>`;
+    h += `<button class="ps-c${x.id === s.range.id ? ' on' : ''}" data-period="${x.id}" data-key="${x.id}" aria-label="${esc(`${periodLabel(x.start, st.kind)}, ${plural(x.plays, 'play')}`)}"><i style="height:${(3 + (x.plays / max) * 34).toFixed(1)}px"></i><span>${esc(stripLabel(x, st.kind))}</span></button>`;
   }
-  box.innerHTML = h;
-  // The chosen one in view: in the middle when the kind changed or it is off to a side.
+  // In place (each period keyed), so the chosen one's color can fade over (CSS).
+  morph(box, h);
+  // The chosen one in view: in the middle when the kind changed (at once) or it is off to a side (gliding there).
   const on = box.querySelector('.on');
   if (on && (fresh || on.offsetLeft < box.scrollLeft || on.offsetLeft + on.offsetWidth > box.scrollLeft + box.clientWidth)) {
-    box.scrollLeft = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2;
+    const left = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2;
+    if (fresh || !moving()) box.scrollLeft = left; else box.scrollTo({ left, behavior: 'smooth' });
+  }
+  // Another kind of period: the bars in view grow up from the line, from the chosen one outwards.
+  if (fresh && !first && on && moving()) {
+    const cs = [...box.querySelectorAll('.ps-c')], at = cs.indexOf(on);
+    cs.forEach((c, k) => {
+      if (c.offsetLeft + c.offsetWidth < box.scrollLeft || c.offsetLeft > box.scrollLeft + box.clientWidth) return;
+      c.firstElementChild.animate([{ transform: 'scaleY(0)' }, { transform: 'none' }], { duration: 340, delay: Math.abs(k - at) * 30, easing: EASE_OUT, fill: 'backwards' });
+    });
   }
 }
 
@@ -4174,13 +4232,18 @@ function requestDiscography(name) {
 window.onDiscography = (d) => {
   DISCO[norm(d.name)] = d;
   const slot = $('#discoSlot');
-  if (slot && ARTIST && norm(ARTIST.name) === norm(d.name)) slot.innerHTML = discoHtml(ARTIST.name);
+  if (slot && ARTIST && norm(ARTIST.name) === norm(d.name)) {
+    // In place of "Looking up…", fading in.
+    const was = !!slot.querySelector('.lin');
+    morph(slot, discoHtml(ARTIST.name));
+    if (was) settle(slot.firstElementChild);
+  }
   if (isOpen('albumPage')) albumNeedsDz();
 };
 
 const isNew = (date) => !!date && Date.now() - Date.parse(date) < 60 * 864e5;
 function discoCard(x, artist) {
-  return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-cover="${esc(x.cover)}"${x.id ? ` data-dz="${x.id}"` : ''}>
+  return `<button class="xcard dcard${x.plays ? '' : ' unheard'}" ${albumAttrs(artist, x.title)} data-key="${esc(x.id || looseKey(x.title))}" data-cover="${esc(x.cover)}"${x.id ? ` data-dz="${x.id}"` : ''}>
     <span class="dcover">${coverHtml(x.cover, x.title, artist)}${x.owned ? '<i class="owned-mark" aria-label="On your shelf"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11"/><circle class="g" cx="12" cy="12" r="7.6"/><circle class="l" cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg></i>' : ''}${isNew(x.date) ? '<i class="new">New</i>' : ''}</span>
     <b>${esc(x.title)}</b><small>${x.year || ''}${x.editions > 1 ? `, ${x.editions} editions` : ''}</small>
     <small class="meta">${x.plays ? plural(x.plays, 'play') : 'not heard yet'}</small></button>`;
@@ -4214,7 +4277,7 @@ function discoHtml(name) {
     .map((x) => ({ title: x.title, cover: x.cover, plays: x.plays, owned: x.owned, type: 'other' }));
   const chips = [['all', 'All'], ['played', `Most played (${played + others.length})`], ['unheard', `Not heard yet (${items.length - played})`], ['owned', `On your shelf (${owned})`]]
     .filter(([k]) => k !== 'owned' || owned)
-    .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}">${esc(l)}</button>`).join('');
+    .map(([k, l]) => `<button class="chip ${discoFilter === k ? 'on' : ''}" data-dfilter="${k}" data-key="${k}">${esc(l)}</button>`).join('');
   // Most played: everything of theirs you played in one row, the most played first, whatever kind it is.
   const groups = discoFilter === 'played'
     ? ((l) => (l.length ? `<div class="xcards">${l.map((x) => discoCard(x, name)).join('')}</div>` : ''))([...items.filter(keep), ...others].sort((a, b) => b.plays - a.plays))
@@ -4227,6 +4290,13 @@ function discoHtml(name) {
     <div class="chip-row">${chips}</div>${groups || '<p class="hint">Nothing with this filter.</p>'}</div>`;
 }
 
+/** The discography under another filter, in place (covers stay put, the chips' color fades), its rows fading over. */
+function discoRefilter() {
+  const slot = $('#discoSlot');
+  if (!ARTIST || !slot) return;
+  morph(slot, discoHtml(ARTIST.name));
+  if (moving()) slot.querySelectorAll('.disco > h3, .disco > .xcards, .disco > .hint').forEach((g) => g.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT }));
+}
 /** An album page's tracklist from Deezer: by the id it was opened with, or found in the artist's discography. */
 function albumNeedsDz() {
   const a = ALBUM;
@@ -4245,7 +4315,13 @@ function albumNeedsDz() {
 window.onDzAlbum = (x) => {
   ALBUM = deliver('albumPage', x.req, ALBUM, (s, shown) => {
     const next = { ...s, dzInfo: x };
-    if (shown) { ALBUM = next; renderAlbum(); }
+    if (shown) {
+      // The tracklist arrives after the page: it fades in.
+      const had = !!$('#albumPage [data-tl]');
+      ALBUM = next;
+      renderAlbum();
+      if (!had) settle($('#albumPage [data-tl]'));
+    }
     return next;
   });
 };
@@ -4259,7 +4335,7 @@ function tracklistHtml(a, cover) {
   const max = Math.max(1, ...Object.values(plays));
   const total = dz.tracks.reduce((n, t) => n + (t.sec || 0), 0);
   const heard = dz.tracks.filter((t) => plays[looseKey(t.title)]).length;
-  return `<div class="viz"><h2>Tracklist</h2><span class="sub">${plural(dz.tracks.length, 'song')}, ${Math.round(total / 60)} minutes${heard ? `; you've played ${heard} of them` : ''}</span>
+  return `<div class="viz" data-tl><h2>Tracklist</h2><span class="sub">${plural(dz.tracks.length, 'song')}, ${Math.round(total / 60)} minutes${heard ? `; you've played ${heard} of them` : ''}</span>
     <div class="rank">${dz.tracks.map((t, i) => {
       const p = plays[looseKey(t.title)] || 0;
       return `<button class="r${p ? '' : ' unheard'}" ${trackAttrs(a.artist, t.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${fmtDur(t.sec)}</small></span>
@@ -4436,19 +4512,29 @@ function setStatsDecade(d) {
 function openGenreSheet() {
   const opts = (STATS && STATS.genreOptions) || [];
   const open = new Set(statsGenre ? [statsGenre.split(':')[0]] : []);
+  const subs = (o) => `<div class="chips gsubs">${o.subs.map((s) => `<button class="chip${statsGenre === s.key ? ' on' : ''}" data-gset="${esc(s.key)}">${esc(s.label)}<small class="n">${compact(s.plays)}</small></button>`).join('')}</div>`;
   const draw = () => `<div class="sheet-title">Stats for one genre</div><p class="body">Everything on the Stats tab and in the story, for the plays whose main genre, or style in it, is this one.</p>
     <div class="gfams">${opts.map((o, k) => `<div class="gfam${statsGenre === o.key ? ' on' : ''}"><i class="sw" style="background:${familyColor(k + 1)}"></i>
       <button class="gfam-name" data-gset="${esc(o.key)}">${esc(o.label)}<small class="n">${compact(o.plays)}</small></button>
       ${(o.subs || []).length ? `<button class="icon-btn small${open.has(o.key) ? ' open' : ''}" data-gexp="${esc(o.key)}" aria-label="Styles in ${esc(o.label)}">${icon('chevron-right')}</button>` : '<span></span>'}</div>
-      ${open.has(o.key) ? `<div class="chips gsubs">${o.subs.map((s) => `<button class="chip${statsGenre === s.key ? ' on' : ''}" data-gset="${esc(s.key)}">${esc(s.label)}<small class="n">${compact(s.plays)}</small></button>`).join('')}</div>` : ''}`).join('')
+      ${open.has(o.key) ? subs(o) : ''}`).join('')
       || '<p class="hint">Genres show up once they are looked up.</p>'}</div>`;
   openSheet(draw());
   $('#sheetContent').onclick = (e) => {
     const x = e.target.closest('[data-gexp]');
     if (x) {
-      const k = x.dataset.gexp;
-      if (open.has(k)) open.delete(k); else open.add(k);
-      $('#sheetContent').innerHTML = draw();
+      // In place: the arrow turns (CSS) and the family's styles fade in under it, or out.
+      const k = x.dataset.gexp, fam = x.closest('.gfam'), o = opts.find((y) => y.key === k);
+      const was = open.has(k), next = fam.nextElementSibling;
+      if (was) open.delete(k); else open.add(k);
+      x.classList.toggle('open', !was);
+      if (was && next && next.classList.contains('gsubs')) {
+        if (!moving()) next.remove();
+        else next.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-4px)' }], { duration: 150, fill: 'forwards' }).onfinish = () => next.remove();
+      } else if (!was && o) {
+        fam.insertAdjacentHTML('afterend', subs(o));
+        if (moving()) fam.nextElementSibling.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: EASE_OUT });
+      }
       return;
     }
     const b = e.target.closest('[data-gset]');
@@ -6322,7 +6408,11 @@ window.onSetlists = (s) => {
   LIVE = { ...s, name: LIVE.name, req: LIVE.req, loading: false };
   const slot = $('#liveSlot');
   // In tabs the whole tab is drawn again: an artist setlist.fm doesn't know leaves it saying so.
-  if (slot && isOpen('artistPage') && ARTIST && norm(ARTIST.name) === norm(LIVE.name)) { if (pageTabs()) renderArtist(); else slot.innerHTML = liveHtml(); }
+  if (slot && isOpen('artistPage') && ARTIST && norm(ARTIST.name) === norm(LIVE.name)) {
+    if (pageTabs()) renderArtist(); else slot.innerHTML = liveHtml();
+    const live = $('#liveSlot');
+    if (live) [...live.children].forEach(settle);
+  }
 };
 const showDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 const songNote = (x) => [x.cover ? `cover of ${x.cover}` : '', x.with ? `with ${x.with}` : '', x.encore ? 'encore' : ''].filter(Boolean).join(', ');
@@ -7170,10 +7260,10 @@ function sectionsHtml(ids, s, mark) {
       const tile = ([id, t]) => {
         const on = open && open[0] === id;
         const more = `<span class="sq-more" aria-hidden="true">${icon('chevron-right')}</span>`;
-        if (kind === 'pill') return `<button class="sq-pill${on ? ' on' : ''}${t.pic ? ' pic' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${icon(t.ic)}<span><b>${t.line}</b>${t.more ? `<small>${t.more}</small>` : ''}</span>${more}${t.pic ? `<span class="sq-wide">${t.pic}</span>` : ''}</button>`;
-        return `<button class="tp sq${on ? ' on' : ''}${t.bg ? ' bg' : ''}" data-sqgo="${id}" aria-expanded="${!!on}">${t.bg ? `<span class="sq-bg" aria-hidden="true">${t.bg}</span>` : ''}<span class="tp-l">${esc(BLOCKS[id].name)}</span>${t.pic ? `<span class="sq-pic">${t.pic}</span>` : ''}<b class="${t.sm ? 'sm' : ''}">${t.big}</b><small>${t.line}</small>${more}</button>`;
+        if (kind === 'pill') return `<button class="sq-pill${on ? ' on' : ''}${t.pic ? ' pic' : ''}" data-sqgo="${id}" data-key="${id}" aria-expanded="${!!on}">${icon(t.ic)}<span><b>${t.line}</b>${t.more ? `<small>${t.more}</small>` : ''}</span>${more}${t.pic ? `<span class="sq-wide">${t.pic}</span>` : ''}</button>`;
+        return `<button class="tp sq${on ? ' on' : ''}${t.bg ? ' bg' : ''}" data-sqgo="${id}" data-key="${id}" aria-expanded="${!!on}">${t.bg ? `<span class="sq-bg" aria-hidden="true">${t.bg}</span>` : ''}<span class="tp-l">${esc(BLOCKS[id].name)}</span>${t.pic ? `<span class="sq-pic">${t.pic}</span>` : ''}<b class="${t.sm ? 'sm' : ''}">${t.big}</b><small>${t.line}</small>${more}</button>`;
       };
-      h += `<div class="sq-sec" data-sq="${key}"><div class="sq-row${tiles.length === 1 ? ' one' : ''}">${tiles.map(tile).join('')}</div>${open ? `<div class="sq-open" data-blk="${open[0]}">${open[1]}</div>` : ''}</div>`;
+      h += `<div class="sq-sec" data-sq="${key}"><div class="sq-row${tiles.length === 1 ? ' one' : ''}">${tiles.map(tile).join('')}</div>${open ? `<div class="sq-open" data-blk="${open[0]}" data-key="${open[0]}">${open[1]}</div>` : ''}</div>`;
       return;
     }
     // A strip with one block left is just that block.
@@ -7195,6 +7285,8 @@ function openSquare(btn) {
   const key = btn.closest('.sq-sec').dataset.sq, id = btn.dataset.sqgo;
   OPEN[key] = OPEN[key] === id ? '' : id;
   renderStats();
+  // The block that opened comes in under its squares (the squares themselves turn by CSS).
+  if (OPEN[key]) settle($(`#statsBody [data-sq="${key}"] > .sq-open`));
 }
 const stripStep = (st) => (st.children.length > 1 ? st.children[1].offsetLeft - st.children[0].offsetLeft : 1);
 /**
@@ -8167,6 +8259,11 @@ function listSwipe(host, rows, seg) {
   // The flick doesn't also open the row it started on.
   host.addEventListener('click', (e) => { if (Date.now() - swiped < 400 && e.target.closest(rows)) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
+/** Which side a tapped tab [b] lies on from the open one in its row: 1 right, -1 left, 0 itself (or no motion). */
+function tapSide(b) {
+  const bs = [...b.parentElement.querySelectorAll(':scope > button')];
+  return moving() ? Math.sign(bs.indexOf(b) - bs.findIndex((x) => x.classList.contains('on'))) : 0;
+}
 /** A list that was swiped to comes in from the side it was swiped from, once it is there (it may still be loading). */
 function slideListIn(host, rows) {
   const r = host._slideIn && host.querySelector(rows);
@@ -9118,7 +9215,7 @@ function build() {
     const alb = e.target.closest('[data-album]');
     if (alb) { openAlbum(alb.dataset.a, alb.dataset.album, { cover: alb.dataset.cover, dz: alb.dataset.dz }); return; }
     const df = e.target.closest('[data-dfilter]');
-    if (df) { discoFilter = df.dataset.dfilter; if (ARTIST && $('#discoSlot')) $('#discoSlot').innerHTML = discoHtml(ARTIST.name); return; }
+    if (df) { discoFilter = df.dataset.dfilter; discoRefilter(); return; }
     const fp = e.target.closest('[data-fpick]');
     if (fp) { openFilterSheet(fp.dataset.fpick); return; }
     const fc = e.target.closest('[data-fclear]');
@@ -9346,7 +9443,13 @@ function build() {
     const rec = e.target.closest('[data-rec]');
     if (rec) { openRecord(+rec.dataset.rec, rec); return; }
     const tk = e.target.closest('[data-top]');
-    if (tk) { topKind = tk.dataset.top; renderStats(); renderBlock(); }
+    if (tk) {
+      const host = e.currentTarget, dir = tapSide(tk);
+      topKind = tk.dataset.top;
+      renderStats();
+      renderBlock();
+      if (dir && !host._slideIn) { host._slideIn = dir; requestAnimationFrame(() => slideListIn(host, '.ch-rows, #topSeg ~ .rank')); }
+    }
   };
   statsBody.onclick = statsClick;
   blockBody.onclick = statsClick;
@@ -9445,7 +9548,8 @@ function build() {
       return;
     }
     const pp = e.target.closest('#npbPp');
-    if (pp) { const it = nowItem(); npControl(it && it.playing ? 'pause' : 'play'); barSig = ''; renderNpBar(); return; }
+    // The icon turns at once; the music app's answer puts it right if the tap didn't take.
+    if (pp) { const it = nowItem(), play = !(it && it.playing); npControl(play ? 'play' : 'pause'); setPlayIcon(pp, play); return; }
     if (e.target.closest('#npbOpen')) openPlaying();
   };
   $('#concertsBody').onclick = (e) => {
@@ -9596,6 +9700,9 @@ function build() {
   $('#rankBody').onclick = (e) => {
     const k = e.target.closest('[data-rkind]');
     if (k && RANKS && k.dataset.rkind !== RANKS.kind) {
+      // A tap slides the new list in like a swipe does, from the side of the tab tapped (once it's there).
+      const host = $('#rankBody'), dir = tapSide(k);
+      if (dir && !host._slideIn) host._slideIn = dir;
       RANKS = { ...RANKS, kind: k.dataset.rkind, rows: {}, total: 0, pos: -1, loading: true, req: ++REQ, scrolled: false, more: -1 };
       renderRanks();
       askRanks(0, true);
