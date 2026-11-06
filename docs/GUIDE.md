@@ -516,7 +516,7 @@ album count, three or more of them in a row (each within 20 minutes of the last)
 it you know; a single on shuffle doesn't add up. A side of a record counts as half a time through
 when it is half the songs. Album and record pages wear their card like a song's page: the cover in
 the tier's frame, a line under the title with the times through, and the card on the back of the
-cover (a record on your shelf keeps its tracklist there and gets the card as a sticker). Records on
+cover (a record on your shelf also gets the card as a sticker). Records on
 your shelf also have a badge for what they are right now: heavy rotation (your most played of the
 last two weeks), new arrival (added this month), lost favorite (one of your most played, quiet for
 half a year), worn in (your three most played) or still sealed (never played). It shows on the shelf's

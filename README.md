@@ -29,41 +29,53 @@ of its own in between, and your data stays on your phone.
   without sending them, so you can check it works for you before you switch.
 - Stats cover a day, a week, a month, a year or all time, and each period is compared with the one
   before: your plays as dots on a record, the period day by day as a calendar with your streaks, who
-  you played when, new artists, songs on repeat, genre drift, decades and a top 10.
+  you played when, new artists, songs on repeat, genre drift, decades, where your artists are from
+  and a top 10, ranked by plays or by time listened. A month also has a race of your top artists,
+  day by day.
 - The stats know your shelf. They show the records you own but rarely play, the albums you stream a
-  lot but don't own yet, and how much of your listening was vinyl.
+  lot but don't own yet, and how much of your listening was vinyl. Only vinyl turns the whole Stats
+  tab into stats of the records you played.
 - Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
 - Every artist, album, song and genre has its own page: plays over time, a song's chart run month by
-  month, an artist's songs as collector cards (bronze at 10 plays, up to holo at 100), their
-  discography, and a genre's lineup poster and its year day by day.
-- Under Your taste, Stats also has a musical atlas of the artists you play back to back, you against
-  everyone on Last.fm, your concerts and a map of your genres.
+  month, their discography, and a genre's lineup poster and its year day by day.
+- Songs you play a lot become collector cards (bronze at 10 plays, up to holo at 100), and so do
+  albums you play through, all in one binder. A cover turns over to its card.
+- Under Your taste, Stats also has a musical atlas of the artists you play back to back with a
+  world map of where they're from, Through the years (the race of your top artists month by month,
+  every play, gaps and comebacks), you against everyone on Last.fm, your concerts and a map of your
+  genres.
 - The Explore tab suggests artists you haven't played yet, from who Last.fm's and Deezer's listeners
   find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
   releases by your artists. It also has lost favorites, albums to rediscover and playlists to send
   to TIDAL.
-- Stats comes as full-size blocks, as short cards that open full size, or as the classic long page.
-  Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
-  between, and each can be one long page instead.
+- Stats comes as full-size blocks, as short cards that open full size, or in sections that mix
+  the two. Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
+  between, and each can be one long page instead. The tabs stay at the bottom of every page, so one
+  tap takes you back.
 - A Now playing page for the phone shows the position, the controls, the music app's queue, the
-  album the song is on and the lyrics in time (from LRCLIB). What plays can also sit in the bottom bar,
-  with the line being sung.
+  album the song is on and the lyrics in time (from LRCLIB) on the song's blurred cover, over the
+  whole screen if you like. Now spinning has them for the record's track too. What plays can also
+  sit in the bottom bar, with the line being sung.
 - Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the
-  setlist of one show, and the shows you were at, with what each did to your listening.
+  setlist of one show, their shows coming up, and the shows you were at, with what each did to your
+  listening.
 - The Fix names setting cleans up names before they're scrobbled ("Remastered", "feat." and your
   own rules).
 - A home-screen widget shows what is playing now.
 - The app uses Material You colors in light and dark, with two looks (Tinted soft and Soft glass).
-  Covers tilt with the phone, and the records you own get a holo foil.
+  Covers tilt with the phone, and the records you own get a holo foil. Your records show the
+  album's usual cover, or the picture of your own copy if you'd rather.
 
 | | | |
 | :---: | :---: | :---: |
 | <img src="docs/screenshots/shelf.jpg" width="240" alt="The shelf"> | <img src="docs/screenshots/record.jpg" width="240" alt="A record"> | <img src="docs/screenshots/stats-month.jpg" width="240" alt="A month of stats"> |
 | Your shelf | A record, ready to scrobble | A month, compared with the last |
-| <img src="docs/screenshots/day.jpg" width="240" alt="One day"> | <img src="docs/screenshots/story.jpg" width="240" alt="The story"> | <img src="docs/screenshots/shelf-dark.jpg" width="240" alt="The shelf in the dark"> |
-| A day, for a handful of songs | The story | In the dark |
-| <img src="docs/screenshots/covers.jpg" width="240" alt="A month in covers"> | <img src="docs/screenshots/artist.jpg" width="240" alt="An artist"> | <img src="docs/screenshots/explore.jpg" width="240" alt="Explore"> |
-| A month in covers | An artist | Explore |
+| <img src="docs/screenshots/race.jpg" width="240" alt="The race of your top artists"> | <img src="docs/screenshots/story.jpg" width="240" alt="The story"> | <img src="docs/screenshots/now-playing.jpg" width="240" alt="Lyrics on the song's cover"> |
+| The race, through the years | The story | Lyrics on the cover |
+| <img src="docs/screenshots/artist.jpg" width="240" alt="An artist"> | <img src="docs/screenshots/cards.jpg" width="240" alt="Your cards"> | <img src="docs/screenshots/explore.jpg" width="240" alt="Explore"> |
+| An artist | Your cards | Explore |
+| <img src="docs/screenshots/covers.jpg" width="240" alt="A month in covers"> | <img src="docs/screenshots/glass.jpg" width="240" alt="The shelf in Soft glass"> | <img src="docs/screenshots/shelf-dark.jpg" width="240" alt="The shelf in the dark"> |
+| A month in covers | Soft glass | In the dark |
 
 The screenshots show the app's demo data, with real covers and artist photos from Deezer.
 
