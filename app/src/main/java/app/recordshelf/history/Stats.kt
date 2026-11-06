@@ -398,7 +398,9 @@ class Stats(
                 JSONObject().put("from", h.ts[s0]).put("to", end).put("count", n).put("color", c[a.key] ?: 0)
                     .put("artist", h.artistNames[a.key]).put("artistShare", a.value.toDouble() / n)
                     .put("album", al?.let { h.albumTitles[it.key] } ?: "").put("albumArtist", al?.let { h.artistNames[h.albumArtist[it.key]] } ?: "")
-                    .put("vinyl", vinyl.count { it.ts in h.ts[s0] - 60..end }),
+                    .put("vinyl", vinyl.count { it.ts in h.ts[s0] - 60..end })
+                    // Its songs one by one, for the row that opens under it.
+                    .put("songs", JSONArray((s0..e).map { playJson(it) })),
             )
             s0 = e + 1
         }

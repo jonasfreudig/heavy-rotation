@@ -611,6 +611,13 @@ html.locked .page { overflow: hidden; }
 .dsessions .w small { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--md-on-surface-variant); }
 .dsessions .w small .i { width: 14px; height: 14px; }
 .dsessions .sw { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
+/* A session opens to its songs, in a row under it that runs out to the card's edges. */
+.dsessions .s { grid-template-columns: max-content 1fr 8px 16px; }
+.dsessions .s.tap { cursor: pointer; }
+.dsessions .chev { width: 16px; height: 16px; margin-top: 2px; color: var(--md-on-surface-variant); transition: transform .2s; }
+.dsessions .s.open .chev { transform: rotate(90deg); }
+.dsessions .alink { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
+.dsongs { margin-top: -4px; }
 .dpair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 .dpair.one { grid-template-columns: 1fr; }
 .dpair .viz { margin: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; color: inherit; }

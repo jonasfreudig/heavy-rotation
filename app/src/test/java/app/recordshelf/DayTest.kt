@@ -50,6 +50,13 @@ class DayTest {
         assertEquals("Con Todo El Mundo", ss.getJSONObject(0).getString("album"))
         assertEquals(4, ss.getJSONObject(1).getInt("count"))
         assertEquals("Fontaines D.C.", ss.getJSONObject(1).getString("artist"))
+        // Each session has its songs in the order they played, with their times.
+        val songs = ss.getJSONObject(1).getJSONArray("songs")
+        assertEquals(4, songs.length())
+        assertEquals("Starburster", songs.getJSONObject(0).getString("title"))
+        assertEquals(at(2026, 10, 27, 13), songs.getJSONObject(0).getLong("ts"))
+        assertEquals("Afrique Victime", songs.getJSONObject(3).getString("title"))
+        assertEquals("Mdou Moctar", songs.getJSONObject(3).getString("artist"))
     }
 
     @Test

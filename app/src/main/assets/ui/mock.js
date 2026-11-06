@@ -494,7 +494,7 @@ const Mock = (() => {
       const n = {};
       for (let i = a; i <= e; i++) n[L.a[i]] = (n[L.a[i]] || 0) + 1;
       const top = Object.keys(n).sort((x, y) => n[y] - n[x])[0];
-      sessions.push({ from: Math.floor(L.ts[a] / 1000), to: Math.floor(L.ts[e] / 1000) + 210, count: e - a + 1, color: c[top] || 0, artist: L.artists[top], artistShare: n[top] / (e - a + 1), album: '', albumArtist: '', vinyl: 0 });
+      sessions.push({ from: Math.floor(L.ts[a] / 1000), to: Math.floor(L.ts[e] / 1000) + 210, count: e - a + 1, color: c[top] || 0, artist: L.artists[top], artistShare: n[top] / (e - a + 1), album: '', albumArtist: '', vinyl: 0, songs: Array.from({ length: e - a + 1 }, (_, k) => play(a + k)) });
       a = e + 1;
     }
     const tp = {}, last = {}, ap = {};

@@ -137,7 +137,9 @@ last week"). How many scrobbles you have and when they were last updated is at t
 The Day tab is built for a handful of songs. It shows the time you listened, and how that compares
 with your usual for that weekday by the same time of day over the last 8 weeks. Your day appears on
 a 24-hour strip with its listening sessions: a new session starts after half an hour without music,
-and a session that was one record shows the album or the turntable. Below come the first and latest
+and a session that was one record shows the album or the turntable (tap its name for the album).
+Tap a session for its songs in a row under it, one by one with their times; scroll the row
+sideways, tap a song for its page, and tap the session again to close it. Below come the first and latest
 song, the day in covers, what you had on repeat, artists new that day (as cards) and new songs, the
 same date in other years (tap one to see that day), your streak and how much came off vinyl, the
 day's lineup when four artists or more played, and the top 10.

@@ -8345,6 +8345,11 @@ function sessionWords(x) {
   if (x.album) return [`${esc(x.album)}`, `${esc(x.albumArtist)}`];
   return [x.artistShare >= 0.5 ? `mostly ${esc(x.artist)}` : `${esc(x.artist)} and more`, ''];
 }
+/** The sessions of Your day opened to their songs, by when they started (seconds); they stay open while the stats redraw. */
+const daySessOpen = new Set();
+/** A session's songs in a row you scroll sideways: cover, title, artist, and when it played. */
+const sessionSongs = (x) => `<div class="covers dsongs">${x.songs.map((p) => `<button class="rec" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}>${coverHtml(p.cover, p.album || p.title, p.artist)}
+  <b>${esc(p.title)}</b><small>${esc(p.artist)}</small><small>${fmtTime(p.ts * 1000)}</small></button>`).join('')}</div>`;
 function daylineViz(s) {
   const d = s.day;
   if (!d) return '';
@@ -8352,11 +8357,27 @@ function daylineViz(s) {
   const ss = d.sessions.map((x, i) => {
     const live = s.range.running && i === d.sessions.length - 1 && Date.now() / 1000 - x.to < 30 * 60;
     const [what, how] = sessionWords(x);
-    return `<div class="s"${x.album ? ` ${albumAttrs(x.albumArtist, x.album)}` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
-      <span class="w"><b>${plural(x.count, 'song')}</b>, ${what}${how ? `<small>${how}</small>` : ''}</span><i class="sw" style="background:${x.color ? `var(--a${x.color})` : 'var(--md-outline)'}"></i></div>`;
+    // Tap a session for its songs; its album, if it has one, is still a link of its own.
+    const can = !!(x.songs && x.songs.length), open = can && daySessOpen.has(x.from);
+    const name = x.album ? `<span class="alink" ${albumAttrs(x.albumArtist, x.album)}>${what}</span>` : what;
+    return `<div class="s${can ? ' tap' : ''}${open ? ' open' : ''}"${can ? ` data-sess="${x.from}" role="button" aria-expanded="${open}"` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
+      <span class="w"><b>${plural(x.count, 'song')}</b>, ${name}${how ? `<small>${how}</small>` : ''}</span><i class="sw" style="background:${x.color ? `var(--a${x.color})` : 'var(--md-outline)'}"></i>${can ? icon('chevron-right', 'i small chev') : '<span></span>'}</div>
+      ${open ? sessionSongs(x) : ''}`;
   }).join('');
-  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
+  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session; tap one for its songs</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
     <div class="dsessions">${ss}</div></div>`;
+}
+/** Opens a session of Your day to its songs under it, or closes it again. */
+function toggleSession(row) {
+  const from = +row.dataset.sess;
+  const x = ((STATS && STATS.day && STATS.day.sessions) || []).find((y) => y.from === from);
+  const open = !daySessOpen.has(from);
+  if (open) daySessOpen.add(from); else daySessOpen.delete(from);
+  row.classList.toggle('open', open);
+  row.setAttribute('aria-expanded', String(open));
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains('dsongs')) next.remove();
+  if (open && x && x.songs) row.insertAdjacentHTML('afterend', sessionSongs(x));
 }
 function firstLatestViz(s) {
   const d = s.day;
@@ -9063,6 +9084,8 @@ function build() {
     const rk = e.target.closest('[data-ranks]');
     if (rk) { openRanks(rk.dataset.ranks, rk.dataset.rrange, rk.dataset, !!rk.dataset.rshown); return; }
     if (e.target.closest('[data-nowpage]')) { openNow(); return; }
+    const sess = e.target.closest('[data-sess]');
+    if (sess && !e.target.closest('[data-album]')) { toggleSession(sess); return; }
     const tr = e.target.closest('[data-track]');
     if (tr) { openTrack(tr.dataset.a, tr.dataset.track, { album: tr.dataset.al, cover: tr.dataset.cover }); return; }
     const alb = e.target.closest('[data-album]');
