@@ -1527,6 +1527,9 @@ function openNow() {
   lyrFull = false;
   $('#nowPage').classList.remove('lyr-full');
   $('#spinPage').classList.remove('lyr-full');
+  $$('.lyr-hold, .lyr-ghost').forEach((e) => e.remove());
+  const sb = $('#spLyrics');
+  if (sb) sb.classList.remove('lyr-sheet');
   openPage('nowPage');
   nowSig = '';
   renderNow();
@@ -1583,7 +1586,8 @@ function renderNow() {
   </div>`;
   // The words, in time with the song when they come with times.
   ensureLyrics(n);
-  h += `<div class="viz np-lyrics" id="npLyrics">${lyricsHtml(m.canSeek)}</div>`;
+  const sheet = $('#nowPage').classList.contains('lyr-full');
+  h += `<div class="viz np-lyrics${sheet ? ' lyr-sheet' : ''}" id="npLyrics">${lyricsHtml(m.canSeek)}</div>`;
   // What the app will play next, if it tells (a playlist, a mix, the album, the radio).
   if (q.length) {
     const at = q.findIndex((x) => x.id === m.active);
@@ -1604,7 +1608,11 @@ function renderNow() {
   }
   if (!hasMedia) h += `<p class="hint">${esc(n.app)} doesn't share its controls or queue with other apps.</p>`;
   else if (!q.length) h += `<p class="hint">${esc(n.app)} doesn't share what it plays next, so here is the album.</p>`;
+  // The card's copy under the sheet isn't in the new page: it goes back in after.
+  const hold = body.querySelector(':scope > .lyr-hold');
+  if (hold) hold.remove();
   keepHolo(body, h);
+  if (hold && sheet) $('#npLyrics').before(hold);
   fillLyrics($('#npLyrics'));
   tint(body, n.cover || '', (n.album || n.title) + n.artist);
   lyrAt = -2;
@@ -1657,29 +1665,70 @@ const lyricsHead = (full = true) => `<div class="lyr-head"><h2>Lyrics</h2><butto
 let lyrFull = false;
 /** Filling the screen, the line being sung sits this far down the lyrics (a share of their height), the next ones under it. */
 const LYR_FULL_AT = 0.12;
+/** How long the lyrics take to rise out of their card into the whole screen, and to sink back into it. */
+const LYR_SLIDE_MS = 460;
 function setLyrFull(on) {
   lyrFull = on;
   // The record's lyrics on Now spinning, or the phone's on Now playing.
   const spin = on ? pageStack[pageStack.length - 1] === 'spinPage' : isOpen('spinPage');
+  const page = $(spin ? '#spinPage' : '#nowPage'), box = $(spin ? '#spLyrics' : '#npLyrics');
+  $$('.lyr-ghost').forEach((g) => g.remove());
+  if (box) box.getAnimations().forEach((a) => a.cancel());
+  const glide = !!box && !box.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const was = glide ? box.getBoundingClientRect().top : 0;
+  // Going small: a copy of the sheet, from where it is (a back swipe may have moved it down), sinks onto the card.
+  const ghost = glide && !on && box.classList.contains('lyr-sheet') ? lyrCopy(box, 'lyr-ghost', (c) => page.appendChild(c)) : null;
+  // Going big: a copy of the card keeps its place, so the page under the sheet stays as it was.
+  $$('.lyr-hold').forEach((h) => h.remove());
+  if (on && box && !box.hidden) lyrCopy(box, 'lyr-hold', (c) => box.before(c));
   $('#nowPage').classList.toggle('lyr-full', on && !spin);
   $('#spinPage').classList.toggle('lyr-full', on && spin);
+  if (!box) return;
+  box.classList.toggle('lyr-sheet', on);
+  // Where a back swipe left it: back in its place in the page.
+  for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) box.style[k] = '';
+  const n = (ST.phone || {}).now;
   if (spin) {
-    const sb = $('#spLyrics');
-    if (sb) {
-      for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) sb.style[k] = '';
-      fillLyrics(sb, lyricsHtml(false, SLYR, true), true);
-      slyrAt = -2;
-      syncSpinLyrics();
-    }
+    fillLyrics(box, lyricsHtml(false, SLYR, true), true);
+    slyrAt = -2;
+    syncSpinLyrics();
+  } else if (n) {
+    fillLyrics(box, lyricsHtml((n.media || {}).canSeek));
+    lyrAt = -2;
+    syncLyrics();
+  }
+  if (!glide) return;
+  const ease = 'cubic-bezier(.2, 0, 0, 1)', to = box.getBoundingClientRect().top;
+  if (on) {
+    // From the card's top edge up under the top bar, appearing over the copy of the card as it starts.
+    const dy = Math.min(Math.max(was - to, 24), window.innerHeight - to);
+    box.animate([{ transform: `translateY(${dy.toFixed(1)}px)` }, { transform: 'none' }], { duration: LYR_SLIDE_MS, easing: ease });
+    box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150 });
     return;
   }
-  const n = (ST.phone || {}).now, box = $('#npLyrics');
-  // Where a back swipe left it: back in its place in the page.
-  if (box) for (const k of ['transform', 'transition', 'willChange', 'boxShadow', 'borderRadius']) box.style[k] = '';
-  if (!n || !box) return;
-  fillLyrics(box, lyricsHtml((n.media || {}).canSeek));
-  lyrAt = -2;
-  syncLyrics();
+  if (!ghost) return;
+  // Down onto the card, fading into it on the last stretch.
+  const y0 = new DOMMatrix(getComputedStyle(ghost).transform).m42, top = ghost.getBoundingClientRect().top - y0;
+  const dy = Math.min(Math.max(to - top, y0 + 24), window.innerHeight - top);
+  ghost.animate([{ transform: `translateY(${y0.toFixed(1)}px)` }, { transform: `translateY(${dy.toFixed(1)}px)` }], { duration: LYR_SLIDE_MS, easing: ease, fill: 'forwards' });
+  ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: LYR_SLIDE_MS - 240, fill: 'forwards' }).onfinish = () => ghost.remove();
+}
+/**
+ * A still copy of the lyrics [box] put in by [place]: its words where they were scrolled to and its
+ * blurred cover, which a copied canvas would lose. Nothing in it can be tapped.
+ */
+function lyrCopy(box, cls, place) {
+  const c = box.cloneNode(true);
+  c.removeAttribute('id');
+  c.classList.add(cls);
+  c.setAttribute('aria-hidden', 'true');
+  c.inert = true;
+  place(c);
+  const cv = box.querySelector(':scope > .lyr-bg'), cc = c.querySelector(':scope > .lyr-bg');
+  if (cv && cc) cc.getContext('2d').drawImage(cv, 0, 0);
+  const l = box.querySelector('.lyr-lines'), cl = c.querySelector('.lyr-lines');
+  if (l && cl) cl.scrollTop = l.scrollTop;
+  return c;
 }
 /** The song in one row over the lyrics when they fill the screen: cover, title, artist, play and pause. */
 function lyricsMini() {
@@ -2367,6 +2416,7 @@ function renderSpin(force) {
   spinSig = sig;
   const keep = $('#spinBody .tt');
   const reuse = keep && keep.dataset.key === sp.id;
+  const sheet = $('#spinPage').classList.contains('lyr-full'), hold = sheet && body.querySelector(':scope > .lyr-hold');
   body.innerHTML = `<div class="spin-hero">
       <div id="spinHolo">${reuse ? '' : turntableHtml(sp, spinSide(sp, spinNow(sp)))}</div>
       <div class="side" id="spSide"></div>
@@ -2379,11 +2429,12 @@ function renderSpin(force) {
       ${sp.nextSide ? `<button class="btn tonal" id="spFlip">${icon('flip')}Flip to ${esc(sp.nextSide.length <= 2 ? 'side ' + sp.nextSide : sp.nextSide)}</button>` : ''}
       <button class="btn outlined" id="spStop">${icon('stop')}Stop</button>
     </div>
-    <div class="viz np-lyrics sp-lyrics" id="spLyrics" hidden></div>
+    <div class="viz np-lyrics sp-lyrics${sheet ? ' lyr-sheet' : ''}" id="spLyrics" hidden></div>
     <div class="section-head"><h2>Tracks</h2><span class="sub" id="spEnd"></span></div>
     <div class="list" id="spList"></div>
     <p class="hint">Out of step with the record? Tap the track that is playing right now, and the times after it move.</p>`;
   if (reuse) $('#spinHolo').appendChild(keep);
+  if (hold) $('#spLyrics').before(hold);
   tint(body, sp.cover, sp.album + sp.artist);
   lastCur = -2;
   tickUi();

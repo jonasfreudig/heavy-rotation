@@ -1382,22 +1382,24 @@ details.more[open] summary { margin-bottom: 6px; }
 .lyr-head .chip { height: 30px; margin: 0 0 0 auto; font-size: 12.5px; }
 .lyr-head .lyr-big { flex: none; }
 
-/* Lyrics over the whole screen: a sheet from under the top bar, the song in one row above the words. */
+/*
+ * Lyrics over the whole screen: a sheet from under the top bar, the song in one row above the words.
+ * It rises out of the card and sinks back into it (setLyrFull); a copy of the card keeps its place meanwhile.
+ */
 .lyr-mini { display: none; }
-:is(#nowPage, #spinPage).lyr-full .np-lyrics { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; top: calc(var(--inset-top) + 56px); margin: 0; display: flex; flex-direction: column;
-  padding: 14px 18px calc(var(--inset-bottom) + 12px); border-radius: 24px 24px 0 0; background: var(--md-surface-container); animation: lyrUp .32s cubic-bezier(.2, 0, 0, 1); }
-:is(#nowPage, #spinPage).lyr-full .lyr-mini { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--md-outline-variant); }
-:is(#nowPage, #spinPage).lyr-full .lyr-mini .cover { width: 44px; height: 44px; border-radius: 8px; flex: none; }
-:is(#nowPage, #spinPage).lyr-full .lyr-mini > span { flex: 1; min-width: 0; }
-:is(#nowPage, #spinPage).lyr-full .lyr-mini b { display: block; font: 600 15px/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:is(#nowPage, #spinPage).lyr-full .lyr-mini small { display: block; font-size: 12.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:is(#nowPage, #spinPage).lyr-full .np-lyrics .lyr-lines { flex: 1; min-height: 0; max-height: none; }
+:is(#nowPage, #spinPage) .np-lyrics.lyr-sheet { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; top: calc(var(--inset-top) + 56px); margin: 0; display: flex; flex-direction: column;
+  padding: 14px 18px calc(var(--inset-bottom) + 12px); border-radius: 24px 24px 0 0; background: var(--md-surface-container); }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-mini { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--md-outline-variant); }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-mini .cover { width: 44px; height: 44px; border-radius: 8px; flex: none; }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-mini > span { flex: 1; min-width: 0; }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-mini b { display: block; font: 600 15px/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-mini small { display: block; font-size: 12.5px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(#nowPage, #spinPage) .np-lyrics.lyr-sheet .lyr-lines { flex: 1; min-height: 0; max-height: none; }
 /* The line being sung near the top (LYR_FULL_AT), with room under the last one to get it there. */
-:is(#nowPage, #spinPage).lyr-full .np-lyrics .lyr-lines.synced { padding: 9vh 0 70vh;
+:is(#nowPage, #spinPage) .np-lyrics.lyr-sheet .lyr-lines.synced { padding: 9vh 0 70vh;
   -webkit-mask-image: linear-gradient(transparent, #000 6%, #000 80%, transparent); mask-image: linear-gradient(transparent, #000 6%, #000 80%, transparent); }
-:is(#nowPage, #spinPage).lyr-full .lyr-lines.synced p { font-size: 26px; line-height: 1.28; }
-@keyframes lyrUp { from { transform: translateY(40px); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { :is(#nowPage, #spinPage).lyr-full .np-lyrics { animation: none; } }
+:is(#nowPage, #spinPage) .lyr-sheet .lyr-lines.synced p { font-size: 26px; line-height: 1.28; }
+.lyr-ghost { pointer-events: none; }
 
 /*
  * The lyrics on the song's cover: the page's small softened picture stretched over the card (blurred
@@ -1405,7 +1407,7 @@ details.more[open] summary { margin-bottom: 6px; }
  */
 .np-lyrics > .lyr-bg { display: none; }
 :is(#nowPage, #spinPage) .np-lyrics.on-cover { isolation: isolate; overflow: hidden; color: #fff; background: #303030; }
-:is(#nowPage, #spinPage):not(.lyr-full) .np-lyrics.on-cover { position: relative; }
+:is(#nowPage, #spinPage) .np-lyrics.on-cover:not(.lyr-sheet) { position: relative; }
 :is(#nowPage, #spinPage) .np-lyrics.on-cover > .lyr-bg { display: block; position: absolute; z-index: -2; left: -8%; top: -8%; width: 116%; height: 116%; opacity: 0; pointer-events: none; }
 :is(#nowPage, #spinPage) .np-lyrics.on-cover > .lyr-bg.ready { opacity: 1; transition: opacity .45s; }
 :is(#nowPage, #spinPage) .np-lyrics.on-cover::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgb(0 0 0 / .34), rgb(0 0 0 / .5)); }
