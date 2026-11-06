@@ -286,7 +286,7 @@ class DiscographyTest {
         val b = History.Builder()
         // shame's single "Quiet Life" before the album came out, then Cutthroat with the same song on it.
         repeat(3) { b.add(at(2025, 7, 1 + it), "shame", "Quiet Life", "Quiet Life - Single") }
-        for ((k, t) in listOf("Cutthroat", "Quiet Life", "Cowards Around", "Plaster", "Spartak").withIndex()) repeat(2) { b.add(at(2025, 9, 1 + k * 2 + it), "shame", t, "Cutthroat") }
+        for ((k, t) in listOf("Cutthroat", "Quiet Life", "Cowards Around", "Plaster", "Spartak", "Lampiao").withIndex()) repeat(2) { b.add(at(2025, 9, 1 + k * 2 + it), "shame", t, "Cutthroat") }
         // A single whose song is on no album you played stays a release of its own.
         b.add(at(2025, 9, 20), "shame", "Born In Luton", "Born In Luton")
         // Bowie's "Heroes" album, two songs played, keeps them though a best-of has its title song.
@@ -296,14 +296,34 @@ class DiscographyTest {
         val h = b.build()
         assertEquals(listOf("Cutthroat", "Born In Luton", "\"Heroes\"", "The Best of Bowie"), h.albumTitles.toList())
         val s = Stats(h, ZoneId.of("UTC"), at(2025, 10, 25))
-        assertEquals("the single's plays count for the album", 13, s.albumPlaysOf("shame", "Cutthroat"))
+        assertEquals("the single's plays count for the album", 15, s.albumPlaysOf("shame", "Cutthroat"))
         assertEquals("its own card keeps its plays", 3, s.albumPlaysOf("shame", "Quiet Life"))
         assertEquals("and it stays a card of its own", null, s.editionRoot("shame", "Quiet Life"))
         assertEquals(1, s.albumPlaysOf("shame", "Born In Luton"))
         assertEquals(2, s.albumPlaysOf("David Bowie", "\"Heroes\""))
-        assertEquals("a genre's plays know it too", 13, Stats(h.filter { true }, ZoneId.of("UTC"), at(2025, 10, 25)).albumPlaysOf("shame", "Cutthroat"))
+        assertEquals("a genre's plays know it too", 15, Stats(h.filter { true }, ZoneId.of("UTC"), at(2025, 10, 25)).albumPlaysOf("shame", "Cutthroat"))
         val d = Discography.merge(listOf(rel(1, "Cutthroat", "album", "2025-09-05"), rel(2, "Quiet Life", "single", "2025-06-20"))) { s.editionRoot("shame", it) }
         assertEquals(listOf("Cutthroat", "Quiet Life"), d.map { it.release.title })
+    }
+
+    @Test
+    fun aSongOnAnEpAndTheAlbumCountsForTheAlbum() {
+        val b = History.Builder()
+        // Sorry's EP "More" with a song of its own, then 925 with "More" on it.
+        repeat(4) { b.add(at(2019, 6, 1 + it), "Sorry", "More", "More") }
+        repeat(2) { b.add(at(2019, 6, 10 + it), "Sorry", "Lies", "More") }
+        for ((k, t) in listOf("Right Round the Clock", "As The Sun Sets", "In Unison", "Starstruck", "Snakes", "More", "Rosie").withIndex()) {
+            repeat(2) { b.add(at(2020, 4, 1 + k * 2 + it), "Sorry", t, "925") }
+        }
+        val h = b.build()
+        assertEquals("the EP stays, with the song only it has", listOf("More", "925"), h.albumTitles.toList())
+        val s = Stats(h, ZoneId.of("UTC"), at(2020, 10, 25))
+        assertEquals("More's plays from the EP count for 925", 18, s.albumPlaysOf("Sorry", "925"))
+        assertEquals("the EP's card keeps all its own plays", 6, s.albumPlaysOf("Sorry", "More"))
+        val more = (0 until h.size).filter { h.trackTitles[h.track[it]] == "More" }.map { h.albumTitles[h.album[it]] }.toSet()
+        assertEquals(setOf("925"), more)
+        val lies = (0 until h.size).filter { h.trackTitles[h.track[it]] == "Lies" }.map { h.albumTitles[h.album[it]] }.toSet()
+        assertEquals(setOf("More"), lies)
     }
 
     @Test

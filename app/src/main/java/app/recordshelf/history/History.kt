@@ -29,13 +29,16 @@ class History private constructor(
     val size get() = ts.size
 
     /**
-     * The album keys of longer editions and of singles counted as the album they extend or are from, with that
-     * album's key ("…|skinty fia go deo" or "…|quiet life", "…|cutthroat").
+     * The album keys of longer editions, and of singles all of whose songs count for an album, with that album's key
+     * ("…|skinty fia go deo" or "…|quiet life", "…|cutthroat").
      */
     var editionOf: Map<String, String> = emptyMap()
         private set
 
-    /** The singles among those ([editionOf]), with their own plays: a discography shows those on the single's card. */
+    /**
+     * Singles and EPs whose songs count for the album that has them too (see Builder.shortReleases), with all their
+     * own plays: a discography shows those on the single's card.
+     */
     var singlePlays: Map<String, Int> = emptyMap()
         private set
 
@@ -122,12 +125,12 @@ class History private constructor(
                 soA = IntArray(order.size) { soA[order[it]] }
             }
             val into = editions(alA, trA)
-            val single = singles(alA, trA, into)
+            val single = shortReleases(alA, trA, into)
             if (into.indices.all { into[it] == it }) {
                 return History(
                     tsA, arA, trA, alA, artistNames.toTypedArray(), trackTitles.toTypedArray(), trackArtist.toArray(),
                     albumTitles.toTypedArray(), albumArtist.toArray(), albumKeys.toTypedArray(), soA,
-                )
+                ).also { it.singlePlays = single }
             }
             // The editions go; every other album gets its new number, and the editions' plays the album's.
             val kept = into.indices.filter { into[it] == it }
@@ -144,34 +147,51 @@ class History private constructor(
         }
 
         /**
-         * Singles counted as the album their song is on: a release named after one of its songs ("Quiet Life",
-         * "Quiet Life - Single") with at most three songs played, whose title song you also played from a bigger album
-         * of the same artist (four songs or more), with at least half of the single's songs. Its plays go to that album,
-         * the one you played most songs of if several have it; best-ofs and live albums take no singles. A single whose
-         * song is on no album you played stays a release of its own. Fills [into]; returns each single's own plays by key.
+         * A song counts for the album it's on, not for a single or EP that has it too: "More" for Sorry's 925, not the
+         * single "More"; "Quiet Life" for shame's Cutthroat. A short release (at most [SHORT] songs played) gives its
+         * plays of a song to the same artist's album you played that very song from too (at least [BIG] songs played,
+         * the one with the most if several; never a best-of or live album). Songs only the short release has stay with
+         * it, and a release left with none counts as that album, like an edition. Changes [alA] and [into]; returns
+         * each release that gave songs away with all its own plays, by key (for its card in a discography).
          */
-        private fun singles(alA: IntArray, trA: IntArray, into: IntArray): Map<String, Int> {
-            val songs = HashMap<Int, HashSet<String>>()
-            val loose = HashMap<Int, String>()
+        private fun shortReleases(alA: IntArray, trA: IntArray, into: IntArray): Map<String, Int> {
+            val songs = HashMap<Int, HashSet<Int>>()
+            for (i in alA.indices) if (alA[i] >= 0) songs.getOrPut(into[alA[i]]) { HashSet() } += trA[i]
+            val who = { a: Int -> albumKeys[a].substringBefore('|') }
+            // Each song, with the albums (not best-ofs or live ones) it was played from.
+            val albumsWith = HashMap<Int, MutableList<Int>>()
+            for ((a, s) in songs) if (s.size >= BIG && !NOT_FOR_SINGLES.containsMatchIn(albumTitles[a])) for (t in s) albumsWith.getOrPut(t) { ArrayList() } += a
+            if (albumsWith.isEmpty()) return emptyMap()
+            // Each short release's songs that have an album: (release, song) to that album.
+            val home = HashMap<Long, Int>()
+            for ((r, s) in songs) {
+                if (s.size > SHORT) continue
+                for (t in s) {
+                    val a = albumsWith[t]?.filter { who(it) == who(r) }?.maxByOrNull { songs.getValue(it).size } ?: continue
+                    home[(r.toLong() shl 32) or t.toLong()] = a
+                }
+            }
+            if (home.isEmpty()) return emptyMap()
+            val gave = home.keys.mapTo(HashSet()) { (it shr 32).toInt() }
+            val own = HashMap<Int, Int>()
+            val kept = HashMap<Int, Int>()
+            val went = HashMap<Int, HashMap<Int, Int>>()
             for (i in alA.indices) {
-                val al = alA[i]
-                if (al >= 0) songs.getOrPut(into[al]) { HashSet() } += loose.getOrPut(trA[i]) { Text.normLoose(trackTitles[trA[i]]) }
+                if (alA[i] < 0) continue
+                val r = into[alA[i]]
+                if (r !in gave) continue
+                own.merge(r, 1, Int::plus)
+                val a = home[(r.toLong() shl 32) or trA[i].toLong()]
+                if (a == null) { kept.merge(r, 1, Int::plus); continue }
+                alA[i] = a
+                went.getOrPut(r) { HashMap() }.merge(a, 1, Int::plus)
             }
-            val byArtist = songs.keys.groupBy { albumKeys[it].substringBefore('|') }
-            val to = HashMap<Int, Int>()
-            for ((a, s) in songs) {
-                val title = albumKeys[a].substringAfter('|')
-                if (s.size > 3 || title !in s) continue
-                to[a] = byArtist[albumKeys[a].substringBefore('|')].orEmpty().filter { b ->
-                    val sb = songs.getValue(b)
-                    b != a && sb.size >= 4 && title in sb && s.count { it in sb } * 2 >= s.size && !NOT_FOR_SINGLES.containsMatchIn(albumTitles[b])
-                }.maxByOrNull { songs.getValue(it).size } ?: continue
+            // A release with nothing of its own left: its name finds the album most of it went to.
+            for (r in gave) if ((kept[r] ?: 0) == 0) {
+                val a = went.getValue(r).maxBy { it.value }.key
+                for (x in into.indices) if (into[x] == r) into[x] = a
             }
-            if (to.isEmpty()) return emptyMap()
-            val plays = HashMap<Int, Int>()
-            for (al in alA) if (al >= 0 && into[al] in to) plays.merge(into[al], 1, Int::plus)
-            for (x in into.indices) to[into[x]]?.let { into[x] = it }
-            return to.keys.associate { albumKeys[it] to (plays[it] ?: 0) }
+            return gave.associate { albumKeys[it] to (own[it] ?: 0) }
         }
 
         /**
@@ -215,6 +235,10 @@ class History private constructor(
     }
 
     companion object {
+        /** A single or EP: at most this many songs played from it. An album: at least [BIG]. See shortReleases. */
+        private const val SHORT = 5
+        private const val BIG = 6
+
         /** Albums a single doesn't count as: best-ofs, collections and live recordings ("Live Through This" isn't one). */
         private val NOT_FOR_SINGLES = Regex("""\b(best of|greatest hits|the hits|collection|anthology|essentials?|singles|b-sides|rarities|live (at|in|from)|unplugged|remix(es|ed))\b|\(live\)|\blive$""", RegexOption.IGNORE_CASE)
 
