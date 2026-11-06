@@ -90,6 +90,8 @@
 :root[data-look="glass"] .chip:not(:where(.on, .mode, .static)), :root[data-look="glass"] .btn.tonal, :root[data-look="glass"] .search,
 :root[data-look="glass"] .icon-btn.small.on, :root[data-look="glass"] .seg {
   background: var(--frost); color: var(--md-on-surface); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
+/* The chosen part floats inside the bar, a little room around it, as tall as the soft style's groove and the filter button. */
+:root[data-look="glass"] .seg { padding: 4px; }
 :root[data-look="glass"] .chip.on, :root[data-look="glass"] :is(.seg, .views) > .pill {
   background: color-mix(in srgb, var(--tint) 24%, var(--frost)); color: var(--md-on-surface); box-shadow: inset 2px 2px 6px var(--drop), inset -1px -1px 0 var(--hi); }
 :root[data-look="glass"] .tinted .tags .chip.link { background: color-mix(in srgb, var(--tint) 20%, var(--frost)); }
