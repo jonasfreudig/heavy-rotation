@@ -109,10 +109,11 @@
 :root[data-look="soft"] { transition: background-color .8s ease; }
 :root[data-look="soft"][data-ambient="records"] { --soft: color-mix(in srgb, var(--amb1, var(--tint)) 12%, var(--md-surface-container)); }
 :root[data-look="soft"][data-ambient="records"][data-theme="light"] { --sh-d: color-mix(in srgb, var(--amb1, var(--tint)) 22%, var(--soft)); }
-/* The cover glows behind the top only, and scrolls away with it. */
-:root[data-look="soft"] .page > .backdrop { position: absolute; bottom: auto; height: 640px; }
-:root[data-look="soft"] .page > .backdrop canvas { height: 88%; }
-:root[data-look="soft"] .page > .backdrop::after { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 62%, transparent), var(--soft) 78%); }
+/*
+ * The cover glows behind the whole page, as in glass, under a veil of the page's own color that is denser than
+ * glass's lower down, where the raised cards are: their light and shade still read on it.
+ */
+:root[data-look="soft"] .page > .backdrop::after { background: linear-gradient(180deg, color-mix(in srgb, var(--soft) 60%, transparent), color-mix(in srgb, var(--soft) 72%, transparent) 55%, color-mix(in srgb, var(--soft) 80%, transparent)); }
 :root[data-look="soft"] .page.has-backdrop :is(.hero h1, .spin-hero h1, .page-hero h1, .hero .meta, .page-hero .meta, .hint) { text-shadow: none; }
 :root[data-look="soft"] .chip:not(:where(.on, .mode, .static)), :root[data-look="soft"] .btn.tonal, :root[data-look="soft"] .icon-btn.small.on, :root[data-look="soft"] :is(.seg, .views) > .pill {
   background: var(--soft); color: var(--md-on-surface); box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }

@@ -4354,10 +4354,10 @@ window.onDzAlbum = (x) => {
     const next = { ...s, dzInfo: x };
     if (shown) {
       // The tracklist arrives after the page: it fades in.
-      const had = !!$('#albumPage [data-tl]');
+      const had = !!$('#albumPage [data-tracklist]');
       ALBUM = next;
       renderAlbum();
-      if (!had) settle($('#albumPage [data-tl]'));
+      if (!had) settle($('#albumPage [data-tracklist]'));
     }
     return next;
   });
@@ -4372,7 +4372,7 @@ function tracklistHtml(a, cover) {
   const max = Math.max(1, ...Object.values(plays));
   const total = dz.tracks.reduce((n, t) => n + (t.sec || 0), 0);
   const heard = dz.tracks.filter((t) => plays[looseKey(t.title)]).length;
-  return `<div class="viz" data-tl><h2>Tracklist</h2><span class="sub">${plural(dz.tracks.length, 'song')}, ${Math.round(total / 60)} minutes${heard ? `; you've played ${heard} of them` : ''}</span>
+  return `<div class="viz" data-tracklist><h2>Tracklist</h2><span class="sub">${plural(dz.tracks.length, 'song')}, ${Math.round(total / 60)} minutes${heard ? `; you've played ${heard} of them` : ''}</span>
     <div class="rank">${dz.tracks.map((t, i) => {
       const p = plays[looseKey(t.title)] || 0;
       return `<button class="r${p ? '' : ' unheard'}" ${trackAttrs(a.artist, t.title, { album: a.title, cover })}><span class="n">${i + 1}</span><span class="t"><b>${esc(t.title)}</b><small>${fmtDur(t.sec)}</small></span>
@@ -6741,7 +6741,7 @@ function tabTap(host, key) {
   tabGo(host, track, s.keys.indexOf(key) - s.keys.indexOf(s.open), key, 0, 0, 280);
 }
 /** Rows that scroll sideways, charts you scrub, a zoomed record and fields keep their own drags. */
-const SWIPE_SKIP = '.tix, .covers, .xcards, .tcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], input, textarea';
+const SWIPE_SKIP = '.tix, .covers, .xcards, .tcards, .chip-row, .na-row, svg, canvas, [data-col], [data-heat], [data-ridge], [data-scrub], input, textarea';
 /**
  * Swiping sideways on a place in tabs moves to the tab beside it like turning a page: the tabs sit side by side,
  * already built, and follow the finger; on letting go they slide the rest of the way or spring back. The screen's
@@ -8467,9 +8467,11 @@ function turnGenreDisc() {
 
 const DOW_LETTER = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 /** Plays as lines on a 24-hour strip ([hours, color] pairs; color 1–5 the top artists, 0 everyone else), with a "now" mark. */
-function stripHtml(plays, nowH, small) {
+/** A day's plays on a 24-hour line; with [pick] (an hour, or -1 for none yet) it takes a finger (see scrubTo). */
+function stripHtml(plays, nowH, small, pick) {
   const ticks = plays.map(([hr, c]) => `<i style="left:${Math.min(99.6, (hr / 24) * 100).toFixed(2)}%;background:${c ? `var(--a${c})` : 'color-mix(in srgb, var(--md-on-surface) 35%, transparent)'}"></i>`).join('');
-  return `<div class="dstrip${small ? ' small' : ''}">${ticks}${nowH != null ? `<b class="now" style="left:${((nowH / 24) * 100).toFixed(2)}%"></b>` : ''}</div>`;
+  const cur = pick == null ? '' : `<b class="dcur" style="left:${((Math.max(0, pick) / 24) * 100).toFixed(2)}%"${pick < 0 ? ' hidden' : ''}></b>`;
+  return `<div class="dstrip${small ? ' small' : ''}"${pick == null ? '' : ' data-scrub'}>${ticks}${nowH != null ? `<b class="now" style="left:${((nowH / 24) * 100).toFixed(2)}%"></b>` : ''}${cur}</div>`;
 }
 const hoursAxis = (cls = '') => `<div class="hours ${cls}"><i>0</i><i>6</i><i>12</i><i>18</i><i>24</i></div>`;
 const legendHtml = (names) => (names.length ? `<div class="dlegend">${names.map((n, i) => `<button data-artist="${esc(n)}"><i style="background:var(--a${i + 1})"></i>${esc(n)}</button>`).join('')}</div>` : '');
@@ -8536,19 +8538,101 @@ function daylineViz(s) {
   const d = s.day;
   if (!d) return '';
   const now = nowHours(s);
+  // A time picked on the line (see scrubTo): its song, and the session it's in marked.
+  const at = dayScrub.id === s.range.id ? dayScrub.h : -1;
+  const picked = at >= 0 ? songAt(daySongs(s), at).p : null;
   const ss = d.sessions.map((x, i) => {
     const live = s.range.running && i === d.sessions.length - 1 && Date.now() / 1000 - x.to < 30 * 60;
     const [what, how] = sessionWords(x);
     // Tap a session for its songs; its album, if it has one, is still a link of its own.
     const can = !!(x.songs && x.songs.length), open = can && daySessOpen.has(x.from);
     const name = x.album ? `<span class="alink" ${albumAttrs(x.albumArtist, x.album)}>${what}</span>` : what;
-    return `<div class="s${can ? ' tap' : ''}${open ? ' open' : ''}"${can ? ` data-sess="${x.from}" role="button" aria-expanded="${open}"` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
+    const hit = picked && picked.ts >= x.from && picked.ts <= x.to;
+    return `<div class="s${can ? ' tap' : ''}${open ? ' open' : ''}${hit ? ' hit' : ''}"${can ? ` data-sess="${x.from}" role="button" aria-expanded="${open}"` : ''}><span class="t">${fmtTime(x.from * 1000)}–${live ? 'now' : fmtTime(x.to * 1000)}</span>
       <span class="w"><b>${plural(x.count, 'song')}</b>, ${name}${how ? `<small>${how}</small>` : ''}</span><i class="sw" style="background:${x.color ? `var(--a${x.color})` : 'var(--md-outline)'}"></i>${can ? icon('chevron-right', 'i small chev') : '<span></span>'}</div>
       ${open ? sessionSongs(x) : ''}`;
   }).join('');
-  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session; tap one for its songs</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
-    <div class="dsessions">${ss}</div></div>`;
+  return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session; tap one for its songs, or touch the line for what played then</span>${stripHtml(d.plays, now, false, at)}${hoursAxis('big')}
+    <div class="dread-slot">${at >= 0 ? scrubHtml(s, at) : ''}</div><div class="dsessions">${ss}</div></div>`;
 }
+
+// ---- Your day's line under a finger: a time picked on it, and what played then ----
+
+/** The time picked on Your day's line: the day (range id) and hours since midnight; -1 for none. */
+let dayScrub = { id: '', h: -1 };
+/** Hours on the clock since midnight, as the line counts them. */
+const hoursOf = (ms) => { const d = new Date(ms); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; };
+/** The day's songs in order, with their hour on the line (from its sessions; kept on the stats). */
+function daySongs(s) {
+  if (!s._songs) s._songs = ((s.day && s.day.sessions) || []).flatMap((x) => x.songs || []).map((p) => ({ ...p, h: hoursOf(p.ts * 1000) }));
+  return s._songs;
+}
+/** A song plays until the next one starts, or for this long (hours) at most: after that it's quiet. */
+const SONG_MAX_H = 8 / 60;
+/** What played at hour [h]: the song then ({ p, on: true }), else the one closest in time ({ p, on: false }). */
+function songAt(songs, h) {
+  let k = -1;
+  while (k + 1 < songs.length && songs[k + 1].h <= h) k++;
+  const cur = songs[k], next = songs[k + 1];
+  if (cur && h <= Math.min(next ? next.h : 24, cur.h + SONG_MAX_H)) return { p: cur, on: true };
+  const p = !cur ? next : !next ? cur : h - cur.h <= next.h - h ? cur : next;
+  return { p: p || null, on: false };
+}
+/** The clock time of hour [h] of the day [s] shows. */
+const hourTime = (s, h) => { const d = new Date(s.range.from * 1000); return fmtTime(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.floor((h % 1) * 60)).getTime()); };
+/** Under the line: the time picked, and the song playing then (or the closest one), which opens its page. */
+function scrubHtml(s, h) {
+  const at = songAt(daySongs(s), h), p = at.p, t = hourTime(s, h);
+  const head = `<div class="dr-h"><span>${at.on ? `At ${t}` : `Nothing playing at ${t}${p ? ', closest' : ''}`}</span><button class="icon-btn small" data-scrubx aria-label="Clear the time">${icon('close')}</button></div>`;
+  if (!p) return `<div class="dread">${head}</div>`;
+  return `<div class="dread">${head}<div class="rank"><button class="r with-cover" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}>${coverHtml(p.cover, p.album || p.title, p.artist, 'tiny')}
+    <span class="t"><b>${esc(p.title)}</b><small>${esc(p.artist)}, ${at.on ? 'from' : 'at'} ${fmtTime(p.ts * 1000)}</small></span>${icon('chevron-right')}</button></div></div>`;
+}
+/** The time under the finger at [x] on the line [st]: the marker moves there, the song under the line follows. */
+function scrubTo(st, s, x) {
+  const r = st.getBoundingClientRect();
+  const h = Math.max(0, Math.min(s.range.running ? clockHours() : 24, ((x - r.left) / r.width) * 24));
+  dayScrub = { id: s.range.id, h };
+  const cur = st.querySelector('.dcur');
+  if (cur) { cur.hidden = false; cur.style.left = `${((h / 24) * 100).toFixed(2)}%`; }
+  const viz = st.closest('.viz'), slot = viz && viz.querySelector('.dread-slot');
+  if (!slot) return;
+  // In place: the time changes as the finger moves, the song's row (and its cover) only when the song does.
+  morph(slot, scrubHtml(s, h));
+  const p = songAt(daySongs(s), h).p;
+  viz.querySelectorAll('.dsessions .s[data-sess]').forEach((row) => {
+    const x = s.day.sessions.find((y) => String(y.from) === row.dataset.sess);
+    row.classList.toggle('hit', !!(p && x && p.ts >= x.from && p.ts <= x.to));
+  });
+}
+/** Clears the time picked on the line. */
+function scrubClear(viz) {
+  dayScrub = { id: '', h: -1 };
+  if (!viz) return;
+  const cur = viz.querySelector('.dstrip .dcur'), slot = viz.querySelector('.dread-slot');
+  if (cur) cur.hidden = true;
+  if (slot) slot.innerHTML = '';
+  viz.querySelectorAll('.dsessions .s.hit').forEach((row) => row.classList.remove('hit'));
+}
+// A touch on the line picks that time; a finger kept on it and moved sideways moves through the day.
+document.addEventListener('pointerdown', (e) => {
+  const st = e.target.closest('.dstrip[data-scrub]');
+  if (!st || !e.isPrimary || !STATS || !STATS.day) return;
+  const s = STATS;
+  try { st.setPointerCapture(e.pointerId); } catch (_) { /* gone already */ }
+  st.classList.add('held');
+  const move = (ev) => scrubTo(st, s, ev.clientX);
+  const up = () => {
+    st.classList.remove('held');
+    st.removeEventListener('pointermove', move);
+    st.removeEventListener('pointerup', up);
+    st.removeEventListener('pointercancel', up);
+  };
+  st.addEventListener('pointermove', move);
+  st.addEventListener('pointerup', up);
+  st.addEventListener('pointercancel', up);
+  move(e);
+});
 /**
  * Opens a session of Your day to its songs under it, or closes it again. The row grows out from under
  * the session (cancelling the list's gap, so nothing jumps) and its first songs slide in one after
@@ -9513,6 +9597,8 @@ function build() {
   blockBody.addEventListener('pointermove', (e) => { if (e.buttons) onVizPointer(e, STATS); });
   blockBody.addEventListener('input', (e) => { if (e.target.matches('[data-asearch]')) onArtistSearch(e.target); });
   const statsClick = (e) => {
+    const sx = e.target.closest('[data-scrubx]');
+    if (sx) { scrubClear(sx.closest('.viz')); return; }
     const bk = e.target.closest('[data-block]');
     if (bk) { openBlock(bk.dataset.block); return; }
     const sc = e.target.closest('[data-story]');

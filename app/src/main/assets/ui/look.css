@@ -580,6 +580,17 @@ html.locked .page { overflow: hidden; }
 .dstrip.small { height: 18px; margin: 0; border-radius: 6px; }
 .dstrip.small i { top: 3px; bottom: 3px; width: 2px; }
 .dstrip.small .now::before { content: none; }
+/* Your day's line takes a finger: a marker at the time picked (a knob at its top), what played then under it. */
+.dstrip[data-scrub] { touch-action: pan-y; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.dstrip .dcur { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--tint-text, var(--md-primary)); pointer-events: none; }
+.dstrip .dcur::before { content: ''; position: absolute; left: 50%; top: 3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: inherit; transition: transform .15s; }
+.dstrip.held .dcur::before { transform: scale(1.35); }
+.dread { margin-top: 10px; }
+.dread .dr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 500 11px/16px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--md-on-surface-variant); }
+.dread .dr-h .icon-btn { width: 28px; height: 28px; }
+.dread > .rank { margin-top: 4px; }
+.dsessions .s .t, .dsessions .s .w b { transition: color .2s; }
+.dsessions .s.hit .t, .dsessions .s.hit .w b { color: var(--tint-text, var(--md-primary)); }
 .hours { display: flex; justify-content: space-between; font: 500 10px/14px var(--mono); color: var(--md-on-surface-variant); }
 .hours i { font-style: normal; }
 .hours.big { margin: 6px 2px 0; }

@@ -139,7 +139,10 @@ with your usual for that weekday by the same time of day over the last 8 weeks. 
 a 24-hour strip with its listening sessions: a new session starts after half an hour without music,
 and a session that was one record shows the album or the turntable (tap its name for the album).
 Tap a session for its songs in a row under it, one by one with their times; scroll the row
-sideways, tap a song for its page, and tap the session again to close it. Below come the first and latest
+sideways, tap a song for its page, and tap the session again to close it. Touch the strip itself for
+what played at that time: a marker stands there, the song playing then (or the closest one, if
+nothing was) shows under the strip with its session marked, and keeping the finger on the strip
+and sliding it moves through the day. The song opens its page; the ✕ clears the marker. Below come the first and latest
 song, the day in covers, what you had on repeat, artists new that day (as cards) and new songs, the
 same date in other years (tap one to see that day), your streak and how much came off vinyl, the
 day's lineup when four artists or more played, and the top 10.
@@ -622,8 +625,9 @@ is shrunk to a few pixels once and stretched, which makes the blur, so nothing i
 scrolling. A veil of the page color over it keeps the text readable. Settings → Look → Style picks
 between two styles. Tinted soft, the default, is a soft UI: the page takes a calm shade of the
 cover's color, buttons and cards are raised from it with light and shade (pressed ones sink in),
-and the cover only glows behind the top of the page. In Soft glass, the blurred cover lies behind
-the whole page, and buttons and cards float over it, frosted, with a soft shadow and a lit edge.
+and the cover glows behind the whole page under a veil of that shade, denser lower down. In Soft
+glass, the blurred cover lies behind the whole page, and buttons and cards float over it, frosted,
+with a soft shadow and a lit edge.
 
 Both styles give each page one solid button and its links in the cover's color. Top bars scroll
 away with the page and come back over it, on a soft fade of the page's color, as soon as you scroll
