@@ -142,7 +142,9 @@ Tap a session for its songs in a row under it, one by one with their times; scro
 sideways, tap a song for its page, and tap the session again to close it. Touch the strip itself for
 what played at that time: a marker stands there, the song playing then (or the closest one, if
 nothing was) shows under the strip with its session marked, and keeping the finger on the strip
-and sliding it moves through the day. The song opens its page; the ✕ clears the marker. Below come the first and latest
+and sliding it moves through the day. Swipe the song sideways for the one after it (to the left) or
+before it (to the right), one song a swipe however hard, with the marker moving along. The song
+opens its page; the ✕ clears the marker. Below come the first and latest
 song, the day in covers, what you had on repeat, artists new that day (as cards) and new songs, the
 same date in other years (tap one to see that day), your streak and how much came off vinyl, the
 day's lineup when four artists or more played, and the top 10.

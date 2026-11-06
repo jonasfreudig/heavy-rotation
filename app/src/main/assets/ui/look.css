@@ -588,7 +588,10 @@ html.locked .page { overflow: hidden; }
 .dread { margin-top: 10px; }
 .dread .dr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 500 11px/16px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--md-on-surface-variant); }
 .dread .dr-h .icon-btn { width: 28px; height: 28px; }
-.dread > .rank { margin-top: 4px; }
+/* The day's songs side by side, one in view; a swipe moves the row one song on or back (app.js), up and down scrolls the page. */
+.dread .dr-songs { display: flex; gap: 10px; margin-top: 4px; overflow: hidden; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.dread .dr-songs > .rank { flex: 0 0 100%; min-width: 0; margin-top: 0; }
+.dread .dr-songs img { -webkit-user-drag: none; }
 .dsessions .s .t, .dsessions .s .w b { transition: color .2s; }
 .dsessions .s.hit .t, .dsessions .s.hit .w b { color: var(--tint-text, var(--md-primary)); }
 .hours { display: flex; justify-content: space-between; font: 500 10px/14px var(--mono); color: var(--md-on-surface-variant); }

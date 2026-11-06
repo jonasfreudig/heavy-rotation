@@ -7236,6 +7236,7 @@ function afterStats() {
   if (gm) { gmSizes.observe(gm); requestAnimationFrame(fitGenreMap); }
   if ($('#vsTileLine')) { renderVsCard(); if (!VS) send({ t: 'vs' }); }
   syncStrips($('#statsBody'));
+  placeRails($('#statsBody'));
   Tilt.refresh();
   if (statsGoTo && $(`#statsBody [data-blk="${statsGoTo}"]`)) { const id = statsGoTo; statsGoTo = ''; requestAnimationFrame(() => goBlock(id)); }
 }
@@ -7532,6 +7533,7 @@ function renderBlock() {
   const h = b && (b.kinds || SPAN).includes(STATS.range.kind) ? (b.page || b.html)(STATS) : '';
   morph($('#blockBody'), h || '<div class="empty small"><p>Nothing to show for this period.</p></div>');
   drawRecords();
+  placeRails($('#blockBody'));
   Tilt.refresh();
 }
 
@@ -8569,26 +8571,73 @@ function daySongs(s) {
 }
 /** A song plays until the next one starts, or for this long (hours) at most: after that it's quiet. */
 const SONG_MAX_H = 8 / 60;
-/** What played at hour [h]: the song then ({ p, on: true }), else the one closest in time ({ p, on: false }). */
+/** What played at hour [h]: the song then ({ p, on: true, i }), else the one closest in time ({ p, on: false, i }); i is its place in [songs]. */
 function songAt(songs, h) {
   let k = -1;
   while (k + 1 < songs.length && songs[k + 1].h <= h) k++;
   const cur = songs[k], next = songs[k + 1];
-  if (cur && h <= Math.min(next ? next.h : 24, cur.h + SONG_MAX_H)) return { p: cur, on: true };
-  const p = !cur ? next : !next ? cur : h - cur.h <= next.h - h ? cur : next;
-  return { p: p || null, on: false };
+  if (cur && h <= Math.min(next ? next.h : 24, cur.h + SONG_MAX_H)) return { p: cur, on: true, i: k };
+  const i = !cur ? k + 1 : !next ? k : h - cur.h <= next.h - h ? k : k + 1;
+  return songs[i] ? { p: songs[i], on: false, i } : { p: null, on: false, i: -1 };
 }
 /** The clock time of hour [h] of the day [s] shows. */
 const hourTime = (s, h) => { const d = new Date(s.range.from * 1000); return fmtTime(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.floor((h % 1) * 60)).getTime()); };
-/** Under the line: the time picked, and the song playing then (or the closest one), which opens its page. */
+/** "At 7:53 PM", or "Nothing playing at 3:10 AM, closest" when no song was on then. */
+const scrubWords = (s, h) => { const at = songAt(daySongs(s), h), t = hourTime(s, h); return at.on ? `At ${t}` : `Nothing playing at ${t}${at.p ? ', closest' : ''}`; };
+/**
+ * Under the line: the time picked, and the day's songs in a row swiped one at a time, resting on the one playing
+ * then (or the closest; see railTo). Each opens its page.
+ */
 function scrubHtml(s, h) {
-  const at = songAt(daySongs(s), h), p = at.p, t = hourTime(s, h);
-  const head = `<div class="dr-h"><span>${at.on ? `At ${t}` : `Nothing playing at ${t}${p ? ', closest' : ''}`}</span><button class="icon-btn small" data-scrubx aria-label="Clear the time">${icon('close')}</button></div>`;
-  if (!p) return `<div class="dread">${head}</div>`;
-  return `<div class="dread">${head}<div class="rank"><button class="r with-cover" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}>${coverHtml(p.cover, p.album || p.title, p.artist, 'tiny')}
-    <span class="t"><b>${esc(p.title)}</b><small>${esc(p.artist)}, ${at.on ? 'from' : 'at'} ${fmtTime(p.ts * 1000)}</small></span>${icon('chevron-right')}</button></div></div>`;
+  const songs = daySongs(s);
+  const head = `<div class="dr-h"><span>${scrubWords(s, h)}</span><button class="icon-btn small" data-scrubx aria-label="Clear the time">${icon('close')}</button></div>`;
+  if (!songs.length) return `<div class="dread">${head}</div>`;
+  const rows = songs.map((p) => `<div class="rank" data-key="${p.ts}"><button class="r with-cover" ${trackAttrs(p.artist, p.title, { album: p.album, cover: p.cover })}>${coverHtml(p.cover, p.album || p.title, p.artist, 'tiny')}
+    <span class="t"><b>${esc(p.title)}</b><small>${esc(p.artist)}, from ${fmtTime(p.ts * 1000)}</small></span>${icon('chevron-right')}</button></div>`).join('');
+  return `<div class="dread">${head}<div class="dr-songs">${rows}</div></div>`;
 }
-/** The time under the finger at [x] on the line [st]: the marker moves there, the song under the line follows. */
+/** How far apart the songs in the row sit (px): a song's width and the gap after it. */
+const railStep = (rail) => (rail.children.length > 1 ? rail.children[1].offsetLeft - rail.children[0].offsetLeft : rail.clientWidth);
+/** The row of songs under the line, to song [i] at once (a time picked on the line; the marker stays where it is). */
+function railTo(rail, i) {
+  if (!rail || i < 0) return;
+  cancelAnimationFrame(rail._anim);
+  rail._anim = 0;
+  rail._i = i;
+  rail._user = false;
+  const left = i * railStep(rail);
+  if (Math.abs(rail.scrollLeft - left) > 1) rail.scrollLeft = left;
+}
+/** The row of songs sliding to song [i] after a swipe; the marker, the time and the session follow it (see the scroll listener). */
+function railSlide(rail, i) {
+  cancelAnimationFrame(rail._anim);
+  const a = rail.scrollLeft, b = i * railStep(rail), t0 = performance.now();
+  const ms = moving() ? Math.min(320, 160 + Math.abs(b - a) * 0.5) : 0;
+  rail._to = i;
+  const frame = (now) => {
+    const k = ms ? Math.min(1, (now - t0) / ms) : 1;
+    rail.scrollLeft = a + (b - a) * (1 - Math.pow(1 - k, 3));
+    rail._anim = k < 1 ? requestAnimationFrame(frame) : 0;
+  };
+  rail._anim = requestAnimationFrame(frame);
+}
+/** A row of songs drawn anew with the stats starts on the song at the picked time, once it has a width (not while Stats is hidden). */
+const railSizes = new ResizeObserver((es) => es.forEach(({ target: rail }) => {
+  if (!rail.clientWidth) return;
+  railSizes.unobserve(rail);
+  if (rail.isConnected && STATS && STATS.day) railTo(rail, songAt(daySongs(STATS), dayScrub.h).i);
+}));
+function placeRails(root) {
+  if (root) root.querySelectorAll('.dread .dr-songs').forEach((rail) => { if (!rail._placed) { rail._placed = true; railSizes.observe(rail); } });
+}
+/** Marks the session of Your day that song [p] is in. */
+function markSession(viz, s, p) {
+  viz.querySelectorAll('.dsessions .s[data-sess]').forEach((row) => {
+    const x = s.day.sessions.find((y) => String(y.from) === row.dataset.sess);
+    row.classList.toggle('hit', !!(p && x && p.ts >= x.from && p.ts <= x.to));
+  });
+}
+/** The time under the finger at [x] on the line [st]: the marker moves there, the songs under the line follow. */
 function scrubTo(st, s, x) {
   const r = st.getBoundingClientRect();
   const h = Math.max(0, Math.min(s.range.running ? clockHours() : 24, ((x - r.left) / r.width) * 24));
@@ -8597,14 +8646,91 @@ function scrubTo(st, s, x) {
   if (cur) { cur.hidden = false; cur.style.left = `${((h / 24) * 100).toFixed(2)}%`; }
   const viz = st.closest('.viz'), slot = viz && viz.querySelector('.dread-slot');
   if (!slot) return;
-  // In place: the time changes as the finger moves, the song's row (and its cover) only when the song does.
-  morph(slot, scrubHtml(s, h));
-  const p = songAt(daySongs(s), h).p;
-  viz.querySelectorAll('.dsessions .s[data-sess]').forEach((row) => {
-    const x = s.day.sessions.find((y) => String(y.from) === row.dataset.sess);
-    row.classList.toggle('hit', !!(p && x && p.ts >= x.from && p.ts <= x.to));
-  });
+  // The row of songs is drawn once; as the finger moves, only the time changes and the row moves along.
+  const songs = daySongs(s), at = songAt(songs, h);
+  let rail = slot.querySelector('.dr-songs');
+  const words = slot.querySelector('.dr-h span');
+  if (!words || (rail ? rail.children.length : 0) !== songs.length) {
+    morph(slot, scrubHtml(s, h));
+    rail = slot.querySelector('.dr-songs');
+    if (rail) rail._placed = true;
+  } else words.textContent = scrubWords(s, h);
+  railTo(rail, at.i);
+  markSession(viz, s, at.p);
 }
+/**
+ * A swipe on the row of songs under the line moves one song on (to the left) or back, however hard, so you go through
+ * the day in order: the row follows the finger, one song either way at most, and slides the rest of the way on letting
+ * go (or back, for a short slow one). Up and down still scrolls the page.
+ */
+document.addEventListener('pointerdown', (e) => {
+  const rail = e.target.closest && e.target.closest('.dr-songs');
+  if (!rail || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const n = rail.children.length, step = railStep(rail);
+  if (n < 2 || !step) return;
+  // During a slide, a new swipe counts from the song that one is going to.
+  const from = rail._anim ? rail._to : Math.round(rail.scrollLeft / step);
+  cancelAnimationFrame(rail._anim);
+  rail._anim = 0;
+  const x0 = e.clientX, y0 = e.clientY, left0 = rail.scrollLeft, id = e.pointerId;
+  let on = false, lx = x0, lt = e.timeStamp, v = 0;
+  const move = (ev) => {
+    if (ev.pointerId !== id) return;
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    if (!on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { end(); return; }
+      if (Math.abs(dx) < 8) return;
+      on = true;
+      rail._user = true;
+      try { rail.setPointerCapture(id); } catch (_) { /* gone already */ }
+    }
+    // How fast it goes (px/ms), mostly from the last few moves.
+    if (ev.timeStamp > lt) v = 0.6 * ((ev.clientX - lx) / (ev.timeStamp - lt)) + 0.4 * v;
+    lx = ev.clientX;
+    lt = ev.timeStamp;
+    rail.scrollLeft = Math.max(Math.max(0, from - 1) * step, Math.min(Math.min(n - 1, from + 1) * step, left0 - dx));
+  };
+  const end = (ev) => {
+    if (ev && ev.pointerId !== id) return;
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', end);
+    document.removeEventListener('pointercancel', end);
+    if (!on) return;
+    rail._swiped = performance.now();
+    // A finger held still before letting go has no speed left.
+    if (ev && ev.timeStamp - lt > 80) v = 0;
+    const dx = lx - x0, fast = Math.abs(v) > 0.3;
+    // Quick: the way it was going (back, if it turned round). Slow: on past a third of the way.
+    const dir = fast ? (Math.sign(v) === Math.sign(dx) ? -Math.sign(v) : 0) : Math.abs(dx) > step / 3 ? -Math.sign(dx) : 0;
+    railSlide(rail, Math.max(0, Math.min(n - 1, from + (ev && ev.type === 'pointercancel' ? 0 : dir))));
+  };
+  document.addEventListener('pointermove', move, { passive: true });
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+}, { passive: true });
+// A swipe that ends on a song doesn't open it too.
+document.addEventListener('click', (e) => {
+  const rail = e.target.closest && e.target.closest('.dr-songs');
+  if (rail && performance.now() - (rail._swiped || 0) < 350) { e.stopPropagation(); e.preventDefault(); }
+}, true);
+// The row moving under a swipe: the marker travels along with it, and the time and the session follow the song in view.
+document.addEventListener('scroll', (e) => {
+  const rail = e.target;
+  if (!rail.classList || !rail.classList.contains('dr-songs') || !rail._user || !STATS || !STATS.day) return;
+  const s = STATS, songs = daySongs(s), step = railStep(rail), viz = rail.closest('.viz');
+  if (!step || !viz || songs.length !== rail.children.length) return;
+  const f = Math.max(0, Math.min(songs.length - 1, rail.scrollLeft / step)), k = Math.floor(f);
+  const a = songs[k], b = songs[Math.min(k + 1, songs.length - 1)], h = a.h + (b.h - a.h) * (f - k);
+  const cur = viz.querySelector('.dstrip .dcur');
+  if (cur) { cur.hidden = false; cur.style.left = `${((h / 24) * 100).toFixed(2)}%`; }
+  const i = Math.round(f);
+  if (i === rail._i) return;
+  rail._i = i;
+  dayScrub = { id: s.range.id, h: songs[i].h };
+  const words = viz.querySelector('.dread .dr-h span');
+  if (words) words.textContent = scrubWords(s, songs[i].h);
+  markSession(viz, s, songs[i]);
+}, { capture: true, passive: true });
 /** Clears the time picked on the line. */
 function scrubClear(viz) {
   dayScrub = { id: '', h: -1 };
