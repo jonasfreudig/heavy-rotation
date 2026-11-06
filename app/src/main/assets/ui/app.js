@@ -8367,7 +8367,11 @@ function daylineViz(s) {
   return `<div class="viz"><h2>Your day</h2><span class="sub">Each block is a session; tap one for its songs</span>${stripHtml(d.plays, now)}${hoursAxis('big')}
     <div class="dsessions">${ss}</div></div>`;
 }
-/** Opens a session of Your day to its songs under it, or closes it again. */
+/**
+ * Opens a session of Your day to its songs under it, or closes it again. The row grows out from under
+ * the session (cancelling the list's gap, so nothing jumps) and its first songs slide in one after
+ * another; closing folds it back.
+ */
 function toggleSession(row) {
   const from = +row.dataset.sess;
   const x = ((STATS && STATS.day && STATS.day.sessions) || []).find((y) => y.from === from);
@@ -8375,9 +8379,32 @@ function toggleSession(row) {
   if (open) daySessOpen.add(from); else daySessOpen.delete(from);
   row.classList.toggle('open', open);
   row.setAttribute('aria-expanded', String(open));
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const next = row.nextElementSibling;
-  if (next && next.classList.contains('dsongs')) next.remove();
-  if (open && x && x.songs) row.insertAdjacentHTML('afterend', sessionSongs(x));
+  if (next && next.classList.contains('dsongs')) {
+    if (calm || next.dataset.closing) next.remove();
+    else {
+      next.dataset.closing = '1';
+      next.getAnimations().forEach((a) => a.cancel());
+      next.animate(sessionFold(next).reverse(), { duration: 220, easing: 'cubic-bezier(.3, 0, .8, .15)', fill: 'forwards' }).onfinish = () => next.remove();
+    }
+  }
+  if (!open || !x || !x.songs) return;
+  row.insertAdjacentHTML('afterend', sessionSongs(x));
+  const box = row.nextElementSibling;
+  if (calm) return;
+  box.animate(sessionFold(box), { duration: 300, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+  // The songs in view (four at most on a phone, a fifth just in case) slide in; the rest wait off to the side.
+  [...box.children].slice(0, 5).forEach((t, i) => t.animate(
+    [{ transform: 'translateX(28px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+    { duration: 320, delay: 50 + i * 45, easing: 'cubic-bezier(.2, 0, 0, 1)', fill: 'backwards' },
+  ));
+}
+/** A session's song row from folded away (no height, padding or margins, the list's gap taken back) to as it is. */
+function sessionFold(box) {
+  const cs = getComputedStyle(box), gap = parseFloat(getComputedStyle(box.parentElement).rowGap) || 0;
+  const to = { height: `${box.offsetHeight}px`, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginTop: cs.marginTop, marginBottom: cs.marginBottom, opacity: 1 };
+  return [{ height: '0px', paddingTop: '0px', paddingBottom: '0px', marginTop: `${-gap}px`, marginBottom: '0px', opacity: 0 }, to];
 }
 function firstLatestViz(s) {
   const d = s.day;
