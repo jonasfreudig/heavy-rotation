@@ -733,6 +733,7 @@ const Mock = (() => {
     ['Nubya Garcia', 'Jazz', 90000], ['Hermanos Gutiérrez', 'Instrumental', 150000], ['Bombino', 'Desert blues', 70000], ['Yin Yin', 'Psychedelic', 40000],
     ["L'Impératrice", 'Nu-disco', 500000]];
   const discNo = new Set();
+  const relNo = new Set();
   let discReach = 1, discLooked = false;
   function fakeDiscover() {
     const L = history();
@@ -745,9 +746,27 @@ const Mock = (() => {
     if (discReach === 2) arts = arts.slice().sort((p, q) => p.fans - q.fans);
     if (discReach === 0) arts = arts.slice().sort((p, q) => q.fans - p.fans);
     const day = (d) => new Date(Date.now() - d * DAY).toISOString().slice(0, 10);
-    const releases = [{ artist: seeds[0], title: 'Late Bloom', type: 'album', date: day(18), cover: '', plays: 12 }, { artist: seeds[2], title: 'Night Bus', type: 'single', date: day(3), cover: '', plays: 0 },
-      { artist: seeds[4], title: 'Field Recordings', type: 'ep', date: day(-14), cover: '', plays: 0 }];
-    return { on: true, reach: discReach, busy: false, done: 25, total: 25, error: '', no: discNo.size, lastfm: true, built: Date.now() - DAY, artists: arts, releases, mix: 15 };
+    // New releases as Core.kt gives them (Releases.find): out lately (unheard first), coming soon, old favorites back.
+    const rel = (artist, title, type, d, extra = {}) => ({ artist, title, type, date: day(d), cover: '', id: 0, link: '', kind: '', singles: [], plays: 0, src: 'deezer', fanPlays: 120, owned: 0, last: Date.now() - 3 * DAY, ...extra });
+    const hidden = (r) => !relNo.has(`${r.artist}|${r.title}`);
+    const releases = [rel(seeds[1], 'Late Bloom', 'album', 18, { singles: ['First Light', 'Undertow'], fanPlays: 640 }), rel(seeds[3], 'Night Bus', 'single', 3, { fanPlays: 210 }),
+      rel(seeds[5], 'Glass House', 'ep', 9), rel(seeds[6], 'Live at the Roundhouse', 'album', 12, { kind: 'live' }), rel(seeds[7], 'Static Bloom', 'album', 30, { fanPlays: 45, owned: 2 }),
+      rel(seeds[0], 'Heavy Weather', 'album', 25, { plays: 34, fanPlays: 1200 })].filter(hidden);
+    const upcoming = [rel(seeds[4], 'Field Recordings', 'ep', -14), rel(seeds[2], 'The Long Way Round', 'album', -52, { singles: ['Northbound', 'Harbour Lights'], fanPlays: 880 }),
+      rel(seeds[8], 'Untitled Fourth Album', 'album', -120, { src: 'mb' })].filter(hidden);
+    const back = [rel(seeds[9], 'Return Ticket', 'album', 6, { last: Date.now() - 400 * DAY, fanPlays: 310 })].filter(hidden);
+    const starts = arts.slice(0, 8).map((a, i) => ({ artist: a.name, title: ['First Album', 'The Breakthrough', 'Live Debut', 'Second Wind', 'Quiet Storm', 'Night Music', 'Golden Hour', 'Last Light'][i], cover: '', like: a.because[0].name }));
+    const sugReleases = arts.slice(2, 5).map((a, i) => rel(a.name, ['New Moon', 'Dust and Echoes', 'Sideways'][i], i === 1 ? 'single' : 'album', 5 + i * 9, { like: a.because[0].name, fanPlays: 0 }));
+    const recent = [{ seed: seeds[0], plays: 48, artists: arts.slice(5).map((a) => ({ ...a })) }];
+    const gaps = [[seeds[0], 'The Early Years', 2016, 3, 5], [seeds[0], 'Sophomore', 2018, 3, 5], [seeds[1], 'Before the Fame', 2014, 2, 3], [seeds[3], 'Lost in Translation', 2020, 1, 2]]
+      .map(([artist, title, y, heard, of]) => ({ artist, title, type: 'album', date: `${y}-05-01`, cover: '', id: 0, heard, of }));
+    const took = [{ name: 'Fontaines D.C.', photo: '', plays: 64, since: Date.now() - 40 * DAY, took: Date.now() - 30 * DAY, seeds: [seeds[0]] }, { name: 'Wet Leg', photo: '', plays: 9, since: Date.now() - 20 * DAY, took: Date.now() - 6 * DAY, seeds: [seeds[1]] }];
+    const L2 = history(), seen = {};
+    for (let i = Math.max(0, L2.ts.length - 600); i < L2.ts.length; i++) { const k = L2.t[i]; seen[k] = seen[k] || { n: 0, a: L2.a[i] }; seen[k].n++; }
+    const top = Object.keys(seen).sort((x, y) => seen[y].n - seen[x].n).slice(0, 3);
+    const sim = top.length ? { songs: top.map((t) => ({ artist: L2.artists[seen[t].a], title: L2.titles[t], album: '', cover: '' })) } : null;
+    return { on: true, reach: discReach, busy: false, done: 25, total: 25, error: '', no: discNo.size, lastfm: true, built: Date.now() - DAY, artists: arts, releases, upcoming, back,
+      relBusy: false, relDone: 0, relTotal: 0, relArtists: 214, relHidden: relNo.size, relChecked: 214, sugReleases, starts, recent, gaps, took, sim, mix: 15 };
   }
   // The atlas from the made-up log, worked out like Atlas.kt does (links, spring layout, constellations, shapes).
   let atlasCache = null;
@@ -1709,6 +1728,10 @@ const Mock = (() => {
           } else later(150, () => onDiscover(fakeDiscover()));
           break;
         case 'discoverReach': discReach = m.v; later(200, () => onDiscover(fakeDiscover())); break;
+        case 'relNo': case 'relUndo':
+          if (m.t === 'relNo') relNo.add(`${m.artist}|${m.title}`); else relNo.delete(`${m.artist}|${m.title}`);
+          later(150, () => onDiscover(fakeDiscover()));
+          break;
         case 'discoverNo': case 'discoverUndo': case 'discoverClearNo':
           if (m.t === 'discoverNo') discNo.add(m.name); else if (m.t === 'discoverUndo') discNo.delete(m.name); else discNo.clear();
           S.discover.no = discNo.size;
@@ -1790,6 +1813,9 @@ const Mock = (() => {
             const rel = (fakeDiscover().releases || []).filter((r) => new Date(r.date) <= Date.now());
             const tracks = Array.from({ length: 24 }, (_, i) => { const r = rel[i % Math.max(1, rel.length)] || { artist: 'Wet Leg', title: 'Moisturizer' }; return { artist: r.artist, title: `Track ${Math.floor(i / Math.max(1, rel.length)) + 1}`, album: r.title, plays: 0, source: 'new' }; });
             later(900, () => onPlaylist({ kind: 'newReleases', name: 'New releases', note: 'What your artists put out lately', tracks }));
+          } else if (m.kind === 'similarSongs') {
+            const tracks = Array.from({ length: 30 }, (_, i) => ({ artist: `Kindred Artist ${(i * 7) % 17}`, title: `A Song Like Yours ${i + 1}`, album: '', plays: 0, source: 'new' }));
+            later(700, () => onPlaylist({ kind: 'similarSongs', name: 'Songs like your favorites', note: "Songs you haven't played that Last.fm finds like your most played of the last month", tracks }));
           } else if (m.kind === 'artistBest') {
             const tracks = ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'].map((title) => ({ artist: m.artist, title, album: '', plays: 0, source: 'new' }));
             later(400, () => onPlaylist({ kind: 'artistBest', artist: m.artist, name: `Best of ${m.artist}`, note: 'Their most played songs on Last.fm', tracks }));

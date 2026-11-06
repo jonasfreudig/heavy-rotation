@@ -1697,6 +1697,73 @@ class Stats(
         return k in artistIndex || k in shelfArtists
     }
 
+    /**
+     * The artists whose new releases are looked for, the ones you care about most first ([Fan.weight]): everyone you played
+     * [Releases.FAN_MIN_PLAYS] times or more, and everyone on your shelf, [Releases.FANS] at most. All your plays of an
+     * artist count, the recent ones more (half as much after four months), and a few records of theirs too.
+     */
+    val releaseFans: List<Fan> by lazy {
+        val l = artistLife
+        val k = Math.log(2.0) / (120.0 * 86400.0)
+        val recent = DoubleArray(h.artistNames.size)
+        for (i in 0 until h.size) recent[h.artist[i]] += Math.exp(-k * maxOf(0L, nowSec - h.ts[i]))
+        val owned = HashMap<String, Int>()
+        val shelfName = HashMap<String, String>()
+        for (c in collection) {
+            val n = Text.norm(c.artist)
+            if (n.isEmpty() || n.startsWith("various") || n == "unknown artist") continue
+            owned.merge(n, 1, Int::plus)
+            shelfName.putIfAbsent(n, c.artist)
+        }
+        val topPlays = Math.log1p((l.plays.maxOrNull() ?: 1).toDouble())
+        val topRecent = Math.sqrt(recent.maxOrNull()?.takeIf { it > 0 } ?: 1.0)
+        fun weight(plays: Int, rec: Double, own: Int) =
+            0.55 * Math.log1p(plays.toDouble()) / topPlays + 0.35 * Math.sqrt(rec) / topRecent + 0.1 * minOf(1.0, own / 3.0)
+        val quietBefore = nowSec - LOST_DAYS * DAY_SEC
+        val out = ArrayList<Fan>()
+        val seen = HashSet<String>()
+        for (a in h.artistNames.indices) {
+            val n = Text.norm(h.artistNames[a])
+            val own = owned[n] ?: 0
+            if (l.plays[a] < Releases.FAN_MIN_PLAYS && own == 0) continue
+            if (!seen.add(n)) continue
+            out += Fan(h.artistNames[a], weight(l.plays[a], recent[a], own), l.plays[a], l.last[a], own, l.plays[a] >= LOST_MIN && l.last[a] < quietBefore)
+        }
+        for ((n, own) in owned) if (seen.add(n)) out += Fan(shelfName.getValue(n), weight(0, 0.0, own), 0, 0, own)
+        out.sortedByDescending { it.weight }.take(Releases.FANS)
+    }
+
+    /** All your plays of an artist. */
+    fun artistPlaysOf(name: String): Int = artistIndex[Text.norm(name)]?.let { artistLife.plays[it] } ?: 0
+
+    /** Your plays of an artist since [sec] (Unix seconds). */
+    fun playsSince(name: String, sec: Long): Int {
+        val a = artistIndex[Text.norm(name)] ?: return 0
+        var n = 0
+        for (i in h.lowerBound(sec) until h.size) if (h.artist[i] == a) n++
+        return n
+    }
+
+    /** Your plays of a song (0 if you never played it). */
+    fun songPlaysOf(artist: String, title: String): Int = findTrack(artist, title).let { if (it < 0) 0 else trackPlays[it] }
+
+    /** The artists you played most in the last [days] days ([min] plays at least), with their plays, [n] at most. */
+    fun recentLeaders(days: Int = 14, n: Int = 2, min: Int = 10): List<Pair<String, Int>> {
+        val c = HashMap<Int, Int>()
+        for (i in h.lowerBound(nowSec - days * DAY_SEC) until h.size) c.merge(h.artist[i], 1, Int::plus)
+        return c.entries.filter { it.value >= min }.sortedByDescending { it.value }.take(n).map { h.artistNames[it.key] to it.value }
+    }
+
+    /** Your most played songs of the last [days] days, [n] at most, as picks with their plays then and their covers. */
+    fun recentTopSongs(days: Int = 30, n: Int = 10, min: Int = 3): List<Pick> {
+        val c = HashMap<Int, Int>()
+        for (i in h.lowerBound(nowSec - days * DAY_SEC) until h.size) c.merge(h.track[i], 1, Int::plus)
+        return c.entries.filter { it.value >= min }.sortedByDescending { it.value }.take(n).map { (t, p) ->
+            val al = trackAlbum[t]
+            Pick(h.artistNames[h.trackArtist[t]], h.trackTitles[t], if (al >= 0) h.albumTitles[al] else "", p, "yours", if (al >= 0) cover(al) else "")
+        }
+    }
+
     /** Of [names], those whose photo hasn't been looked up yet. */
     private fun withoutPhoto(names: List<String>) = names.filter { photoKey(it) !in albumImages }.distinct()
 

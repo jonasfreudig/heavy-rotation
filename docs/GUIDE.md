@@ -447,9 +447,10 @@ each, and dim the ones you haven't heard yet. The story gets a slide with your t
 Explore is for music to play next. It comes in rows: each list is one row you scroll sideways, with
 its playlist next to the heading. Tap a heading, or the All card at the end of its row, for the
 whole list (up to 100), with more about each: when you last played an artist, when they were big
-for you, how many plays. At the top sit the mixes, side by side: the discovery mix, Crate dig, New
-releases (the songs of what your artists put out lately, from Deezer) and On this day. Then come the suggestions
-for you and new releases by your artists, and then the lists to rediscover. In the whole list of On
+for you, how many plays. At the top sit the mixes, side by side: the discovery mix, Songs like your
+favorites, Crate dig, New releases (the songs of what your artists put out lately, from Deezer) and On
+this day. Then come the suggestions, the new releases and the other lists of For you and New releases
+(below), and then the lists to rediscover. In the whole list of On
 this day, tap a year for that day's stats. With Settings → Look → Explore set to One long page, the
 lists come one after the other, full size. The views of your whole history (the atlas, you vs
 everyone, your concerts and the genre map) are under Your taste at the end of the Stats tab.
@@ -477,8 +478,40 @@ first look takes a minute or two; after that it runs again once a week, when you
 - The discovery mix is 30 songs you haven't played: the two best-known songs of each of 15
   suggested artists, no artist twice in a row. It stays the same all week and changes on Monday.
   Make another picks other artists and songs. Like every playlist, it can go to TIDAL.
-- New from your artists has the albums, EPs and singles your artists put out in the last eight
-  weeks, or that come out soon, from Deezer.
+- Songs like your favorites (in the top row) is 30 songs you haven't played that Last.fm finds
+  similar to your ten most played songs of the last month, the most alike first, two at most by one
+  artist.
+- Because you've been playing… rows come from the artists that filled your last two weeks (ten
+  plays or more): artists like each of them alone, leaving out the ones the main row already shows.
+- Albums to start with has the best-known album on Last.fm of each of your best suggestions (not a
+  live record or a best-of). A suggestion's sheet shows it too.
+- New from artists you might like has what your best suggestions put out lately.
+- Suggestions you took up lists the artists suggested here that you've played three times or more
+  since. Each makes the artists of yours that led to it count a little more in the suggestions from
+  then on.
+
+#### New releases
+
+New from your artists has what came out in the last eight weeks by the artists you've played 15
+times or more or have on your shelf, up to 300 of them. The 40 you care about most (all your plays,
+the recent ones more, and your records of theirs) are looked at on Deezer every day, the others once
+a week, when you open Explore; the first look takes a few minutes, and the row fills as it goes.
+
+- One record per title: a deluxe edition of an old album isn't new, and the singles out up to five
+  months before an album or EP fold into it. Compilations are left out; live records and remixes
+  say so.
+- The ones you haven't played yet come first, then the artists you care about most, albums before
+  EPs before singles, and the newest.
+- Coming soon has what is due in the months ahead, with the singles out so far. For your 40 artists,
+  MusicBrainz is asked weekly too, for albums announced before Deezer lists them.
+- Your old favorites are back has the new releases of artists you played a lot and not for half a
+  year or more.
+- Tap a heading for the full list, with why each release is there (how much you play the artist,
+  the singles before it, your plays of it so far). The ✕ on a release hides it for good; Undo takes
+  it back.
+- Albums you're missing has the albums of your 30 most played artists that you've never played and
+  don't own, when you know at least one of theirs. Live records, remixes and best-ofs don't count, and
+  neither does a longer edition of an album you know. It's looked through weekly.
 
 Settings → Stats and listening → Suggestions on Explore turns all of this off, and with it the
 lookups.

@@ -4,7 +4,6 @@ import app.recordshelf.history.Discover
 import app.recordshelf.history.History
 import app.recordshelf.history.Like
 import app.recordshelf.history.Stats
-import app.recordshelf.net.DzRelease
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -93,20 +92,6 @@ class DiscoverTest {
         assertTrue(again.zipWithNext().none { (x, y) -> x.artist == y.artist })
         assertEquals(Discover.weekSeed(LocalDate.of(2026, 10, 26)), Discover.weekSeed(LocalDate.of(2026, 11, 1)))
         assertTrue(Discover.weekSeed(LocalDate.of(2026, 11, 1)) != Discover.weekSeed(LocalDate.of(2026, 11, 2)))
-    }
-
-    @Test
-    fun newReleasesAreRecentOrComingAndNoCompilations() {
-        fun r(title: String, type: String, date: String) = DzRelease(1, title, type, date, "", "")
-        val today = LocalDate.of(2026, 10, 30)
-        val list = Discover.newReleases(
-            listOf(
-                "A" to listOf(r("Old", "album", "2026-01-10"), r("New Album", "album", "2026-10-09"), r("Best Of", "compile", "2026-10-20")),
-                "B" to listOf(r("Soon", "single", "2026-11-20"), r("Single", "single", "2026-10-28"), r("Single", "single", "2026-10-28")),
-            ),
-            today,
-        )
-        assertEquals(listOf("Soon", "Single", "New Album"), list.map { it.second.title })
     }
 
     @Test

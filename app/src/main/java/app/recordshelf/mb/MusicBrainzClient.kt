@@ -64,6 +64,25 @@ class MusicBrainzClient(
         }.uppercase()
     }
 
+    /** The MusicBrainz id of the artist with exactly this name (the best match), "" if there is none. */
+    fun artistId(name: String): String {
+        val j = get("/artist?query=${Http.enc("artist:\"${quote(name)}\"")}&fmt=json&limit=5") ?: return ""
+        val norm = Text.norm(name)
+        return j.optJSONArray("artists")?.objects().orEmpty()
+            .firstOrNull { it.optInt("score") >= 90 && (Text.norm(it.str("name")) == norm || Text.norm(it.str("sort-name")) == norm) }?.str("id").orEmpty()
+    }
+
+    /** An artist's albums and EPs (release groups), with their first release date ("" if none yet) and other types ("Live", …). */
+    fun releaseGroups(artistId: String): List<app.recordshelf.history.MbGroup> {
+        val j = get("/release-group?artist=${Http.enc(artistId)}&type=album%7Cep&fmt=json&limit=100") ?: return emptyList()
+        return j.optJSONArray("release-groups")?.objects().orEmpty().map { g ->
+            app.recordshelf.history.MbGroup(
+                g.str("id"), g.str("title"), g.str("primary-type").lowercase(), g.str("first-release-date"),
+                g.optJSONArray("secondary-types")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
+            )
+        }
+    }
+
     private fun quote(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
 
     private fun get(path: String): JSONObject? {

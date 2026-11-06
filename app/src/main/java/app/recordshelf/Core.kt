@@ -22,7 +22,10 @@ import app.recordshelf.history.History
 import app.recordshelf.history.HistorySync
 import app.recordshelf.history.Junk
 import app.recordshelf.history.Like
+import app.recordshelf.history.Fan
+import app.recordshelf.history.MbGroup
 import app.recordshelf.history.Pick
+import app.recordshelf.history.Releases
 import app.recordshelf.history.Stats
 import app.recordshelf.history.Suggestion
 import app.recordshelf.history.Years
@@ -870,6 +873,14 @@ object Core {
             "discover" -> discoverExec.execute {
                 push("onDiscover") { discoverJson() }
                 discoverInner(force = msg.optBoolean("again"))
+                releaseExec.execute { releasesInner() }
+                currentStats()?.let { if (discoverDaily(it, lastfm())) push("onDiscover") { discoverJson() } }
+            }
+            "relNo", "relUndo" -> discoverExec.execute {
+                val k = Text.albumKey(msg.optString("artist"), msg.optString("title"))
+                synchronized(dstore) { if (msg.optString("t") == "relNo") dpart("relNo").put(k, System.currentTimeMillis()) else dpart("relNo").remove(k) }
+                saveDiscover()
+                push("onDiscover") { discoverJson() }
             }
             "discoverReach" -> {
                 prefs.discoverReach = msg.optInt("v").coerceIn(Discover.CLOSE, Discover.FURTHER)
@@ -910,6 +921,7 @@ object Core {
                 if (msg.optString("kind") == "discover") return@execute discoverExec.execute { discoverMix(msg) }
                 if (msg.optString("kind") == "artistBest") return@execute discoverExec.execute { artistBest(msg) }
                 if (msg.optString("kind") == "newReleases") return@execute webExec.execute { newReleasesMix() }
+                if (msg.optString("kind") == "similarSongs") return@execute discoverExec.execute { similarSongsMix() }
                 push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
             }
             "genre" -> {
@@ -2452,7 +2464,7 @@ object Core {
             for (k in o.keys()) o.optJSONObject(k)?.optJSONArray("list")?.let { a -> likes[k] = (0 until a.length()).map { Like.fromJson(a.getJSONObject(it)) } }
         }
         val no = discoverNo()
-        return Discover.suggest(s.discoverSeeds(), likes, s::knows, no.keys().asSequence().toSet(), discoverWeaker(), prefs.discoverReach, max)
+        return Discover.suggest(s.discoverSeeds(), likes, s::knows, no.keys().asSequence().toSet(), discoverWeaker(), prefs.discoverReach, max, tookSeeds())
     }
 
     /**
@@ -2475,7 +2487,6 @@ object Core {
         pushDiscover()
         try {
             var fails = 0
-            val rels = ArrayList<Pair<String, List<DzRelease>>>()
             for ((i, seed) in seeds.withIndex()) {
                 val name = seed.first
                 val e = try {
@@ -2484,7 +2495,6 @@ object Core {
                     fails++
                     null
                 }
-                e?.optJSONArray("releases")?.let { a -> rels += name to (0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) } }
                 if (!likesFresh(name)) {
                     try {
                         fetchLikes(c, name, e?.optJSONObject("artist")?.optLong("id"))
@@ -2497,9 +2507,8 @@ object Core {
                 if (fails >= 4) throw IOException("offline")
                 if (i % 5 == 4) pushDiscover()
             }
-            val fresh = Discover.newReleases(rels, java.time.LocalDate.now())
             synchronized(dstore) {
-                dstore.put("releases", JSONArray(fresh.map { (a, r) -> r.toJson().put("artist", a) }))
+                dstore.remove("releases")
                 dstore.put("at", now)
             }
             discoverExtras(s, c)
@@ -2522,6 +2531,11 @@ object Core {
         for (x in best.take(Discover.mixArtists(MIX_SIZE))) topsOf(c, x.name)
         for (x in best) genreOf(c, x.name)
         saveDiscover()
+        for (x in best) {
+            startOf(c, x.name)
+            suggestedReleases(x.name)
+        }
+        saveDiscover()
         val photos = s.needPhotos(best.filter { it.photo.isEmpty() }.map { it.name })
         if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) { pushDiscover() } }
     }
@@ -2538,9 +2552,21 @@ object Core {
         val sugg = suggestions(s)
         o.put("built", synchronized(dstore) { dstore.optLong("at") })
         o.put("artists", JSONArray(sugg.map { suggestionJson(it, s) }))
-        val rel = synchronized(dstore) { dstore.optJSONArray("releases")?.let { JSONArray(it.toString()) } } ?: JSONArray()
-        for (i in 0 until rel.length()) rel.getJSONObject(i).let { r -> r.put("plays", s.albumPlaysOf(r.optString("artist"), r.optString("title"))) }
-        o.put("releases", rel)
+        val found = relFound(s)
+        val fans = s.releaseFans.associateBy { Text.norm(it.name) }
+        fun rel(list: List<app.recordshelf.history.NewRelease>) = JSONArray(list.map { r ->
+            val f = fans[Text.norm(r.artist)]
+            r.toJson().put("fanPlays", f?.plays ?: 0).put("owned", f?.owned ?: 0).put("last", (f?.last ?: 0L) * 1000)
+        })
+        o.put("releases", rel(found.out)).put("upcoming", rel(found.soon)).put("back", rel(found.back))
+        o.put("relBusy", relBusy).put("relDone", relDone).put("relTotal", relTotal).put("relArtists", fans.size)
+            .put("relHidden", relHidden().size).put("relChecked", synchronized(dstore) { dpart("rel").length() })
+        o.put("sugReleases", suggestedReleasesJson(sugg))
+        o.put("starts", startsJson(sugg))
+        o.put("recent", recentJson(s, sugg))
+        o.put("gaps", gapsJson(s))
+        o.put("took", tookJson(s, sugg))
+        o.put("sim", simJson(s))
         o.put("mix", Discover.mixArtists(MIX_SIZE))
         return o
     }
@@ -2650,6 +2676,9 @@ object Core {
     /** An artist's best-known songs on Last.fm, as a playlist to start with them. On [discoverExec]. */
     private val NEW_MIX_SIZE = 60
 
+    /** The new-releases playlist takes the songs of this many releases at most. */
+    private val NEW_MIX_RELEASES = 20
+
     private fun artistBest(msg: JSONObject) {
         val name = msg.optString("artist")
         val songs = topsOf(lastfm(), name).orEmpty()
@@ -2664,13 +2693,14 @@ object Core {
      * from Deezer's tracklists, one release after the other in turn so no record comes in a block. On [webExec].
      */
     private fun newReleasesMix() {
+        val s = currentStats()
+        val found = s?.let { relFound(it) }
         val today = java.time.LocalDate.now().toString()
-        val rel = synchronized(dstore) { dstore.optJSONArray("releases")?.let { JSONArray(it.toString()) } } ?: JSONArray()
-        val out = (0 until rel.length()).map { rel.getJSONObject(it) }.filter { it.optString("date") <= today && it.optLong("id") > 0 }
+        val out = found?.let { it.out + it.back }.orEmpty().filter { it.id > 0 && it.date <= today }.take(NEW_MIX_RELEASES)
         val per = out.mapNotNull { r ->
             try {
-                val a = deezer.album(r.optLong("id"))
-                a.tracks.map { (t, _) -> Pick(r.optString("artist"), t, a.title, 0, "new", r.optString("cover").ifEmpty { a.cover }) }
+                val a = deezer.album(r.id)
+                a.tracks.map { (t, _) -> Pick(r.artist, t, a.title, 0, "new", r.cover.ifEmpty { a.cover }) }
             } catch (_: Exception) {
                 null
             }
@@ -2680,6 +2710,390 @@ object Core {
             if (tracks.isEmpty()) JSONObject().put("kind", "newReleases").put("empty", true)
             else JSONObject().put("kind", "newReleases").put("name", "New releases").put("note", "What your artists put out lately")
                 .put("tracks", pickJson(tracks))
+        }
+    }
+
+
+    // ---- new releases by your artists, albums you're missing, and what your listening lately points to (history/Releases) ----
+
+    private val releaseExec = serial()
+    private val mbz by lazy { MusicBrainzClient() }
+    @Volatile private var relBusy = false
+    @Volatile private var relDone = 0
+    @Volatile private var relTotal = 0
+
+    /** How long one artist's releases count as looked at: a day for the ones you care about most, else most of a week. */
+    private const val REL_DAY = 20L * HOUR
+    private const val REL_WEEK = 6L * 24 * HOUR
+
+    /** Albums you're missing: looked for among this many of your most played artists, weekly, two of each at most. */
+    private const val GAP_ARTISTS = 30
+    private const val GAP_EVERY = 7L * 24 * HOUR
+
+    /** Rows of artists, albums or releases on Explore hold this many. */
+    private const val ROW_MAX = 15
+
+    /**
+     * Looks for new releases by your artists ([Stats.releaseFans]): their releases on Deezer, the [Releases.DAILY] you
+     * care about most every day and the rest weekly; the albums MusicBrainz knows are coming for the first
+     * [Releases.ANNOUNCED], weekly; and, weekly, the albums you're missing by your most played artists. Each artist is
+     * kept as it is done, so the lists fill as it goes. On [releaseExec].
+     */
+    private fun releasesInner() {
+        if (relBusy || !prefs.discoverOn) return
+        val s = currentStats() ?: return
+        val fans = s.releaseFans
+        if (fans.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val today = java.time.LocalDate.now()
+        val due = synchronized(dstore) {
+            val rel = dpart("rel")
+            fans.filterIndexed { i, f -> !fresh(rel.optJSONObject(Text.norm(f.name)), if (i < Releases.DAILY) REL_DAY else REL_WEEK) }
+        }
+        val announcedDue = synchronized(dstore) { fans.take(Releases.ANNOUNCED).filter { !fresh(dpart("mb").optJSONObject(Text.norm(it.name)), REL_WEEK) } }
+        val gapsDue = synchronized(dstore) { !fresh(dstore.optJSONObject("gaps"), GAP_EVERY) }
+        if (due.isEmpty() && announcedDue.isEmpty() && !gapsDue) return
+        relBusy = true
+        relDone = 0
+        relTotal = due.size + announcedDue.size
+        pushDiscover()
+        try {
+            var fails = 0
+            fun failed() {
+                if (++fails >= 4) throw IOException("offline")
+            }
+            for (f in due) {
+                val key = Text.norm(f.name)
+                try {
+                    val old = synchronized(dstore) { dpart("rel").optJSONObject(key) }
+                    val id = old?.optLong("id")?.takeIf { it > 0 } ?: deezer.findArtist(f.name)?.id ?: 0L
+                    val list = if (id > 0) Releases.keep(deezer.releases(id, maxPages = 2), today) else emptyList()
+                    synchronized(dstore) {
+                        dpart("rel").put(key, JSONObject().put("n", f.name).put("id", id).put("at", now).put("list", JSONArray(list.map { it.toJson() })))
+                    }
+                    fails = 0
+                } catch (_: Exception) {
+                    failed()
+                }
+                relDone++
+                if (relDone % 10 == 0) {
+                    saveDiscover()
+                    pushDiscover()
+                }
+            }
+            for (f in announcedDue) {
+                val key = Text.norm(f.name)
+                try {
+                    val old = synchronized(dstore) { dpart("mb").optJSONObject(key) }
+                    val id = old?.optString("id")?.ifEmpty { null } ?: mbz.artistId(f.name)
+                    val soon = if (id.isEmpty()) emptyList() else mbz.releaseGroups(id).filter { it.date.length == 10 && it.date > today.toString() }
+                    synchronized(dstore) {
+                        dpart("mb").put(key, JSONObject().put("n", f.name).put("id", id).put("at", now).put("list", JSONArray(soon.map { it.toJson() })))
+                    }
+                    fails = 0
+                } catch (_: Exception) {
+                    failed()
+                }
+                relDone++
+            }
+            if (gapsDue) {
+                saveDiscover()
+                pushDiscover()
+                gapsInner(s, today)
+            }
+        } catch (_: Exception) {
+            // Offline: what was found so far; the rest is asked next time.
+        } finally {
+            // Artists no longer among yours aren't kept.
+            val keys = fans.map { Text.norm(it.name) }.toSet()
+            synchronized(dstore) {
+                for (part in listOf(dpart("rel"), dpart("mb"))) part.keys().asSequence().toList().filter { it !in keys }.forEach { part.remove(it) }
+            }
+            saveDiscover()
+            relBusy = false
+            pushDiscover()
+        }
+    }
+
+    /** The albums you're missing by your [GAP_ARTISTS] most played artists, from their discographies (each kept a week). */
+    private fun gapsInner(s: Stats, today: java.time.LocalDate) {
+        val shelf = collection.map { Text.albumKey(it.artist, it.title) }.toSet()
+        val top = s.releaseFans.filter { it.plays > 0 }.sortedByDescending { it.plays }.take(GAP_ARTISTS)
+        val out = JSONArray()
+        var fails = 0
+        for (f in top) {
+            val c = try {
+                discoEntry(f.name, pace = true).also { fails = 0 }
+            } catch (_: Exception) {
+                if (++fails >= 4) return
+                continue
+            }
+            val a = c.optJSONArray("releases") ?: continue
+            val releases = (0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) }
+            val g = Releases.gaps(
+                f.name, Discography.merge(releases) { t -> s.editionRoot(f.name, t) }, { t -> s.albumPlaysOf(f.name, t) },
+                { t -> Text.albumKey(f.name, t) in shelf }, today,
+            ) ?: continue
+            for (m in g.missing.take(2)) out.put(m.toJson().put("artist", f.name).put("heard", g.heard).put("of", g.of).put("fanPlays", f.plays))
+        }
+        synchronized(dstore) { dstore.put("gaps", JSONObject().put("at", System.currentTimeMillis()).put("list", out)) }
+    }
+
+    /** The releases you said you don't want to see (album keys). */
+    private fun relHidden(): Set<String> = synchronized(dstore) { dpart("relNo").keys().asSequence().toSet() }
+
+    /** New releases by your artists, from what was looked up (see [releasesInner]), with your plays of each. */
+    private fun relFound(s: Stats): Releases.Found {
+        val today = java.time.LocalDate.now()
+        val fans = s.releaseFans.associateBy { Text.norm(it.name) }
+        val by = LinkedHashMap<String, List<DzRelease>>()
+        synchronized(dstore) {
+            val rel = dpart("rel")
+            for (k in rel.keys()) {
+                if (k !in fans) continue
+                val e = rel.optJSONObject(k) ?: continue
+                val a = e.optJSONArray("list") ?: continue
+                by[e.optString("n")] = (0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) }
+            }
+            val mb = dpart("mb")
+            for (k in mb.keys()) {
+                if (k !in fans) continue
+                val e = mb.optJSONObject(k) ?: continue
+                val a = e.optJSONArray("list") ?: continue
+                val name = e.optString("n")
+                val have = by[name].orEmpty()
+                val soon = Releases.announced((0 until a.length()).map { MbGroup.fromJson(a.getJSONObject(it)) }, have, today)
+                if (soon.isNotEmpty()) by[name] = have + soon
+            }
+        }
+        return Releases.find(by, fans, today, relHidden()) { a, t, type -> if (type == "single") s.songPlaysOf(a, t) else s.albumPlaysOf(a, t) }
+    }
+
+    /**
+     * An album to start with for a suggested artist: their most played one on Last.fm that isn't live, remixed or a best-of,
+     * with its cover (Last.fm's, else Deezer's). Kept a month. On [discoverExec].
+     */
+    private fun startOf(c: LastfmClient?, name: String) {
+        val k = Text.norm(name)
+        if (c == null || synchronized(dstore) { fresh(dpart("start").optJSONObject(k), LIKES_TTL) }) return
+        val pick = try {
+            c.artistTopAlbums(name, 8).firstOrNull { Releases.toStartWith(it.first) }
+        } catch (_: Exception) {
+            return
+        }
+        Thread.sleep(220)
+        val cover = pick?.second?.ifEmpty { null } ?: pick?.let { runCatching { deezer.albumCover(name, it.first) }.getOrNull() }.orEmpty()
+        synchronized(dstore) { dpart("start").put(k, JSONObject().put("at", System.currentTimeMillis()).put("title", pick?.first.orEmpty()).put("cover", cover)) }
+    }
+
+    /** A suggested artist's releases on Deezer (the recent ones), kept most of a week, for New from artists you might like. On [discoverExec]. */
+    private fun suggestedReleases(name: String) {
+        val k = Text.norm(name)
+        if (synchronized(dstore) { fresh(dpart("srel").optJSONObject(k), REL_WEEK) }) return
+        val list = try {
+            val id = deezer.findArtist(name)?.id ?: 0L
+            if (id > 0) Releases.keep(deezer.releases(id, maxPages = 1), java.time.LocalDate.now()) else emptyList()
+        } catch (_: Exception) {
+            return
+        }
+        synchronized(dstore) {
+            val part = dpart("srel")
+            part.put(k, JSONObject().put("n", name).put("at", System.currentTimeMillis()).put("list", JSONArray(list.map { it.toJson() })))
+            // Only the latest suggestions' are kept.
+            val keys = part.keys().asSequence().toList()
+            if (keys.size > 120) keys.sortedBy { part.getJSONObject(it).optLong("at") }.take(keys.size - 120).forEach { part.remove(it) }
+        }
+    }
+
+    /** New releases (out lately) of the best suggestions, the best suggestions' first, with who of yours they're like. */
+    private fun suggestedReleasesJson(sugg: List<Suggestion>): JSONArray {
+        val best = sugg.take(DISCOVER_SHOWN)
+        val by = LinkedHashMap<String, List<DzRelease>>()
+        synchronized(dstore) {
+            val part = dpart("srel")
+            for (x in best) part.optJSONObject(Text.norm(x.name))?.optJSONArray("list")?.let { a -> by[x.name] = (0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) } }
+        }
+        // How good a suggestion is stands in for how much you care about the artist.
+        val top = best.firstOrNull()?.score?.takeIf { it > 0 } ?: 1.0
+        val fans = best.associate { Text.norm(it.name) to Fan(it.name, it.score / top, 0, 0, 0) }
+        val found = Releases.find(by, fans, java.time.LocalDate.now(), relHidden())
+        val like = best.associate { it.name to (it.via.ifEmpty { it.because.firstOrNull()?.first.orEmpty() }) }
+        return JSONArray(found.out.take(ROW_MAX).map { it.toJson().put("like", like[it.artist].orEmpty()) })
+    }
+
+    /** An album to start with for each of the best suggestions that has one, with who of yours they're like. */
+    private fun startsJson(sugg: List<Suggestion>): JSONArray = synchronized(dstore) {
+        val part = dpart("start")
+        JSONArray(
+            sugg.take(DISCOVER_SHOWN).mapNotNull { x ->
+                val e = part.optJSONObject(Text.norm(x.name))?.takeIf { it.optString("title").isNotEmpty() } ?: return@mapNotNull null
+                JSONObject().put("artist", x.name).put("title", e.optString("title")).put("cover", e.optString("cover"))
+                    .put("like", x.via.ifEmpty { x.because.firstOrNull()?.first.orEmpty() })
+            }.take(ROW_MAX),
+        )
+    }
+
+    /**
+     * What the artists you played most in the last two weeks point to on their own ([Stats.recentLeaders]), each a row:
+     * suggestions from that artist alone, leaving out the ones the main row already shows. Rows of fewer than four go.
+     */
+    private fun recentJson(s: Stats, sugg: List<Suggestion>): JSONArray {
+        val shown = sugg.take(12).map { Text.norm(it.name) }.toSet()
+        val no = discoverNo().keys().asSequence().toSet()
+        val out = JSONArray()
+        for ((name, plays) in s.recentLeaders()) {
+            val likes = synchronized(dstore) {
+                dpart("likes").optJSONObject(Text.norm(name))?.optJSONArray("list")?.let { a -> (0 until a.length()).map { Like.fromJson(a.getJSONObject(it)) } }
+            } ?: continue
+            val list = Discover.suggest(listOf(name to 1.0), mapOf(Text.norm(name) to likes), s::knows, no, discoverWeaker(), prefs.discoverReach, 30)
+                .filter { Text.norm(it.name) !in shown }.take(ROW_MAX)
+            if (list.size >= 4) out.put(JSONObject().put("seed", name).put("plays", plays).put("artists", JSONArray(list.map { suggestionJson(it, s) })))
+        }
+        return out
+    }
+
+    /** The albums you're missing (see [gapsInner]) that you still haven't played or put on your shelf. */
+    private fun gapsJson(s: Stats): JSONArray {
+        val shelf = collection.map { Text.albumKey(it.artist, it.title) }.toSet()
+        val a = synchronized(dstore) { dstore.optJSONObject("gaps")?.optJSONArray("list")?.let { JSONArray(it.toString()) } } ?: return JSONArray()
+        return JSONArray(
+            (0 until a.length()).map { a.getJSONObject(it) }.filter {
+                val artist = it.optString("artist")
+                val title = it.optString("title")
+                s.albumPlaysOf(artist, title) == 0 && Text.albumKey(artist, title) !in shelf
+            }.take(ROW_MAX * 2),
+        )
+    }
+
+    /** Per artist of yours (normed), how many of the suggestions they led to you took up. */
+    private fun tookSeeds(): Map<String, Int> = synchronized(dstore) {
+        val took = dpart("took")
+        val m = HashMap<String, Int>()
+        for (k in took.keys()) took.optJSONObject(k)?.optJSONArray("seeds")?.let { a -> for (i in 0 until a.length()) m.merge(Text.norm(a.getString(i)), 1, Int::plus) }
+        m
+    }
+
+    /**
+     * The suggestions you took up: the best ones shown are noted with when and why ("shown"); one you then played
+     * [Discover.TOOK_PLAYS] times or more is taken up ("took"), and from then on the artists that led to it count a
+     * little more ([tookSeeds]). Taken up first the latest, with your plays of them since.
+     */
+    private fun tookJson(s: Stats, sugg: List<Suggestion>): JSONArray {
+        val now = System.currentTimeMillis()
+        var changed = false
+        val out = ArrayList<JSONObject>()
+        synchronized(dstore) {
+            val shown = dpart("shown")
+            val took = dpart("took")
+            for (x in sugg.take(DISCOVER_SHOWN)) {
+                val k = Text.norm(x.name)
+                if (shown.has(k) || took.has(k)) continue
+                shown.put(k, JSONObject().put("n", x.name).put("at", now).put("seeds", JSONArray(x.because.take(3).map { it.first })))
+                changed = true
+            }
+            for (k in shown.keys().asSequence().toList()) {
+                val e = shown.optJSONObject(k) ?: continue
+                val name = e.optString("n")
+                if (!s.knows(name)) {
+                    if (now - e.optLong("at") > 365L * 24 * HOUR) { shown.remove(k); changed = true }
+                    continue
+                }
+                val since = s.playsSince(name, e.optLong("at") / 1000)
+                if (since >= Discover.TOOK_PLAYS) {
+                    took.put(k, JSONObject(e.toString()).put("took", now))
+                    shown.remove(k)
+                    changed = true
+                } else if (s.artistPlaysOf(name) > since) {
+                    // Played before it was suggested (an older scrobble came in): not a suggestion taken up.
+                    shown.remove(k)
+                    changed = true
+                }
+            }
+            for (k in took.keys()) {
+                val e = took.optJSONObject(k) ?: continue
+                val name = e.optString("n")
+                out += JSONObject().put("name", name).put("photo", s.artistPhoto(name)).put("plays", s.artistPlaysOf(name))
+                    .put("since", e.optLong("at")).put("took", e.optLong("took")).put("seeds", e.optJSONArray("seeds") ?: JSONArray())
+            }
+        }
+        if (changed) saveDiscover()
+        return JSONArray(out.sortedByDescending { it.optLong("took") }.take(ROW_MAX))
+    }
+
+    /** For the mix of songs like your favorites: three of your top songs of the month for its picture, once Last.fm's are looked up for some. */
+    private fun simJson(s: Stats): JSONObject? {
+        val seeds = s.recentTopSongs()
+        val known = synchronized(dstore) { seeds.count { dpart("sim").has(it.key) } }
+        if (known < 3) return null
+        return JSONObject().put("songs", JSONArray(seeds.take(3).map { JSONObject().put("artist", it.artist).put("title", it.title).put("album", it.album).put("cover", it.cover) }))
+    }
+
+    /**
+     * What changes with your listening day by day, looked up when Explore opens: who is like the artists you played most
+     * in the last two weeks, and the songs Last.fm finds similar to your top songs of the month (each kept a month).
+     * True if anything new came. On [discoverExec].
+     */
+    private fun discoverDaily(s: Stats, c: LastfmClient?): Boolean {
+        if (!prefs.discoverOn) return false
+        var got = false
+        for ((name, _) in s.recentLeaders()) if (!likesFresh(name) && runCatching { fetchLikes(c, name) }.isSuccess) got = true
+        if (c != null) {
+            val now = System.currentTimeMillis()
+            for (p in s.recentTopSongs()) {
+                if (synchronized(dstore) { fresh(dpart("sim").optJSONObject(p.key), LIKES_TTL) }) continue
+                val list = try {
+                    c.similarTracks(p.artist, p.title, 50)
+                } catch (_: Exception) {
+                    break
+                }
+                Thread.sleep(220)
+                synchronized(dstore) {
+                    dpart("sim").put(p.key, JSONObject().put("at", now).put("list", JSONArray(list.map { (a, t, m) -> JSONArray().put(a).put(t).put(m) })))
+                }
+                got = true
+            }
+            // Songs no longer among your top ones go after a while.
+            synchronized(dstore) {
+                val sim = dpart("sim")
+                sim.keys().asSequence().toList().filter { now - (sim.optJSONObject(it)?.optLong("at") ?: 0L) > 2 * LIKES_TTL }.forEach { sim.remove(it) }
+            }
+        }
+        if (got) saveDiscover()
+        return got
+    }
+
+    /**
+     * Songs like your favorites: 30 songs you haven't played that Last.fm finds similar to your most played of the last
+     * month (looked up now for those not kept yet), the most alike first, two at most of one artist. On [discoverExec].
+     */
+    private fun similarSongsMix() {
+        val s = currentStats() ?: return push("onPlaylist") { JSONObject().put("kind", "similarSongs").put("empty", true) }
+        val c = lastfm()
+        val seeds = s.recentTopSongs()
+        val sims = HashMap<String, List<Triple<String, String, Double>>>()
+        for (p in seeds) {
+            val kept = synchronized(dstore) { dpart("sim").optJSONObject(p.key)?.optJSONArray("list") }
+            val list = if (kept != null) {
+                (0 until kept.length()).map { kept.getJSONArray(it) }.map { Triple(it.optString(0), it.optString(1), it.optDouble(2)) }
+            } else {
+                try {
+                    c?.similarTracks(p.artist, p.title, 50).orEmpty().also { l ->
+                        synchronized(dstore) {
+                            dpart("sim").put(p.key, JSONObject().put("at", System.currentTimeMillis()).put("list", JSONArray(l.map { (a, t, m) -> JSONArray().put(a).put(t).put(m) })))
+                        }
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            sims[p.key] = list
+        }
+        saveDiscover()
+        val list = Discover.songMix(seeds, sims, s::played, MIX_SIZE)
+        push("onPlaylist") {
+            if (list.isEmpty()) JSONObject().put("kind", "similarSongs").put("empty", true)
+            else JSONObject().put("kind", "similarSongs").put("name", "Songs like your favorites")
+                .put("note", "Songs you haven't played that Last.fm finds like your most played of the last month").put("tracks", pickJson(list))
         }
     }
 

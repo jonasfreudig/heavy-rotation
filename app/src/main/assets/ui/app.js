@@ -5788,6 +5788,7 @@ window.onDiscover = (d) => {
   DISCOVER = d;
   if (tab === 'explore') renderExplore();
   renderForYou();
+  if (XL && XL.local) renderXList();
 };
 const REACH = [['0', 'Close'], ['1', 'In between'], ['2', 'Further out']];
 const fansLabel = (n) => (n >= 1000 ? `${compact(n)} fans` : '');
@@ -5816,8 +5817,57 @@ const reachChips = (d) => `<div class="chips fy-reach">${REACH.map(([v, l]) => `
 const suggestionRows = (arts) => arts.map((a) => `<div class="r with-cover fy-row" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b>
     <small class="fy-why">${esc(becauseText(a))}</small>${a.genre || a.fans ? `<small>${esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', '))}</small>` : ''}</span>
     <button class="icon-btn small" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button></div>`).join('');
-const releaseCards = (d) => (d.releases || []).map((r) => `<button class="xcard" ${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}">${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
-    <small>${esc(r.artist)}</small><small class="meta">${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}</small></button>`).join('');
+/** How a release card opens: the album's page (Deezer's own album when known), or for an album only announced, its artist's. */
+const relOpen = (r) => (r.src === 'mb' ? `data-artist="${esc(r.artist)}"` : `${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}"${r.id ? ` data-dz="${r.id}"` : ''}`);
+/** A release as a card: cover, title, [small] (its artist) and [line]. */
+const relCard = (r, line, small = esc(r.artist)) => `<button class="xcard" ${relOpen(r)}>${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
+    <small>${small}</small><small class="meta">${line}</small></button>`;
+const relOutLine = (r) => `${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}`;
+const singlesOut = (r) => ((r.singles || []).length ? `, ${plural(r.singles.length, 'single')} out` : '');
+/** "Because you've had Do Nothing on repeat": from your plays of them in the last two weeks. */
+const recentTitle = (x) => (x.plays >= 30 ? `Because you've had ${esc(x.seed)} on repeat` : `Because you've been playing ${esc(x.seed)}`);
+/**
+ * The lists For you adds to Explore, in order, each with its title, what it is, its cards and (for the releases) the full
+ * list it opens: new releases by your artists, coming soon, old favorites back, what the artists you played most lately
+ * point to, albums to start with, new releases of suggested artists, albums you're missing and suggestions you took up.
+ */
+function forYouParts(d) {
+  const parts = [];
+  const rel = d.releases || [], soon = d.upcoming || [], back = d.back || [];
+  const n = rel.length + soon.length + back.length;
+  const checking = d.relBusy && d.relTotal ? `Checking your artists for new releases: ${d.relDone} of ${d.relTotal}` : '';
+  if (!n && checking) parts.push({ title: 'New from your artists', wait: `<span class="sub">${checking}. The first time takes a few minutes.</span><div class="lin inline"><i style="width:${Math.round((d.relDone / d.relTotal) * 100)}%"></i></div>` });
+  parts.push({ title: 'New from your artists', pl: 'newReleases', all: 'releases', n,
+    sub: checking || `Out in the last eight weeks, by ${num(d.relArtists || 0)} artists you play or own; the ones you haven't played first`,
+    cards: rel.slice(0, 15).map((r) => relCard(r, relOutLine(r))).join('') });
+  parts.push({ title: 'Coming soon', all: 'releases', rowOnly: true, n, sub: 'Due in the months ahead, with the singles out so far',
+    cards: soon.slice(0, 15).map((r) => relCard(r, `${esc(releaseWhen(r))}${singlesOut(r)}`)).join('') });
+  parts.push({ title: 'Your old favorites are back', all: 'releases', rowOnly: true, n, sub: 'Artists you played a lot and not for half a year or more, with something new',
+    cards: back.map((r) => relCard(r, esc(releaseWhen(r)))).join('') });
+  for (const x of d.recent || []) {
+    parts.push({ title: recentTitle(x), sub: `${plural(x.plays, 'play')} in the last two weeks. Artists like them you haven't played; tap one to see why`,
+      cards: (x.artists || []).map((a) => `<button class="xcard round" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${esc(a.genre || fansLabel(a.fans) || '')}</small></button>`).join('') });
+  }
+  parts.push({ title: 'Albums to start with', sub: 'The best-known album of each artist you might like',
+    cards: (d.starts || []).map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
+      <small>${esc(a.artist)}</small><small class="meta">${a.like ? `Like ${esc(a.like)}` : ''}</small></button>`).join('') });
+  parts.push({ title: 'New from artists you might like', sub: 'Out lately by artists your listening points to',
+    cards: (d.sugReleases || []).map((r) => relCard(r, esc(releaseWhen(r)), `${esc(r.artist)}${r.like ? `, like ${esc(r.like)}` : ''}`)).join('') });
+  parts.push({ title: 'Albums you\'re missing', sub: 'Albums by artists you love that you\'ve never played and don\'t own',
+    cards: (d.gaps || []).map((r) => relCard(r, esc(r.date.slice(0, 4)))).join('') });
+  parts.push({ title: 'Suggestions you took up', sub: 'Suggested here, played since. The artists that led to them count a little more now',
+    cards: (d.took || []).map((a) => artistCard(a, plural(a.plays, 'play'))).join('') });
+  return parts;
+}
+/** A For you list on the long page: its heading (and playlist), what it is, its cards, and its full list. */
+const xblock = (p) => (p.wait ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2></div>${p.wait}</div>`
+  : p.cards ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2>${p.pl ? plButton(p.pl, 'Playlist') : ''}</div><span class="sub">${p.sub}</span><div class="xcards">${p.cards}</div>
+    ${p.all && !p.rowOnly ? `<button class="btn text" data-xlist="${p.all}">All ${p.n}</button>` : ''}</div>` : '');
+/** The same list as a row (Explore in rows). */
+const xrowOf = (p) => (p.wait ? `<section class="xrow"><div class="xrow-head"><h2>${p.title}</h2></div>${p.wait}</section>`
+  : xrow(p.title, p.pl ? xrowPl(p.pl) : '', p.cards, p.sub, p.all || '', p.n || 0));
+/** The mix of songs like your favorites, once Last.fm's are looked up for a few of them. */
+const simTile = (d) => (d && d.sim ? mixTile('similarSongs', (d.sim.songs || []).map((t) => [t.cover, t.album || t.title, t.artist]), 'Songs like your favorites', 'Songs you haven\'t played, like your top ones this month') : '');
 function forYouHtml() {
   const d = DISCOVER;
   if (!discoverOn()) return '';
@@ -5826,10 +5876,9 @@ function forYouHtml() {
   const arts = d.artists || [];
   const shown = discoverAll ? arts : arts.slice(0, 8);
   const more = arts.length > shown.length ? `<button class="btn text" data-dmore>Show all ${arts.length}</button>` : '';
-  const rel = releaseCards(d);
-  return `${arts.length >= 4 ? mixCard(d) : ''}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Further out brings lesser-known ones</span>
+  return `${arts.length >= 4 ? mixCard(d) : ''}${simTile(d)}<div class="viz"><div class="xhead"><h2>Artists you might like</h2></div><span class="sub">Further out brings lesser-known ones</span>
       ${reachChips(d)}${arts.length ? `<div class="rank fy-list">${suggestionRows(shown)}</div>${more}` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}</div>
-    ${rel ? `<div class="viz explore"><div class="xhead"><h2>New from your artists</h2></div><span class="sub">Out in the last eight weeks, or coming soon</span><div class="xcards">${rel}</div></div>` : ''}
+    ${forYouParts(d).map(xblock).join('')}
     ${d.busy ? `<p class="hint center">Looking for more: ${d.done} of ${d.total}</p>` : ''}`;
 }
 
@@ -5912,6 +5961,8 @@ const XLIST = {
     rows: (l) => l.items.map((a) => artistRow(a, `${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
   deepCuts: { title: 'Deep cuts', sub: 'Songs by your favorite artists you\'ve hardly played', cards: (x) => (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''),
     rows: (l) => l.items.map((t) => songRow(t, timesPlayed(t.plays))).join('') },
+  releases: { title: 'New from your artists', local: true, pl: 'newReleases', rows: () => releaseListHtml(DISCOVER || {}),
+    sub: () => { const d = DISCOVER || {}; return `By the ${num(d.relArtists || 0)} artists you've played 15 times or more or have on your shelf. The 40 you play most are looked at every day, the others weekly. ✕ hides a release${d.relHidden ? ` (${num(d.relHidden)} hidden so far)` : ''}`; } },
   onThisDay: { title: 'On this day', sub: () => `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`,
     cards: (x) => (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''),
     rows: (l) => (l.years || []).map((y) => `<button class="xlist-year" data-day="${periodId('day', +new Date(y.year, new Date().getMonth(), new Date().getDate()))}"><h3>${y.year}<small>${plural(y.plays, 'play')}</small></h3>${icon('chevron-right', 'i small')}</button><div class="rank">${y.tracks.map((t) => songRow(t, t.plays > 1 ? `${t.plays}×` : '')).join('')}</div>`).join('') },
@@ -5920,10 +5971,11 @@ const XLIST = {
 let XL = null;
 let xlReq = 0;
 function openXList(kind) {
-  XL = { kind, loading: true, req: ++xlReq };
+  const local = XLIST[kind] && XLIST[kind].local;
+  XL = { kind, loading: !local, local, req: ++xlReq };
   openPage('xlistPage');
   renderXList();
-  send({ t: 'exploreList', kind, req: xlReq });
+  if (!local) send({ t: 'exploreList', kind, req: xlReq });
 }
 window.onExploreList = (l) => {
   if (!XL || l.kind !== XL.kind || l.req !== XL.req) return;
@@ -5934,9 +5986,36 @@ function renderXList() {
   if (!XL || !isOpen('xlistPage')) return;
   const d = XLIST[XL.kind];
   const sub = typeof d.sub === 'function' ? d.sub() : d.sub;
-  const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : XL.kind === 'onThisDay' ? d.rows(XL) : `<div class="rank">${d.rows(XL)}</div>`;
-  morph($('#xlistBody'), `<h1 class="page-h">${d.title}</h1><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}.` : ''}</p>
-    <div class="btn-row">${plButton(XL.kind)}</div>${rows}`);
+  const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : XL.local || XL.kind === 'onThisDay' ? d.rows(XL) : `<div class="rank">${d.rows(XL)}</div>`;
+  morph($('#xlistBody'), `<h1 class="page-h">${d.title}</h1><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
+    <div class="btn-row">${plButton(d.pl || XL.kind)}</div>${rows}`);
+}
+/** Why a release is listed: how much you play its artist (or own of theirs), the singles before it, your plays of it. */
+function relWhy(r, soon) {
+  const fan = r.fanPlays ? `you've played them ${num(r.fanPlays)} times` : r.owned ? `${plural(r.owned, 'record')} of theirs on your shelf` : '';
+  const singles = (r.singles || []).length ? `${plural(r.singles.length, 'single')} ${soon ? 'out already' : 'before it'}: ${r.singles.slice(0, 3).map(esc).join(', ')}` : '';
+  const t = [fan, singles, r.plays ? `${plural(r.plays, 'play')} so far` : ''].filter(Boolean).join('; ');
+  return t ? t[0].toUpperCase() + t.slice(1) : '';
+}
+const relRow = (r, why) => `<div class="r with-cover rel-row" ${relOpen(r)}>${coverHtml(r.cover, r.title, r.artist, 'tiny')}<span class="t"><b>${esc(r.title)}</b>
+    <small>${esc(r.artist)}, ${esc(releaseWhen(r))}</small>${why ? `<small class="rel-why">${why}</small>` : ''}</span>
+    <button class="icon-btn small" data-relno="${esc(r.title)}" data-a="${esc(r.artist)}" aria-label="Hide ${esc(r.title)}">${icon('close')}</button></div>`;
+/** The full list of new releases: out now, coming soon, and old favorites back, each with why it's there. */
+function releaseListHtml(d) {
+  const sec = (title, list, why) => (list.length ? `<div class="row-label"><span>${title}</span></div><div class="rank">${list.map((r) => relRow(r, why(r))).join('')}</div>` : '');
+  const h = sec('Out now', d.releases || [], (r) => relWhy(r, false)) + sec('Coming soon', d.upcoming || [], (r) => relWhy(r, true))
+    + sec('Your old favorites are back', d.back || [], (r) => (r.last ? `Last played ${esc(monthYear(r.last))}` : ''));
+  if (h) return h;
+  return d.relBusy ? `<p class="hint">Checking your artists: ${d.relDone} of ${d.relTotal}.</p>` : '<p class="hint">Nothing new from your artists in the last eight weeks, and nothing announced.</p>';
+}
+/** Hides a release from the lists for good; Undo brings it back. */
+function releaseNope(artist, title) {
+  const drop = (l) => (l || []).filter((r) => !(r.artist === artist && r.title === title));
+  if (DISCOVER) DISCOVER = { ...DISCOVER, releases: drop(DISCOVER.releases), upcoming: drop(DISCOVER.upcoming), back: drop(DISCOVER.back), sugReleases: drop(DISCOVER.sugReleases), relHidden: (DISCOVER.relHidden || 0) + 1 };
+  renderExplore();
+  renderXList();
+  send({ t: 'relNo', artist, title });
+  toast(`${title} won't show again`, { label: 'Undo', run: () => send({ t: 'relUndo', artist, title }) });
 }
 function exploreRows(x, P) {
   const d = DISCOVER, on = discoverOn();
@@ -5944,12 +6023,12 @@ function exploreRows(x, P) {
     <span class="txt"><b>Crate dig</b><small>Songs you played a few times and forgot, shuffled</small></span></button>`;
   const mix = on && d && (d.artists || []).length >= 4 ? mixCard(d) : '';
   // More mixes: what your artists put out lately, and what you played on this day in earlier years.
-  const out = ((d && d.releases) || []).filter((r) => new Date(`${r.date}T12:00:00`) <= Date.now());
+  const out = ((d && d.releases) || []).concat((d && d.back) || []).filter((r) => new Date(`${r.date}T12:00:00`) <= Date.now());
   const fresh = on && out.length ? mixTile('newReleases', out.slice(0, 3).map((r) => [r.cover, r.title, r.artist]), 'New releases', `Songs from ${plural(out.length, 'new release')} by your artists`) : '';
   const otd = (x.onThisDay || []).flatMap((y) => y.tracks || []);
   const today = otd.length ? mixTile('onThisDay', otd.slice(0, 3).map((t) => [t.cover, t.album || t.title, t.artist]),
     'On this day', `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`) : '';
-  const cards = [mix, dig, fresh, today].filter(Boolean);
+  const cards = [mix, on ? simTile(d) : '', dig, fresh, today].filter(Boolean);
   let h = `<div class="mixrow${cards.length > 1 ? '' : ' solo'}">${cards.join('')}</div>`;
   if (on) {
     const arts = (d && d.artists) || [];
@@ -5958,19 +6037,21 @@ function exploreRows(x, P) {
       : xrow('Artists you might like', arts.length ? `<button class="xrow-more" data-dmore>All ${arts.length}</button>` : '',
         arts.slice(0, 12).map((a) => `<button class="xcard round" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${esc(a.via ? `Like ${a.via}` : a.because && a.because[0] ? `Like ${a.because[0].name}` : a.genre || '')}</small></button>`).join(''),
         'Artists you haven\'t played that your listening points to. Tap one to see why.');
-    if (d) h += xrow('New from your artists', '', releaseCards(d));
+    if (d && !wait) h += forYouParts(d).map(xrowOf).join('');
   }
   const n = x.counts || {};
   for (const k of ['lost', 'lostAlbums', 'regulars', 'oneDay', 'deepCuts']) h += xrow(XLIST[k].title, xrowPl(k), XLIST[k].cards(x), XLIST[k].sub, k, n[k]);
   h += xrow(XLIST.onThisDay.title, xrowPl('onThisDay'), XLIST.onThisDay.cards(x), XLIST.onThisDay.sub(), 'onThisDay');
   return h;
 }
-/** "3 weeks ago", "this week", "out 14 Nov" */
+/** "album, 3 weeks ago", "live album, this week", "EP, out 14 Nov" */
 function releaseWhen(r) {
   const d = new Date(`${r.date}T12:00:00`);
   const days = Math.round((Date.now() - d.getTime()) / 864e5);
-  const type = { album: 'album', ep: 'EP', single: 'single' }[r.type] || 'release';
-  if (days < 0) return `${type}, out ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  const base = { album: 'album', ep: 'EP', single: 'single' }[r.type] || 'release';
+  const type = r.kind === 'live' ? `live ${base}` : r.kind === 'remix' ? `remix ${base}` : base;
+  const far = d.getFullYear() !== new Date().getFullYear();
+  if (days < 0) return `${type}, out ${d.toLocaleDateString([], { day: 'numeric', month: 'short', year: far ? 'numeric' : undefined })}`;
   if (days < 7) return `${type}, this week`;
   return `${type}, ${days < 14 ? 'last week' : `${Math.floor(days / 7)} weeks ago`}`;
 }
@@ -6004,10 +6085,13 @@ function whyHtml() {
   const x = WHY;
   const bars = (x.because || []).map((b) => `<div class="whybar"><span>${esc(b.name)}</span><i><b style="width:${Math.max(6, Math.round(b.v * 100))}%"></b></i><small>${likeWord(b.like)}</small></div>`).join('');
   const songs = (x.songs || []).map((t, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(t)}</b></span></div>`).join('');
+  const start = ((DISCOVER || {}).starts || []).find((a) => a.artist === x.name);
   return `<div class="why-sheet"><div class="why-hero">${coverHtml(x.photo, x.name, x.name, 'tiny round')}<div><h2>${esc(x.name)}</h2><div class="meta">${esc([x.genre, fansLabel(x.fans)].filter(Boolean).join(', ')) || 'Not in your history yet'}</div></div></div>
     ${bars ? `<div class="row-label"><span>What points to them</span></div>${bars}
       <p class="hint">Each bar: how alike listeners on Last.fm and Deezer find the two, weighed by how much you play your artist lately.${(x.because || []).length > 1 ? ` ${plural(x.because.length, 'artist')} of yours point here, so they rank high.` : ''}</p>` : x.via ? `<p class="body">${esc(becauseText(x))}.</p>` : ''}
-    <div class="row-label"><span>Start with</span></div>
+    ${start ? `<div class="row-label"><span>Album to start with</span></div><div class="rank"><button class="r with-cover" ${albumAttrs(x.name, start.title)} data-cover="${esc(start.cover)}">${coverHtml(start.cover, start.title, x.name, 'tiny')}
+      <span class="t"><b>${esc(start.title)}</b><small>Their best-known album on Last.fm</small></span>${icon('chevron-right')}</button></div>` : ''}
+    <div class="row-label"><span>${start ? 'Songs to start with' : 'Start with'}</span></div>
     ${x.loading ? '<div class="lin inline indet"><i></i></div>' : songs ? `<div class="rank">${songs}</div>` : '<p class="hint">Last.fm has no songs of theirs listed.</p>'}
     <div class="btn-row">
       ${(x.songs || []).length ? `<button class="btn filled" data-pl="artistBest" data-artist="${esc(x.name)}">${icon('playlist')}Best-of playlist</button>` : ''}
@@ -6019,7 +6103,7 @@ function wireWhy() {
   $('#sheetContent').onclick = (e) => {
     const no = e.target.closest('[data-nope]');
     if (no) { closeSheet(); discoverNope(no.dataset.nope); return; }
-    if (e.target.closest('[data-artist], [data-pl]')) closeSheet();
+    if (e.target.closest('[data-artist], [data-pl], [data-album]')) closeSheet();
   };
 }
 /** The discovery mix (the week's, or another one) and an artist's best-known songs, as playlists. */
@@ -9498,6 +9582,8 @@ function build() {
     if (ls) { openListen(ls); return; }
     const pt = e.target.closest('[data-ptab]');
     if (pt) { tabTap(pt.closest('.page, .tab'), pt.dataset.ptab); return; }
+    const rn = e.target.closest('[data-relno]');
+    if (rn) { releaseNope(rn.dataset.a, rn.dataset.relno); return; }
     const pl = e.target.closest('[data-pl]');
     if (pl) { openPlaylist(pl.dataset.pl, undefined, pl); return; }
     const rk = e.target.closest('[data-ranks]');

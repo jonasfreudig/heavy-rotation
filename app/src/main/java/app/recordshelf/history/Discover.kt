@@ -1,6 +1,5 @@
 package app.recordshelf.history
 
-import app.recordshelf.net.DzRelease
 import app.recordshelf.util.Text
 import org.json.JSONObject
 import java.time.LocalDate
@@ -53,6 +52,13 @@ object Discover {
     const val MAX = 40
     const val STEP2 = 8
 
+    /** Each suggestion you took up adds this much to the weight of the artists that led to it, up to [TOOK_MAX] times. */
+    const val TOOK_STEP = 0.12
+    const val TOOK_MAX = 1.5
+
+    /** A suggested artist counts as taken up once you played them this often since. */
+    const val TOOK_PLAYS = 3
+
     /** How far suggestions go: close to your taste, in between, or further out. */
     const val CLOSE = 0
     const val BETWEEN = 1
@@ -76,8 +82,9 @@ object Discover {
      * The best artists for you that you don't know yet. [seeds]: your artists and their weight (any scale); [likes]: who
      * is like each artist, by [Text.norm] of the name (your artists', and for [FURTHER] the best suggestions' own).
      * [known]: whether you play or own an artist. [no]: names (normed) you said aren't for you. [weaker]: per seed (normed),
-     * how many of its suggestions you turned down; each takes some of its weight. [reach]: [CLOSE], [BETWEEN] or
-     * [FURTHER]; further out prefers less known artists and also looks two steps away.
+     * how many of its suggestions you turned down; each takes some of its weight. [stronger]: per seed (normed), how many
+     * of its suggestions you took up (played since); each adds some. [reach]: [CLOSE], [BETWEEN] or [FURTHER]; further out
+     * prefers less known artists and also looks two steps away.
      */
     fun suggest(
         seeds: List<Pair<String, Double>>,
@@ -87,6 +94,7 @@ object Discover {
         weaker: Map<String, Int> = emptyMap(),
         reach: Int = BETWEEN,
         max: Int = MAX,
+        stronger: Map<String, Int> = emptyMap(),
     ): List<Suggestion> {
         val top = seeds.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: return emptyList()
         class Acc(var name: String) {
@@ -111,7 +119,8 @@ object Discover {
         }
         for ((name, raw) in seeds) {
             val turned = weaker[Text.norm(name)] ?: 0
-            val w = Math.sqrt(raw / top) * maxOf(0.4, Math.pow(0.85, turned.toDouble()))
+            val took = stronger[Text.norm(name)] ?: 0
+            val w = Math.sqrt(raw / top) * maxOf(0.4, Math.pow(0.85, turned.toDouble())) * minOf(TOOK_MAX, 1.0 + TOOK_STEP * took)
             for (l in likes[Text.norm(name)].orEmpty()) {
                 val a = take(l) ?: continue
                 val c = w * l.likeness
@@ -191,19 +200,34 @@ object Discover {
     }
 
     /**
-     * New releases by your artists ([by]: each artist's releases): out in the last [days] days or coming up to [ahead]
-     * days from [today], newest first, without compilations, each title of an artist once.
+     * Songs like your favorites: [sims] are songs Last.fm finds similar to each of yours ([seeds], with how much you play
+     * them), by the seed's [Pick.key]. Those you haven't [played] count by their likeness to each seed, weighed by the
+     * seed's plays; the best [size] of them, two at most of one artist and never one artist twice in a row.
      */
-    fun newReleases(by: List<Pair<String, List<DzRelease>>>, today: LocalDate, days: Long = 56, ahead: Long = 60, max: Int = 12): List<Pair<String, DzRelease>> {
-        val from = today.minusDays(days)
-        val to = today.plusDays(ahead)
-        return by.flatMap { (a, rs) ->
-            rs.filter { it.type != "compile" }
-                .mapNotNull { r -> runCatching { LocalDate.parse(r.date) }.getOrNull()?.takeIf { !it.isBefore(from) && !it.isAfter(to) }?.let { r } }
-                .distinctBy { Text.normLoose(it.title) }
-                .map { a to it }
+    fun songMix(seeds: List<Pick>, sims: Map<String, List<Triple<String, String, Double>>>, played: (String, String) -> Boolean, size: Int): List<Pick> {
+        val top = seeds.maxOfOrNull { it.plays }?.takeIf { it > 0 } ?: return emptyList()
+        val score = LinkedHashMap<String, Pair<Pick, Double>>()
+        val mine = seeds.map { it.key }.toSet()
+        for (s in seeds) {
+            val w = Math.sqrt(s.plays.toDouble() / top)
+            for ((a, t, m) in sims[s.key].orEmpty()) {
+                if (a.isBlank() || t.isBlank()) continue
+                val p = Pick(a, t, "", 0, "new")
+                if (p.key in mine || p.key in score && score.getValue(p.key).second < 0) continue
+                if (p.key !in score && played(a, t)) { score[p.key] = p to -1.0; continue }
+                score.merge(p.key, p to w * m) { x, y -> x.first to x.second + y.second }
+            }
         }
-            .sortedWith(compareByDescending<Pair<String, DzRelease>> { it.second.date }.thenBy { it.second.type != "album" })
-            .take(max)
+        val best = score.values.filter { it.second > 0 }.sortedByDescending { it.second }.map { it.first }
+        val per = HashMap<String, Int>()
+        val pool = best.filter { per.merge(Text.norm(it.artist), 1, Int::plus)!! <= 2 }
+        // In order of likeness, but an artist's second song waits until another artist came between.
+        val out = ArrayList<Pick>()
+        val rest = ArrayList(pool)
+        while (out.size < size && rest.isNotEmpty()) {
+            val i = rest.indexOfFirst { Text.norm(it.artist) != out.lastOrNull()?.artist?.let(Text::norm) }
+            out += rest.removeAt(if (i < 0) 0 else i)
+        }
+        return out
     }
 }

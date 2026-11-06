@@ -246,6 +246,15 @@ class LastfmClient(private val apiKey: String, private val secret: String, priva
             ?.arrayOrOne("artist")?.objects().orEmpty()
             .map { it.str("name") to it.optDouble("match", 0.0) }
 
+    /** An artist's most played albums on Last.fm (title, cover, "" if it has none), most played first; empty if unknown. */
+    fun artistTopAlbums(artist: String, limit: Int = 8): List<Pair<String, String>> =
+        info("artist.getTopAlbums", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("topalbums")
+            ?.arrayOrOne("album")?.objects().orEmpty().map { a ->
+                // Last.fm's grey star stands in for a missing cover.
+                val img = a.optJSONArray("image")?.objects().orEmpty().lastOrNull { it.str("#text").isNotEmpty() }?.str("#text").orEmpty()
+                a.str("name") to img.takeIf { it.startsWith("https://") && !it.contains("2a96cbd8b46e442fc41c2b86b821562f") }.orEmpty()
+            }.filter { it.first.isNotBlank() && it.first != "(null)" }
+
     /** An artist's most played songs on Last.fm with everyone's plays, most played first; empty if unknown. */
     fun artistTopTracks(artist: String, limit: Int = 50): List<Pair<String, Long>> =
         info("artist.getTopTracks", linkedMapOf("artist" to artist, "limit" to limit.toString()))?.optJSONObject("toptracks")
