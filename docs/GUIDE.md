@@ -286,7 +286,11 @@ you open the page, if the album isn't among your most played), otherwise the art
 Artist pages show the whole discography from Deezer's catalog: albums, EPs, singles and
 compilations, with editions folded together ("Romance" and its deluxe edition are one record). An
 edition whose title adds words to the album's ("Skinty Fia go deo") counts as that album everywhere
-in your stats when the songs you played from it are mostly the album's, extra versions included. Each
+in your stats when the songs you played from it are mostly the album's, extra versions included. A
+single named after its song ("Quiet Life") counts as the album you played that song from too
+("Cutthroat"), unless that album is a best-of or a live record; its own card in the discography keeps
+the plays it had as a single. A cover Deezer didn't have yet, for an album you played in the last two
+weeks, is asked for again after a day (a new album often plays under its name before Deezer lists it). Each
 title shows your plays, a foil star if it's on your shelf and "New" for the last two months; titles
 you haven't heard are dimmed. Records of theirs you played that Deezer doesn't list, such as a live
 album, come last under Also played. Filter by Most played (everything you played in one row, most

@@ -949,6 +949,7 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .rank .whys { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .rank .why { font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 9px; background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); }
 .rank .r.gone, .btn.gone { opacity: .35; pointer-events: none; }
+.rank .r, .btn.hideall { transition: opacity .2s; }
 .icon-btn.small { width: 36px; height: 36px; }
 .icon-btn.small .i { width: 20px; height: 20px; }
 .i.inl { width: 16px; height: 16px; vertical-align: -3px; }

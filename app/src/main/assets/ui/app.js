@@ -2197,19 +2197,20 @@ function renderSearch() {
   const owned = shelfMatches(q);
   const sec = (title, n, html) => n ? `<div class="section-head"><h2>${title}</h2><span class="sub">${n}</span></div>${html}` : '';
   const shown = owned.slice(0, 9);
-  const shelfHtml = sec('On your shelf', owned.length, `<div class="grid">${shown.map((x) => `<button class="rec" data-id="${x.id}">${coverHtml(x.cover || x.thumb, x.title, x.artist)}<b>${esc(x.title)}</b><small>${esc(x.artist)}</small></button>`).join('')}</div>
+  const shelfHtml = sec('On your shelf', owned.length, `<div class="grid">${shown.map((x) => `<button class="rec" data-id="${x.id}" data-key="${x.id}">${coverHtml(x.cover || x.thumb, x.title, x.artist)}<b>${esc(x.title)}</b><small>${esc(x.artist)}</small></button>`).join('')}</div>
     ${owned.length > shown.length ? `<p class="hint">and ${plural(owned.length - shown.length, 'more record')}: add a word to narrow it down</p>` : ''}`);
   // Albums you own are already on the shelf above.
   const artists = (r && r.artists) || [], albums = ((r && r.albums) || []).filter((a) => !a.owned), tracks = (r && r.tracks) || [];
-  const artistsHtml = sec('Artists', artists.length, `<div class="rank">${artists.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
-  const albumsHtml = sec('Albums', albums.length, `<div class="rank">${albums.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)}${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, ${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
+  const artistsHtml = sec('Artists', artists.length, `<div class="rank">${artists.map((a) => `<button class="r with-cover" data-artist="${esc(a.name)}" data-key="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
+  const albumsHtml = sec('Albums', albums.length, `<div class="rank">${albums.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)} data-key="${esc(`${a.artist}|${a.title}`)}"${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, ${plural(a.plays, 'play')}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`);
   const genres = (r && r.genres) || [];
   const genresHtml = sec('Genres', genres.length, `<div class="chips search-genres">${genres.map((g) => `<button class="chip link" data-genre="${esc(g.key)}" data-glabel="${esc(g.label)}">${esc(g.label)}<small class="n">${compact(g.plays)}</small></button>`).join('')}</div>`);
-  const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)}><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v cnt">${compact(t.plays)}×</span></button>`).join('')}</div>`);
+  const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)} data-key="${esc(`${t.artist}|${t.title}`)}"><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v cnt">${compact(t.plays)}×</span></button>`).join('')}</div>`);
   // On the shelf your records come first; elsewhere what you played does.
   const parts = tab === 'shelf' ? [shelfHtml, genresHtml, artistsHtml, albumsHtml, tracksHtml] : [genresHtml, artistsHtml, albumsHtml, tracksHtml, shelfHtml];
   const none = !owned.length && r && !artists.length && !albums.length && !tracks.length && !genres.length;
-  body.innerHTML = parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`) + (none ? `<div class="search-hint"><p>Nothing matches “${esc(q)}”.</p></div>` : '');
+  // In place, each result keyed: what stays stays (no blinking covers on every letter typed).
+  morph(body, parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`) + (none ? `<div class="search-hint"><p>Nothing matches “${esc(q)}”.</p></div>` : ''));
 }
 
 // ---------- record page ----------
@@ -2273,8 +2274,8 @@ function renderRecord() {
   const card = ACARD[recordId] || null;
   const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
   $('#recordBody').dataset.tier = tier;
-  // Keep the moving sleeve across re-renders, so the record doesn't slide out again.
-  const holoKey = `${recordId}|${coverUrl || ''}`;
+  // Keep the moving sleeve across re-renders, so the record doesn't slide out again; another picture fades in on it.
+  const holoKey = String(recordId);
   const keep = $('#recordBody [data-holo]');
   const reuse = keep && keep.dataset.key === holoKey;
   let h = `<div class="hero page-hero">${tier ? '<i class="tier-glow"></i>' : ''}
@@ -2313,6 +2314,11 @@ function renderRecord() {
   $('#recordBody').innerHTML = h;
   tint($('#recordBody'), coverUrl, title + artist);
   if (reuse) $('#recHolo').appendChild(keep);
+  if (reuse && keep.dataset.cover !== (coverUrl || '')) {
+    const t = document.createElement('template');
+    t.innerHTML = holoCover(coverUrl, title, artist, { owned: true, back: true, rel: recordId, key: holoKey });
+    crossCover(keep, t.content.firstElementChild);
+  }
   // The back: the album card's way up the tiers, as on every album; the tracklist while there is no card.
   const sb = $('#recHolo .sleeve-back');
   if (sb) {
@@ -3747,6 +3753,37 @@ function keepSleeve(old, fresh) {
     if (ob.innerHTML !== fb.innerHTML) ob.innerHTML = fb.innerHTML;
   }
   return true;
+}
+/**
+ * A kept sleeve [old] takes the picture of [fresh] (Usual cover or Your copy): the new one fades in over the old
+ * once it has loaded, in the same place, then takes its place; the record's label follows at once.
+ */
+function crossCover(old, fresh) {
+  const oc = old.querySelector('.sleeve .cover'), nc = fresh.querySelector('.sleeve .cover');
+  const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
+  if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
+  old.dataset.cover = fresh.dataset.cover;
+  if (!oc || !nc) return;
+  old.querySelectorAll('.sleeve .cover.x-in').forEach((x) => x.remove());
+  if (!moving()) { oc.replaceWith(nc); return; }
+  nc.classList.add('x-in');
+  Object.assign(nc.style, { position: 'absolute', left: `${oc.offsetLeft}px`, top: `${oc.offsetTop}px`, width: `${oc.offsetWidth}px`, height: `${oc.offsetHeight}px`, opacity: '0' });
+  oc.after(nc);
+  const img = nc.querySelector('img');
+  let done = false;
+  const go = () => {
+    if (done || !nc.isConnected) return;
+    done = true;
+    nc.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: EASE_OUT }).onfinish = () => {
+      if (!nc.isConnected) return;
+      nc.removeAttribute('style');
+      nc.classList.remove('x-in');
+      oc.remove();
+    };
+    nc.style.opacity = '1';
+  };
+  // Once the picture is there to show (its load may come before anyone listens), or after a moment anyway.
+  if (img) { img.loading = 'eager'; img.decode().then(go, go); setTimeout(go, 1500); } else go();
 }
 function keepHolo(body, html) {
   morph(body, html, keepSleeve);
@@ -5421,6 +5458,10 @@ function bindUniverse(cv) {
 function uniCard() {
   const card = $('#uniCard');
   if (!card) return;
+  // Shown from hidden, it rises from the bottom of the map.
+  if (card.hidden && (UNI.sel >= 0 || UNI.cluster >= 0) && moving()) {
+    requestAnimationFrame(() => { if (!card.hidden) card.animate([{ opacity: 0, transform: 'translateY(16px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT }); });
+  }
   const u = UNI.src;
   $('#uniWrap').classList.toggle('carded', UNI.sel >= 0 || UNI.cluster >= 0);
   if (UNI.sel >= 0) {
@@ -6834,7 +6875,7 @@ function tidyBanner(t) {
 
 function tidyRow(x, acts) {
   const why = (x.reasons || []).map((r) => `<span class="why">${esc(TIDY_WHY[r] || r)}</span>`).join('');
-  return `<div class="r"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}, ${plural(x.plays, 'play')}, last ${esc(dateLabel(x.last))}</small>${why ? `<span class="whys">${why}</span>` : ''}</span>
+  return `<div class="r" data-key="${esc(`${x.artist}|${x.title}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}, ${plural(x.plays, 'play')}, last ${esc(dateLabel(x.last))}</small>${why ? `<span class="whys">${why}</span>` : ''}</span>
     <span class="acts">${acts}</span></div>`;
 }
 
@@ -6864,16 +6905,46 @@ function renderTidy() {
   }
   h += `<div class="section-head"><h2>Hidden</h2>${t.hiddenPlays ? `<span class="sub">${plural(t.hiddenPlays, 'play')}</span>` : ''}</div>`;
   if (hd.artists.length || hd.tracks.length) {
-    h += `<div class="rank tidy">${hd.artists.map((a) => `<div class="r"><span class="t"><b>${esc(a)}</b><small>Artist: all their tracks</small></span>
+    h += `<div class="rank tidy">${hd.artists.map((a) => `<div class="r" data-key="${esc(a)}"><span class="t"><b>${esc(a)}</b><small>Artist: all their tracks</small></span>
         <span class="acts"><button class="btn text small" data-unhide ${hideAttrs('artist', a)}>Show</button></span></div>`).join('')}
-      ${hd.tracks.map((x) => `<div class="r"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span>
+      ${hd.tracks.map((x) => `<div class="r" data-key="${esc(`${x.artist}|${x.title}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(x.artist)}</small></span>
         <span class="acts"><button class="icon-btn small" data-url="${esc(lastfmTrackUrl(x.artist, x.title))}" aria-label="Open on Last.fm">${icon('open')}</button>
         <button class="btn text small" data-unhide ${hideAttrs('track', x.artist, x.title)}>Show</button></span></div>`).join('')}</div>
       ${hd.tracks.length ? `<p class="hint">To delete them from Last.fm as well, open a track there (${icon('open', 'i inl')}) and delete its scrobbles from your library. Last.fm doesn't let apps delete scrobbles.</p>` : ''}`;
   } else {
     h += `<p class="hint">Nothing hidden yet. You can also hide an artist from their page (${icon('eye-off', 'i inl')} at the top), or a single track from the artist's top tracks.</p>`;
   }
-  morph(body, h);
+  // Rows that stay slide to their new places (a hidden one leaves its gap), new ones fade in.
+  flipRows(body, '.rank.tidy > .r', () => morph(body, h));
+}
+/** After a switch: the blocks of [scope] that come after the one holding [mark] fade over (those on screen only). */
+function fadeAfter(scope, mark) {
+  if (!scope || !mark || !moving()) return;
+  let el = mark;
+  while (el && el.parentElement !== scope) el = el.parentElement;
+  const vh = window.innerHeight;
+  for (el = el && el.nextElementSibling; el; el = el.nextElementSibling) {
+    const r = el.getBoundingClientRect();
+    if (r.top > vh) break;
+    if (r.bottom > 0) el.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: EASE_OUT });
+  }
+}
+/**
+ * [render] changes the rows [sel] in [scope]: the ones that stay glide from where they were to where they are now
+ * (only their transform moves), and new ones in view fade in.
+ */
+function flipRows(scope, sel, render) {
+  if (!moving()) { render(); return; }
+  const was = new Map([...scope.querySelectorAll(sel)].map((r) => [r, r.getBoundingClientRect().top]));
+  render();
+  const vh = window.innerHeight;
+  for (const r of scope.querySelectorAll(sel)) {
+    const top = r.getBoundingClientRect().top;
+    if (top > vh || top < -200) continue;
+    if (!was.has(r)) { r.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT }); continue; }
+    const dy = was.get(r) - top;
+    if (Math.abs(dy) > 1) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 260, easing: EASE_OUT });
+  }
 }
 
 /** Hide, show again or keep one track or artist; the stats come back without (or with) it. */
@@ -6972,9 +7043,23 @@ function topMore(k, have) {
 function setTopN(k, n) {
   TOPN[k] = n;
   try { localStorage.setItem('topN', JSON.stringify(TOPN)); } catch (_) { /* preview without storage */ }
-  if (k === 'stats') renderStats();
-  else if (k === 'artist') renderArtist();
-  else if (k === 'genre') renderGenre();
+  if (k === 'stats') withNewRows($('#statsBody'), renderStats);
+  else if (k === 'artist') withNewRows($('#artistBody'), renderArtist);
+  else if (k === 'genre') withNewRows($('#genreBody'), renderGenre);
+}
+/**
+ * Rows that [render] adds to [scope] ("Show all" and the like) come in: the first dozen fade up one after another.
+ * Only when rows were kept (a list growing in place); a list drawn anew stays still.
+ */
+function withNewRows(scope, render) {
+  const sel = ':is(.rank, .list, .ch-rows, .xcards, .covers, .grid, .bd-grid, .tcards) > *';
+  const before = scope && moving() ? new Set(scope.querySelectorAll(sel)) : null;
+  render();
+  if (!before || !before.size) return;
+  const fresh = [...scope.querySelectorAll(sel)].filter((x) => !before.has(x));
+  if (!fresh.length || ![...before].some((x) => x.isConnected)) return;
+  fresh.slice(0, 12).forEach((x, i) => x.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 220, delay: i * 22, easing: EASE_OUT, fill: 'backwards' }));
 }
 
 function numbersHtml(s) {
@@ -9181,14 +9266,14 @@ function build() {
     const cbk = e.target.closest('[data-cardbook]');
     if (cbk) { openCardbook(cbk.dataset.cardbook); return; }
     const cbkind = e.target.closest('#cardsPage [data-cbkind]');
-    if (cbkind) { CARDBOOK.kind = cbkind.dataset.cbkind; CARDBOOK.view = 'all'; renderCardbook(); return; }
+    if (cbkind) { CARDBOOK.kind = cbkind.dataset.cbkind; CARDBOOK.view = 'all'; renderCardbook(); fadeAfter($('#cardsBody'), $('#cardsBody .bd-kind')); return; }
     const flip = e.target.closest('[data-flip]');
     if (flip) { turnSleeve(flip); return; }
     if (e.target.closest('[data-tidy]')) { openTidy(); return; }
     const cbv = e.target.closest('#cardsPage [data-cbview]');
-    if (cbv) { CARDBOOK.view = cbv.dataset.cbview; renderCardbook(); return; }
+    if (cbv) { CARDBOOK.view = cbv.dataset.cbview; renderCardbook(); fadeAfter($('#cardsBody'), $('#cardsBody [data-cbview].on')); return; }
     const cbm = e.target.closest('#cardsPage [data-cbmore]');
-    if (cbm) { CARDBOOK.open[cbm.dataset.cbmore] = true; renderCardbook(); return; }
+    if (cbm) { CARDBOOK.open[cbm.dataset.cbmore] = true; withNewRows($('#cardsBody'), renderCardbook); return; }
     const cbt = e.target.closest('#cardsPage [data-cbtier]');
     if (cbt) {
       if (CARDBOOK.view !== 'all') { CARDBOOK.view = 'all'; renderCardbook(); }
@@ -9225,7 +9310,7 @@ function build() {
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
     if (e.target.closest('[data-genremore]')) { openGenreMore(); return; }
-    if (e.target.closest('[data-ttoggle]')) { artistTopOpen = !artistTopOpen; renderArtist(); return; }
+    if (e.target.closest('[data-ttoggle]')) { artistTopOpen = !artistTopOpen; withNewRows($('#artistBody'), renderArtist); return; }
     const tn = e.target.closest('[data-topn]');
     if (tn) { const [k, n] = tn.dataset.topn.split(':'); setTopN(k, +n); return; }
     if (e.target.closest('[data-genremap]')) {
@@ -9285,9 +9370,15 @@ function build() {
     const sqg = e.target.closest('[data-sqgo]');
     if (sqg) { openSquare(sqg); return; }
     const mc = e.target.closest('#atlasBody [data-mc]');
-    if (mc) { ATLAS_MAP.sel = ATLAS_MAP.sel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); return; }
+    if (mc) { ATLAS_MAP.sel = ATLAS_MAP.sel === mc.dataset.mc ? '' : mc.dataset.mc; renderAtlas(); if (ATLAS_MAP.sel) settle($('#atlasBody .wm-sel')); return; }
     const smc = e.target.closest('#statsBody [data-smc], #blockBody [data-smc]');
-    if (smc) { statsMapSel = statsMapSel === smc.dataset.smc ? '' : smc.dataset.smc; renderStats(); renderBlock(); return; }
+    if (smc) {
+      statsMapSel = statsMapSel === smc.dataset.smc ? '' : smc.dataset.smc;
+      renderStats();
+      renderBlock();
+      if (statsMapSel) $$('#statsBody .wm-sel, #blockBody .wm-sel').forEach(settle);
+      return;
+    }
     const rcb = e.target.closest('[data-race-id] [data-race]');
     if (rcb) { const id = rcb.closest('[data-race-id]').dataset.raceId; if (RACES[id].playing) raceStop(id); else racePlay(id); return; }
     const chb = e.target.closest('[data-chby]');
@@ -9490,7 +9581,7 @@ function build() {
   $('#genreBody').onclick = (e) => {
     const rec = e.target.closest('[data-rec]');
     if (rec) openRecord(+rec.dataset.rec, rec);
-    if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; renderGenre(); }
+    if (e.target.closest('[data-genreall]')) { GENRE.showAll = true; withNewRows($('#genreBody'), renderGenre); }
     if (e.target.closest('[data-genresubs]')) { GENRE.showSubs = true; renderGenre(); }
     if (e.target.closest('[data-genrepl]')) openGenrePlaylist(GENRE.key, GENRE.label);
   };
@@ -9518,7 +9609,15 @@ function build() {
     if (y) { UNI.year = +y.dataset.uniY; $$('.uni-years .chip').forEach((b) => b.classList.toggle('on', +b.dataset.uniY === UNI.year)); uniCard(); drawUni(); return; }
     if (t.closest('[data-uni-x]')) { uniClear(); return; }
     const tr = t.closest('[data-tree]');
-    if (tr) { const id = +tr.dataset.tree; if (TREE_OPEN.has(id)) TREE_OPEN.delete(id); else TREE_OPEN.add(id); renderAtlas(); return; }
+    if (tr) {
+      const id = +tr.dataset.tree, open = !TREE_OPEN.has(id);
+      if (open) TREE_OPEN.add(id); else TREE_OPEN.delete(id);
+      renderAtlas();
+      // The branch that opened fades in under its artist.
+      const row = open && $(`#atlasBody [data-tree="${id}"]`);
+      if (row) settle(row.closest('.tnode').querySelector(':scope > .tkids'));
+      return;
+    }
   };
   const exploreClick = (e) => {
     const no = e.target.closest('[data-nope]');
@@ -9527,7 +9626,7 @@ function build() {
     if (why) { openWhy(why.dataset.why); return; }
     const rc = e.target.closest('[data-reach]');
     if (rc) { DISCOVER = { ...DISCOVER, reach: +rc.dataset.reach }; renderExplore(); renderForYou(); send({ t: 'discoverReach', v: +rc.dataset.reach }); return; }
-    if (e.target.closest('[data-dmore]')) { if (mainCompact()) openForYou(); else { discoverAll = true; renderExplore(); } return; }
+    if (e.target.closest('[data-dmore]')) { if (mainCompact()) openForYou(); else { discoverAll = true; withNewRows($('#exploreBody'), renderExplore); } return; }
     if (e.target.closest('[data-dagain]')) { DISCOVER = null; send({ t: 'discover', again: true }); renderExplore(); return; }
     if (e.target.closest('#exploreGoStats')) showTab('stats');
   };

@@ -282,6 +282,31 @@ class DiscographyTest {
     }
 
     @Test
+    fun aSingleCountsAsTheAlbumItsSongIsOn() {
+        val b = History.Builder()
+        // shame's single "Quiet Life" before the album came out, then Cutthroat with the same song on it.
+        repeat(3) { b.add(at(2025, 7, 1 + it), "shame", "Quiet Life", "Quiet Life - Single") }
+        for ((k, t) in listOf("Cutthroat", "Quiet Life", "Cowards Around", "Plaster", "Spartak").withIndex()) repeat(2) { b.add(at(2025, 9, 1 + k * 2 + it), "shame", t, "Cutthroat") }
+        // A single whose song is on no album you played stays a release of its own.
+        b.add(at(2025, 9, 20), "shame", "Born In Luton", "Born In Luton")
+        // Bowie's "Heroes" album, two songs played, keeps them though a best-of has its title song.
+        b.add(at(2025, 9, 21), "David Bowie", "\"Heroes\"", "\"Heroes\"")
+        b.add(at(2025, 9, 22), "David Bowie", "Sons of the Silent Age", "\"Heroes\"")
+        for (t in listOf("\"Heroes\"", "Changes", "Life on Mars?", "Starman")) b.add(at(2025, 9, 23), "David Bowie", t, "The Best of Bowie")
+        val h = b.build()
+        assertEquals(listOf("Cutthroat", "Born In Luton", "\"Heroes\"", "The Best of Bowie"), h.albumTitles.toList())
+        val s = Stats(h, ZoneId.of("UTC"), at(2025, 10, 25))
+        assertEquals("the single's plays count for the album", 13, s.albumPlaysOf("shame", "Cutthroat"))
+        assertEquals("its own card keeps its plays", 3, s.albumPlaysOf("shame", "Quiet Life"))
+        assertEquals("and it stays a card of its own", null, s.editionRoot("shame", "Quiet Life"))
+        assertEquals(1, s.albumPlaysOf("shame", "Born In Luton"))
+        assertEquals(2, s.albumPlaysOf("David Bowie", "\"Heroes\""))
+        assertEquals("a genre's plays know it too", 13, Stats(h.filter { true }, ZoneId.of("UTC"), at(2025, 10, 25)).albumPlaysOf("shame", "Cutthroat"))
+        val d = Discography.merge(listOf(rel(1, "Cutthroat", "album", "2025-09-05"), rel(2, "Quiet Life", "single", "2025-06-20"))) { s.editionRoot("shame", it) }
+        assertEquals(listOf("Cutthroat", "Quiet Life"), d.map { it.release.title })
+    }
+
+    @Test
     fun anArtistStillPlayedInAnotherGenreIsntOneToRediscover() {
         // Surprise Chef's soul record last played in April, their jazz record all of October; Air quiet since spring.
         val b = History.Builder()

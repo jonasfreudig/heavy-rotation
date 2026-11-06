@@ -178,9 +178,15 @@ class Stats(
         m + h.editionOf.mapNotNull { (e, k) -> m[k]?.let { e to it } }
     }
 
-    /** The album an edition counts as ("Skinty Fia" for "Skinty Fia go deo"), null for an album of its own or one not played. */
-    fun editionRoot(artist: String, title: String): String? =
-        h.editionOf[Text.albumKey(artist, title)]?.let { albumIndex[it] }?.let { h.albumTitles[it] }
+    /**
+     * The album an edition counts as ("Skinty Fia" for "Skinty Fia go deo"), null for an album of its own or one not
+     * played, and for a single (its card stays apart in a discography, see [albumPlaysOf]).
+     */
+    fun editionRoot(artist: String, title: String): String? {
+        val key = Text.albumKey(artist, title)
+        if (key in h.singlePlays) return null
+        return h.editionOf[key]?.let { albumIndex[it] }?.let { h.albumTitles[it] }
+    }
     private val artistIndex: Map<String, Int> by lazy { h.artistNames.withIndex().associate { (i, n) -> Text.norm(n) to i } }
     private val historyStart get() = if (h.size > 0) h.ts[0] else nowSec
 
@@ -2201,7 +2207,11 @@ class Stats(
     }
 
     /** All-time plays of an album, any edition ("(Deluxe Edition)" and the like count for the album). */
-    fun albumPlaysOf(artist: String, title: String): Int = findAlbum(artist, title).let { if (it < 0) 0 else albumPlays[it] }
+    fun albumPlaysOf(artist: String, title: String): Int {
+        // A single counted as its album keeps its own plays here, for its card in the discography.
+        h.singlePlays[Text.albumKey(artist, title)]?.let { return it }
+        return findAlbum(artist, title).let { if (it < 0) 0 else albumPlays[it] }
+    }
 
     private fun findAlbum(artist: String, title: String): Int =
         albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)]

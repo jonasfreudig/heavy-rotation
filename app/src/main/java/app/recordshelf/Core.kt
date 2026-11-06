@@ -105,6 +105,9 @@ object Core {
     /** Album covers looked up for the activity list at a time (newest first). */
     private const val COVER_BATCH = 40
 
+    /** Albums played this many days back have a missing cover asked again after a day (see retryFreshMisses). */
+    private const val FRESH_MISS_DAYS = 14L
+
     private lateinit var ctx: Context
     lateinit var prefs: Prefs
         private set
@@ -2184,6 +2187,22 @@ object Core {
         stats = null
     }
 
+    /** When [retryFreshMisses] last looked (ms). */
+    @Volatile private var freshMissesAt = 0L
+
+    /**
+     * Covers none was found for, of albums played in the last two weeks, are asked again after a day (else after a
+     * month): a new album is often played, its singles under its name, before Deezer lists it ("Friend World").
+     */
+    private fun retryFreshMisses(h: History) {
+        val now = System.currentTimeMillis()
+        if (now - freshMissesAt < HOUR) return
+        freshMissesAt = now
+        val keys = HashSet<String>()
+        for (i in h.lowerBound(now / 1000 - FRESH_MISS_DAYS * 24 * 3600) until h.size) if (h.album[i] >= 0) keys += h.albumKeys[h.album[i]]
+        if (keys.isNotEmpty()) runCatching { db.dropMissedImages(keys, now - 24 * HOUR) }
+    }
+
     /** The stats for the current history, built on first use (and again on a new day). */
     private fun currentStats(): Stats? {
         val today = java.time.LocalDate.now().toEpochDay()
@@ -2191,6 +2210,7 @@ object Core {
         // Kept only if nothing changed meanwhile: else a slow build would put older stats over newer ones.
         val gen = statsGen
         val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { if (statsGen == gen) history = it } else return null
+        retryFreshMisses(h)
         return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
             .also {
                 if (statsGen == gen) {
