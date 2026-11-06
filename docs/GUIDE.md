@@ -558,7 +558,8 @@ Headings and big numbers are set in Fraunces, a soft serif, and labels and detai
 liner notes. Both fonts are bundled, under the SIL Open Font License, in `assets/ui/fonts`. A faint
 print grain lies over everything. Behind the top of the app glows the color of what is playing now
 (the record spinning, or the song on the phone), or else of the last thing you played; in the
-Tinted soft style the tabs take a calm shade of it too. Choose Your records, Wallpaper (your
+Tinted soft style the tabs take a calm shade of it too, and in Soft glass it reaches from the top
+of the screen to the bottom, under the bar. Choose Your records, Wallpaper (your
 Material You colors) or Off in Settings → Look → Background color.
 
 Artist, album and genre pages come in tabs, each a screen or two long; Settings → Look → Pages

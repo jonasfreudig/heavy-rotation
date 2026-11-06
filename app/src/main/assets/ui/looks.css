@@ -74,6 +74,19 @@
 :root[data-look="glass"] .page > .backdrop::after {
   background: linear-gradient(180deg, color-mix(in srgb, var(--md-surface) 46%, transparent), color-mix(in srgb, var(--md-surface) 62%, transparent)); }
 :root[data-look="glass"]:not([data-ambient="off"]) body::before { opacity: .55; }
+/*
+ * Glass: the glow fills the whole screen, top to bottom, so the frosted cards and bars further down
+ * lie on color as well (the three colors twice, lower ones apart from the upper). The fade behind
+ * the bottom bar lets it through.
+ */
+:root[data-look="glass"] body::before { top: -8%; height: 116vh;
+  background: radial-gradient(40% 23% at 22% 16%, var(--amb1, transparent), transparent 100%),
+              radial-gradient(44% 22% at 78% 9%, var(--amb2, transparent), transparent 100%),
+              radial-gradient(48% 23% at 55% 30%, var(--amb3, transparent), transparent 100%),
+              radial-gradient(44% 23% at 26% 55%, var(--amb2, transparent), transparent 100%),
+              radial-gradient(46% 23% at 76% 72%, var(--amb1, transparent), transparent 100%),
+              radial-gradient(48% 22% at 36% 92%, var(--amb3, transparent), transparent 100%); }
+:root[data-look="glass"] .bottom-fade { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--md-surface) 55%, transparent) 55%, color-mix(in srgb, var(--md-surface) 72%, transparent)); }
 :root[data-look="glass"] .chip:not(:where(.on, .mode, .static)), :root[data-look="glass"] .btn.tonal, :root[data-look="glass"] .search,
 :root[data-look="glass"] .icon-btn.small.on, :root[data-look="glass"] .seg {
   background: var(--frost); color: var(--md-on-surface); box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
