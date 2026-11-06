@@ -469,7 +469,7 @@ window.onStats = (s) => {
   STATS = s;
   $('#statsBody').classList.remove('stale');
   renderStats();
-  const look = s && s.range ? [s.range.id, statsGenre, statsDecade].join('|') : '';
+  const look = s && s.range ? [s.range.id, statsGenre, statsDecade, statsVinyl].join('|') : '';
   if (statsLook && look && look !== statsLook) {
     // The new period comes in from the side it lies on, the way the old one left.
     const b = $('#statsBody'), d = statsSlide;
@@ -2004,10 +2004,11 @@ function renderNpBar() {
   if (sig === barSig) { tickNpBar(); return; }
   barSig = sig;
   // With lyrics on, the line being sung gets the room: no play and pause (it's on Now playing, a tap away).
+  // The lyrics button stays at the right end either way, so tapping it twice never lands on pause.
   bar.classList.toggle('lyr-mode', lyr);
   bar.innerHTML = `<button class="npb-open" id="npbOpen" aria-label="${esc(`${it.title} by ${it.artist}, open`)}">${coverHtml(it.cover, it.album || it.title, it.artist)}<span class="t"><b id="npbLine">${esc(it.title)}</b><small id="npbSub">${esc(it.artist)}${n ? `, ${esc(n.app)}` : ', on the turntable'}</small></span></button>
-    <button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>
     ${n && n.media && m.canPlay !== false && !lyr ? `<button class="npb-btn npb-pp" id="npbPp" aria-label="${it.playing ? 'Pause' : 'Play'}">${icon(it.playing ? 'pause' : 'play')}</button>` : ''}
+    <button class="npb-btn npb-ly${lyr ? ' on' : ''}" id="npbLy" aria-label="Lyrics in the bar" aria-pressed="${lyr}">${icon('lyrics')}</button>
     <i class="npb-prog"><i id="npbProg"></i></i>`;
   tickNpBar();
 }
@@ -2757,9 +2758,9 @@ function requestStats(id) {
     $('#statsBody').style.setProperty('--sx', `${-statsSlide * 20}px`);
   }
   if (id) statsRange = statsAsked = id;
-  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade }); return; }
+  if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade, vinyl: statsVinyl }); return; }
   $('#statsBody').classList.add('stale');
-  send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade });
+  send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade, vinyl: statsVinyl });
 }
 
 /** Above the stats: importing, or how fresh the history is. */
@@ -2906,7 +2907,7 @@ function storyCardHtml(s) {
   const disc = four.length ? `<span class="sc-mos">${four.map((x) => coverHtml(x.cover, x.title, x.artist)).join('')}</span>` : '';
   return `<button class="story-card slim" data-story="${esc(s.range.id)}" style="--s1:${h1.toFixed(0)};--s2:${((h1 + 55) % 360).toFixed(0)};--h:${hue(name)}">
     <span class="sc-disc" aria-hidden="true">${disc}</span>
-    <span class="sc-t"><span class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade ? ` ${esc(filterWords(s.genre, s.decade))}` : ''}</span><b>${esc(name)}, on record</b></span>
+    <span class="sc-t"><span class="k">${s.range.kind === 'all' ? 'Your whole history' : `Your ${periodWord(s.range.kind)}`}${s.genre || s.decade || s.onlyVinyl ? ` ${esc(filterWords(s.genre, s.decade, s.onlyVinyl))}` : ''}</span><b>${esc(name)}, on record</b></span>
     <span class="sc-go" aria-label="Play the story">${icon('play')}</span></button>`;
 }
 
@@ -2959,7 +2960,8 @@ function highlightsViz(s) {
   // A song on repeat that is also the most played one is said once.
   const loop = (s.insights || []).find((x) => x.kind === 'loop');
   const live = liveInsights(s.concerts || [], s.range.kind);
-  const list = live.concat((s.insights || []).filter((x) => !(x.kind === 'song' && loop && loop.track === x.track && loop.artist === x.artist))
+  // Only vinyl shown: that all of it came from records says nothing.
+  const list = live.concat((s.insights || []).filter((x) => !(x.kind === 'song' && loop && loop.track === x.track && loop.artist === x.artist) && !(x.kind === 'vinyl' && s.onlyVinyl))
     .sort((a, b) => INSIGHT_ORDER.indexOf(a.kind) - INSIGHT_ORDER.indexOf(b.kind)).slice(0, 6 - live.length)
     .map((x) => { const t = insightText(x, s.range.kind, s.range.running); return t && [...t, insightLink(x, s)]; }).filter(Boolean));
   if (!list.length) return '';
@@ -4370,8 +4372,10 @@ function shelfSummaryHtml(list) {
 
 let statsGenre = '';
 let statsDecade = 0;
-/** "in Post Punk", "from the 1970s", "in Post Punk from the 1970s", or "" without filters. */
-const filterWords = (genre, decade) => [genre ? `in ${genreLabel(genre)}` : '', decade ? `from the ${decade}s` : ''].filter(Boolean).join(' ');
+/** Only the record plays scrobbled here count on the Stats tab. */
+let statsVinyl = false;
+/** "in Post Punk", "from the 1970s", "in Post Punk from the 1970s on vinyl", or "" without filters. */
+const filterWords = (genre, decade, vinyl) => [genre ? `in ${genreLabel(genre)}` : '', decade ? `from the ${decade}s` : '', vinyl ? 'on vinyl' : ''].filter(Boolean).join(' ');
 function genreLabel(key) {
   for (const o of (STATS && STATS.genreOptions) || []) {
     if (o.key === key) return o.label;
@@ -4380,22 +4384,30 @@ function genreLabel(key) {
   }
   return key.replace(/^[a-z]+:/, '').replace(/\b\w/g, (c) => c.toUpperCase());
 }
-/** The genre and decade the stats are narrowed to, each with its ✕; the filter button picks them. */
+/** The genre, decade and vinyl the stats are narrowed to, each with its ✕; the filter button picks them. */
 function renderGenreRow() {
   const row = $('#genreRow');
   if (!row) return;
   const g = statsGenre ? `<button class="chip on" data-gclear>${icon('album', 'i small')}${esc(genreLabel(statsGenre))}${icon('close', 'i small')}</button>`
     + `<button class="chip link" data-genre="${esc(statsGenre)}" data-glabel="${esc(genreLabel(statsGenre))}">About ${esc(genreLabel(statsGenre))} ›</button>` : '';
   const d = statsDecade ? `<button class="chip on" data-dclear>${icon('calendar', 'i small')}${statsDecade}s${icon('close', 'i small')}</button>` : '';
-  row.innerHTML = g + d;
-  row.hidden = !(g || d);
-  $('#statsFilter').classList.toggle('on', !!(g || d));
+  const v = statsVinyl ? `<button class="chip on" data-vclear>${icon('album', 'i small')}On vinyl${icon('close', 'i small')}</button>` : '';
+  row.innerHTML = g + d + v;
+  row.hidden = !(g || d || v);
+  $('#statsFilter').classList.toggle('on', !!(g || d || v));
 }
 function openStatsFilter() {
   openSheet(`<div class="sheet-title">Stats for…</div><div class="btn-row">
     <button class="btn tonal" data-gpick>${icon('album')}${statsGenre ? esc(genreLabel(statsGenre)) : 'One genre'}</button>
-    <button class="btn tonal" data-dpick>${icon('calendar')}${statsDecade ? `${statsDecade}s` : 'One decade'}</button></div>`);
+    <button class="btn tonal" data-dpick>${icon('calendar')}${statsDecade ? `${statsDecade}s` : 'One decade'}</button>
+    <button class="btn ${statsVinyl ? 'filled' : 'tonal'}" data-vpick aria-pressed="${statsVinyl}">${icon(statsVinyl ? 'check' : 'album')}Only vinyl</button></div>
+    <p class="hint">Only vinyl counts the records you scrobbled here from the turntable. Records played before that, or scrobbled another way, look like any other play on Last.fm.</p>`);
   $('#sheetContent').onclick = null;
+}
+function setStatsVinyl(on) {
+  statsVinyl = on;
+  renderGenreRow();
+  requestStats();
 }
 
 /** The sheet to pick a decade of release, with how many plays each has and how much of the history has a known year. */
@@ -6270,7 +6282,7 @@ function renderRanks() {
   if (!R || !isOpen('rankPage')) return;
   const noun = RANK_NOUN[R.kind];
   const seg = `<div class="seg small" id="rankSeg">${['tracks', 'albums', 'artists'].map((k) => `<button data-rkind="${k}" class="${k === R.kind ? 'on' : ''}">${RANK_NOUN[k].charAt(0).toUpperCase() + RANK_NOUN[k].slice(1)}</button>`).join('')}</div>`;
-  const when = R.info ? `${periodName(R.info)}${R.shown && (statsGenre || statsDecade) ? `, ${filterWords(statsGenre, statsDecade)}` : ''}` : '';
+  const when = R.info ? `${periodName(R.info)}${R.shown && (statsGenre || statsDecade || statsVinyl) ? `, ${filterWords(statsGenre, statsDecade, statsVinyl)}` : ''}` : '';
   let h = `<div class="rank-hero"><h1>Your top ${noun}</h1><p>${R.loading ? 'Counting…' : `${esc(when)}: ${num(R.total)} ${noun}`}</p></div>${seg}`;
   if (R.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (!R.total) h += '<p class="hint">Nothing in this period.</p>';
@@ -8767,7 +8779,7 @@ function buildSlides(s) {
   if (v.count > 0) {
     const r0 = (v.top || [])[0];
     out.push({ cls: 'deep', html: `${r0 ? `<div class="in">${holoCover(r0.cover, r0.title, r0.artist, { owned: true, key: 'story-vinyl' })}</div>` : ''}<div class="k in" ${dly(0.15)}>From your shelf</div>
-      <div class="t m in" ${dly(0.2)}><span data-count="${v.count}">0</span> tracks on vinyl</div><p class="p in" ${dly(0.4)}>${pct(v.share)} of your listening${r0 ? `. Most spun: <b>${esc(r0.title)}</b>` : ''}.</p>` });
+      <div class="t m in" ${dly(0.2)}><span data-count="${v.count}">0</span> tracks on vinyl</div><p class="p in" ${dly(0.4)}>${[s.onlyVinyl ? '' : `${pct(v.share)} of your listening`, r0 ? `Most spun: <b>${esc(r0.title)}</b>` : ''].filter(Boolean).join('. ')}.</p>` });
   }
   // Streak: one dot per day in a row
   const st = s.streak || {};
@@ -9084,6 +9096,8 @@ function build() {
     if (e.target.closest('[data-gclear]')) { setStatsGenre(''); return; }
     if (e.target.closest('[data-dpick]')) { openDecadeSheet(); return; }
     if (e.target.closest('[data-dclear]')) { setStatsDecade(0); return; }
+    if (e.target.closest('[data-vpick]')) { closeSheet(); setStatsVinyl(!statsVinyl); return; }
+    if (e.target.closest('[data-vclear]')) { setStatsVinyl(false); return; }
     const dc = e.target.closest('[data-decade]');
     if (dc) { openDecade(+dc.dataset.decade); return; }
     if (e.target.closest('[data-newlist]')) { openNewArtists(); return; }

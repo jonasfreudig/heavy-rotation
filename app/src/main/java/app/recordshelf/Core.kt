@@ -270,9 +270,13 @@ object Core {
     /** Deezer lookups for pages (discographies, tracklists), apart from the history work. */
     private val webExec = serial()
 
-    /** The Stats tab shows one genre's music when set (a genre key; "" for everything), and/or one decade's (e.g. 1970; 0 for all). */
+    /**
+     * The Stats tab shows one genre's music when set (a genre key; "" for everything), and/or one decade's (e.g. 1970; 0 for all),
+     * and/or only the record plays scrobbled here ([statsVinyl]).
+     */
     @Volatile private var statsGenre = ""
     @Volatile private var statsDecade = 0
+    @Volatile private var statsVinyl = false
     @Volatile private var filteredStats: Stats? = null
     @Volatile private var filteredKey = ""
     @Volatile private var filteredBase: Stats? = null
@@ -705,6 +709,7 @@ object Core {
                 statsRange = msg.optString("range").ifEmpty { statsRange }
                 if (msg.has("genre")) statsGenre = msg.optString("genre")
                 if (msg.has("decade")) statsDecade = msg.optInt("decade")
+                if (msg.has("vinyl")) statsVinyl = msg.optBoolean("vinyl")
                 // Stepping through periods quickly: only the last one asked for is worked out.
                 val ask = ++statsAsks
                 statsExec.execute { if (ask == statsAsks) statsInner() }
@@ -761,7 +766,8 @@ object Core {
             "rankList" -> {
                 val id = msg.optString("range").ifEmpty { statsRange }
                 statsExec.execute {
-                    val s = currentStats() ?: return@execute
+                    // From the Stats tab, the list counts what the tab shows (its genre, decade or vinyl filter).
+                    val s = (if (msg.optBoolean("shown")) shownStats() else null) ?: currentStats() ?: return@execute
                     val j = s.rankList(
                         s.range(id), msg.optString("kind"), maxOf(0, msg.optInt("from")), msg.optInt("n", 100).coerceIn(1, 500),
                         msg.optString("artist"), msg.optString("title"), msg.optBoolean("around"),
@@ -1018,7 +1024,7 @@ object Core {
                 val id = msg.optString("range")
                 statsExec.execute {
                     val s = shownStats() ?: return@execute
-                    val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade)
+                    val story = s.story(s.range(id)).put("genre", statsGenre).put("decade", statsDecade).put("onlyVinyl", statsVinyl)
                     currentStats()?.let { all -> story.put("concerts", concertsIn(all, all.range(id))) }
                     push("onStory") { story }
                 }
@@ -2207,18 +2213,20 @@ object Core {
         return db.vinyl()
     }
 
-    /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre] and/or [statsDecade]. */
+    /** What the Stats tab and the story show: everything, or only the scrobbles of [statsGenre], [statsDecade] and/or [statsVinyl]. */
     private fun shownStats(): Stats? {
         val base = currentStats() ?: return null
         val g = statsGenre
         val d = statsDecade
-        if (g.isEmpty() && d == 0) return base
-        val key = "$g|$d"
+        val v = statsVinyl
+        if (g.isEmpty() && d == 0 && !v) return base
+        val key = "$g|$d|$v"
         filteredStats?.takeIf { filteredKey == key && filteredBase === base }?.let { return it }
         val h = history ?: return base
         val inGenre = if (g.isEmpty()) null else base.inGenre(g)
         val inDecade = if (d == 0) null else base.inDecade(d)
-        val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) }
+        val onRecord = if (v) base.onRecord() else null
+        val sub = h.filter { i -> (inGenre == null || inGenre(i)) && (inDecade == null || inDecade(i)) && (onRecord == null || onRecord(i)) }
         // Only the record plays among the scrobbles shown (at the same second as one of them).
         val vinyl = vinylListens().filter { v -> sub.lowerBound(v.ts).let { it < sub.size && sub.ts[it] == v.ts } }
         return Stats(sub, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinyl, db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
@@ -2708,7 +2716,7 @@ object Core {
         if (unplaced.isNotEmpty()) lookUpCountries(unplaced)
         push("onStats") {
             shown.compute(shown.range(id)).put("map", worldMapJson(mapTop)).put("tidy", tidySummary()).put("concerts", concertsIn(s, shown.range(id))).put("genre", statsGenre).put("genreOptions", s.genreOptions())
-                .put("decade", statsDecade).put("decadeOptions", s.decadeOptions())
+                .put("decade", statsDecade).put("decadeOptions", s.decadeOptions()).put("onlyVinyl", statsVinyl)
         }
         // Release years for the decade filter, looked up now and then as the history grows.
         if (!yearsBusy && System.currentTimeMillis() - yearsTried > 6 * HOUR) historyExec.execute { yearsInner() }

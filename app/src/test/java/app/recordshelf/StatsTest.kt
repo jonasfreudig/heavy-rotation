@@ -489,4 +489,27 @@ class StatsTest {
         assertEquals("noon has the most plays", 12, st.getInt("goldenHour"))
         assertTrue(s.story(s.range("y2024")).getJSONObject("summary").getBoolean("historyStartsHere"))
     }
+
+    @Test
+    fun onlyVinylKeepsThePlaysScrobbledFromRecords() {
+        val plays = listOf(
+            Play(at(2025, 3, 1, 10), "Fleetwood Mac", "Dreams", "Rumours"), Play(at(2025, 3, 1, 11), "Fleetwood Mac", "Dreams", "Rumours"),
+            Play(at(2025, 3, 2, 20), "Fleetwood Mac", "The Chain", "Rumours"), Play(at(2025, 3, 3, 9), "Air", "Talisman", "Moon Safari"),
+        )
+        val h = history(plays)
+        // Last.fm may spell a record play differently: the second it was scrobbled at is what tells.
+        val vinyl = listOf(Listen("Fleetwood Mac", "Dreams", at(2025, 3, 1, 11), "Rumours"), Listen("Fleetwood Mac", "The Chain", at(2025, 3, 2, 20), "Rumours (Remastered)"))
+        val s = Stats(h, utc, at(2025, 3, 10), vinyl = vinyl)
+        val only = h.filter(s.onRecord())
+        assertEquals(2, only.size)
+        val records = Stats(only, utc, at(2025, 3, 10), vinyl = vinyl)
+        val sum = records.compute(records.range("all")).getJSONObject("summary")
+        assertEquals(2, sum.getInt("scrobbles"))
+        assertEquals(1, sum.getInt("artists"))
+        // Nothing scrobbled from records yet: an empty tab, not a crash.
+        val none = Stats(h.filter(Stats(h, utc, at(2025, 3, 10)).onRecord()), utc, at(2025, 3, 10))
+        assertEquals(0, none.compute(none.range("m2025-03")).getJSONObject("summary").getInt("scrobbles"))
+        assertEquals(0, none.compute(none.range("all")).getJSONObject("summary").getInt("scrobbles"))
+        none.story(none.range("all"))
+    }
 }

@@ -595,7 +595,8 @@ of every page too, Now playing and Now spinning aside: tap a tab to go straight 
 many pages deep you are, and search closes the pages the same way. Its lyrics button gives the bar to the line being sung, one
 line at a time on up to two lines, for a song on the phone and a record's track alike; play and pause
 make room for it then (they are on Now playing, a tap away), and the screen stays on while the lyrics
-show. Tap any of them for Now
+show. The lyrics button keeps its place at the right end, with play and pause to its left, so
+switching the lyrics on and off quickly never pauses the song. Tap any of them for Now
 spinning or, for the phone, Now playing. Now playing
 has the song's exact position (drag to seek), play/pause and skip, what the app plays next (with
 the playlist's or mix's name) when the app shares its queue, and the whole album the song is on,
@@ -701,7 +702,10 @@ On the Stats tab, the filter button next to Week, Month, Year and All offers One
 on the tab and in the story then counts only the plays whose main genre is that one (the same genre
 the genre charts count them under). The One decade filter does the same for when the music came
 out, and the two combine ("Post Punk from the 1970s"). The Decades chart shows the period by decade
-of release; tap a decade to filter.
+of release; tap a decade to filter. Only vinyl keeps the records you scrobbled here from the
+turntable, with either filter or both ("Post Punk from the 1970s on vinyl"); the whole top lists
+behind the charts count the same plays. Records played before you used the app, or scrobbled some
+other way, can't be told apart from streams on Last.fm, so they aren't in it.
 
 Release years come from Deezer, one artist's discography at a time. A title's year is the year it
 first came out (remasters and deluxe editions come later), or the year of your own record if that

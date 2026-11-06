@@ -892,6 +892,12 @@ class Stats(
     /** Whether a scrobble's album came out in the ten years from [decade]. */
     fun inDecade(decade: Int): (Int) -> Boolean = { i -> yearOf(i).let { it >= decade && it < decade + 10 } }
 
+    /** Whether a scrobble is one of the record plays scrobbled here ([vinyl]), at the same second. */
+    fun onRecord(): (Int) -> Boolean {
+        val at = vinyl.mapTo(HashSet()) { it.ts }
+        return { i -> h.ts[i] in at }
+    }
+
     /**
      * Artists whose albums have no year looked up yet, with those albums (title, key), most played
      * first, until the albums with a year cover [coverage] of all album plays.
