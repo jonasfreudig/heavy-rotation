@@ -45,7 +45,11 @@ import app.recordshelf.scrobble.Compare
 import app.recordshelf.scrobble.Durations
 import app.recordshelf.scrobble.FixRules
 import app.recordshelf.scrobble.FlushResult
+import app.recordshelf.scrobble.Heard
+import app.recordshelf.scrobble.HeardLog
+import app.recordshelf.scrobble.HeardSong
 import app.recordshelf.scrobble.Listen
+import app.recordshelf.scrobble.ShelfHit
 import app.recordshelf.scrobble.PlanTrack
 import app.recordshelf.scrobble.Planner
 import app.recordshelf.scrobble.QueuedScrobble
@@ -60,6 +64,7 @@ import app.recordshelf.util.JsonFile
 import app.recordshelf.util.Palette
 import app.recordshelf.util.Text
 import app.recordshelf.util.finiteJson
+import app.recordshelf.util.strings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -89,6 +94,12 @@ object Core {
     private const val HOUR = 3_600_000L
     private const val SIDE_LINGER = 15 * 60_000L
     private const val END_LINGER = 3 * 60_000L
+
+    /** A record you might be playing (a song of it heard around you) is asked about once in this time. */
+    private const val OFFER_AGAIN_MS = 3 * HOUR
+
+    /** How long Identify listens. */
+    private const val IDENTIFY_MS = 10_000L
 
     /** A genre page not built by then reports where it got stuck. */
     private const val GENRE_WAIT_SEC = 20L
@@ -877,8 +888,14 @@ object Core {
                 currentStats()?.let { if (discoverDaily(it, lastfm())) push("onDiscover") { discoverJson() } }
             }
             "relNo", "relUndo" -> discoverExec.execute {
-                val k = Text.albumKey(msg.optString("artist"), msg.optString("title"))
-                synchronized(dstore) { if (msg.optString("t") == "relNo") dpart("relNo").put(k, System.currentTimeMillis()) else dpart("relNo").remove(k) }
+                // A series' parts go (and come back) together.
+                val titles = msg.optJSONArray("titles")?.strings()?.ifEmpty { null } ?: listOf(msg.optString("title"))
+                synchronized(dstore) {
+                    for (title in titles) {
+                        val k = Text.albumKey(msg.optString("artist"), title)
+                        if (msg.optString("t") == "relNo") dpart("relNo").put(k, System.currentTimeMillis()) else dpart("relNo").remove(k)
+                    }
+                }
                 saveDiscover()
                 push("onDiscover") { discoverJson() }
             }
@@ -1219,6 +1236,17 @@ object Core {
                 val r = flushInner()
                 if (r != null && r.error == null && r.waiting == 0) toast("All scrobbles sent")
             }
+            "heardYes" -> scrobExec.execute { heardYesInner(listOf(msg.optString("id"))) }
+            "heardAll" -> scrobExec.execute { heardYesInner(heard.waiting().map { it.id }) }
+            "heardNo", "heardUndo" -> scrobExec.execute {
+                heard.get(msg.optString("id"))?.let { h ->
+                    h.status = if (msg.optString("t") == "heardNo") HeardSong.DROPPED else HeardSong.NEW
+                    heard.save()
+                    pushHeard()
+                }
+            }
+            "heardSpin" -> scrobExec.execute { heardSpinInner(msg.optString("id")) }
+            "identifyStop" -> identifyStop = true
             "setDefaultTrack" -> {
                 prefs.defaultTrackSec = msg.optInt("sec", 210).coerceIn(60, 900)
                 pushState()
@@ -1721,6 +1749,230 @@ object Core {
                 c.updateNowPlaying(sk, fixed(s))
             } catch (_: Exception) {
                 // Best effort, like for records.
+            }
+        }
+    }
+
+    // ---- heard around you: Pixel's Now Playing and Identify (the list on scrobExec, lookups on lookupExec) ----
+
+    private val heard by lazy { HeardLog(file("heard.json")) }
+
+    /** Now Playing's wording of a song per app ("%1$s by %2$s" in English), read from the app itself; "" if it can't be. */
+    private val npFormats = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** When a "playing it on vinyl?" note last went out per record, so one record asks once. */
+    private val offered = HashMap<Long, Long>()
+
+    private fun npFormat(pkg: String): String? = npFormats.getOrPut(pkg) {
+        try {
+            val res = ctx.packageManager.getResourcesForApplication(pkg)
+            val id = res.getIdentifier("song_format_string", "string", pkg)
+            if (id != 0) res.getString(id) else ""
+        } catch (_: Exception) {
+            ""
+        }
+    }.ifEmpty { null }
+
+    /** Whether you know artist [name]: from your history or your shelf (to read "Song by Artist" right). */
+    private fun knownArtist(name: String) = (stats?.artistPlaysOf(name) ?: 0) > 0 || collection.any { Heard.sameArtist(it.artist, name) }
+
+    /**
+     * Pixel's Now Playing ([pkg]) recognised a song around the phone; [text] is how it words it ("Song by Artist"). It
+     * waits in the list until you say yes or no. While the phone plays music itself, Now Playing hears that or isn't
+     * what you listen to, so nothing is noted.
+     */
+    fun nowPlayingHeard(pkg: String, text: String) {
+        if (Phone.isPlaying()) return
+        val at = System.currentTimeMillis()
+        scrobExec.execute {
+            val formats = listOfNotNull(npFormat(pkg)) + Heard.FALLBACK_FORMATS
+            val (artist, title) = Heard.parse(text, formats) { knownArtist(it) } ?: return@execute
+            heardInner(artist, title, "", at, "nowplaying")
+        }
+    }
+
+    /**
+     * A song heard at [at]: a song of the record on the turntable only says where the needle is; anything else goes on
+     * the list (or stretches the listen it continues), then its cover and its place on your shelf are looked up.
+     */
+    private fun heardInner(artist: String, title: String, album: String, at: Long, src: String): HeardSong? {
+        spin?.let { s ->
+            val i = s.items.indexOfFirst {
+                it.state != SpinItem.SKIPPED && Heard.sameSong(it.track.title, title) &&
+                    (Heard.sameArtist(it.track.artist.ifEmpty { s.artist }, artist) || Heard.sameArtist(s.artist, artist))
+            }
+            if (i >= 0) {
+                followRecord(s, i, at)
+                return null
+            }
+        }
+        val (h, isNew) = heard.add(artist, title, album.ifEmpty { stats?.albumOfSong(artist, title).orEmpty() }, at, src)
+        heard.save()
+        pushHeard()
+        if (isNew) lookupExec.execute { placeHeard(h) }
+        return h
+    }
+
+    /** Track [i] of the spinning record [s] was heard at [at]: if the schedule says another track, it moves to match. */
+    private fun followRecord(s: Spin, i: Int, at: Long) {
+        val item = s.items[i]
+        if (at >= item.startMs - Heard.LAG_MS && at <= item.endMs + 30_000) return
+        s.resync(i, at - Heard.LAG_MS)
+        tickInner()
+    }
+
+    /** The record on your shelf with song [title] by [artist] (the one you spin most, else the fullest), or null. */
+    private fun shelfHit(artist: String, title: String): ShelfHit? {
+        var best: Triple<CollectionItem, Release, Int>? = null
+        for (c in collection.filter { Heard.sameArtist(it.artist, artist) }.take(8)) {
+            val rel = loadRelease(c.releaseId) ?: try {
+                resolveRelease(c.releaseId).also { releaseFile(c.releaseId).write(it.toJson().toString()) }
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            val i = Heard.trackIndex(rel.tracks.map { it.title }, title)
+            if (i < 0) continue
+            val b = best
+            val spins = spinCounts[c.releaseId.toString()] ?: 0
+            if (b == null || spins > (spinCounts[b.first.releaseId.toString()] ?: 0) ||
+                (spins == (spinCounts[b.first.releaseId.toString()] ?: 0) && rel.tracks.size > b.second.tracks.size)
+            ) best = Triple(c, rel, i)
+        }
+        return best?.let { (c, rel, i) -> ShelfHit(c.releaseId, rel.title, rel.artist, faceOf(c), i, rel.tracks[i].side) }
+    }
+
+    /** A new song on the list gets its cover and its record on your shelf; if Now Playing heard it from a record, you're asked. */
+    private fun placeHeard(h: HeardSong) {
+        val hit = try {
+            shelfHit(h.artist, h.title)
+        } catch (_: Exception) {
+            null
+        }
+        val cover = hit?.cover ?: try {
+            deezer.trackCover(h.artist, h.title).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        scrobExec.execute {
+            h.cover = cover
+            h.shelf = hit
+            if (hit != null && h.album.isEmpty()) h.album = hit.album
+            heard.save()
+            pushHeard()
+            val now = System.currentTimeMillis()
+            if (hit != null && h.status == HeardSong.NEW && h.src == "nowplaying" && spin == null && now - (offered[hit.releaseId] ?: 0L) > OFFER_AGAIN_MS) {
+                offered[hit.releaseId] = now
+                HeardNotifier.offer(ctx, h)
+            }
+        }
+    }
+
+    /** You said yes to songs [ids] on the list: scrobbled from when they started (Now Playing knows a song some seconds in). */
+    private fun heardYesInner(ids: List<String>) {
+        val list = ids.mapNotNull { heard.get(it) }.filter { it.status == HeardSong.NEW }
+        if (list.isEmpty()) return
+        val now = System.currentTimeMillis()
+        for (h in list) {
+            val start = if (h.src == "nowplaying") h.firstAt - Heard.LAG_MS else h.firstAt
+            val q = QueuedScrobble(UUID.randomUUID().toString(), fixed(Scrobble(h.artist, h.title, h.album, timestamp = start / 1000)), "heard", now)
+            queue.add(listOf(q)).forEach { activity.add(it, h.cover, "waiting", "", if (h.src == "identify") "Identify" else "Now Playing") }
+            h.status = HeardSong.SCROBBLED
+        }
+        heard.save()
+        activity.save()
+        pushHeard()
+        flushInner()
+    }
+
+    /**
+     * The record song [id] is on was playing: scrobbled from that song on (to the end of its side), from when it was
+     * heard. The songs of the record heard after it say where the needle is now.
+     */
+    private fun heardSpinInner(id: String) {
+        val h = heard.get(id) ?: return
+        val hit = h.shelf ?: return
+        val rel = loadRelease(hit.releaseId)
+        if (rel == null) {
+            toast("Open the record again; its tracklist isn't loaded")
+            return
+        }
+        val idx = rel.tracks.indices.filter { it >= hit.index && (hit.side.isEmpty() || rel.tracks[it].side == hit.side) }
+        val same = heard.all().filter { it.shelf?.releaseId == hit.releaseId && it.firstAt >= h.firstAt && it.status == HeardSong.NEW }
+        startSpinInner(hit.releaseId, idx, When.AT, h.firstAt - Heard.LAG_MS)
+        (same + h).forEach { it.status = HeardSong.VINYL }
+        heard.save()
+        HeardNotifier.cancel(ctx)
+        val latest = same.filter { it.id != h.id }.maxByOrNull { it.firstAt }
+        val s = spin
+        if (latest != null && s != null && s.releaseId == hit.releaseId) {
+            val i = s.items.indexOfFirst { Heard.sameSong(it.track.title, latest.title) }
+            if (i >= 0) followRecord(s, i, latest.firstAt)
+        }
+        pushHeard()
+    }
+
+    /** From the "playing it on vinyl?" note's button. */
+    fun onHeardSpin(context: Context, id: String, done: () -> Unit) {
+        ensure(context)
+        scrobExec.execute {
+            try {
+                heardSpinInner(id)
+            } catch (_: Exception) {
+            } finally {
+                done()
+            }
+        }
+    }
+
+    private fun pushHeard() {
+        push("onHeard") { heard.toJson() }
+        pushState()
+    }
+
+    // ---- Identify: ten seconds from the microphone, looked up by AudD ----
+
+    private val identifyExec = serial()
+    @Volatile private var identifyStop = false
+    @Volatile private var identifyBusy = false
+
+    private fun pushIdentify(state: String, extra: JSONObject.() -> Unit = {}) = push("onIdentify") { JSONObject().put("state", state).apply(extra) }
+
+    /** Listens for [IDENTIFY_MS] and asks AudD what plays; a song found goes on the list. Asked once the microphone is allowed. */
+    fun identify() {
+        if (identifyBusy) return
+        identifyBusy = true
+        identifyStop = false
+        identifyExec.execute {
+            try {
+                val started = System.currentTimeMillis()
+                pushIdentify("listening") { put("at", started).put("ms", IDENTIFY_MS) }
+                val wav = Recorder.wav(IDENTIFY_MS) { identifyStop }
+                when {
+                    identifyStop -> pushIdentify("idle")
+                    wav == null -> pushIdentify("error") { put("msg", "The microphone isn't free. Another app may be using it.") }
+                    else -> {
+                        pushIdentify("looking")
+                        val r = app.recordshelf.net.AudD().identify(wav)
+                        if (r == null) {
+                            pushIdentify("none")
+                        } else {
+                            // The song started that far before the recording did.
+                            val start = started - r.offsetSec * 1000L
+                            scrobExec.execute {
+                                val h = heardInner(r.artist, r.title, r.album, start, "identify")
+                                pushIdentify("found") { put("artist", r.artist).put("title", r.title).put("id", h?.id ?: "").put("vinyl", h == null) }
+                            }
+                        }
+                    }
+                }
+            } catch (_: app.recordshelf.net.AudD.LimitReached) {
+                pushIdentify("error") { put("msg", "AudD's free lookups for today are used up. Try again tomorrow.") }
+            } catch (_: IOException) {
+                pushIdentify("error") { put("msg", "Can't reach AudD. Check your connection.") }
+            } catch (_: Exception) {
+                pushIdentify("error") { put("msg", "Identify didn't work this time.") }
+            } finally {
+                identifyBusy = false
             }
         }
     }
@@ -3380,6 +3632,7 @@ object Core {
         pushState()
         pushCollection()
         pushActivity()
+        push("onHeard") { heard.toJson() }
         compareJson?.let { c -> push("onCompare") { c } }
     }
 
@@ -3640,6 +3893,7 @@ object Core {
         )
         .put("prefs", JSONObject().put("theme", prefs.theme).put("defaultTrackSec", prefs.defaultTrackSec))
         .put("queue", JSONObject().put("waiting", queue.size()).put("oldest", queue.oldestTimestamp()).put("error", flushError))
+        .put("heard", heard.waiting().size)
         .put("spin", spinUi?.let { JSONObject(it) } ?: JSONObject.NULL)
         .put("phone", phoneJson())
         .put(

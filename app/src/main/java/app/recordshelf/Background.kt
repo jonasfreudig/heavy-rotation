@@ -37,6 +37,10 @@ class SpinReceiver : BroadcastReceiver() {
             SleepTimer.onAlarm(context) { pending.finish() }
             return
         }
+        if (intent.action == HEARD_SPIN) {
+            Core.onHeardSpin(context, intent.getStringExtra(EXTRA_HEARD).orEmpty()) { pending.finish() }
+            return
+        }
         Core.onSpinAction(context, intent.action.orEmpty(), intent.getLongExtra(EXTRA_RELEASE, 0), intent.getStringExtra(EXTRA_SIDE).orEmpty()) {
             pending.finish()
         }
@@ -48,6 +52,8 @@ class SpinReceiver : BroadcastReceiver() {
         const val FLIP = "app.recordshelf.FLIP"
         const val PLAY_SIDE = "app.recordshelf.PLAY_SIDE"
         const val SLEEP = "app.recordshelf.SLEEP"
+        const val HEARD_SPIN = "app.recordshelf.HEARD_SPIN"
+        const val EXTRA_HEARD = "heard"
         private const val EXTRA_RELEASE = "release"
         private const val EXTRA_SIDE = "side"
 
@@ -266,4 +272,45 @@ object SpinNotifier {
         nm(ctx).cancel(ID_PLAYING)
         nm(ctx).cancel(ID_SIDE_DONE)
     }
+}
+
+/** "Playing Perfecth on vinyl?": Now Playing heard a song that is on a record on your shelf, and no record is spinning. */
+object HeardNotifier {
+    private const val CHANNEL = "heard"
+    private const val ID = 4
+
+    private fun nm(ctx: Context) = ctx.getSystemService(NotificationManager::class.java)
+
+    fun offer(ctx: Context, h: app.recordshelf.scrobble.HeardSong) {
+        val hit = h.shelf ?: return
+        if (Build.VERSION.SDK_INT >= 33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        // Shown in the status bar, without a sound: the record is playing.
+        val c = NotificationChannel(CHANNEL, "Records you might be playing", NotificationManager.IMPORTANCE_DEFAULT)
+        c.description = "When Now Playing hears a song that is on a record on your shelf"
+        c.setSound(null, null)
+        c.enableVibration(false)
+        c.setShowBadge(false)
+        nm(ctx).createNotificationChannel(c)
+        val spin = PendingIntent.getBroadcast(
+            ctx, 41, Intent(ctx, SpinReceiver::class.java).setAction(SpinReceiver.HEARD_SPIN).putExtra(SpinReceiver.EXTRA_HEARD, h.id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val open = PendingIntent.getActivity(
+            ctx, 42, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(MainActivity.EXTRA_OPEN_HEARD, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_record)
+            .setContentTitle("Playing ${hit.album} on vinyl?")
+            .setContentText("Now Playing heard ${h.title}. Scrobble the record from there.")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setTimeoutAfter(40 * 60_000L)
+            .addAction(Notification.Action.Builder(null as Icon?, "Scrobble the record", spin).build())
+            .build()
+        nm(ctx).notify(ID, n)
+    }
+
+    fun cancel(ctx: Context) = nm(ctx).cancel(ID)
 }

@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     companion object {
         const val EXTRA_OPEN_SPIN = "openSpin"
         const val EXTRA_OPEN_NOW = "openNow"
+        const val EXTRA_OPEN_HEARD = "openHeard"
     }
 
     private lateinit var web: WebView
@@ -58,8 +59,14 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     private var insetsJson = "{\"top\":0,\"bottom\":0,\"ime\":0}"
     private var openSpinWhenReady = false
     private var openNowWhenReady = false
+    private var openHeardWhenReady = false
 
     private val notifLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Identify listens once the microphone is allowed. */
+    private val micLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) Core.identify() else push("onIdentify", JSONObject().put("state", "error").put("msg", "Identify needs the microphone. You can allow it in the app's settings.").put("settings", true).toString())
+    }
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) Core.backupTo(uri) }
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) Core.restoreFrom(uri) }
 
@@ -163,6 +170,11 @@ class MainActivity : AppCompatActivity(), Core.Ui {
         if (i?.getBooleanExtra(EXTRA_OPEN_NOW, false) == true) {
             i.removeExtra(EXTRA_OPEN_NOW)
             if (pageReady) push("onOpenNow", "true") else openNowWhenReady = true
+        }
+        // From the "playing it on vinyl?" note: the list of songs heard around you.
+        if (i?.getBooleanExtra(EXTRA_OPEN_HEARD, false) == true) {
+            i.removeExtra(EXTRA_OPEN_HEARD)
+            if (pageReady) push("onOpenHeard", "true") else openHeardWhenReady = true
         }
     }
 
@@ -426,6 +438,10 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                     openSpinWhenReady = false
                     push("onOpenSpin", "true")
                 }
+                if (openHeardWhenReady) {
+                    openHeardWhenReady = false
+                    push("onOpenHeard", "true")
+                }
             }
             "setTheme" -> {
                 val mode = msg.optString("v", "system")
@@ -490,7 +506,11 @@ class MainActivity : AppCompatActivity(), Core.Ui {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
             "openPhoneApp" -> openPhoneApp(msg.optString("pkg"))
-            "startSpin" -> {
+            "identify" -> {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) Core.identify()
+                else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+            "startSpin", "heardSpin" -> {
                 if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }

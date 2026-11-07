@@ -2273,6 +2273,9 @@ class Stats(
         return h.trackTitles.indices.firstOrNull { h.trackArtist[it] == a && Text.normLoose(h.trackTitles[it]) == loose } ?: -1
     }
 
+    /** The album you last scrobbled song [title] by [artist] with, "" if never (for a song heard around you). */
+    fun albumOfSong(artist: String, title: String): String = findTrack(artist, title).let { if (it >= 0) albumOf(it) else "" }
+
     /** All-time plays of an album, any edition ("(Deluxe Edition)" and the like count for the album). */
     fun albumPlaysOf(artist: String, title: String): Int {
         // A single counted as its album keeps its own plays here, for its card in the discography.

@@ -376,6 +376,24 @@ input[type=datetime-local] { color-scheme: inherit; }
 .listen-line { display: flex; align-items: center; gap: 10px; color: var(--md-on-surface-variant); margin: 12px 4px 0; font-size: 13px; }
 .listen-line .i { width: 20px; height: 20px; }
 
+/* ---- heard around you (Activity): Now Playing's songs and Identify ---- */
+.card.heard .heard-title { justify-content: space-between; }
+.card.heard .heard-id .i { width: 18px; height: 18px; }
+.card.heard .heard-id.on { background: var(--md-primary); color: var(--md-on-primary); }
+.card.heard .hint { margin: 10px 0 0; }
+.card.heard .list { margin: 10px -8px 0; background: none; box-shadow: none; }
+.heard-line { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--md-on-surface-variant); font-size: 13px; }
+.heard-line .i { width: 20px; height: 20px; color: var(--md-primary); flex: none; }
+.heard-line .lin { flex: 1; margin: 0; }
+.heard-row { align-items: center; }
+.heard-row .grow small + small { opacity: .8; white-space: normal; }
+.heard-row .heard-rec { margin-top: 6px; max-width: 100%; min-width: 0; justify-content: flex-start; }
+.heard-row .heard-rec span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.heard-row .heard-rec .i { width: 16px; height: 16px; flex: none; }
+.heard-btns { display: flex; gap: 2px; flex: none; }
+.heard-btns .yes { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.card.heard .btn-row { margin-top: 8px; }
+
 /* ---- compare ---- */
 .cmp-head { text-align: center; padding: 24px 16px; }
 .cmp-head .big { font: 400 56px/64px var(--font); color: var(--md-primary); }
@@ -501,6 +519,10 @@ button.tile .delta { align-self: flex-start; }
 .fy-mix[data-pl="newReleases"] { --mix-a: var(--md-tertiary); --mix-b: var(--md-primary); }
 .xrow { margin-top: 24px; }
 .xrow-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+/* A full Explore list: its title, and a small Playlist button beside it. */
+.xl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.xl-head .page-h { min-width: 0; }
+.xl-head .xrow-more { padding-right: 4px; }
 .xrow-head h2 { font: 600 20px/26px var(--display, var(--font)); }
 .xrow > .sub { display: block; margin-top: 2px; }
 .xrow > .lin { margin-top: 12px; }

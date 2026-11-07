@@ -148,6 +148,26 @@ const Mock = (() => {
   const pushColl = () => onCollection(clone(coll));
   const pushAct = () => onActivity(clone(act));
 
+  // Songs heard around you (Pixel's Now Playing, Identify), as Core.kt keeps them; the first is on a record of yours.
+  let heard = null;
+  function makeHeard() {
+    const now = Date.now(), rec = coll[0], rel = rec && release(rec.id);
+    const t = rel && rel.tracks[2];
+    heard = [
+      { id: 'h1', artist: 'Shame', title: 'Concrete', album: 'Songs of Praise', first: now - 26 * 60e3, last: now - 23 * 60e3, src: 'nowplaying', status: 'new', cover: '', shelf: null },
+      { id: 'h2', artist: 'Bodega', title: 'How Did This Happen?!', album: 'Endless Scroll', first: now - 3 * 3600e3, last: now - 3 * 3600e3, src: 'identify', status: 'new', cover: '', shelf: null },
+    ];
+    if (t) heard.unshift({ id: 'h0', artist: rec.artist, title: t.title, album: rec.title, first: now - 4 * 60e3, last: now - 60e3, src: 'nowplaying', status: 'new', cover: '', shelf: { release: rec.id, album: rec.title, artist: rec.artist, cover: '', i: 2, side: t.side } });
+  }
+  const pushHeard = () => {
+    if (!heard) makeHeard();
+    const w = heard.filter((h) => h.status === 'new');
+    S.heard = w.length;
+    onHeard(clone(w));
+    pushState();
+  };
+  let identTimer = 0;
+
   function nextSide(rel, items) {
     const sides = [...new Set(rel.tracks.map((t) => t.side).filter(Boolean))];
     const live = items.filter((x) => x.state !== 'skipped');
@@ -749,7 +769,8 @@ const Mock = (() => {
     // New releases as Core.kt gives them (Releases.find): out lately (unheard first), coming soon, old favorites back.
     const rel = (artist, title, type, d, extra = {}) => ({ artist, title, type, date: day(d), cover: '', id: 0, link: '', kind: '', singles: [], plays: 0, src: 'deezer', fanPlays: 120, owned: 0, last: Date.now() - 3 * DAY, ...extra });
     const hidden = (r) => !relNo.has(`${r.artist}|${r.title}`);
-    const releases = [rel(seeds[1], 'Late Bloom', 'album', 18, { singles: ['First Light', 'Undertow'], fanPlays: 640 }), rel(seeds[3], 'Night Bus', 'single', 3, { fanPlays: 210 }),
+    const releases = [rel(seeds[1], 'Late Bloom', 'album', 18, { singles: ['First Light', 'Undertow'], eps: ['Early Bloom'], fanPlays: 640 }), rel(seeds[3], 'Night Bus', 'single', 3, { fanPlays: 210 }),
+      rel(seeds[8], 'Basement Tapes Vol. 3', 'album', 4, { parts: ['Basement Tapes Vol. 1', 'Basement Tapes Vol. 2', 'Basement Tapes Vol. 3'] }),
       rel(seeds[5], 'Glass House', 'ep', 9), rel(seeds[6], 'Live at the Roundhouse', 'album', 12, { kind: 'live' }), rel(seeds[7], 'Static Bloom', 'album', 30, { fanPlays: 45, owned: 2 }),
       rel(seeds[0], 'Heavy Weather', 'album', 25, { plays: 34, fanPlays: 1200 })].filter(hidden);
     const upcoming = [rel(seeds[4], 'Field Recordings', 'ep', -14), rel(seeds[2], 'The Long Way Round', 'album', -52, { singles: ['Northbound', 'Harbour Lights'], fanPlays: 880 }),
@@ -1574,7 +1595,47 @@ const Mock = (() => {
 
     handle(m) {
       switch (m.t) {
-        case 'hello': later(20, () => { pushState(); pushColl(); pushAct(); }); break;
+        case 'hello': later(20, () => { pushState(); pushColl(); pushAct(); pushHeard(); }); break;
+        case 'heardYes': case 'heardAll': {
+          const list = heard.filter((h) => h.status === 'new' && (m.t === 'heardAll' || h.id === m.id));
+          for (const h of list) {
+            h.status = 'scrobbled';
+            act.push({ id: 'm' + seq++, artist: h.artist, track: h.title, album: h.album, ts: Math.floor((h.first - 20e3) / 1000), src: 'heard', cover: h.cover, status: 'sent', msg: '', app: h.src === 'identify' ? 'Identify' : 'Now Playing', at: Date.now() });
+          }
+          pushHeard(); pushAct();
+          break;
+        }
+        case 'heardNo': case 'heardUndo': {
+          const h = heard.find((x) => x.id === m.id);
+          if (h) h.status = m.t === 'heardNo' ? 'dropped' : 'new';
+          pushHeard();
+          break;
+        }
+        case 'heardSpin': {
+          const h = heard.find((x) => x.id === m.id);
+          if (!h || !h.shelf) break;
+          const rel = release(h.shelf.release);
+          h.status = 'vinyl';
+          startSpin({ releaseId: rel.id, tracks: rel.tracks.map((x, i) => i).filter((i) => i >= h.shelf.i && rel.tracks[i].side === h.shelf.side), when: 'at', at: h.first - 20e3 });
+          pushHeard();
+          break;
+        }
+        case 'identify': {
+          const at = Date.now();
+          onIdentify({ state: 'listening', at, ms: 10000 });
+          clearTimeout(identTimer);
+          identTimer = later(10000, () => {
+            onIdentify({ state: 'looking' });
+            identTimer = later(1400, () => {
+              const id = 'h' + seq++;
+              heard.push({ id, artist: 'Fontaines D.C.', title: 'Starburster', album: 'Romance', first: at - 83e3, last: at, src: 'identify', status: 'new', cover: '', shelf: null });
+              onIdentify({ state: 'found', artist: 'Fontaines D.C.', title: 'Starburster', id, vinyl: false });
+              pushHeard();
+            });
+          });
+          break;
+        }
+        case 'identifyStop': clearTimeout(identTimer); onIdentify({ state: 'idle' }); break;
         case 'openRelease': {
           const id = m.id;
           if (!releases[id] || m.refresh) {

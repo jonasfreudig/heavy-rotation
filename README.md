@@ -61,6 +61,9 @@ of its own in between, and your data stays on your phone.
   listening.
 - The Fix names setting cleans up names before they're scrobbled ("Remastered", "feat." and your
   own rules).
+- Songs that Pixel's Now Playing recognises around you wait in a list to scrobble or drop, and one
+  on a record of yours can scrobble that record from there. Identify finds a song from ten seconds
+  of sound.
 - A home-screen widget shows what is playing now.
 - The app uses Material You colors in light and dark, with two looks (Tinted soft and Soft glass).
   Covers tilt with the phone, and the records you own get a holo foil. Your records show the
@@ -109,10 +112,13 @@ can watch the Releases page and update the app for you.
 - Your history, collection and settings live in the app's storage on your phone. Backups are files
   you save yourself; keys, tokens and logins never go into them.
 - The app only talks to Discogs, Last.fm, Deezer, MusicBrainz, LRCLIB (lyrics), TIDAL and setlist.fm
-  (once you connect them) and the servers the covers come from. It has no server of its own, no
+  (once you connect them), AudD (when you tap Identify) and the servers the covers come from. It has no server of its own, no
   analytics and no crash reporting.
 - Notification access is how Android lets an app see what music apps play. Heavy Rotation uses it
-  only to read the media players of the apps you switch on; it doesn't read your notifications.
+  to read the media players of the apps you switch on and the songs Pixel's Now Playing recognises;
+  it reads no other notifications.
+- The microphone is used only when you tap Identify: ten seconds of sound go to AudD to name the
+  song, and nothing is kept.
 
 ## Credits
 
@@ -122,7 +128,7 @@ This application uses Discogs’ API but is not affiliated with, sponsored or en
 Listening data powered by AudioScrobbler ([Last.fm](https://www.last.fm)). Covers, artist photos,
 discographies and release years come from [Deezer](https://www.deezer.com), track lengths and artists'
 countries also from [MusicBrainz](https://musicbrainz.org), lyrics from [LRCLIB](https://lrclib.net) and setlists from
-[setlist.fm](https://www.setlist.fm). Exact links and playlists use [TIDAL](https://tidal.com).
+[setlist.fm](https://www.setlist.fm). Identify uses [AudD](https://audd.io). Exact links and playlists use [TIDAL](https://tidal.com).
 Heavy Rotation isn't affiliated with any of them.
 
 The fonts Fraunces and DM Mono are under the SIL Open Font License (`app/src/main/assets/ui/fonts`).

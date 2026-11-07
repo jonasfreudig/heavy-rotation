@@ -9,7 +9,10 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.app.Notification
 import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import app.recordshelf.scrobble.Heard
 import app.recordshelf.scrobble.Play
 import app.recordshelf.scrobble.PlayState
 import app.recordshelf.scrobble.PlayTracker
@@ -20,7 +23,8 @@ import org.json.JSONObject
 /**
  * Watches what music apps play, through their media sessions (the same source as the
  * lock-screen player). Android only hands media sessions to an enabled notification
- * listener, which is why this is one; notifications themselves are never read.
+ * listener, which is why this is one. Of the notifications themselves, only those of
+ * Pixel's Now Playing are read: the songs it recognises around the phone ([Heard]).
  *
  * The system keeps this service bound while access is granted, so it runs without a
  * foreground notification. Each player gets a [PlayTracker]; what counts goes to [Core].
@@ -80,6 +84,15 @@ class PhoneListener : NotificationListenerService() {
         } catch (_: Exception) {
         }
         super.onListenerDisconnected()
+    }
+
+    /** Now Playing tells a song it recognised in a notification ("Song by Artist"), again every minute or so while it plays. */
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        if (sbn == null || sbn.packageName !in Heard.NOW_PLAYING_APPS) return
+        val n = sbn.notification ?: return
+        if (!Heard.isNowPlaying(sbn.packageName, n.channelId.orEmpty())) return
+        val text = n.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+        if (text.isNotEmpty()) Core.nowPlayingHeard(sbn.packageName, text)
     }
 
     override fun onDestroy() {

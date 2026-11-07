@@ -2,9 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Discogs, Last.fm, MusicBrainz, Deezer, LRCLIB and setlist.fm -->
+    <!-- Discogs, Last.fm, MusicBrainz, Deezer, LRCLIB, setlist.fm and AudD -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Identify: ten seconds of sound, only when you tap it -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- "Now spinning" notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -18,9 +21,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Names of music apps for the phone-scrobbling list, and whether Pano Scrobbler is still installed -->
+    <!-- Names of music apps for the phone-scrobbling list, whether Pano Scrobbler is still installed, and how
+         Pixel's Now Playing words a song in your language -->
     <queries>
         <package android:name="com.arn.scrobble" />
+        <package android:name="com.google.android.as" />
+        <package android:name="com.google.intelligence.sense" />
+        <package android:name="com.google.android.apps.pixel.nowplaying" />
+        <package android:name="com.kieronquinn.app.pixelambientmusic" />
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>

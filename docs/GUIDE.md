@@ -48,8 +48,8 @@ shows the current track with a countdown and has two buttons, Stop and "Flip to 
 
 1. Gear → Phone scrobbling → Shadow.
 2. Tap Allow notification access and switch Heavy Rotation on. Android calls this notification
-   access because it is the only way an app may see other apps' media players; Heavy Rotation
-   doesn't read your notifications.
+   access because it is the only way an app may see other apps' media players. The only
+   notifications Heavy Rotation reads are those of Pixel's Now Playing (see Heard around you below).
    - If the switch is grayed out with "Restricted setting" (Android does that for apps installed
      from an APK file), open App info (a button in the app), tap ⋮ at the top right, choose Allow
      restricted settings, then try again.
@@ -84,6 +84,27 @@ replaced as a whole. With "contains", or "matches" for a regular expression, the
 replaced or taken out. A rule can be limited to one artist, and the rule sheet tries it on your
 recent scrobbles. Scrobbles already sent stay as they are; Last.fm can only be edited on its
 website.
+
+#### Heard around you
+
+On a Pixel, Now Playing recognises songs playing around the phone. Turn on its notifications
+(Settings → Sound and vibration → Now Playing) and every song it recognises lands in Heard around
+you, at the top of Activity, with when it was heard and for how long. Nothing is scrobbled until
+you say so: the tick scrobbles a song (from when it started), the ✕ drops it (Undo takes it back),
+and Scrobble all takes them all. The clock button's badge counts them along with scrobbles still
+waiting. While the phone plays music itself, Now Playing's songs are left out. Songs wait two
+weeks, as long as Last.fm takes scrobbles that late.
+
+When a song Now Playing hears is on a record on your shelf and no record is spinning, a
+notification asks whether you're playing that record. Its button (or Scrobble the record from here
+on the list) scrobbles the record from that song to the end of its side, from when the song was
+heard. While a record spins, the songs Now Playing hears from it keep its times right: if one comes
+at another time than planned, the times move to match.
+
+Identify listens for ten seconds through the microphone and asks AudD what is playing. A song it
+finds goes on the same list (its time is when the song started, from where in the song the
+recording was). AudD answers a few lookups a day without an account and says when they're used up
+for the day. The recording goes to AudD only and isn't kept. Android asks once for the microphone.
 
 The home screen widget (long-press the home screen → Widgets → Heavy Rotation) shows what is
 playing now, on the turntable or the phone, or else the last song you played. It shows the cover
@@ -506,9 +527,9 @@ a week, when you open Explore; the first look takes a few minutes, and the row f
   MusicBrainz is asked weekly too, for albums announced before Deezer lists them.
 - Your old favorites are back has the new releases of artists you played a lot and not for half a
   year or more.
-- Tap a heading for the full list, with why each release is there (how much you play the artist,
-  the singles before it, your plays of it so far). The ✕ on a release hides it for good; Undo takes
-  it back.
+- Tap a row's heading for its full list, with why each release is there (how much you play the
+  artist, the singles before it, your plays of it so far). The ✕ on a release hides it for good;
+  Undo takes it back.
 - Albums you're missing has the albums of your 30 most played artists that you've never played and
   don't own, when you know at least one of theirs. Live records, remixes and best-ofs don't count, and
   neither does a longer edition of an album you know. It's looked through weekly.

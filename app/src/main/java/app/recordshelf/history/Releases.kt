@@ -15,8 +15,10 @@ data class Fan(val name: String, val weight: Double, val plays: Int, val last: L
 
 /**
  * A new release by one of your artists, as Explore lists it. [kind]: "live" or "remix" for those, else "". [singles]: the
- * singles out before it that lead up to it, folded into it. [plays]: yours of it so far. [source]: "deezer", or "mb" for an
- * album MusicBrainz knows is coming that Deezer doesn't list yet.
+ * singles out before it that lead up to it, folded into it, and [eps] the same for EPs out shortly before an album.
+ * [parts]: the titles of a series it heads, oldest first ("The Name of This Band Member is Tina", "... is Jerry", ...),
+ * empty for a release on its own. [plays]: yours of it so far. [source]: "deezer", or "mb" for an album MusicBrainz
+ * knows is coming that Deezer doesn't list yet.
  */
 data class NewRelease(
     val artist: String,
@@ -31,10 +33,12 @@ data class NewRelease(
     val plays: Int,
     val score: Double,
     val source: String = "deezer",
+    val eps: List<String> = emptyList(),
+    val parts: List<String> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject().put("artist", artist).put("title", title).put("type", type).put("date", date)
         .put("cover", cover).put("id", id).put("link", link).put("kind", kind).put("singles", JSONArray(singles)).put("plays", plays)
-        .put("src", source)
+        .put("src", source).put("eps", JSONArray(eps)).put("parts", JSONArray(parts))
 }
 
 /**
@@ -58,6 +62,12 @@ object Releases {
 
     /** Singles out this long before an album or EP lead up to it. */
     const val LEAD_DAYS = 150L
+
+    /** An EP out this long before an album leads up to it (once the album is out). */
+    const val EP_LEAD_DAYS = 30L
+
+    /** Parts of a series come out at most this far apart. */
+    const val SERIES_DAYS = 60L
 
     /** Kept per artist between checks: releases this recent (the window and the singles before it), and those still to come. */
     const val KEEP_DAYS = BACK_DAYS + LEAD_DAYS
@@ -116,35 +126,79 @@ object Releases {
         for ((artist, rels) in by) {
             val fan = fans[Text.norm(artist)]
             val records = records(rels)
-            // Each single leads up to the first album or EP on or after it, if that comes soon enough.
             val lead = HashMap<DzRelease, MutableList<DzRelease>>()
             val led = HashSet<DzRelease>()
-            val bigOnes = records.filter { it.type != "single" }.sortedBy { it.date }
+            // An EP out shortly before an album that is out leads up to it (Queens of the Stone Age's "Run Away From the
+            // Mob": four songs of "Perfecth", two days before it).
+            val albums = records.filter { it.type == "album" && it.date <= now }.sortedBy { it.date }
+            val epLead = HashMap<DzRelease, MutableList<DzRelease>>()
+            for (e in records.filter { it.type == "ep" }) {
+                val d = LocalDate.parse(e.date)
+                val a = albums.firstOrNull { it.date >= e.date && !LocalDate.parse(it.date).isAfter(d.plusDays(EP_LEAD_DAYS)) } ?: continue
+                epLead.getOrPut(a) { ArrayList() } += e
+                led += e
+            }
+            // Each single leads up to the first album or EP on or after it, if that comes soon enough.
+            val bigOnes = records.filter { it.type != "single" && it !in led }.sortedBy { it.date }
             for (s in records.filter { it.type == "single" }.sortedBy { it.date }) {
                 val d = LocalDate.parse(s.date)
                 val a = bigOnes.firstOrNull { it.date >= s.date && !LocalDate.parse(it.date).isAfter(d.plusDays(LEAD_DAYS)) } ?: continue
                 lead.getOrPut(a) { ArrayList() } += s
                 led += s
             }
+            val mine = ArrayList<NewRelease>()
             for (r in records) {
                 if (r in led || r.date < from || r.date > to || Text.albumKey(artist, r.title) in hidden) continue
                 val k = kind(r.title)
                 val p = if (r.date <= now) plays(artist, r.title, r.type) else 0
-                val x = NewRelease(
+                mine += NewRelease(
                     artist, r.title, r.type, r.date, r.cover, r.id, r.link, k, lead[r].orEmpty().map { it.title }, p,
-                    score(fan, r, k, today), if (r.id > 0) "deezer" else "mb",
+                    score(fan, r, k, today), if (r.id > 0) "deezer" else "mb", epLead[r].orEmpty().map { it.title },
                 )
-                when {
-                    fan?.quiet == true -> back += x
-                    r.date <= now -> out += x
-                    else -> soon += x
-                }
+            }
+            for (x in series(mine, now)) when {
+                fan?.quiet == true -> back += x
+                x.date <= now -> out += x
+                else -> soon += x
             }
         }
         out.sortWith(compareBy<NewRelease> { it.plays > 0 }.thenByDescending { it.score })
         soon.sortWith(compareBy<NewRelease> { it.date }.thenByDescending { it.score })
         back.sortWith(compareBy<NewRelease> { it.date > now }.thenByDescending { it.score })
         return Found(out, soon, back)
+    }
+
+    private fun words(title: String) = Text.norm(title).split(' ').filter { it.isNotEmpty() }
+
+    /** How many words two titles start with alike. */
+    private fun sharedWords(a: List<String>, b: List<String>): Int {
+        var n = 0
+        while (n < a.size && n < b.size && a[n] == b[n]) n++
+        return n
+    }
+
+    /**
+     * Releases of one artist that are parts of a series, as one: titles alike but for their last words ("The Name of
+     * This Band Member is Chris", "... is David"), at least three words and half of each title alike, each out (or due)
+     * within [SERIES_DAYS] of the one before. The newest part out by [now] heads it, with all the [NewRelease.parts] and all their plays.
+     */
+    fun series(list: List<NewRelease>, now: String): List<NewRelease> {
+        val groups = ArrayList<MutableList<NewRelease>>()
+        for (r in list.sortedBy { it.date }) {
+            val w = words(r.title)
+            val g = groups.firstOrNull { g ->
+                val shared = g.minOf { sharedWords(words(it.title), w) }
+                shared >= 3 && (g.map { words(it.title) } + listOf(w)).all { shared * 2 >= it.size } &&
+                    LocalDate.parse(r.date).toEpochDay() - LocalDate.parse(g.last().date).toEpochDay() <= SERIES_DAYS
+            }
+            if (g != null) g += r else groups += mutableListOf(r)
+        }
+        return groups.map { g ->
+            if (g.size == 1) g[0] else (g.lastOrNull { it.date <= now } ?: g.last()).copy(
+                parts = g.map { it.title }, plays = g.sumOf { it.plays }, score = g.maxOf { it.score },
+                singles = g.flatMap { it.singles }.distinct(), eps = g.flatMap { it.eps }.distinct(),
+            )
+        }
     }
 
     /**

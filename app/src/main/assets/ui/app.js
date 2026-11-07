@@ -19,6 +19,9 @@ let showTidalForm = false;
 let ST = { lastfm: {}, discogs: {}, prefs: { theme: 'system', defaultTrackSec: 210 }, queue: {}, spin: null, version: '' };
 let COLL = [];
 let ACT = [];
+/** Songs heard around you, waiting for a yes or no; and where Identify is ({state: idle, listening, looking, found, none, error}). */
+let HEARD = [];
+let IDENT = { state: 'idle' };
 let CMP = null; // last comparison of shadow mode with Last.fm
 let STATS = null; // stats for the chosen range (see Stats.kt)
 let statsRange = ''; // the stats period, set in build()
@@ -468,6 +471,9 @@ window.onRestored = (r) => {
   toast(`Restored ${num(r.scrobbles)} scrobbles. Starting again…`);
   setTimeout(() => send({ t: 'restartApp' }), 1200);
 };
+window.onHeard = (h) => { HEARD = h || []; renderHeardCard(); };
+window.onIdentify = (s) => { IDENT = s || { state: 'idle' }; identifyNews(); renderHeardCard(); };
+window.onOpenHeard = () => { openPage('activityPage'); renderHeardCard(); };
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
 let statsLook = '';
 window.onStats = (s) => {
@@ -1133,12 +1139,14 @@ function renderState() {
   bar.hidden = !d.syncing || tab !== 'shelf';
   bar.classList.toggle('indet', !d.pages);
   bar.style.setProperty('--p', d.pages ? `${Math.round((d.page / d.pages) * 100)}%` : '30%');
-  const waiting = (ST.queue || {}).waiting || 0;
+  // What waits for you: scrobbles not sent yet, and songs heard around you not said yes or no to.
+  const waiting = ((ST.queue || {}).waiting || 0) + (ST.heard || 0);
   $('#actBadge').hidden = !waiting;
   $('#actBadge').textContent = waiting > 99 ? '99+' : waiting;
   if (!COLL.length || !$('#shelfEmpty').hidden) renderShelfEmpty();
   renderQueueCard();
   renderPhoneCard();
+  renderHeardCard();
   renderStatsHead();
   if (isOpen('nowPage')) renderNow();
   if (isOpen('settingsPage')) renderSettings();
@@ -2558,6 +2566,63 @@ function actRow(e) {
   return `<div class="item act" ${trackAttrs(e.artist, e.track, { album: e.album, cover: e.cover })}>${coverHtml(e.cover, e.album || e.track, e.artist, 'tiny')}
     <span class="grow"><b>${esc(e.track)}</b><small>${esc(e.artist)}${e.album ? ', ' + esc(e.album) : ''}</small>${why}</span>
     <span class="trail"><span>${fmtTime(e.ts * 1000)}</span>${st ? `<span class="status ${e.status}">${icon(st[0])}${st[1]}</span>` : `<span class="status sent">${esc(from)}</span>`}</span></div>`;
+}
+
+// ---------- heard around you ----------
+
+/** ", for about 3 min" for a song heard over several of Now Playing's notes, else ''. */
+const heardFor = (h) => { const m = Math.round((h.last - h.first) / 60000); return m >= 1 ? `, ${m} min` : ''; };
+const heardWhen = (h) => { const d = dayLabel(h.first); return `${d === 'Today' ? '' : d + ', '}${fmtTime(h.first)}`; };
+let identTimer = 0;
+
+/**
+ * Activity's card of songs heard around you: what Pixel's Now Playing recognised and what Identify found, each to
+ * scrobble or drop; one on a record of yours can scrobble the record from there. Identify listens for ten seconds.
+ */
+function renderHeardCard() {
+  const el = $('#heardCard');
+  if (!el) return;
+  const p = ST.phone || {};
+  const s = IDENT.state;
+  const btn = s === 'listening' ? `<button class="btn tonal small heard-id on" id="identifyBtn">${icon('stop')}Stop</button>`
+    : s === 'looking' ? '' : `<button class="btn tonal small heard-id" id="identifyBtn">${icon('mic')}Identify</button>`;
+  let line = '';
+  clearTimeout(identTimer);
+  if (s === 'listening') {
+    const left = Math.max(0, Math.ceil((IDENT.at + IDENT.ms - Date.now()) / 1000));
+    const pct = Math.min(100, Math.round(((Date.now() - IDENT.at) / IDENT.ms) * 100));
+    line = `<div class="heard-line">${icon('mic')}<span>Listening, ${left} s</span><span class="lin inline"><i style="width:${pct}%"></i></span></div>`;
+    identTimer = setTimeout(renderHeardCard, 250);
+  } else if (s === 'looking') line = `<div class="heard-line">${icon('search')}<span>Looking it up</span><span class="lin inline indet"><i></i></span></div>`;
+  else if (s === 'none') line = '<p class="hint">No match. Hold the phone closer to the music and try again.</p>';
+  else if (s === 'error') line = `<p class="hint">${esc(IDENT.msg || "Identify didn't work this time.")}${IDENT.settings ? ' <button class="btn text small" data-app-info="">App info</button>' : ''}</p>`;
+  const rows = HEARD.slice().sort((a, b) => b.first - a.first).map((h) => {
+    const from = h.src === 'identify' ? 'Identify' : 'Now Playing';
+    // The record named above it is "the record"; another one (a song heard from a compilation of yours) by its name.
+    const same = h.shelf && (h.album || '').toLowerCase() === h.shelf.album.toLowerCase();
+    const rec = h.shelf ? `<button class="chip heard-rec" data-heard-spin="${esc(h.id)}">${icon('album')}<span>Scrobble ${same ? 'the record' : esc(h.shelf.album)} from here</span></button>` : '';
+    return `<div class="item heard-row" data-key="${esc(h.id)}" ${trackAttrs(h.artist, h.title, { album: h.album, cover: h.cover })}>${coverHtml(h.cover, h.album || h.title, h.artist, 'tiny')}
+      <span class="grow"><b>${esc(h.title)}</b><small>${esc(h.artist)}${h.album ? ', ' + esc(h.album) : ''}</small><small>${esc(from)}, ${esc(heardWhen(h))}${heardFor(h)}</small>${rec}</span>
+      <span class="heard-btns"><button class="icon-btn small" data-heard-no="${esc(h.id)}" aria-label="Drop ${esc(h.title)}">${icon('close')}</button><button class="icon-btn small yes" data-heard-yes="${esc(h.id)}" aria-label="Scrobble ${esc(h.title)}">${icon('check')}</button></span></div>`;
+  }).join('');
+  const how = p.access ? 'Songs Now Playing recognises on your Pixel show up here to scrobble or drop. Turn on its notifications in Settings, Sound and vibration, Now Playing.'
+    : 'Songs Now Playing recognises on your Pixel show up here once Heavy Rotation has notification access (Settings, Phone scrobbling).';
+  const intro = !HEARD.length && !line ? `<p class="hint">${how} Identify listens for ten seconds and looks the song up on AudD.</p>` : '';
+  const all = HEARD.length > 1 ? `<div class="btn-row"><button class="btn tonal small" data-heard-all>Scrobble all ${HEARD.length}</button></div>` : '';
+  morph(el, `<div class="card heard"><div class="card-title heard-title"><span>Heard around you</span>${btn}</div>${line}${intro}${rows ? `<div class="list">${rows}</div>` : ''}${all}</div>`);
+}
+
+/** Identify's outcome as a note: a song found goes on the list (one of the record that's spinning only sets its time). */
+function identifyNews() {
+  if (IDENT.state === 'found') toast(IDENT.vinyl ? `${IDENT.title} is on the record that's spinning` : `Found ${IDENT.title} by ${IDENT.artist}`);
+}
+
+function heardAnswer(id, yes) {
+  const h = HEARD.find((x) => x.id === id);
+  HEARD = HEARD.filter((x) => x.id !== id);
+  renderHeardCard();
+  send({ t: yes ? 'heardYes' : 'heardNo', id });
+  if (!yes && h) toast(`${h.title} dropped`, { label: 'Undo', run: () => send({ t: 'heardUndo', id }) });
 }
 
 // ---------- phone scrobbling ----------
@@ -5822,7 +5887,18 @@ const relOpen = (r) => (r.src === 'mb' ? `data-artist="${esc(r.artist)}"` : `${a
 /** A release as a card: cover, title, [small] (its artist) and [line]. */
 const relCard = (r, line, small = esc(r.artist)) => `<button class="xcard" ${relOpen(r)}>${coverHtml(r.cover, r.title, r.artist)}<b>${esc(r.title)}</b>
     <small>${small}</small><small class="meta">${line}</small></button>`;
-const relOutLine = (r) => `${esc(releaseWhen(r))}${r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}`;
+const relOutLine = (r) => `${esc(releaseWhen(r))}${seriesOf(r) ? `, ${r.parts.length} parts` : r.plays ? `, ${plural(r.plays, 'play')} so far` : ''}`;
+/** A release heading a series (several releases alike but for their last words): its parts, else null. */
+const seriesOf = (r) => ((r.parts || []).length > 1 ? r.parts : null);
+/** What tells a series' parts apart: "Chris", "David" of "The Name of This Band Member is Chris", "... is David". */
+function partNames(parts) {
+  const w = parts.map((t) => t.split(' '));
+  let n = 0;
+  while (w.every((x) => n < x.length - 1 && x[n].toLowerCase() === w[0][n].toLowerCase())) n++;
+  // Bare numbers keep the word before them: "Vol. 1", "Vol. 2".
+  if (n > 0 && w.every((x) => /^\d+$/.test(x.slice(n).join(' ')))) n--;
+  return w.map((x) => x.slice(n).join(' '));
+}
 const singlesOut = (r) => ((r.singles || []).length ? `, ${plural(r.singles.length, 'single')} out` : '');
 /** "Because you've had Do Nothing on repeat": from your plays of them in the last two weeks. */
 const recentTitle = (x) => (x.plays >= 30 ? `Because you've had ${esc(x.seed)} on repeat` : `Because you've been playing ${esc(x.seed)}`);
@@ -5837,13 +5913,13 @@ function forYouParts(d) {
   const n = rel.length + soon.length + back.length;
   const checking = d.relBusy && d.relTotal ? `Checking your artists for new releases: ${d.relDone} of ${d.relTotal}` : '';
   if (!n && checking) parts.push({ title: 'New from your artists', wait: `<span class="sub">${checking}. The first time takes a few minutes.</span><div class="lin inline"><i style="width:${Math.round((d.relDone / d.relTotal) * 100)}%"></i></div>` });
-  parts.push({ title: 'New from your artists', pl: 'newReleases', all: 'releases', n,
+  parts.push({ title: 'New from your artists', pl: 'newReleases', all: 'releases', n: rel.length,
     sub: checking || `Out in the last eight weeks, by ${num(d.relArtists || 0)} artists you play or own; the ones you haven't played first`,
     cards: rel.slice(0, 15).map((r) => relCard(r, relOutLine(r))).join('') });
-  parts.push({ title: 'Coming soon', all: 'releases', rowOnly: true, n, sub: 'Due in the months ahead, with the singles out so far',
+  parts.push({ title: 'Coming soon', all: 'upcoming', n: soon.length, sub: 'Due in the months ahead, with the singles out so far',
     cards: soon.slice(0, 15).map((r) => relCard(r, `${esc(releaseWhen(r))}${singlesOut(r)}`)).join('') });
-  parts.push({ title: 'Your old favorites are back', all: 'releases', rowOnly: true, n, sub: 'Artists you played a lot and not for half a year or more, with something new',
-    cards: back.map((r) => relCard(r, esc(releaseWhen(r)))).join('') });
+  parts.push({ title: 'Your old favorites are back', all: 'back', n: back.length, sub: 'Artists you played a lot and not for half a year or more, with something new',
+    cards: back.slice(0, 15).map((r) => relCard(r, esc(releaseWhen(r)))).join('') });
   for (const x of d.recent || []) {
     parts.push({ title: recentTitle(x), sub: `${plural(x.plays, 'play')} in the last two weeks. Artists like them you haven't played; tap one to see why`,
       cards: (x.artists || []).map((a) => `<button class="xcard round" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${esc(a.genre || fansLabel(a.fans) || '')}</small></button>`).join('') });
@@ -5862,7 +5938,7 @@ function forYouParts(d) {
 /** A For you list on the long page: its heading (and playlist), what it is, its cards, and its full list. */
 const xblock = (p) => (p.wait ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2></div>${p.wait}</div>`
   : p.cards ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2>${p.pl ? plButton(p.pl, 'Playlist') : ''}</div><span class="sub">${p.sub}</span><div class="xcards">${p.cards}</div>
-    ${p.all && !p.rowOnly ? `<button class="btn text" data-xlist="${p.all}">All ${p.n}</button>` : ''}</div>` : '');
+    ${p.all ? `<button class="btn text" data-xlist="${p.all}">All ${p.n}</button>` : ''}</div>` : '');
 /** The same list as a row (Explore in rows). */
 const xrowOf = (p) => (p.wait ? `<section class="xrow"><div class="xrow-head"><h2>${p.title}</h2></div>${p.wait}</section>`
   : xrow(p.title, p.pl ? xrowPl(p.pl) : '', p.cards, p.sub, p.all || '', p.n || 0));
@@ -5961,8 +6037,12 @@ const XLIST = {
     rows: (l) => l.items.map((a) => artistRow(a, `${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
   deepCuts: { title: 'Deep cuts', sub: 'Songs by your favorite artists you\'ve hardly played', cards: (x) => (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''),
     rows: (l) => l.items.map((t) => songRow(t, timesPlayed(t.plays))).join('') },
-  releases: { title: 'New from your artists', local: true, pl: 'newReleases', rows: () => releaseListHtml(DISCOVER || {}),
-    sub: () => { const d = DISCOVER || {}; return `By the ${num(d.relArtists || 0)} artists you've played 15 times or more or have on your shelf. The 40 you play most are looked at every day, the others weekly. ✕ hides a release${d.relHidden ? ` (${num(d.relHidden)} hidden so far)` : ''}`; } },
+  releases: { title: 'New from your artists', local: true, pl: 'newReleases', rows: () => releaseListHtml(DISCOVER || {}, 'releases'),
+    sub: () => { const d = DISCOVER || {}; return `Out in the last eight weeks, by the ${num(d.relArtists || 0)} artists you've played 15 times or more or have on your shelf. The 40 you play most are looked at every day, the others weekly. ${relHiddenNote(d)}`; } },
+  upcoming: { title: 'Coming soon', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'upcoming'),
+    sub: () => `Due in the months ahead, with the singles out so far. For the 40 artists you play most, albums announced but not on Deezer yet come from MusicBrainz. ${relHiddenNote(DISCOVER || {})}` },
+  back: { title: 'Your old favorites are back', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'back'),
+    sub: () => `New releases by artists you played a lot and then not for half a year or more. ${relHiddenNote(DISCOVER || {})}` },
   onThisDay: { title: 'On this day', sub: () => `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`,
     cards: (x) => (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''),
     rows: (l) => (l.years || []).map((y) => `<button class="xlist-year" data-day="${periodId('day', +new Date(y.year, new Date().getMonth(), new Date().getDate()))}"><h3>${y.year}<small>${plural(y.plays, 'play')}</small></h3>${icon('chevron-right', 'i small')}</button><div class="rank">${y.tracks.map((t) => songRow(t, t.plays > 1 ? `${t.plays}×` : '')).join('')}</div>`).join('') },
@@ -5987,35 +6067,44 @@ function renderXList() {
   const d = XLIST[XL.kind];
   const sub = typeof d.sub === 'function' ? d.sub() : d.sub;
   const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : XL.local || XL.kind === 'onThisDay' ? d.rows(XL) : `<div class="rank">${d.rows(XL)}</div>`;
-  morph($('#xlistBody'), `<h1 class="page-h">${d.title}</h1><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
-    <div class="btn-row">${plButton(d.pl || XL.kind)}</div>${rows}`);
+  // The list first, to look through; a playlist of it is a small button by the title.
+  const pl = d.pl === '' ? '' : d.pl || XL.kind;
+  morph($('#xlistBody'), `<div class="xl-head"><h1 class="page-h">${d.title}</h1>${pl ? xrowPl(pl) : ''}</div><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
+    ${rows}`);
 }
 /** Why a release is listed: how much you play its artist (or own of theirs), the singles before it, your plays of it. */
 function relWhy(r, soon) {
   const fan = r.fanPlays ? `you've played them ${num(r.fanPlays)} times` : r.owned ? `${plural(r.owned, 'record')} of theirs on your shelf` : '';
   const singles = (r.singles || []).length ? `${plural(r.singles.length, 'single')} ${soon ? 'out already' : 'before it'}: ${r.singles.slice(0, 3).map(esc).join(', ')}` : '';
-  const t = [fan, singles, r.plays ? `${plural(r.plays, 'play')} so far` : ''].filter(Boolean).join('; ');
+  const eps = (r.eps || []).length ? `the EP ${r.eps.map(esc).join(' and ')} before it` : '';
+  const parts = seriesOf(r) ? `one of ${r.parts.length} in a series: ${partNames(r.parts).map(esc).join(', ')}` : '';
+  const t = [fan, parts, singles, eps, r.plays ? `${plural(r.plays, 'play')} so far` : ''].filter(Boolean).join('; ');
   return t ? t[0].toUpperCase() + t.slice(1) : '';
 }
 const relRow = (r, why) => `<div class="r with-cover rel-row" ${relOpen(r)}>${coverHtml(r.cover, r.title, r.artist, 'tiny')}<span class="t"><b>${esc(r.title)}</b>
     <small>${esc(r.artist)}, ${esc(releaseWhen(r))}</small>${why ? `<small class="rel-why">${why}</small>` : ''}</span>
     <button class="icon-btn small" data-relno="${esc(r.title)}" data-a="${esc(r.artist)}" aria-label="Hide ${esc(r.title)}">${icon('close')}</button></div>`;
-/** The full list of new releases: out now, coming soon, and old favorites back, each with why it's there. */
-function releaseListHtml(d) {
-  const sec = (title, list, why) => (list.length ? `<div class="row-label"><span>${title}</span></div><div class="rank">${list.map((r) => relRow(r, why(r))).join('')}</div>` : '');
-  const h = sec('Out now', d.releases || [], (r) => relWhy(r, false)) + sec('Coming soon', d.upcoming || [], (r) => relWhy(r, true))
-    + sec('Your old favorites are back', d.back || [], (r) => (r.last ? `Last played ${esc(monthYear(r.last))}` : ''));
-  if (h) return h;
-  return d.relBusy ? `<p class="hint">Checking your artists: ${d.relDone} of ${d.relTotal}.</p>` : '<p class="hint">Nothing new from your artists in the last eight weeks, and nothing announced.</p>';
+const relHiddenNote = (d) => `✕ hides a release${d.relHidden ? ` (${num(d.relHidden)} hidden so far)` : ''}`;
+/** One of the release lists in full ([part]: releases out lately, upcoming, or back from old favorites), each with why it's there. */
+function releaseListHtml(d, part) {
+  const list = d[part] || [];
+  const why = part === 'upcoming' ? (r) => relWhy(r, true) : part === 'back' ? (r) => (r.last ? `Last played ${esc(monthYear(r.last))}` : '') : (r) => relWhy(r, false);
+  if (list.length) return `<div class="rank">${list.map((r) => relRow(r, why(r))).join('')}</div>`;
+  if (d.relBusy) return `<p class="hint">Checking your artists: ${d.relDone} of ${d.relTotal}.</p>`;
+  return `<p class="hint">${{ releases: 'Nothing new from your artists in the last eight weeks.', upcoming: 'Nothing announced yet.', back: 'None of your old favorites put out something new lately.' }[part]}</p>`;
 }
 /** Hides a release from the lists for good; Undo brings it back. */
 function releaseNope(artist, title) {
-  const drop = (l) => (l || []).filter((r) => !(r.artist === artist && r.title === title));
-  if (DISCOVER) DISCOVER = { ...DISCOVER, releases: drop(DISCOVER.releases), upcoming: drop(DISCOVER.upcoming), back: drop(DISCOVER.back), sugReleases: drop(DISCOVER.sugReleases), relHidden: (DISCOVER.relHidden || 0) + 1 };
+  const d = DISCOVER || {};
+  const r = [...(d.releases || []), ...(d.upcoming || []), ...(d.back || [])].find((x) => x.artist === artist && x.title === title);
+  // A series goes as a whole, or its next part would take its place.
+  const titles = (r && seriesOf(r)) || [title];
+  const drop = (l) => (l || []).filter((x) => !(x.artist === artist && x.title === title));
+  if (DISCOVER) DISCOVER = { ...DISCOVER, releases: drop(DISCOVER.releases), upcoming: drop(DISCOVER.upcoming), back: drop(DISCOVER.back), sugReleases: drop(DISCOVER.sugReleases), relHidden: (DISCOVER.relHidden || 0) + titles.length };
   renderExplore();
   renderXList();
-  send({ t: 'relNo', artist, title });
-  toast(`${title} won't show again`, { label: 'Undo', run: () => send({ t: 'relUndo', artist, title }) });
+  send({ t: 'relNo', artist, title, titles });
+  toast(`${title} won't show again`, { label: 'Undo', run: () => send({ t: 'relUndo', artist, title, titles }) });
 }
 function exploreRows(x, P) {
   const d = DISCOVER, on = discoverOn();
@@ -9748,6 +9837,24 @@ function build() {
   $('#shelfEmpty').onclick = (e) => { if (e.target.closest('#emptySync')) send({ t: 'sync' }); };
   $('#spinSlot').onclick = (e) => { if (e.target.closest('#spinCard')) { openPage('spinPage'); renderSpin(true); } };
   $('#queueCard').onclick = (e) => { if (e.target.closest('#flushBtn')) send({ t: 'flush' }); };
+  $('#heardCard').onclick = (e) => {
+    // A tap on a song itself opens its page (the page-wide handler); the buttons are this card's.
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const d = b.dataset;
+    if (b.id === 'identifyBtn') send({ t: IDENT.state === 'listening' ? 'identifyStop' : 'identify' });
+    else if (d.heardYes) heardAnswer(d.heardYes, true);
+    else if (d.heardNo) heardAnswer(d.heardNo, false);
+    else if ('heardAll' in d) { HEARD = []; renderHeardCard(); send({ t: 'heardAll' }); }
+    else if (d.heardSpin) {
+      const h = HEARD.find((x) => x.id === d.heardSpin);
+      HEARD = HEARD.filter((x) => !(x.shelf && h && h.shelf && x.shelf.release === h.shelf.release && x.first >= h.first));
+      renderHeardCard();
+      pendingSpinOpen = true;
+      send({ t: 'heardSpin', id: d.heardSpin });
+    } else if ('appInfo' in d) send({ t: 'openAppInfo', pkg: '' });
+  };
   const openCompare = () => {
     openPage('comparePage');
     renderCompare();
