@@ -5882,6 +5882,11 @@ const reachChips = (d) => `<div class="chips fy-reach">${REACH.map(([v, l]) => `
 const suggestionRows = (arts) => arts.map((a) => `<div class="r with-cover fy-row" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b>
     <small class="fy-why">${esc(becauseText(a))}</small>${a.genre || a.fans ? `<small>${esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', '))}</small>` : ''}</span>
     <button class="icon-btn small" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button></div>`).join('');
+/** Suggestions in full: the best match big with its reason, the rest as round photos; ✕ is Not for me. */
+const suggestionGrid = (arts, kicker) => leadGrid(arts.map((a) => ({ open: `data-why="${esc(a.name)}"`, cover: a.photo, round: true, title: a.name,
+  sub: esc(a.via ? `Like ${a.via}` : a.because && a.because[0] ? `Like ${a.because[0].name}` : ''), meta: esc(a.genre || fansLabel(a.fans)),
+  lead: esc([a.genre, fansLabel(a.fans)].filter(Boolean).join(', ')), why: esc(becauseText(a)),
+  x: `<button class="lg-x" data-nope="${esc(a.name)}" aria-label="Not for me: ${esc(a.name)}">${icon('close')}</button>` })), kicker);
 /** How a release card opens: the album's page (Deezer's own album when known), or for an album only announced, its artist's. */
 const relOpen = (r) => (r.src === 'mb' ? `data-artist="${esc(r.artist)}"` : `${albumAttrs(r.artist, r.title)} data-cover="${esc(r.cover)}"${r.id ? ` data-dz="${r.id}"` : ''}`);
 /** A release as a card: cover, title, [small] (its artist) and [line]. */
@@ -5991,8 +5996,8 @@ function likeHtml() {
   const list = LIKE.artists || [];
   const body = LIKE.loading ? `<p class="hint">Looking up who Last.fm's and Deezer's listeners find alike to them.</p><div class="lin inline indet"><i></i></div>`
     : LIKE.error ? `<p class="hint">${esc(LIKE.error)}</p>`
-      : list.length ? `<div class="rank fy-list">${suggestionRows(list)}</div>` : '<p class="hint">Nothing new to suggest from them yet.</p>';
-  return `<h1 class="page-h">More like your new artists</h1><p class="hint">Artists you haven't played that are like the ones you found ${esc(inPeriod(LIKE.period))}: ${who}. Tap one to see why; ✕ means not for you.</p>${body}`;
+      : list.length ? suggestionGrid(list, 'Your best match') : '<p class="hint">Nothing new to suggest from them yet.</p>';
+  return `<h1 class="page-h">More like your new artists</h1><p class="xl-sub">Artists you haven't played that are like the ones you found ${esc(inPeriod(LIKE.period))}: ${who}. Tap one to see why; ✕ means not for you.</p>${body}`;
 }
 function renderForYou() {
   if (!isOpen('forYouPage')) return;
@@ -6000,9 +6005,9 @@ function renderForYou() {
   const d = DISCOVER || {};
   const wait = discoverWait(d);
   const arts = d.artists || [];
-  $('#forYouBody').innerHTML = `<h1 class="page-h">Artists you might like</h1><p class="hint">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
+  $('#forYouBody').innerHTML = `<h1 class="page-h">Artists you might like</h1><p class="xl-sub">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
     ${wait || `${reachChips(d)}<p class="hint">Further out brings less known artists, and ones a step further from yours.</p>
-      ${arts.length ? `<div class="rank fy-list">${suggestionRows(arts)}</div>` : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`;
+      ${arts.length ? suggestionGrid(arts, 'Your best match') : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`;
 }
 
 // ---- Explore as rows (Settings → Look): every list one row you scroll sideways ----
@@ -6024,28 +6029,55 @@ const timesPlayed = (n) => (n === 1 ? 'played once' : n === 2 ? 'played twice' :
 /** Explore's lists: their name, what they are, their cards in a row and their rows in full. */
 const albumCard = (a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
     <small>${esc(a.artist)}</small><small class="meta">last ${esc(monthYear(a.last))}</small></button>`;
-const artistRow = (a, line) => `<button class="r with-cover" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'tiny round')}<span class="t"><b>${esc(a.name)}</b><small>${line}</small></span><span class="v">${num(a.plays)}</span></button>`;
-const songRow = (t, line) => `<button class="r with-cover" ${trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover })}>${coverHtml(t.cover, t.album || t.title, t.artist, 'tiny')}<span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}${line ? `, ${line}` : ''}</small></span></button>`;
+// ---- Explore's full lists: the first one big, with why it's there; the rest as a grid of covers (round photos for artists) ----
+
+/**
+ * One entry of a full list: [open] the attributes that open it, [cover] its picture ([round] for an artist's photo), [title]
+ * and [artist] as text, and as HTML [sub] (who or what), [meta] (a short line in the accent color), [lead] (the line under
+ * the title when it leads) and [why] (why it's there, shown when it leads), and [x] its ✕ button if it can be hidden.
+ */
+const lgPic = (it) => `<div class="lg-pic">${coverHtml(it.cover, it.title, it.artist || it.title, it.round ? 'round' : '')}${it.x || ''}</div>`;
+const lgLead = (it, kicker) => `<div class="lg-lead${it.round ? ' round' : ''}" ${it.open}>${lgPic(it)}<div class="lg-tx">${kicker ? `<span class="lg-k">${kicker}</span>` : ''}
+    <b>${esc(it.title)}</b><span class="lg-sub">${it.lead || it.sub}</span>${it.why ? `<p class="lg-why">${it.why}</p>` : ''}</div></div>`;
+const lgCard = (it) => `<div class="lg-it${it.round ? ' round' : ''}" ${it.open}>${lgPic(it)}<b>${esc(it.title)}</b>${it.sub ? `<span class="lg-sub">${it.sub}</span>` : ''}${it.meta ? `<span class="lg-meta">${it.meta}</span>` : ''}</div>`;
+/** A full list: its first entry big under [kicker], then the rest as a grid under [more]. */
+function leadGrid(items, kicker, more = 'More') {
+  if (!items.length) return '';
+  const [first, ...rest] = items;
+  return lgLead(first, kicker) + (rest.length ? `<h2 class="lg-h2">${more}</h2><div class="lgrid">${rest.map(lgCard).join('')}</div>` : '');
+}
+/** Just the grid (On this day, under each year). */
+const lgGrid = (items) => `<div class="lgrid">${items.map(lgCard).join('')}</div>`;
+const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const artistItem = (a, sub, why) => ({ open: `data-artist="${esc(a.name)}"`, cover: a.photo || a.cover, round: true, title: a.name, sub, meta: `${num(a.plays)} plays`, lead: `${num(a.plays)} plays`, why });
+const songItem = (t, line) => ({ open: trackAttrs(t.artist, t.title, { album: t.album, cover: t.cover }), cover: t.cover, title: t.title, artist: t.artist, sub: esc(t.artist), meta: line,
+  lead: `${esc(t.artist)}${t.album ? `, ${esc(t.album)}` : ''}`, why: capFirst(line) });
+
 const XLIST = {
   lost: { title: 'Lost favorites', sub: 'Played a lot, quiet for half a year or more', cards: (x) => (x.lostArtists || []).map((a) => artistCard(a, `last ${esc(monthYear(a.last))}`)).join(''),
-    rows: (l) => l.items.map((a) => artistRow(a, `last ${esc(monthYear(a.last))}, big in ${esc(monthYear(a.peak.start))}`)).join('') },
+    lead: 'Missed the most',
+    items: (l) => l.items.map((a) => artistItem(a, `Last ${esc(monthYear(a.last))}`, `Last played ${esc(monthYear(a.last))}, and big in ${esc(monthYear(a.peak.start))}`)) },
   lostAlbums: { title: 'Albums to rediscover', sub: 'Played through, then left on the shelf', cards: (x) => (x.lostAlbums || []).map(albumCard).join(''),
-    rows: (l) => l.items.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, last ${esc(monthYear(a.last))}</small></span><span class="v">${num(a.plays)}</span></button>`).join('') },
+    lead: 'Top of the list',
+    items: (l) => l.items.map((a) => ({ open: `${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}"`, cover: a.cover, title: a.title, artist: a.artist, sub: esc(a.artist),
+      meta: `${num(a.plays)} plays, last ${esc(monthYear(a.last))}`, lead: esc(a.artist), why: `${num(a.plays)} plays, the last in ${esc(monthYear(a.last))}` })) },
   regulars: { title: 'Quiet regulars', sub: 'Played most months, never your top', cards: (x) => (x.regulars || []).map((a) => artistCard(a, `${a.months} months`)).join(''),
-    rows: (l) => l.items.map((a) => artistRow(a, `${a.months} months${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
+    lead: 'The steadiest',
+    items: (l) => l.items.map((a) => artistItem(a, `${a.months} months`, `Played in ${a.months} months${a.track ? `, ${esc(a.track)} most of all` : ''}`)) },
   oneDay: { title: 'One-day wonders', sub: 'Played all day once, never again', cards: (x) => (x.oneDay || []).map((a) => artistCard(a, esc(dateLabel(a.first)))).join(''),
-    rows: (l) => l.items.map((a) => artistRow(a, `${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)}` : ''}`)).join('') },
+    lead: 'Top of the list',
+    items: (l) => l.items.map((a) => artistItem(a, esc(dateLabel(a.first)), `All on ${esc(dateLabel(a.first))}${a.track ? `, ${esc(a.track)} most of all` : ''}, and never since`)) },
   deepCuts: { title: 'Deep cuts', sub: 'Songs by your favorite artists you\'ve hardly played', cards: (x) => (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''),
-    rows: (l) => l.items.map((t) => songRow(t, timesPlayed(t.plays))).join('') },
+    lead: 'Top of the list', items: (l) => l.items.map((t) => songItem(t, timesPlayed(t.plays))) },
   releases: { title: 'New from your artists', local: true, pl: 'newReleases', rows: () => releaseListHtml(DISCOVER || {}, 'releases'),
-    sub: () => { const d = DISCOVER || {}; return `Out in the last eight weeks, by the ${num(d.relArtists || 0)} artists you've played 15 times or more or have on your shelf. The 40 you play most are looked at every day, the others weekly. ${relHiddenNote(d)}`; } },
+    sub: () => { const d = DISCOVER || {}; return `Out in the last eight weeks, by the ${num(d.relArtists || 0)} artists you play or own. ${relHiddenNote(d)}`; } },
   upcoming: { title: 'Coming soon', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'upcoming'),
-    sub: () => `Due in the months ahead, with the singles out so far. For the 40 artists you play most, albums announced but not on Deezer yet come from MusicBrainz. ${relHiddenNote(DISCOVER || {})}` },
+    sub: () => `Due in the months ahead, with the singles out so far. ${relHiddenNote(DISCOVER || {})}` },
   back: { title: 'Your old favorites are back', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'back'),
-    sub: () => `New releases by artists you played a lot and then not for half a year or more. ${relHiddenNote(DISCOVER || {})}` },
+    sub: () => `By artists you played a lot and then not for half a year or more. ${relHiddenNote(DISCOVER || {})}` },
   onThisDay: { title: 'On this day', sub: () => `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`,
     cards: (x) => (x.onThisDay || []).flatMap((y) => y.tracks.map((t) => songCard(t, `${y.year}`))).join(''),
-    rows: (l) => (l.years || []).map((y) => `<button class="xlist-year" data-day="${periodId('day', +new Date(y.year, new Date().getMonth(), new Date().getDate()))}"><h3>${y.year}<small>${plural(y.plays, 'play')}</small></h3>${icon('chevron-right', 'i small')}</button><div class="rank">${y.tracks.map((t) => songRow(t, t.plays > 1 ? `${t.plays}×` : '')).join('')}</div>`).join('') },
+    rows: (l) => (l.years || []).map((y) => `<button class="xlist-year" data-day="${periodId('day', +new Date(y.year, new Date().getMonth(), new Date().getDate()))}"><h3>${y.year}<small>${plural(y.plays, 'play')}</small></h3>${icon('chevron-right', 'i small')}</button>${lgGrid(y.tracks.map((t) => songItem(t, t.plays > 1 ? timesPlayed(t.plays) : '')))}`).join('') },
 };
 /** An Explore list in full, as far as it goes (up to 100). */
 let XL = null;
@@ -6066,10 +6098,10 @@ function renderXList() {
   if (!XL || !isOpen('xlistPage')) return;
   const d = XLIST[XL.kind];
   const sub = typeof d.sub === 'function' ? d.sub() : d.sub;
-  const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : XL.local || XL.kind === 'onThisDay' ? d.rows(XL) : `<div class="rank">${d.rows(XL)}</div>`;
+  const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : d.items ? leadGrid(d.items(XL), d.lead) : d.rows(XL);
   // The list first, to look through; a playlist of it is a small button by the title.
   const pl = d.pl === '' ? '' : d.pl || XL.kind;
-  morph($('#xlistBody'), `<div class="xl-head"><h1 class="page-h">${d.title}</h1>${pl ? xrowPl(pl) : ''}</div><p class="hint">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
+  morph($('#xlistBody'), `<div class="xl-head"><h1 class="page-h">${d.title}</h1>${pl ? xrowPl(pl) : ''}</div><p class="xl-sub">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
     ${rows}`);
 }
 /** Why a release is listed: how much you play its artist (or own of theirs), the singles before it, your plays of it. */
@@ -6081,15 +6113,17 @@ function relWhy(r, soon) {
   const t = [fan, parts, singles, eps, r.plays ? `${plural(r.plays, 'play')} so far` : ''].filter(Boolean).join('; ');
   return t ? t[0].toUpperCase() + t.slice(1) : '';
 }
-const relRow = (r, why) => `<div class="r with-cover rel-row" ${relOpen(r)}>${coverHtml(r.cover, r.title, r.artist, 'tiny')}<span class="t"><b>${esc(r.title)}</b>
-    <small>${esc(r.artist)}, ${esc(releaseWhen(r))}</small>${why ? `<small class="rel-why">${why}</small>` : ''}</span>
-    <button class="icon-btn small" data-relno="${esc(r.title)}" data-a="${esc(r.artist)}" aria-label="Hide ${esc(r.title)}">${icon('close')}</button></div>`;
+/** A release in a full list: [why] it's there shows when it leads; in the grid its type, when, and how many parts or plays. */
+const relItem = (r, why) => ({ open: relOpen(r), cover: r.cover, title: r.title, artist: r.artist, sub: esc(r.artist),
+  meta: esc(capFirst(releaseWhen(r))) + (seriesOf(r) ? `, ${r.parts.length} parts` : r.plays ? `, ${plural(r.plays, 'play')}` : ''),
+  lead: `${esc(r.artist)}, ${esc(releaseWhen(r))}`, why,
+  x: `<button class="lg-x" data-relno="${esc(r.title)}" data-a="${esc(r.artist)}" aria-label="Hide ${esc(r.title)}">${icon('close')}</button>` });
 const relHiddenNote = (d) => `✕ hides a release${d.relHidden ? ` (${num(d.relHidden)} hidden so far)` : ''}`;
 /** One of the release lists in full ([part]: releases out lately, upcoming, or back from old favorites), each with why it's there. */
 function releaseListHtml(d, part) {
   const list = d[part] || [];
   const why = part === 'upcoming' ? (r) => relWhy(r, true) : part === 'back' ? (r) => (r.last ? `Last played ${esc(monthYear(r.last))}` : '') : (r) => relWhy(r, false);
-  if (list.length) return `<div class="rank">${list.map((r) => relRow(r, why(r))).join('')}</div>`;
+  if (list.length) return leadGrid(list.map((r) => relItem(r, why(r))), { releases: 'Top of the list', upcoming: 'Out next', back: 'Welcome back' }[part]);
   if (d.relBusy) return `<p class="hint">Checking your artists: ${d.relDone} of ${d.relTotal}.</p>`;
   return `<p class="hint">${{ releases: 'Nothing new from your artists in the last eight weeks.', upcoming: 'Nothing announced yet.', back: 'None of your old favorites put out something new lately.' }[part]}</p>`;
 }

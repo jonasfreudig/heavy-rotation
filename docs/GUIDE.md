@@ -527,9 +527,9 @@ a week, when you open Explore; the first look takes a few minutes, and the row f
   MusicBrainz is asked weekly too, for albums announced before Deezer lists them.
 - Your old favorites are back has the new releases of artists you played a lot and not for half a
   year or more.
-- Tap a row's heading for its full list, with why each release is there (how much you play the
-  artist, the singles before it, your plays of it so far). The ✕ on a release hides it for good;
-  Undo takes it back.
+- Tap a row's heading for its full list: the first release big with why it's there (how much you
+  play the artist, the singles or EP before it, your plays of it so far), the rest as a grid of
+  covers. The ✕ on a cover hides that release for good; Undo takes it back.
 - Albums you're missing has the albums of your 30 most played artists that you've never played and
   don't own, when you know at least one of theirs. Live records, remixes and best-ofs don't count, and
   neither does a longer edition of an album you know. It's looked through weekly.
@@ -548,6 +548,10 @@ These lists collect listening that never makes the top lists:
 - One-day wonders are what you played all day once and never again.
 - Deep cuts are songs by your favorite artists you've played only once or twice.
 - On this day shows what you played on today's date in earlier years.
+
+A list's heading opens it in full, to look through: the first one big with what puts it there, the
+rest as a grid of covers, or of photos for artists. The Playlist button by its title makes the
+playlist. All of Artists you might like looks the same, with your best match first.
 
 Each list can become a playlist of up to 40 songs. So can Crate dig (songs you played a few times
 and forgot, shuffled anew each time) and Playlist of the top 40, under Top 10 on the Stats tab. A

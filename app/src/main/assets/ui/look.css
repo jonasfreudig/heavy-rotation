@@ -985,4 +985,3 @@ html.locked .page { overflow: hidden; }
 :root[data-look="soft"] #grid.list .rec { box-shadow: 4px 4px 10px var(--sh-d), -4px -4px 10px var(--sh-l); }
 :root[data-look="glass"] #grid.list .rec { box-shadow: 0 6px 16px var(--drop), inset 1px 1px 0 var(--hi); }
 /* The full list of new releases: why each is there may take two lines. */
-.rank .rel-row .rel-why { white-space: normal; color: var(--tint-text, var(--md-primary)); }
