@@ -130,6 +130,25 @@ class HeardTest {
     }
 
     @Test
+    fun aReleaseNamedAfterASongOfTheAlbumAfterItLeadsUpToItWhateverItsCalled() {
+        // On some phones Deezer lists "Run Away From the Mob" as an album; its title is a song of "Perfecth".
+        val perfecth = r("Perfecth", "album", "2026-10-30")
+        val mob = r("Run Away From the Mob", "album", "2026-10-28")
+        val rels = listOf(perfecth, mob, r("Easy Street", "single", "2026-07-14"), r("Other Album", "album", "2026-06-01"))
+        val today = LocalDate.of(2026, 11, 7)
+        // Both "albums" have an album or EP before them; the old one (June) is out of the window.
+        assertEquals(setOf(perfecth.id, mob.id), Releases.needSongs(rels, today).map { it.id }.toSet())
+        val songs = listOf("It's Only Love", "Easy Street", "Run Away From the Mob")
+        val found = Releases.find(mapOf("Queens of the Stone Age" to rels), mapOf(fan("Queens of the Stone Age")), today) { if (it.id == perfecth.id) songs else null }
+        assertEquals(listOf("Perfecth"), found.out.map { it.title })
+        assertEquals(listOf("Run Away From the Mob"), found.out[0].eps)
+        assertEquals(listOf("Easy Street"), found.out[0].singles)
+        // Without the songs both stay.
+        val blind = Releases.find(mapOf("Queens of the Stone Age" to rels), mapOf(fan("Queens of the Stone Age")), today)
+        assertEquals(setOf("Perfecth", "Run Away From the Mob"), blind.out.map { it.title }.toSet())
+    }
+
+    @Test
     fun anEpBeforeAnAlbumStillToComeStaysOnItsOwn() {
         val found = Releases.find(
             mapOf("Band" to listOf(r("First Look", "ep", "2026-11-01"), r("The Album", "album", "2026-11-20"))),

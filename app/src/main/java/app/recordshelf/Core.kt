@@ -3004,7 +3004,7 @@ object Core {
         }
         val announcedDue = synchronized(dstore) { fans.take(Releases.ANNOUNCED).filter { !fresh(dpart("mb").optJSONObject(Text.norm(it.name)), REL_WEEK) } }
         val gapsDue = synchronized(dstore) { !fresh(dstore.optJSONObject("gaps"), GAP_EVERY) }
-        if (due.isEmpty() && announcedDue.isEmpty() && !gapsDue) return
+        if (due.isEmpty() && announcedDue.isEmpty() && !gapsDue && songsDue(today).isEmpty()) return
         relBusy = true
         relDone = 0
         relTotal = due.size + announcedDue.size
@@ -3048,6 +3048,16 @@ object Core {
                 }
                 relDone++
             }
+            // The songs of new albums that may have had a release lead up to them under another name.
+            for (id in songsDue(today)) {
+                try {
+                    val titles = deezer.album(id).tracks.map { it.first }
+                    synchronized(dstore) { dpart("relSongs").put(id.toString(), JSONObject().put("at", now).put("list", JSONArray(titles))) }
+                    fails = 0
+                } catch (_: Exception) {
+                    failed()
+                }
+            }
             if (gapsDue) {
                 saveDiscover()
                 pushDiscover()
@@ -3060,6 +3070,9 @@ object Core {
             val keys = fans.map { Text.norm(it.name) }.toSet()
             synchronized(dstore) {
                 for (part in listOf(dpart("rel"), dpart("mb"))) part.keys().asSequence().toList().filter { it !in keys }.forEach { part.remove(it) }
+                // Songs of albums long out of the window aren't needed again.
+                val songs = dpart("relSongs")
+                songs.keys().asSequence().toList().filter { now - (songs.optJSONObject(it)?.optLong("at") ?: 0L) > 120 * 24 * HOUR }.forEach { songs.remove(it) }
             }
             saveDiscover()
             relBusy = false
@@ -3091,6 +3104,19 @@ object Core {
         synchronized(dstore) { dstore.put("gaps", JSONObject().put("at", System.currentTimeMillis()).put("list", out)) }
     }
 
+    /** New albums whose songs aren't known yet but would tell whether a release led up to them ([Releases.needSongs]). */
+    private fun songsDue(today: java.time.LocalDate): List<Long> = synchronized(dstore) {
+        val rel = dpart("rel")
+        val have = dpart("relSongs")
+        rel.keys().asSequence().toList().flatMap { k ->
+            val a = rel.optJSONObject(k)?.optJSONArray("list") ?: return@flatMap emptyList()
+            Releases.needSongs((0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) }, today).map { it.id }
+        }.filter { !have.has(it.toString()) }.distinct()
+    }
+
+    /** An album's song titles as looked up for [Releases.find], or null. */
+    private fun relSongs(r: DzRelease): List<String>? = synchronized(dstore) { dpart("relSongs").optJSONObject(r.id.toString())?.optJSONArray("list")?.strings() }
+
     /** The releases you said you don't want to see (album keys). */
     private fun relHidden(): Set<String> = synchronized(dstore) { dpart("relNo").keys().asSequence().toSet() }
 
@@ -3118,7 +3144,7 @@ object Core {
                 if (soon.isNotEmpty()) by[name] = have + soon
             }
         }
-        return Releases.find(by, fans, today, relHidden()) { a, t, type -> if (type == "single") s.songPlaysOf(a, t) else s.albumPlaysOf(a, t) }
+        return Releases.find(by, fans, today, relHidden(), { a, t, type -> if (type == "single") s.songPlaysOf(a, t) else s.albumPlaysOf(a, t) }) { relSongs(it) }
     }
 
     /**
@@ -3168,7 +3194,7 @@ object Core {
         // How good a suggestion is stands in for how much you care about the artist.
         val top = best.firstOrNull()?.score?.takeIf { it > 0 } ?: 1.0
         val fans = best.associate { Text.norm(it.name) to Fan(it.name, it.score / top, 0, 0, 0) }
-        val found = Releases.find(by, fans, java.time.LocalDate.now(), relHidden())
+        val found = Releases.find(by, fans, java.time.LocalDate.now(), relHidden()) { relSongs(it) }
         val like = best.associate { it.name to (it.via.ifEmpty { it.because.firstOrNull()?.first.orEmpty() }) }
         return JSONArray(found.out.take(ROW_MAX).map { it.toJson().put("like", like[it.artist].orEmpty()) })
     }

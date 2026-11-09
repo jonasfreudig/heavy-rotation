@@ -108,7 +108,9 @@ object Releases {
      * and how new and how big the release is; [Found.soon] is due in the next [AHEAD_DAYS] days, soonest first. A title out
      * before isn't new (a deluxe edition of an old album, a single that became the album); singles out up to [LEAD_DAYS]
      * days before an album or EP fold into it. Artists you'd stopped playing ([Fan.quiet]) go to [Found.back] instead.
-     * [hidden]: album keys you turned down. [plays]: yours of a release (artist, title, type).
+     * [hidden]: album keys you turned down. [plays]: yours of a release (artist, title, type). [songs]: an album's song
+     * titles where known ([needSongs] says which to look up): a release named after a song of an album out soon after it
+     * led up to that album, whatever the catalog calls it.
      */
     fun find(
         by: Map<String, List<DzRelease>>,
@@ -116,6 +118,7 @@ object Releases {
         today: LocalDate,
         hidden: Set<String> = emptySet(),
         plays: (String, String, String) -> Int = { _, _, _ -> 0 },
+        songs: (DzRelease) -> List<String>? = { null },
     ): Found {
         val from = today.minusDays(BACK_DAYS).toString()
         val to = today.plusDays(AHEAD_DAYS).toString()
@@ -130,9 +133,20 @@ object Releases {
             val led = HashSet<DzRelease>()
             // An EP out shortly before an album that is out leads up to it (Queens of the Stone Age's "Run Away From the
             // Mob": four songs of "Perfecth", two days before it).
-            val albums = records.filter { it.type == "album" && it.date <= now }.sortedBy { it.date }
+            val albums = records.filter { it.type == "album" && it.date <= now && it.id > 0 }.sortedBy { it.date }
             val epLead = HashMap<DzRelease, MutableList<DzRelease>>()
-            for (e in records.filter { it.type == "ep" }) {
+            // A release named after a song of an album out soon after it led up to it (Deezer calls "Run Away From the
+            // Mob" an album in some places).
+            for (e in records.filter { it.type != "single" }) {
+                val want = Text.normLoose(e.title)
+                val a = albums.firstOrNull { a ->
+                    a !== e && a.date >= e.date && !LocalDate.parse(a.date).isAfter(LocalDate.parse(e.date).plusDays(LEAD_DAYS)) &&
+                        songs(a)?.any { Text.normLoose(it) == want } == true
+                } ?: continue
+                epLead.getOrPut(a) { ArrayList() } += e
+                led += e
+            }
+            for (e in records.filter { it.type == "ep" && it !in led }) {
                 val d = LocalDate.parse(e.date)
                 val a = albums.firstOrNull { it.date >= e.date && !LocalDate.parse(it.date).isAfter(d.plusDays(EP_LEAD_DAYS)) } ?: continue
                 epLead.getOrPut(a) { ArrayList() } += e
@@ -198,6 +212,21 @@ object Releases {
                 parts = g.map { it.title }, plays = g.sumOf { it.plays }, score = g.maxOf { it.score },
                 singles = g.flatMap { it.singles }.distinct(), eps = g.flatMap { it.eps }.distinct(),
             )
+        }
+    }
+
+    /**
+     * The albums of [rels] (one artist's) whose songs would tell whether an album or EP out up to [LEAD_DAYS] before
+     * them led up to them: out by [today], in the last [BACK_DAYS] days, on Deezer.
+     */
+    fun needSongs(rels: List<DzRelease>, today: LocalDate): List<DzRelease> {
+        val records = records(rels)
+        val from = today.minusDays(BACK_DAYS).toString()
+        val now = today.toString()
+        return records.filter { a ->
+            a.type == "album" && a.id > 0 && a.date in from..now && records.any { e ->
+                e !== a && e.type != "single" && e.date <= a.date && !LocalDate.parse(a.date).isAfter(LocalDate.parse(e.date).plusDays(LEAD_DAYS))
+            }
         }
     }
 
