@@ -330,7 +330,8 @@ const Pill = {
     if (!on) { pill.style.opacity = '0'; return; }
     if (!b.width) return;
     const t = (on.querySelector(':scope > .ind') || on).getBoundingClientRect();
-    const key = box.id || box.className;
+    // Per page: the tab bars of an artist, an album and a genre page share their classes, not their place.
+    const key = box.id || `${(box.closest('.page, .tab') || {}).id || ''}|${box.className}`;
     const now = { transform: `translate(${(t.left - b.left - box.clientLeft).toFixed(1)}px, ${(t.top - b.top - box.clientTop).toFixed(1)}px)`, width: `${t.width}px`, height: `${t.height}px`, opacity: '' };
     if (fresh) {
       pill.style.transition = 'none';
@@ -471,9 +472,9 @@ window.onRestored = (r) => {
   toast(`Restored ${num(r.scrobbles)} scrobbles. Starting again…`);
   setTimeout(() => send({ t: 'restartApp' }), 1200);
 };
-window.onHeard = (h) => { HEARD = h || []; renderHeardCard(); };
+window.onHeard = (h) => { HEARD = h || []; flipMoves(isOpen('activityPage') ? $('#heardCard') : null, '.heard-row', renderHeardCard); };
 window.onIdentify = (s) => { IDENT = s || { state: 'idle' }; identifyNews(); renderHeardCard(); };
-window.onOpenHeard = () => { openPage('activityPage'); renderHeardCard(); };
+window.onOpenHeard = openActivity;
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
 let statsLook = '';
 window.onStats = (s) => {
@@ -519,7 +520,15 @@ window.onBack = () => {
   if (fx && !mine) backSpring(fx.el);
   // A page the finger moved slides on out in closePage, what was under it coming home at the same pace.
   if (!(mine && fx.kind === 'page' && pageStack.length && t.el === $('#' + pageStack[pageStack.length - 1]))) backSettle(fx, true);
-  if (!$('#story').hidden) { closeStory(); return true; }
+  if (!$('#story').hidden) {
+    const st = $('#story');
+    if (mine && st.style.transform && moving() && !st._leaving) {
+      st._leaving = true;
+      st.inert = true;
+      animateOut(st, 'slide', () => { st._leaving = false; st.inert = false; closeStory(); });
+    } else if (!st._leaving) closeStory();
+    return true;
+  }
   if (sheetOpen()) { closeSheet(); return true; }
   // Lyrics over the whole screen: back makes them small again first.
   if (lyrFull && ['nowPage', 'spinPage'].includes(pageStack[pageStack.length - 1])) { setLyrFull(false); return true; }
@@ -633,8 +642,14 @@ function coverSync() {
   if (layers.some((el) => !el.hidden && (el._closing || el.style.transform || el.getAnimations().some((a) => a.playState === 'running'))) || (flight && flight.playState === 'running')) { coverSoon(200); return; }
   layers.forEach((el) => el.classList.toggle('covered', el !== top));
 }
+let pageOpened = null, pageOpenedAt = 0;
+document.addEventListener('click', (e) => {
+  if (pageOpened && performance.now() - pageOpenedAt < 250 && pageOpened.contains(e.target)) { e.stopPropagation(); e.preventDefault(); }
+}, true);
 function openPage(id, how) {
   const p = $('#' + id);
+  pageOpened = p;
+  pageOpenedAt = performance.now();
   uncover();
   tidyLayers();
   if (p._closing) {
@@ -716,6 +731,7 @@ function closePage(swipe = null) {
   } else if (saved) {
     // The same kind of page right under it, that is this very page: show what it showed, where it was.
     if (swipe) backSettle(swipe, true);
+    p._restore = null;
     pageSaved[i] = undefined;
     PAGE_STATE[id].set(saved.state);
     p.style.zIndex = 10 + i + 1;
@@ -730,6 +746,7 @@ function closePage(swipe = null) {
     const flew = id === 'recordPage' && !swipe && flyBack();
     // On its way out it takes no taps: they belong to the page coming back under it.
     p.inert = true;
+    p._restore = null;
     let ms;
     if (flew) backSettle(swipe, true);
     else {
@@ -935,6 +952,8 @@ window.onBackCancel = () => {
  * way, and lands only once it is there.
  */
 function flyCover(from, to, ms) {
+  // One flight at a time: an earlier one still in the air lands at once, and its copy goes.
+  if (flight && flight._end) { const f = flight; flight = null; f._end(); f._copy.remove(); }
   const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
   if (!a.width || !b.width) return;
   const c = from.cloneNode(true);
@@ -961,10 +980,17 @@ function flyCover(from, to, ms) {
     { transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width})` },
     { transform: 'none' },
   ], { duration: ms, easing: EASE_OUT });
+  // Scrolling meanwhile moves where it would land: then it lands at once. (Not the page being put back to its top as
+  // it opens: that reports a scroll too, and used to end every flight into a page left scrolled.)
+  const scroller = to.closest('.page') || window;
+  const scrolled = () => (scroller === window ? window.scrollY : scroller.scrollTop);
+  const y0 = scrolled();
+  const onScroll = () => { if (Math.abs(scrolled() - y0) > 2) anim.cancel(); };
   let over = false;
   const end = () => {
     if (over) return;
     over = true;
+    scroller.removeEventListener('scroll', onScroll);
     Tilt.hold = false;
     from.style.visibility = '';
     to.style.visibility = '';
@@ -987,11 +1013,11 @@ function flyCover(from, to, ms) {
   };
   anim.onfinish = land;
   anim.oncancel = end;
+  anim._end = end;
+  anim._copy = c;
   flight = anim;
   setTimeout(end, ms + 900);
-  // Scrolling meanwhile moves where it would land: then it lands at once.
-  const scroller = to.closest('.page') || window;
-  scroller.addEventListener('scroll', () => anim.cancel(), { once: true, passive: true });
+  scroller.addEventListener('scroll', onScroll, { passive: true });
 }
 /** The cover flight under way, if any: a back swipe lands it at once, so no copy floats over the moving page. */
 let flight = null;
@@ -1046,11 +1072,15 @@ function openSettings(section) {
 }
 
 let sheetGen = 0;
-function openSheet(html) {
+function openSheet(html, same = false) {
   sheetGen++;
   const sh = $('#sheet'), body = $('#sheetBody');
-  $('#sheetContent').innerHTML = html;
-  if (sh.hidden || sh.classList.contains('closing')) {
+  const fresh = sh.hidden || sh.classList.contains('closing');
+  // A sheet starts without the taps of the one before it (every sheet sets its own after this). One drawn again in
+  // place ([same]) keeps what stays: the field with the cursor in it, the small cover.
+  if (!same) $('#sheetContent').onclick = null;
+  if (same && !fresh) morph($('#sheetContent'), html); else $('#sheetContent').innerHTML = html;
+  if (fresh) {
     sh.classList.remove('closing');
     [body, $('#scrim')].forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
     body.style.transform = '';
@@ -2140,14 +2170,17 @@ function openPlaying() {
 
 // ---------- search: what you own first, then everything you played ----------
 
-let SEARCH = { q: '', res: null };
+/** What is typed, what your history has for it ([res]) and what Deezer's catalog has ([cat]: albums you may never have played). */
+let SEARCH = { q: '', res: null, cat: null };
 let searchTimer = 0;
+let catalogTimer = 0;
 const searching = () => document.body.classList.contains('searching');
 let searchOut = null;
 function openSearch() {
   // From a page, like a tab: search opens on the tabs, the pages go.
   closeAllPages();
   if (searchOut) { searchOut.cancel(); searchOut = null; }
+  $('#searchDock').getAnimations().forEach((x) => x.cancel());
   $('#searchPage').inert = $('#searchDock').inert = false;
   $('#searchPage').hidden = false;
   $('#searchDock').hidden = false;
@@ -2171,7 +2204,8 @@ function closeSearch() {
     dock.hidden = true;
     page.inert = dock.inert = false;
     $('#gSearch').value = '';
-    SEARCH = { q: '', res: null };
+    clearTimeout(catalogTimer);
+    SEARCH = { q: '', res: null, cat: null };
   });
   searchOut = a;
   syncBack();
@@ -2182,7 +2216,15 @@ function onSearchInput(e) {
   clearTimeout(searchTimer);
   const q = SEARCH.q.trim();
   if (q) searchTimer = setTimeout(() => send({ t: 'search', q: SEARCH.q }), 160);
+  // The catalog is asked once the typing pauses: it's a request to Deezer each time.
+  clearTimeout(catalogTimer);
+  if (q.length >= 2) catalogTimer = setTimeout(() => send({ t: 'searchCatalog', q: SEARCH.q }), 500);
 }
+window.onSearchCatalog = (r) => {
+  if (r.q !== SEARCH.q) return;
+  SEARCH.cat = r;
+  renderSearch();
+};
 window.onSearch = (r) => {
   if (r.q !== SEARCH.q) return;
   SEARCH.res = r;
@@ -2198,10 +2240,14 @@ function renderSearch() {
   const q = SEARCH.q.trim();
   const body = $('#searchBody');
   if (!q) {
-    body.innerHTML = `<div class="search-hint">${icon('search', 'i big')}<p>Your records first, then every artist, album, song and genre you've played.</p></div>`;
+    body.innerHTML = `<div class="search-hint">${icon('search', 'i big')}<p>Your records first, then every artist, album, song and genre you've played, and albums you haven't, from Deezer.</p></div>`;
     return;
   }
-  const r = SEARCH.res && SEARCH.res.q === SEARCH.q ? SEARCH.res : null;
+  // While you type on (or take a letter back), the last answer stays until the next one is there: the list doesn't
+  // empty and fill again at every letter.
+  const near = (x) => !!x && (x.q === SEARCH.q || SEARCH.q.startsWith(x.q) || x.q.startsWith(SEARCH.q));
+  const fresh = !!SEARCH.res && SEARCH.res.q === SEARCH.q;
+  const r = near(SEARCH.res) ? SEARCH.res : null;
   const owned = shelfMatches(q);
   const sec = (title, n, html) => n ? `<div class="section-head"><h2>${title}</h2><span class="sub">${n}</span></div>${html}` : '';
   const shown = owned.slice(0, 9);
@@ -2214,11 +2260,21 @@ function renderSearch() {
   const genres = (r && r.genres) || [];
   const genresHtml = sec('Genres', genres.length, `<div class="chips search-genres">${genres.map((g) => `<button class="chip link" data-genre="${esc(g.key)}" data-glabel="${esc(g.label)}">${esc(g.label)}<small class="n">${compact(g.plays)}</small></button>`).join('')}</div>`);
   const tracksHtml = sec('Songs', tracks.length, `<div class="rank">${tracks.map((t) => `<button class="r" ${trackAttrs(t.artist, t.title)} data-key="${esc(`${t.artist}|${t.title}`)}"><span class="n">${icon('music', 'i small')}</span><span class="t"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></span><span class="v cnt">${compact(t.plays)}×</span></button>`).join('')}</div>`);
+  // Albums from Deezer's catalog that aren't above: the way to an album you've never played (to scrobble a first listen).
+  const cat = near(SEARCH.cat) ? SEARCH.cat : null;
+  const akey = (artist, title) => `${norm(artist)}|${looseKey(title)}`;
+  const have = new Set([...owned.map((x) => akey(x.artist, x.title)), ...((r && r.albums) || []).map((a) => akey(a.artist, a.title))]);
+  const more = ((cat && cat.albums) || []).filter((a) => !have.has(akey(a.artist, a.title))).slice(0, 6);
+  const kindOf = { album: 'album', ep: 'EP', single: 'single' };
+  const moreHtml = more.length ? `<div class="section-head"><h2>Albums you haven't played</h2><span class="sub">from Deezer</span></div><div class="rank">${more.map((a) => `<button class="r with-cover" ${albumAttrs(a.artist, a.title)} data-key="dz${a.id}" data-dz="${a.id}"${a.cover ? ` data-cover="${esc(a.cover)}"` : ''}>${coverHtml(a.cover, a.title, a.artist, 'tiny')}<span class="t"><b>${esc(a.title)}</b><small>${esc(a.artist)}, ${kindOf[a.type] || 'release'}${a.tracks ? `, ${plural(a.tracks, 'song')}` : ''}</small></span>${icon('chevron-right')}</button>`).join('')}</div>` : '';
   // On the shelf your records come first; elsewhere what you played does.
-  const parts = tab === 'shelf' ? [shelfHtml, genresHtml, artistsHtml, albumsHtml, tracksHtml] : [genresHtml, artistsHtml, albumsHtml, tracksHtml, shelfHtml];
-  const none = !owned.length && r && !artists.length && !albums.length && !tracks.length && !genres.length;
+  const parts = tab === 'shelf' ? [shelfHtml, genresHtml, artistsHtml, albumsHtml, tracksHtml, moreHtml] : [genresHtml, artistsHtml, albumsHtml, tracksHtml, shelfHtml, moreHtml];
+  const none = !owned.length && fresh && !artists.length && !albums.length && !tracks.length && !genres.length && !more.length;
+  // Deezer is still to answer (it's asked once the typing pauses; a word of one letter isn't asked).
+  const asking = q.length >= 2 && !(SEARCH.cat && SEARCH.cat.q === SEARCH.q);
   // In place, each result keyed: what stays stays (no blinking covers on every letter typed).
-  morph(body, parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`) + (none ? `<div class="search-hint"><p>Nothing matches “${esc(q)}”.</p></div>` : ''));
+  morph(body, parts.join('') + (r ? '' : `<p class="hint search-wait">Looking through your history…</p>`)
+    + (none ? `<div class="search-hint"><p>${asking ? `Nothing you've played matches “${esc(q)}”. Looking on Deezer…` : `Nothing matches “${esc(q)}”.`}</p></div>` : ''));
 }
 
 // ---------- record page ----------
@@ -2367,9 +2423,32 @@ function renderRecordSpinNote() {
 function openScrobble(preset = {}) {
   const rel = REL[recordId];
   if (!rel || !rel.tracks || !rel.tracks.length) return;
+  scrobbleSheet(rel, preset);
+}
+/**
+ * An album that isn't on your shelf, heard somewhere the app doesn't see (a video, a friend's stereo): scrobbled by hand
+ * from its page, with Deezer's tracklist and lengths, for a listen that is over.
+ */
+function openAlbumScrobble() {
+  const a = ALBUM;
+  const dz = a && a.dzInfo && !a.dzInfo.error ? a.dzInfo : null;
+  if (!dz || !(dz.tracks || []).length) return;
+  const cover = (a.info || {}).cover || a.cover || dz.cover || '';
+  const rel = { id: 0, title: a.title, artist: a.artist, cover, thumb: cover, tracks: dz.tracks.map((t, i) => ({ pos: String(i + 1), side: '', title: t.title, dur: t.sec || 0 })) };
+  scrobbleSheet(rel, {}, (sel, st) => {
+    send({ t: 'scrobbleAlbum', artist: a.artist, album: a.title, cover, tracks: sel.map((t) => ({ title: t.title, dur: t.est ? 0 : t.dur, n: t.i + 1 })), when: st.when, at: st.at || 0 });
+    toast(`Scrobbling ${plural(sel.length, 'track')} of ${a.title}`);
+  });
+}
+/**
+ * The sheet that scrobbles [rel]'s tracks: which ones, and when. A record on the turntable can start now and is followed
+ * as it plays; with [manual] (what to do with the tracks picked and the sheet's choices) it is a listen that is over,
+ * just now or earlier, and every track goes out at once.
+ */
+function scrobbleSheet(rel, preset = {}, manual = null) {
   const tracks = rel.tracks.map((t, i) => ({ ...t, i, dur: lenOf(t), est: !(t.dur > 0) }));
   const sides = [...new Set(tracks.map((t) => t.side).filter(Boolean))];
-  const st = { what: 'all', picked: new Set(), when: 'now', at: null };
+  const st = { what: 'all', picked: new Set(), when: manual ? 'finished' : 'now', at: null };
   if (preset.side != null) st.what = 'side:' + preset.side;
   else if (preset.track != null) { st.what = 'pick'; st.picked.add(preset.track); }
   else if (sides.length > 1) {
@@ -2377,16 +2456,18 @@ function openScrobble(preset = {}) {
     st.what = 'side:' + (sp && sp.releaseId === rel.id && sp.nextSide ? sp.nextSide : sides[0]);
   }
   const selected = () => (st.what === 'all' ? tracks : st.what === 'pick' ? tracks.filter((t) => st.picked.has(t.i)) : tracks.filter((t) => 'side:' + t.side === st.what));
+  let drawn = false;
 
   function render() {
     const sel = selected();
     const now = Date.now();
-    if (st.when === 'at' && st.at == null) st.at = Math.round((now - 3600e3) / 300e3) * 300e3;
+    // "Earlier" starts an hour ago; for a listen that is over, long enough ago to have ended.
+    if (st.when === 'at' && st.at == null) st.at = Math.round((now - (manual ? sel.reduce((n, t) => n + t.dur * 1000, 0) + 1800e3 : 3600e3)) / 300e3) * 300e3;
     const plan = sel.length ? planStarts(sel, st.when, st.at, now) : null;
     const chip = (v, label, sub) => `<button class="chip ${st.what === v ? 'on' : ''}" data-what="${esc(v)}">${esc(label)}${sub ? ` <small>${sub}</small>` : ''}</button>`;
     let h = `<div class="sheet-title">Scrobble</div>
       <div class="mini">${coverHtml(rel.thumb || rel.cover, rel.title, rel.artist, 'tiny')}<div><b>${esc(rel.title)}</b><small>${esc(rel.artist)}</small></div></div>
-      <div class="label">What you play</div>
+      <div class="label">${manual ? 'What you heard' : 'What you play'}</div>
       <div class="chips" id="whatChips">
         ${sides.map((s) => chip('side:' + s, sideLabel(s), fmtLong(tracks.filter((t) => t.side === s).reduce((a, t) => a + t.dur, 0)))).join('')}
         ${chip('all', sides.length > 1 ? 'Whole record' : 'All tracks', sides.length > 1 ? fmtLong(tracks.reduce((a, t) => a + t.dur, 0)) : '')}
@@ -2397,15 +2478,18 @@ function openScrobble(preset = {}) {
     }
     h += `<div class="label">When</div>
       <div class="seg" id="whenSeg">
-        ${[['now', 'Starting now'], ['at', 'Earlier'], ['finished', 'Just finished']].map(([v, l]) => `<button data-v="${v}" class="${st.when === v ? 'on' : ''}">${l}</button>`).join('')}
+        ${(manual ? [['finished', 'Just finished'], ['at', 'Earlier']] : [['now', 'Starting now'], ['at', 'Earlier'], ['finished', 'Just finished']]).map(([v, l]) => `<button data-v="${v}" class="${st.when === v ? 'on' : ''}">${l}</button>`).join('')}
       </div>`;
-    if (st.when === 'at') h += `<label class="field"><span>Started at</span><input type="datetime-local" id="atInput" value="${toLocalInput(st.at)}"></label>`;
+    if (st.when === 'at') h += `<label class="field"><span>Started at</span><input type="datetime-local" id="atInput" value="${toLocalInput(st.at)}"${manual ? ` max="${toLocalInput(now)}"` : ''}></label>`;
 
     let blocked = !plan;
     if (plan) {
       const n = sel.length;
       let sub;
+      // A listen scrobbled by hand has to be over: nothing follows it as it plays.
+      const ahead = !!manual && plan.end > now + 30e3;
       if (st.when === 'now') sub = `Until about ${fmtTime(plan.end)}. Each track is scrobbled once half of it has played, and shows as now playing on Last.fm.`;
+      else if (ahead) sub = `${whenLabel(plan.start)} to ${fmtTime(plan.end)}.`;
       else if (plan.end > now) sub = `${whenLabel(plan.start)} to ${fmtTime(plan.end)}. Tracks that have played are scrobbled now, the rest as they play.`;
       else sub = `${whenLabel(plan.start)} to ${fmtTime(plan.end)}. Scrobbled right away, each at the time it played.`;
       h += `<div class="summary"><b>${plural(n, 'track')}, ${fmtLong(plan.total / 1000)}</b><small>${sub}</small></div>`;
@@ -2415,17 +2499,19 @@ function openScrobble(preset = {}) {
       if (est === n) h += warn(`No source knows these track lengths, so each counts as ${guess}.`);
       else if (est === 1) h += warn(`1 of these tracks has no known length, so it counts as ${guess}.`);
       else if (est) h += warn(`${est} of these tracks have no known length, so they count as ${guess}.`);
+      if (ahead) { h += warn(`That would still be playing until ${fmtTime(plan.end)}. Pick an earlier start, or scrobble it once it's over.`, true); blocked = true; }
       const old = plan.starts.filter((s) => now - s > MAX_AGE_MS).length;
       if (old === n) { h += warn('Last.fm ignores scrobbles older than 2 weeks, so these would be dropped.', true); blocked = true; }
       else if (old) h += warn(`Last.fm ignores scrobbles older than 2 weeks: ${old} of these tracks would be dropped.`, true);
       else if (plan.starts.some((s) => now - s > MAX_AGE_MS - 864e5)) h += warn('Close to Last.fm\'s 2-week limit. Make sure the phone is online so they go out in time.');
-      if (st.when === 'at' && plan.start > now + 60e3) h += warn('That start time is in the future; the tracks are scrobbled as they play.');
-      if (ST.spin && plan.end > now) h += warn(`Replaces ${esc(ST.spin.album)}, which is spinning now. What has played of it still counts.`);
+      if (!manual && st.when === 'at' && plan.start > now + 60e3) h += warn('That start time is in the future; the tracks are scrobbled as they play.');
+      if (!manual && ST.spin && plan.end > now) h += warn(`Replaces ${esc(ST.spin.album)}, which is spinning now. What has played of it still counts.`);
       if (!(ST.lastfm || {}).connected) h += warn('Last.fm isn\'t connected yet. The scrobbles wait on this phone until it is.');
     }
     h += `<div class="sheet-actions"><button class="btn text" id="scCancel">Cancel</button>
       <button class="btn filled" id="scGo" ${blocked ? 'disabled' : ''}>Scrobble ${sel.length ? plural(sel.length, 'track') : ''}</button></div>`;
-    openSheet(h);
+    openSheet(h, drawn);
+    drawn = true;
 
     $('#whatChips').onclick = (e) => {
       const b = e.target.closest('[data-what]');
@@ -2450,6 +2536,7 @@ function openScrobble(preset = {}) {
     if (at) at.onchange = () => { const v = fromLocalInput(at.value); if (!Number.isNaN(v)) { st.at = v; render(); } };
     $('#scCancel').onclick = closeSheet;
     $('#scGo').onclick = () => {
+      if (manual) { closeSheet(); manual(sel, st); return; }
       const p = planStarts(sel, st.when, st.at, Date.now());
       send({ t: 'startSpin', releaseId: rel.id, tracks: sel.map((t) => t.i), when: st.when, at: st.at || 0 });
       closeSheet();
@@ -2521,19 +2608,32 @@ function renderSpinList() {
 
 // ---------- activity ----------
 
+/**
+ * The list of what was scrobbled, by day. Only drawn while Activity is open (it changes with every scrobble and every
+ * cover that arrives, some 400 rows each time), and in place: the rows that stay keep their covers.
+ */
 function renderActivity() {
   renderQueueCard();
+  if (!isOpen('activityPage')) return;
   const list = ACT.slice().sort((a, b) => b.ts - a.ts || b.at - a.at);
   $('#activityEmpty').hidden = list.length > 0;
   let html = '', day = '', group = [];
-  const close = () => { if (group.length) html += `<div class="list">${group.join('')}</div>`; group = []; };
+  const close = () => { if (group.length) html += `<div class="list" data-key="${esc(day)}">${group.join('')}</div>`; group = []; };
   for (const e of list) {
     const d = dayLabel(e.ts * 1000);
-    if (d !== day) { close(); html += `<div class="day">${esc(d)}</div>`; day = d; }
+    if (d !== day) { close(); html += `<div class="day" data-key="d${esc(d)}">${esc(d)}</div>`; day = d; }
     group.push(actRow(e));
   }
   close();
-  $('#activityList').innerHTML = html;
+  morph($('#activityList'), html);
+}
+/** Activity opens: its list and the songs heard around you, as they are now. */
+function openActivity() {
+  // What Identify last said ("No match", an error) was for then.
+  if (IDENT.state === 'none' || IDENT.state === 'error') IDENT = { state: 'idle' };
+  openPage('activityPage');
+  renderActivity();
+  renderHeardCard();
 }
 
 /** The status card above the activity list: what waits to be sent, and why. */
@@ -2563,7 +2663,7 @@ function actRow(e) {
   const st = { waiting: ['schedule', 'Waiting'], ignored: ['block', 'Ignored'], failed: ['warning', 'Failed'], shadow: ['eye', 'Shadow'] }[e.status];
   const why = e.msg && e.status !== 'sent' ? `<small class="why">${esc(e.msg)}</small>` : '';
   const from = e.src === 'vinyl' ? 'Vinyl' : e.app || 'Phone';
-  return `<div class="item act" ${trackAttrs(e.artist, e.track, { album: e.album, cover: e.cover })}>${coverHtml(e.cover, e.album || e.track, e.artist, 'tiny')}
+  return `<div class="item act" data-key="${esc(e.id)}" ${trackAttrs(e.artist, e.track, { album: e.album, cover: e.cover })}>${coverHtml(e.cover, e.album || e.track, e.artist, 'tiny')}
     <span class="grow"><b>${esc(e.track)}</b><small>${esc(e.artist)}${e.album ? ', ' + esc(e.album) : ''}</small>${why}</span>
     <span class="trail"><span>${fmtTime(e.ts * 1000)}</span>${st ? `<span class="status ${e.status}">${icon(st[0])}${st[1]}</span>` : `<span class="status sent">${esc(from)}</span>`}</span></div>`;
 }
@@ -2585,15 +2685,10 @@ function renderHeardCard() {
   const p = ST.phone || {};
   const s = IDENT.state;
   const btn = s === 'listening' ? `<button class="btn tonal small heard-id on" id="identifyBtn">${icon('stop')}Stop</button>`
-    : s === 'looking' ? '' : `<button class="btn tonal small heard-id" id="identifyBtn">${icon('mic')}Identify</button>`;
+    : `<button class="btn tonal small heard-id" id="identifyBtn"${s === 'looking' ? ' disabled' : ''}>${icon('mic')}Identify</button>`;
   let line = '';
-  clearTimeout(identTimer);
-  if (s === 'listening') {
-    const left = Math.max(0, Math.ceil((IDENT.at + IDENT.ms - Date.now()) / 1000));
-    const pct = Math.min(100, Math.round(((Date.now() - IDENT.at) / IDENT.ms) * 100));
-    line = `<div class="heard-line">${icon('mic')}<span>Listening, ${left} s</span><span class="lin inline"><i style="width:${pct}%"></i></span></div>`;
-    identTimer = setTimeout(renderHeardCard, 250);
-  } else if (s === 'looking') line = `<div class="heard-line">${icon('search')}<span>Looking it up</span><span class="lin inline indet"><i></i></span></div>`;
+  if (s === 'listening') line = `<div class="heard-line" data-key="listening">${icon('mic')}<span id="identLeft">Listening</span><span class="lin inline heard-bar"><i></i></span></div>`;
+  else if (s === 'looking') line = `<div class="heard-line" data-key="looking">${icon('search')}<span>Looking it up</span><span class="lin inline indet"><i></i></span></div>`;
   else if (s === 'none') line = '<p class="hint">No match. Hold the phone closer to the music and try again.</p>';
   else if (s === 'error') line = `<p class="hint">${esc(IDENT.msg || "Identify didn't work this time.")}${IDENT.settings ? ' <button class="btn text small" data-app-info="">App info</button>' : ''}</p>`;
   const rows = HEARD.slice().sort((a, b) => b.first - a.first).map((h) => {
@@ -2602,14 +2697,26 @@ function renderHeardCard() {
     const same = h.shelf && (h.album || '').toLowerCase() === h.shelf.album.toLowerCase();
     const rec = h.shelf ? `<button class="chip heard-rec" data-heard-spin="${esc(h.id)}">${icon('album')}<span>Scrobble ${same ? 'the record' : esc(h.shelf.album)} from here</span></button>` : '';
     return `<div class="item heard-row" data-key="${esc(h.id)}" ${trackAttrs(h.artist, h.title, { album: h.album, cover: h.cover })}>${coverHtml(h.cover, h.album || h.title, h.artist, 'tiny')}
-      <span class="grow"><b>${esc(h.title)}</b><small>${esc(h.artist)}${h.album ? ', ' + esc(h.album) : ''}</small><small>${esc(from)}, ${esc(heardWhen(h))}${heardFor(h)}</small>${rec}</span>
-      <span class="heard-btns"><button class="icon-btn small" data-heard-no="${esc(h.id)}" aria-label="Drop ${esc(h.title)}">${icon('close')}</button><button class="icon-btn small yes" data-heard-yes="${esc(h.id)}" aria-label="Scrobble ${esc(h.title)}">${icon('check')}</button></span></div>`;
+      <span class="grow"><b>${esc(h.title)}</b><small>${esc(h.artist)}${h.album ? ', ' + esc(h.album) : ''}</small><small>${esc(from)}, ${esc(heardWhen(h))}${heardFor(h)}</small></span>
+      <span class="heard-btns"><button class="icon-btn small" data-heard-no="${esc(h.id)}" aria-label="Drop ${esc(h.title)}">${icon('close')}</button><button class="icon-btn small yes" data-heard-yes="${esc(h.id)}" aria-label="Scrobble ${esc(h.title)}">${icon('check')}</button></span>${rec}</div>`;
   }).join('');
   const how = p.access ? 'Songs Now Playing recognises on your Pixel show up here to scrobble or drop. Turn on its notifications in Settings, Sound and vibration, Now Playing.'
     : 'Songs Now Playing recognises on your Pixel show up here once Heavy Rotation has notification access (Settings, Phone scrobbling).';
   const intro = !HEARD.length && !line ? `<p class="hint">${how} Identify listens for ten seconds and looks the song up on AudD.</p>` : '';
   const all = HEARD.length > 1 ? `<div class="btn-row"><button class="btn tonal small" data-heard-all>Scrobble all ${HEARD.length}</button></div>` : '';
   morph(el, `<div class="card heard"><div class="card-title heard-title"><span>Heard around you</span>${btn}</div>${line}${intro}${rows ? `<div class="list">${rows}</div>` : ''}${all}</div>`);
+  tickIdent();
+}
+/** While Identify listens: the seconds left, once a second, and a bar that runs to the end on its own. Only while Activity is open. */
+function tickIdent() {
+  clearTimeout(identTimer);
+  const left = $('#identLeft');
+  if (IDENT.state !== 'listening' || !left || !isOpen('activityPage')) return;
+  const done = Date.now() - IDENT.at;
+  left.textContent = `Listening, ${Math.max(0, Math.ceil((IDENT.ms - done) / 1000))} s`;
+  const bar = $('#heardCard .heard-bar i');
+  if (bar && !bar._run) bar._run = bar.animate([{ transform: `scaleX(${Math.min(1, Math.max(0, done / IDENT.ms))})` }, { transform: 'scaleX(1)' }], { duration: Math.max(1, IDENT.ms - done), easing: 'linear', fill: 'forwards' });
+  identTimer = setTimeout(tickIdent, 1020 - (done % 1000));
 }
 
 /** Identify's outcome as a note: a song found goes on the list (one of the record that's spinning only sets its time). */
@@ -2618,9 +2725,10 @@ function identifyNews() {
 }
 
 function heardAnswer(id, yes) {
+  if (tooSoon()) return;
   const h = HEARD.find((x) => x.id === id);
   HEARD = HEARD.filter((x) => x.id !== id);
-  renderHeardCard();
+  flipMoves($('#heardCard'), '.heard-row', renderHeardCard);
   send({ t: yes ? 'heardYes' : 'heardNo', id });
   if (!yes && h) toast(`${h.title} dropped`, { label: 'Undo', run: () => send({ t: 'heardUndo', id }) });
 }
@@ -3260,6 +3368,8 @@ function openNewArtists() {
   openSheet(`<div class="sheet-title">${num(na.count)} new artists</div><p class="body">Most played first, with what you played right before you found them.</p>
     ${discoverOn() ? `<div class="btn-row"><button class="btn tonal" data-likethem>${icon('explore')}More like them</button></div>` : ''}
     <div class="na-list">${na.found.map((f) => `<button class="na-item" data-artist="${esc(f.name)}">${artistFace(f)}<span class="t"><b>${esc(f.name)}</b><small>first played ${esc(dateLabel(f.first))}${f.from ? `, after ${esc(f.from)}` : ''}</small></span><span class="v">${num(f.plays)}<small>${f.plays === 1 ? 'play' : 'plays'}</small></span></button>`).join('')}</div>${more}`);
+  // An artist tapped opens their page: the sheet goes, or the page opened behind it.
+  $('#sheetContent').onclick = (e) => { if (e.target.closest('[data-artist]')) closeSheet(); };
 }
 
 function newArtistsText(x, unit) {
@@ -3766,6 +3876,8 @@ function comesUp(n, s) {
 }
 function morphKids(a, b, keep) {
   let x = a.firstChild, y = b.firstChild;
+  // The sliding pill of a bar of tabs or choices (see Pill) is the bar's own: it stays, and nothing is matched against it.
+  if (x && x.nodeType === 1 && x.classList.contains('pill') && !(y && y.nodeType === 1 && y.classList.contains('pill'))) x = x.nextSibling;
   while (y) {
     const next = y.nextSibling;
     if (!x) { a.appendChild(y); y = next; continue; }
@@ -3793,8 +3905,12 @@ function morphKids(a, b, keep) {
 function morphNode(x, y, keep) {
   if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
   if (keep && keep(x, y)) return;
-  for (const { name } of [...x.attributes]) if (!y.hasAttribute(name)) x.removeAttribute(name);
-  for (const { name, value } of y.attributes) if (x.getAttribute(name) !== value) x.setAttribute(name, value);
+  // A tab pager awake or sliding keeps what it set itself (where it is, how tall its tabs are): the fresh HTML knows
+  // neither, and a page drawn again mid-swipe left the tab coming in blank.
+  const track = x.classList.contains('atab-track') ? x : x.classList.contains('atab-body') ? x.parentElement : null;
+  const held = track && track.classList && (track.classList.contains('live') || track._sliding) ? (x === track ? 'class style' : 'style') : '';
+  for (const { name } of [...x.attributes]) if (!y.hasAttribute(name) && !(held && held.includes(name))) x.removeAttribute(name);
+  for (const { name, value } of y.attributes) if (!(held && held.includes(name)) && x.getAttribute(name) !== value) x.setAttribute(name, value);
   morphKids(x, y, keep);
 }
 
@@ -4989,7 +5105,8 @@ function renderAlbum() {
     ${genreChips(a.genres)}
     ${listenRow('albums', a.artist, a.title)}
     ${a.dzInfo && a.dzInfo.date ? `<div class="meta">${esc(a.dzInfo.date.slice(0, 4))}${a.dzInfo.label ? `, ${esc(a.dzInfo.label)}` : ''}</div>` : ''}
-    ${shelfId ? `<div class="stats"><button class="chip link" data-rec="${shelfId}">${icon('album')}On your shelf</button></div>` : ''}</div>`;
+    ${shelfId ? `<div class="stats"><button class="chip link" data-rec="${shelfId}">${icon('album')}On your shelf</button></div>`
+    : a.dzInfo && !a.dzInfo.error && (a.dzInfo.tracks || []).length ? `<div class="stats"><button class="chip link" data-ascrobble>${icon('history')}Scrobble a listen</button></div>` : ''}</div>`;
   if (a.loading) h += '<div class="lin inline indet"><i></i></div>';
   else if (a.missing) {
     h += `<div class="empty small"><p>${(ST.history || {}).count > 0 ? 'You haven\'t played this one yet.' : esc(missingNote())}</p></div>`;
@@ -5790,7 +5907,7 @@ window.onExplore = (x) => {
 
 const plButton = (kind, label = 'Make a playlist') => `<button class="btn tonal small" data-pl="${kind}">${icon('playlist')}${label}</button>`;
 function xSection(title, sub, kind, inner) {
-  return `<div class="viz explore"><div class="xhead"><h2>${title}</h2>${kind ? plButton(kind, 'Playlist') : ''}</div><span class="sub">${sub}</span>${inner}</div>`;
+  return `<div class="viz explore" data-key="${kind || title}"><div class="xhead"><h2>${title}</h2>${kind ? plButton(kind, 'Playlist') : ''}</div><span class="sub">${sub}</span>${inner}</div>`;
 }
 const monthYear = (ms) => new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' });
 
@@ -5919,7 +6036,7 @@ function forYouParts(d) {
   const checking = d.relBusy && d.relTotal ? `Checking your artists for new releases: ${d.relDone} of ${d.relTotal}` : '';
   if (!n && checking) parts.push({ title: 'New from your artists', wait: `<span class="sub">${checking}. The first time takes a few minutes.</span><div class="lin inline"><i style="width:${Math.round((d.relDone / d.relTotal) * 100)}%"></i></div>` });
   parts.push({ title: 'New from your artists', pl: 'newReleases', all: 'releases', n: rel.length,
-    sub: checking || `Out in the last eight weeks, by ${num(d.relArtists || 0)} artists you play or own; the ones you haven't played first`,
+    sub: checking || `Out in the last eight weeks, by ${plural(d.relArtists || 0, 'artist')} you play or own; the ones you haven't played first`,
     cards: rel.slice(0, 15).map((r) => relCard(r, relOutLine(r))).join('') });
   parts.push({ title: 'Coming soon', all: 'upcoming', n: soon.length, sub: 'Due in the months ahead, with the singles out so far',
     cards: soon.slice(0, 15).map((r) => relCard(r, `${esc(releaseWhen(r))}${singlesOut(r)}`)).join('') });
@@ -5941,11 +6058,11 @@ function forYouParts(d) {
   return parts;
 }
 /** A For you list on the long page: its heading (and playlist), what it is, its cards, and its full list. */
-const xblock = (p) => (p.wait ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2></div>${p.wait}</div>`
-  : p.cards ? `<div class="viz explore"><div class="xhead"><h2>${p.title}</h2>${p.pl ? plButton(p.pl, 'Playlist') : ''}</div><span class="sub">${p.sub}</span><div class="xcards">${p.cards}</div>
-    ${p.all ? `<button class="btn text" data-xlist="${p.all}">All ${p.n}</button>` : ''}</div>` : '');
+const xblock = (p) => (p.wait ? `<div class="viz explore" data-key="${p.title}"><div class="xhead"><h2>${p.title}</h2></div>${p.wait}</div>`
+  : p.cards ? `<div class="viz explore" data-key="${p.title}"><div class="xhead"><h2>${p.title}</h2>${p.pl ? plButton(p.pl, 'Playlist') : ''}</div><span class="sub">${p.sub}</span><div class="xcards">${p.cards}</div>
+    ${p.all ? `<button class="btn text" data-xlist="${p.all}">${p.n > 1 ? `All ${p.n}` : 'More'}</button>` : ''}</div>` : '');
 /** The same list as a row (Explore in rows). */
-const xrowOf = (p) => (p.wait ? `<section class="xrow"><div class="xrow-head"><h2>${p.title}</h2></div>${p.wait}</section>`
+const xrowOf = (p) => (p.wait ? `<section class="xrow" data-key="${p.title}"><div class="xrow-head"><h2>${p.title}</h2></div>${p.wait}</section>`
   : xrow(p.title, p.pl ? xrowPl(p.pl) : '', p.cards, p.sub, p.all || '', p.n || 0));
 /** The mix of songs like your favorites, once Last.fm's are looked up for a few of them. */
 const simTile = (d) => (d && d.sim ? mixTile('similarSongs', (d.sim.songs || []).map((t) => [t.cover, t.album || t.title, t.artist]), 'Songs like your favorites', 'Songs you haven\'t played, like your top ones this month') : '');
@@ -6001,13 +6118,13 @@ function likeHtml() {
 }
 function renderForYou() {
   if (!isOpen('forYouPage')) return;
-  if (LIKE) { $('#forYouBody').innerHTML = likeHtml(); return; }
+  if (LIKE) { morph($('#forYouBody'), likeHtml()); return; }
   const d = DISCOVER || {};
   const wait = discoverWait(d);
   const arts = d.artists || [];
-  $('#forYouBody').innerHTML = `<h1 class="page-h">Artists you might like</h1><p class="xl-sub">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
+  morph($('#forYouBody'), `<h1 class="page-h">Artists you might like</h1><p class="xl-sub">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
     ${wait || `${reachChips(d)}<p class="hint">Further out brings less known artists, and ones a step further from yours.</p>
-      ${arts.length ? suggestionGrid(arts, 'Your best match') : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`;
+      ${arts.length ? suggestionGrid(arts, 'Your best match') : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`);
 }
 
 // ---- Explore as rows (Settings → Look): every list one row you scroll sideways ----
@@ -6019,8 +6136,8 @@ function renderForYou() {
 const xrow = (title, more, cards, sub = '', all = '', n = 0) => {
   if (!cards) return '';
   const head = all ? `<button class="xrow-title" data-xlist="${all}"><h2>${title}</h2>${icon('chevron-right', 'i small')}</button>` : `<h2>${title}</h2>`;
-  const end = all ? `<button class="xcard xall" data-xlist="${all}"><span class="xall-c">${icon('chevron-right')}</span><b>${n ? `All ${num(n)}` : 'All'}</b></button>` : '';
-  return `<section class="xrow"><div class="xrow-head">${head}${more || ''}</div>${sub ? `<span class="sub">${sub}</span>` : ''}<div class="xcards">${cards}${end}</div></section>`;
+  const end = all ? `<button class="xcard xall" data-xlist="${all}"><span class="xall-c">${icon('chevron-right')}</span><b>${n > 1 ? `All ${num(n)}` : n === 1 ? 'More' : 'All'}</b></button>` : '';
+  return `<section class="xrow" data-key="${all || title}"><div class="xrow-head">${head}${more || ''}</div>${sub ? `<span class="sub">${sub}</span>` : ''}<div class="xcards">${cards}${end}</div></section>`;
 };
 const xrowPl = (kind) => `<button class="xrow-more" data-pl="${kind}">${icon('playlist', 'i small')}Playlist</button>`;
 const artistCard = (a, line) => `<button class="xcard round" data-artist="${esc(a.name)}">${coverHtml(a.photo || a.cover, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${line}</small></button>`;
@@ -6036,10 +6153,11 @@ const albumCard = (a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)}
  * and [artist] as text, and as HTML [sub] (who or what), [meta] (a short line in the accent color), [lead] (the line under
  * the title when it leads) and [why] (why it's there, shown when it leads), and [x] its ✕ button if it can be hidden.
  */
+const lgKey = (it) => esc(`${it.round ? 'a' : 'r'}|${it.artist || ''}|${it.title}`);
 const lgPic = (it) => `<div class="lg-pic">${coverHtml(it.cover, it.title, it.artist || it.title, it.round ? 'round' : '')}${it.x || ''}</div>`;
-const lgLead = (it, kicker) => `<div class="lg-lead${it.round ? ' round' : ''}" ${it.open}>${lgPic(it)}<div class="lg-tx">${kicker ? `<span class="lg-k">${kicker}</span>` : ''}
+const lgLead = (it, kicker) => `<div class="lg-lead${it.round ? ' round' : ''}" data-key="${lgKey(it)}" ${it.open}>${lgPic(it)}<div class="lg-tx">${kicker ? `<span class="lg-k">${kicker}</span>` : ''}
     <b>${esc(it.title)}</b><span class="lg-sub">${it.lead || it.sub}</span>${it.why ? `<p class="lg-why">${it.why}</p>` : ''}</div></div>`;
-const lgCard = (it) => `<div class="lg-it${it.round ? ' round' : ''}" ${it.open}>${lgPic(it)}<b>${esc(it.title)}</b>${it.sub ? `<span class="lg-sub">${it.sub}</span>` : ''}${it.meta ? `<span class="lg-meta">${it.meta}</span>` : ''}</div>`;
+const lgCard = (it) => `<div class="lg-it${it.round ? ' round' : ''}" data-key="${lgKey(it)}" ${it.open}>${lgPic(it)}<b>${esc(it.title)}</b>${it.sub ? `<span class="lg-sub">${it.sub}</span>` : ''}${it.meta ? `<span class="lg-meta">${it.meta}</span>` : ''}</div>`;
 /** A full list: its first entry big under [kicker], then the rest as a grid under [more]. */
 function leadGrid(items, kicker, more = 'More') {
   if (!items.length) return '';
@@ -6070,7 +6188,7 @@ const XLIST = {
   deepCuts: { title: 'Deep cuts', sub: 'Songs by your favorite artists you\'ve hardly played', cards: (x) => (x.deepCuts || []).map((t) => songCard(t, timesPlayed(t.plays))).join(''),
     lead: 'Top of the list', items: (l) => l.items.map((t) => songItem(t, timesPlayed(t.plays))) },
   releases: { title: 'New from your artists', local: true, pl: 'newReleases', rows: () => releaseListHtml(DISCOVER || {}, 'releases'),
-    sub: () => { const d = DISCOVER || {}; return `Out in the last eight weeks, by the ${num(d.relArtists || 0)} artists you play or own. ${relHiddenNote(d)}`; } },
+    sub: () => { const d = DISCOVER || {}; return `Out in the last eight weeks, by the ${plural(d.relArtists || 0, 'artist')} you play or own. ${relHiddenNote(d)}`; } },
   upcoming: { title: 'Coming soon', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'upcoming'),
     sub: () => `Due in the months ahead, with the singles out so far. ${relHiddenNote(DISCOVER || {})}` },
   back: { title: 'Your old favorites are back', local: true, pl: '', rows: () => releaseListHtml(DISCOVER || {}, 'back'),
@@ -6091,8 +6209,10 @@ function openXList(kind) {
 }
 window.onExploreList = (l) => {
   if (!XL || l.kind !== XL.kind || l.req !== XL.req) return;
+  const waited = XL.loading;
   XL = { ...l, req: XL.req };
   renderXList();
+  if (waited) settle($('#xlistBody .xl-rows'));
 };
 function renderXList() {
   if (!XL || !isOpen('xlistPage')) return;
@@ -6101,14 +6221,16 @@ function renderXList() {
   const rows = XL.loading ? '<div class="lin inline indet"><i></i></div>' : d.items ? leadGrid(d.items(XL), d.lead) : d.rows(XL);
   // The list first, to look through; a playlist of it is a small button by the title.
   const pl = d.pl === '' ? '' : d.pl || XL.kind;
-  morph($('#xlistBody'), `<div class="xl-head"><h1 class="page-h">${d.title}</h1>${pl ? xrowPl(pl) : ''}</div><p class="xl-sub">${sub}${XL.items ? `. ${num(XL.items.length)} in all${XL.items.length >= 100 ? ', the first 100 shown' : ''}` : ''}.</p>
-    ${rows}`);
+  // The row on Explore counts the whole list; the page gets its first hundred.
+  const total = XL.items ? Math.max(XL.items.length, ((EXPLORE && EXPLORE.counts) || {})[XL.kind] || 0) : 0;
+  morph($('#xlistBody'), `<div class="xl-head"><h1 class="page-h">${d.title}</h1>${pl ? xrowPl(pl) : ''}</div><p class="xl-sub">${sub}${XL.items ? `. ${total > XL.items.length ? `The first ${num(XL.items.length)} of ${num(total)}` : `${num(total)} in all`}` : ''}.</p>
+    <div class="xl-rows">${rows}</div>`);
 }
 /** Why a release is listed: how much you play its artist (or own of theirs), the singles before it, your plays of it. */
 function relWhy(r, soon) {
-  const fan = r.fanPlays ? `you've played them ${num(r.fanPlays)} times` : r.owned ? `${plural(r.owned, 'record')} of theirs on your shelf` : '';
+  const fan = r.fanPlays ? `you've played them ${r.fanPlays === 1 ? 'once' : `${num(r.fanPlays)} times`}` : r.owned ? `${plural(r.owned, 'record')} of theirs on your shelf` : '';
   const singles = (r.singles || []).length ? `${plural(r.singles.length, 'single')} ${soon ? 'out already' : 'before it'}: ${r.singles.slice(0, 3).map(esc).join(', ')}` : '';
-  const eps = (r.eps || []).length ? `the EP ${r.eps.map(esc).join(' and ')} before it` : '';
+  const eps = (r.eps || []).length ? `the ${r.eps.length > 1 ? 'EPs' : 'EP'} ${r.eps.map(esc).join(' and ')} before it` : '';
   const parts = seriesOf(r) ? `one of ${r.parts.length} in a series: ${partNames(r.parts).map(esc).join(', ')}` : '';
   const t = [fan, parts, singles, eps, r.plays ? `${plural(r.plays, 'play')} so far` : ''].filter(Boolean).join('; ');
   return t ? t[0].toUpperCase() + t.slice(1) : '';
@@ -6128,7 +6250,10 @@ function releaseListHtml(d, part) {
   return `<p class="hint">${{ releases: 'Nothing new from your artists in the last eight weeks.', upcoming: 'Nothing announced yet.', back: 'None of your old favorites put out something new lately.' }[part]}</p>`;
 }
 /** Hides a release from the lists for good; Undo brings it back. */
+let goneAt = 0;
+const tooSoon = () => { const now = performance.now(); if (now - goneAt < 300) return true; goneAt = now; return false; };
 function releaseNope(artist, title) {
+  if (tooSoon()) return;
   const d = DISCOVER || {};
   const r = [...(d.releases || []), ...(d.upcoming || []), ...(d.back || [])].find((x) => x.artist === artist && x.title === title);
   // A series goes as a whole, or its next part would take its place.
@@ -6136,7 +6261,7 @@ function releaseNope(artist, title) {
   const drop = (l) => (l || []).filter((x) => !(x.artist === artist && x.title === title));
   if (DISCOVER) DISCOVER = { ...DISCOVER, releases: drop(DISCOVER.releases), upcoming: drop(DISCOVER.upcoming), back: drop(DISCOVER.back), sugReleases: drop(DISCOVER.sugReleases), relHidden: (DISCOVER.relHidden || 0) + titles.length };
   renderExplore();
-  renderXList();
+  flipMoves(isOpen('xlistPage') ? $('#xlistBody') : null, '.lg-it', renderXList);
   send({ t: 'relNo', artist, title, titles });
   toast(`${title} won't show again`, { label: 'Undo', run: () => send({ t: 'relUndo', artist, title, titles }) });
 }
@@ -6180,12 +6305,18 @@ function releaseWhen(r) {
 }
 /** Not for me: gone from the suggestions, and the artists that led there count a little less. Undo brings it back. */
 function discoverNope(name) {
-  if (LIKE && LIKE.artists) LIKE.artists = LIKE.artists.filter((a) => a.name !== name);
+  if (tooSoon()) return;
+  // More like your new artists is its own list: Undo puts the artist back in it too.
+  const like = LIKE, was = like && like.artists;
+  if (was) like.artists = was.filter((a) => a.name !== name);
   if (DISCOVER && DISCOVER.artists) DISCOVER.artists = DISCOVER.artists.filter((a) => a.name !== name);
   renderExplore();
-  renderForYou();
+  flipMoves(isOpen('forYouPage') ? $('#forYouBody') : null, '.lg-it', renderForYou);
   send({ t: 'discoverNo', name });
-  toast(`${name} won't be suggested again`, { label: 'Undo', run: () => send({ t: 'discoverUndo', name }) });
+  toast(`${name} won't be suggested again`, { label: 'Undo', run: () => {
+    if (was && LIKE === like) { like.artists = was; renderForYou(); }
+    send({ t: 'discoverUndo', name });
+  } });
 }
 
 /** Why an artist is suggested: which of your artists point to them and how strongly, and where to start. */
@@ -6937,7 +7068,8 @@ function tabGo(host, track, steps, key, from, v, ms) {
 function tabBack(track, from) {
   track.style.transform = '';
   const a = track.animate([{ transform: `translateX(${from}px)` }, { transform: 'none' }], { duration: 220, easing: EASE_OUT });
-  a.onfinish = a.oncancel = () => tabsSleep(track);
+  track._back = a;
+  a.onfinish = a.oncancel = () => { if (track._back === a) track._back = null; tabsSleep(track); };
 }
 /** A tap on a tab slides over to it the way a swipe would. */
 function tabTap(host, key) {
@@ -6963,7 +7095,17 @@ function tabSwipe(host) {
     if (!body || track._sliding || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
     if (e.target.closest(SWIPE_SKIP)) return;
     if (e.clientX < 24 || e.clientX > window.innerWidth - 24) return;
-    s = { x: e.clientX, y: e.clientY, track, on: false, woke: false, dx: 0, v: 0, t: performance.now(), frame: 0 };
+    // Caught on its way back from a swipe that fell short: it stays under the finger from where it is.
+    let at = 0;
+    if (track._back) {
+      at = new DOMMatrix(getComputedStyle(track).transform).m41;
+      const a = track._back;
+      track._back = null;
+      a.onfinish = a.oncancel = null;
+      a.cancel();
+      track.style.transform = `translateX(${at.toFixed(1)}px)`;
+    }
+    s = { x: e.clientX - at, y: e.clientY, track, on: Math.abs(at) > 0.5, woke: track.classList.contains('live'), dx: at, v: 0, t: performance.now(), frame: 0 };
   }, { passive: true });
   host.addEventListener('pointermove', (e) => {
     if (!s || !e.isPrimary) return;
@@ -7151,6 +7293,25 @@ function flipRows(scope, sel, render) {
     if (!was.has(r)) { r.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT }); continue; }
     const dy = was.get(r) - top;
     if (Math.abs(dy) > 1) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 260, easing: EASE_OUT });
+  }
+}
+
+/**
+ * [render] changes what [scope] shows; its [sel] elements that stay slide from where they were to where they are now
+ * (sideways too, for a grid), and new ones fade in.
+ */
+function flipMoves(scope, sel, render) {
+  if (!scope || !moving()) { render(); return; }
+  const was = new Map([...scope.querySelectorAll(sel)].map((r) => { const b = r.getBoundingClientRect(); return [r, [b.left, b.top]]; }));
+  render();
+  const vh = window.innerHeight;
+  for (const r of scope.querySelectorAll(sel)) {
+    const b = r.getBoundingClientRect();
+    if (b.top > vh || b.bottom < 0) continue;
+    const w = was.get(r);
+    if (!w) { r.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT }); continue; }
+    const dx = w[0] - b.left, dy = w[1] - b.top;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) r.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 280, easing: EASE_OUT });
   }
 }
 
@@ -8188,7 +8349,7 @@ function openDecade(d) {
     const sh = ev.target.closest('[data-decshelf]');
     if (sh) {
       closeSheet();
-      while (pageStack.length) closePage();
+      closeAllPages();
       shelf.decade = +sh.dataset.decshelf;
       showTab('shelf');
       renderShelf();
@@ -8788,7 +8949,8 @@ function songAt(songs, h) {
   return songs[i] ? { p: songs[i], on: false, i } : { p: null, on: false, i: -1 };
 }
 /** The clock time of hour [h] of the day [s] shows. */
-const hourTime = (s, h) => { const d = new Date(s.range.from * 1000); return fmtTime(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.floor((h % 1) * 60)).getTime()); };
+// (A whole minute in hours isn't always whole again as minutes: 1 + 1/60 gave 0.99999, a minute early.)
+const hourTime = (s, h) => { const d = new Date(s.range.from * 1000); return fmtTime(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.floor((h % 1) * 60 + 1e-6)).getTime()); };
 /** "At 7:53 PM", or "Nothing playing at 3:10 AM, closest" when no song was on then. */
 const scrubWords = (s, h) => { const at = songAt(daySongs(s), h), t = hourTime(s, h); return at.on ? `At ${t}` : `Nothing playing at ${t}${at.p ? ', closest' : ''}`; };
 /**
@@ -8855,12 +9017,16 @@ function scrubTo(st, s, x) {
   if (!slot) return;
   // The row of songs is drawn once; as the finger moves, only the time changes and the row moves along.
   const songs = daySongs(s), at = songAt(songs, h);
+  // One folding away (just cleared) is gone for this pick.
+  if (slot.firstElementChild && slot.firstElementChild._gone) slot.innerHTML = '';
   let rail = slot.querySelector('.dr-songs');
   const words = slot.querySelector('.dr-h span');
   if (!words || (rail ? rail.children.length : 0) !== songs.length) {
+    const first = !slot.firstElementChild;
     morph(slot, scrubHtml(s, h));
     rail = slot.querySelector('.dr-songs');
     if (rail) rail._placed = true;
+    if (first) foldY(slot.firstElementChild, true);
   } else words.textContent = scrubWords(s, h);
   railTo(rail, at.i);
   markSession(viz, s, at.p);
@@ -8876,7 +9042,8 @@ document.addEventListener('pointerdown', (e) => {
   const n = rail.children.length, step = railStep(rail);
   if (n < 2 || !step) return;
   // During a slide, a new swipe counts from the song that one is going to.
-  const from = rail._anim ? rail._to : Math.round(rail.scrollLeft / step);
+  const sliding = !!rail._anim;
+  const from = sliding ? rail._to : Math.round(rail.scrollLeft / step);
   cancelAnimationFrame(rail._anim);
   rail._anim = 0;
   const x0 = e.clientX, y0 = e.clientY, left0 = rail.scrollLeft, id = e.pointerId;
@@ -8902,7 +9069,11 @@ document.addEventListener('pointerdown', (e) => {
     document.removeEventListener('pointermove', move);
     document.removeEventListener('pointerup', end);
     document.removeEventListener('pointercancel', end);
-    if (!on) return;
+    if (!on) {
+      // Only touched (a tap, or the start of a scroll): the slide it stopped goes on to its song.
+      if (sliding) railSlide(rail, from);
+      return;
+    }
     rail._swiped = performance.now();
     // A finger held still before letting go has no speed left.
     if (ev && ev.timeStamp - lt > 80) v = 0;
@@ -8944,18 +9115,51 @@ function scrubClear(viz) {
   if (!viz) return;
   const cur = viz.querySelector('.dstrip .dcur'), slot = viz.querySelector('.dread-slot');
   if (cur) cur.hidden = true;
-  if (slot) slot.innerHTML = '';
+  const el = slot && slot.firstElementChild;
+  if (el && !el._gone) {
+    el._gone = true;
+    foldY(el, false, () => { if (slot.firstElementChild === el) slot.innerHTML = ''; });
+  }
   viz.querySelectorAll('.dsessions .s.hit').forEach((row) => row.classList.remove('hit'));
+}
+/** [el] grows open from nothing ([open]) or folds away, then [done]: what is under it moves along instead of jumping. */
+function foldY(el, open, done) {
+  if (!el || !moving() || !el.offsetParent) { if (done) done(); return; }
+  const cs = getComputedStyle(el);
+  const full = { height: `${el.offsetHeight}px`, marginTop: cs.marginTop, marginBottom: cs.marginBottom, opacity: 1 };
+  const none = { height: '0px', marginTop: '0px', marginBottom: '0px', opacity: 0 };
+  el.style.overflow = 'hidden';
+  const a = el.animate(open ? [none, full] : [full, none], { duration: open ? 240 : 180, easing: EASE_OUT, fill: open ? 'none' : 'forwards' });
+  let over = false;
+  const end = () => { if (over) return; over = true; el.style.overflow = ''; if (done) done(); };
+  a.onfinish = a.oncancel = end;
+  setTimeout(end, 500);
 }
 // A touch on the line picks that time; a finger kept on it and moved sideways moves through the day.
 document.addEventListener('pointerdown', (e) => {
   const st = e.target.closest('.dstrip[data-scrub]');
   if (!st || !e.isPrimary || !STATS || !STATS.day) return;
-  const s = STATS;
+  const s = STATS, x0 = e.clientX, y0 = e.clientY;
   try { st.setPointerCapture(e.pointerId); } catch (_) { /* gone already */ }
-  st.classList.add('held');
-  const move = (ev) => scrubTo(st, s, ev.clientX);
-  const up = () => {
+  // It picks once the touch is clearly meant for it: a finger that moves sideways, rests a moment, or taps. One that
+  // goes up or down scrolls the page (the browser takes it over) and picks nothing.
+  let on = false;
+  const start = (x) => {
+    if (on) return;
+    on = true;
+    st.classList.add('held');
+    scrubTo(st, s, x);
+  };
+  const rest = setTimeout(() => start(x0), 140);
+  const move = (ev) => {
+    if (on) { scrubTo(st, s, ev.clientX); return; }
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { clearTimeout(rest); return; }
+    if (Math.abs(dx) >= 5) { clearTimeout(rest); start(ev.clientX); }
+  };
+  const up = (ev) => {
+    clearTimeout(rest);
+    if (!on && ev.type === 'pointerup' && Math.abs(ev.clientY - y0) <= 8) start(x0);
     st.classList.remove('held');
     st.removeEventListener('pointermove', move);
     st.removeEventListener('pointerup', up);
@@ -8964,7 +9168,6 @@ document.addEventListener('pointerdown', (e) => {
   st.addEventListener('pointermove', move);
   st.addEventListener('pointerup', up);
   st.addEventListener('pointercancel', up);
-  move(e);
 });
 /**
  * Opens a session of Your day to its songs under it, or closes it again. The row grows out from under
@@ -9705,6 +9908,7 @@ function build() {
     if (ls) { openListen(ls); return; }
     const pt = e.target.closest('[data-ptab]');
     if (pt) { tabTap(pt.closest('.page, .tab'), pt.dataset.ptab); return; }
+    if (e.target.closest('[data-ascrobble]')) { openAlbumScrobble(); return; }
     const rn = e.target.closest('[data-relno]');
     if (rn) { releaseNope(rn.dataset.a, rn.dataset.relno); return; }
     const pl = e.target.closest('[data-pl]');
@@ -9725,7 +9929,7 @@ function build() {
     const fc = e.target.closest('[data-fclear]');
     if (fc) { if (fc.dataset.fclear === 'decade') shelf.decade = 0; else shelf.genre = ''; renderShelf(); return; }
     const sg = e.target.closest('[data-statsgenre]');
-    if (sg) { while (pageStack.length) closePage(); statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
+    if (sg) { closeAllPages(); statsGenre = sg.dataset.statsgenre; showTab('stats'); return; }
     const gn = e.target.closest('[data-genre]');
     if (gn) { openGenre(gn.dataset.genre, gn.dataset.glabel); return; }
     if (e.target.closest('[data-genremore]')) { openGenreMore(); return; }
@@ -9733,7 +9937,7 @@ function build() {
     const tn = e.target.closest('[data-topn]');
     if (tn) { const [k, n] = tn.dataset.topn.split(':'); setTopN(k, +n); return; }
     if (e.target.closest('[data-genremap]')) {
-      while (pageStack.length) closePage();
+      closeAllPages();
       // Your taste is on every period's page but the day's.
       if (STATS && statsGroup(STATS) === 'day') statsRange = statsAsked = periodId('month', Date.now());
       statsGoTo = 'taste';
@@ -9805,7 +10009,7 @@ function build() {
     // A day or month from outside Stats (On this day on Explore): Stats for it.
     const dd = e.target.closest('[data-day]');
     if (dd && !e.target.closest('#statsBody, #blockBody')) {
-      while (pageStack.length) closePage();
+      closeAllPages();
       statsRange = statsAsked = dd.dataset.day;
       showTab('stats');
       return;
@@ -9877,15 +10081,21 @@ function build() {
     if (!b) return;
     e.stopPropagation();
     const d = b.dataset;
-    if (b.id === 'identifyBtn') send({ t: IDENT.state === 'listening' ? 'identifyStop' : 'identify' });
-    else if (d.heardYes) heardAnswer(d.heardYes, true);
+    if (b.id === 'identifyBtn') {
+      // Stop takes Identify's place under the finger: a double tap doesn't start and stop it.
+      if (IDENT.state !== 'listening') send({ t: 'identify' });
+      else if (Date.now() - IDENT.at > 600) send({ t: 'identifyStop' });
+    } else if (d.heardYes) heardAnswer(d.heardYes, true);
     else if (d.heardNo) heardAnswer(d.heardNo, false);
-    else if ('heardAll' in d) { HEARD = []; renderHeardCard(); send({ t: 'heardAll' }); }
+    else if ('heardAll' in d) { if (tooSoon()) return; HEARD = []; renderHeardCard(); send({ t: 'heardAll' }); }
     else if (d.heardSpin) {
-      const h = HEARD.find((x) => x.id === d.heardSpin);
-      HEARD = HEARD.filter((x) => !(x.shelf && h && h.shelf && x.shelf.release === h.shelf.release && x.first >= h.first));
-      renderHeardCard();
+      if (tooSoon()) return;
+      // The app says which other songs were that record's (it sends the list again).
+      HEARD = HEARD.filter((x) => x.id !== d.heardSpin);
+      flipMoves($('#heardCard'), '.heard-row', renderHeardCard);
+      // A record still playing opens its page; a listen long over leaves nothing to open.
       pendingSpinOpen = true;
+      setTimeout(() => { pendingSpinOpen = false; }, 3000);
       send({ t: 'heardSpin', id: d.heardSpin });
     } else if ('appInfo' in d) send({ t: 'openAppInfo', pkg: '' });
   };
@@ -10075,7 +10285,7 @@ function build() {
     exploreClick(e);
   };
   $('#forYouBody').onclick = exploreClick;
-  $('#activityBtn').onclick = () => openPage('activityPage');
+  $('#activityBtn').onclick = openActivity;
   $('#npTop').onclick = openPlaying;
   $('#npBar').onclick = (e) => {
     if (e.target.closest('#npbLy')) {

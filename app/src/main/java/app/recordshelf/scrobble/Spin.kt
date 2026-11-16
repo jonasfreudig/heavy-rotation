@@ -115,6 +115,37 @@ class Spin(
         nowPlaying = -1
     }
 
+    /**
+     * Tracks known to have begun at certain times ([at]: index to start, from the songs heard around the phone): each
+     * starts then, and the ones after it follow back to back until the next known one. One whose guessed length would
+     * run into the next known start begins half a minute before that at the latest. Tracks before the first known one
+     * stay where they are.
+     */
+    fun anchor(at: Map<Int, Long>) {
+        var t: Long? = null
+        var prevSide: String? = null
+        for (i in items.indices) {
+            val it = items[i]
+            if (it.state == SpinItem.SKIPPED) continue
+            val known = at[i]
+            if (known != null) t = known
+            else if (t != null && prevSide != null && it.track.side != prevSide) t += Planner.FLIP_GAP_MS
+            t?.let { start ->
+                it.startMs = start
+                t = start + it.track.durSec * 1000L
+            }
+            prevSide = it.track.side
+        }
+        var next: Long? = null
+        for (i in items.indices.reversed()) {
+            val it = items[i]
+            if (it.state == SpinItem.SKIPPED) continue
+            next?.let { n -> if (i !in at && it.startMs > n - 30_000) it.startMs = n - 30_000 }
+            next = it.startMs
+        }
+        nowPlaying = -1
+    }
+
     /** The side after the last one in this session, if the record has one. */
     fun nextSide(): String? {
         val last = (live().lastOrNull() ?: items.lastOrNull())?.track?.side ?: return null

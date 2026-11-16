@@ -64,6 +64,7 @@ import app.recordshelf.util.JsonFile
 import app.recordshelf.util.Palette
 import app.recordshelf.util.Text
 import app.recordshelf.util.finiteJson
+import app.recordshelf.util.objects
 import app.recordshelf.util.strings
 import org.json.JSONArray
 import org.json.JSONObject
@@ -623,6 +624,8 @@ object Core {
 
     fun detachUi(u: Ui) {
         if (ui === u) ui = null
+        // Identify listens only with the app in front: gone, it stops, and nothing is sent to be looked up.
+        identifyStop = true
     }
 
     /** The app came to the front: finish a pending Last.fm approval, catch up the spin, send what waits. */
@@ -816,6 +819,21 @@ object Core {
             "search" -> {
                 val q = msg.optString("q")
                 statsExec.execute { push("onSearch") { currentStats()?.search(q) ?: JSONObject().put("q", q) } }
+            }
+            // Albums from Deezer's catalog for what was typed: the ones you never played aren't in your history.
+            "searchCatalog" -> {
+                val q = msg.optString("q")
+                val n = ++catalogAsks
+                if (q.trim().length >= 2) webExec.execute {
+                    // Typed on since: the newer question is the one to answer.
+                    if (n != catalogAsks) return@execute
+                    val found = try {
+                        deezer.searchAlbums(q.trim())
+                    } catch (_: Exception) {
+                        null
+                    }
+                    push("onSearchCatalog") { JSONObject().put("q", q).put("albums", JSONArray(found.orEmpty().map { it.toJson() })).put("error", found == null) }
+                }
             }
             "explore" -> statsExec.execute {
                 concertsMaybeDue()
@@ -1236,14 +1254,23 @@ object Core {
                 val r = flushInner()
                 if (r != null && r.error == null && r.waiting == 0) toast("All scrobbles sent")
             }
+            "scrobbleAlbum" -> {
+                val tracks = msg.optJSONArray("tracks")?.objects().orEmpty()
+                val mode = if (msg.optString("when") == "at") When.AT else When.FINISHED
+                scrobExec.execute { manualAlbumInner(msg.optString("artist"), msg.optString("album"), msg.optString("cover"), tracks, mode, msg.optLong("at")) }
+            }
             "heardYes" -> scrobExec.execute { heardYesInner(listOf(msg.optString("id"))) }
             "heardAll" -> scrobExec.execute { heardYesInner(heard.waiting().map { it.id }) }
             "heardNo", "heardUndo" -> scrobExec.execute {
                 heard.get(msg.optString("id"))?.let { h ->
-                    h.status = if (msg.optString("t") == "heardNo") HeardSong.DROPPED else HeardSong.NEW
+                    // Undo takes back a no; a song scrobbled since (alone or with its record) stays that.
+                    if (msg.optString("t") == "heardNo") {
+                        if (h.status == HeardSong.NEW) h.status = HeardSong.DROPPED
+                        if (offerUp?.first == h.id) dropOffer()
+                    } else if (h.status == HeardSong.DROPPED) h.status = HeardSong.NEW
                     heard.save()
-                    pushHeard()
                 }
+                pushHeard()
             }
             "heardSpin" -> scrobExec.execute { heardSpinInner(msg.optString("id")) }
             "identifyStop" -> identifyStop = true
@@ -1535,24 +1562,31 @@ object Core {
         PlanTrack(t.artist, t.title, rel.title, rel.artist, if (est) prefs.defaultTrackSec else t.durSec, i + 1, t.pos, t.side, est)
     }
 
-    private fun startSpinInner(releaseId: Long, idx: List<Int>, mode: When, at: Long) {
+    /**
+     * Starts scrobbling tracks [idx] of a record. [adjust] may correct the plan before anything is sent (the times of
+     * songs heard from it). Returns the session when it is on the turntable now, null when it was all in the past.
+     */
+    private fun startSpinInner(releaseId: Long, idx: List<Int>, mode: When, at: Long, adjust: (Spin) -> Unit = {}): Spin? {
         val rel = loadRelease(releaseId)
         if (rel == null) {
             toast("Open the record again; its tracklist isn't loaded")
-            return
+            return null
         }
         val tracks = planTracks(rel, idx)
-        if (tracks.isEmpty()) return
+        if (tracks.isEmpty()) return null
         val now = System.currentTimeMillis()
         val starts = Planner.starts(tracks, mode, at, now)
         val s = Spin(
             "$releaseId-$now", releaseId, rel.title, rel.artist, collection.firstOrNull { it.releaseId == releaseId }?.let { faceOf(it) } ?: rel.thumb.ifEmpty { rel.cover }, rel.sides,
             tracks.zip(starts).map { (t, st) -> SpinItem(t, st) }.toMutableList(),
         )
+        adjust(s)
         spinCounts = spinCounts + (releaseId.toString() to (spinCounts[releaseId.toString()] ?: 0) + 1)
         writeCounts("spins.json", spinCounts)
-        if (s.items.all { now >= it.endMs }) {
+        val live = !s.items.all { now >= it.endMs }
+        if (!live) {
             // Played in the past: scrobble it all now and leave the record that is spinning alone.
+            heardIntoRecord(s, live = false)
             enqueue(s, s.takeDue(now))
             flushInner()
             pushState()
@@ -1560,9 +1594,11 @@ object Core {
         } else {
             spin?.let { old -> enqueue(old, old.stop(now)) }
             spin = s
+            heardIntoRecord(s, live = true)
             tickInner()
         }
         pushCollection()
+        return if (live) s else null
     }
 
     private fun playSideInner(releaseId: Long, side: String) {
@@ -1572,6 +1608,7 @@ object Core {
         val now = System.currentTimeMillis()
         if (s != null && s.releaseId == releaseId && s.isOver(now)) {
             enqueue(s, s.flip(planTracks(rel, rel.tracks.indices.filter { rel.tracks[it].side == side }), now))
+            heardIntoRecord(s, live = true)
             tickInner()
             return
         }
@@ -1584,6 +1621,7 @@ object Core {
         val rel = loadRelease(s.releaseId) ?: return
         val now = System.currentTimeMillis()
         enqueue(s, s.flip(planTracks(rel, rel.tracks.indices.filter { rel.tracks[it].side == side }), now))
+        heardIntoRecord(s, live = true)
         tickInner()
     }
 
@@ -1753,6 +1791,36 @@ object Core {
         }
     }
 
+    /** Counts the page's catalog searches; one overtaken by a newer one isn't asked. */
+    @Volatile private var catalogAsks = 0
+
+    // ---- an album scrobbled by hand: heard somewhere the phone and the turntable don't see (on scrobExec) ----
+
+    /**
+     * Album [album] by [artist] was heard some time ago: its [tracks] ({title, dur in seconds, n}) back to back, over
+     * just now ([mode] FINISHED) or started [at]. Each is scrobbled at the time it played; what Last.fm wouldn't take
+     * (not over yet, or more than two weeks ago) is left out.
+     */
+    private fun manualAlbumInner(artist: String, album: String, cover: String, tracks: List<JSONObject>, mode: When, at: Long) {
+        val plan = tracks.mapIndexed { i, t ->
+            val dur = t.optInt("dur")
+            PlanTrack(t.optString("artist").ifBlank { artist }, t.optString("title").trim(), album, artist, if (dur > 0) dur else prefs.defaultTrackSec, t.optInt("n", i + 1), "", "", dur <= 0)
+        }.filter { it.title.isNotEmpty() && it.artist.isNotBlank() }
+        val now = System.currentTimeMillis()
+        val past = Planner.past(plan, mode, at, now)
+        if (past.isEmpty()) {
+            toast("Nothing to scrobble: Last.fm takes plays that are over, from the last two weeks")
+            return
+        }
+        val items = past.map { (t, start) -> t to QueuedScrobble(UUID.randomUUID().toString(), fixed(t.toScrobble(start)), "manual", now) }
+        items.forEach { (t, q) -> if (!t.estimated) keepLength(q.s) }
+        queue.add(items.map { it.second }).forEach { activity.add(it, cover, "waiting", "", "By hand") }
+        activity.save()
+        if (past.size < plan.size) toast("${past.size} of ${plan.size} tracks scrobbled; Last.fm wouldn't take the others")
+        pushActivity()
+        flushInner()
+    }
+
     // ---- heard around you: Pixel's Now Playing and Identify (the list on scrobExec, lookups on lookupExec) ----
 
     private val heard by lazy { HeardLog(file("heard.json")) }
@@ -1762,6 +1830,18 @@ object Core {
 
     /** When a "playing it on vinyl?" note last went out per record, so one record asks once. */
     private val offered = HashMap<Long, Long>()
+
+    /** The "playing it on vinyl?" note that is up: the heard song it is about and its record. */
+    private var offerUp: Pair<String, Long>? = null
+
+    /** The note is answered (in the app, or the record was started): it goes. */
+    private fun dropOffer() {
+        HeardNotifier.cancel(ctx)
+        offerUp = null
+    }
+
+    /** When a heard song began: Now Playing knows a song some seconds in; Identify says where in the song it listened. */
+    private fun began(h: HeardSong) = if (h.src == "nowplaying") h.firstAt - Heard.LAG_MS else h.firstAt
 
     private fun npFormat(pkg: String): String? = npFormats.getOrPut(pkg) {
         try {
@@ -1785,8 +1865,8 @@ object Core {
         if (Phone.isPlaying()) return
         val at = System.currentTimeMillis()
         scrobExec.execute {
-            val formats = listOfNotNull(npFormat(pkg)) + Heard.FALLBACK_FORMATS
-            val (artist, title) = Heard.parse(text, formats) { knownArtist(it) } ?: return@execute
+            val formats = listOfNotNull(npFormat(pkg)) + Heard.fallbackFormats(java.util.Locale.getDefault().language)
+            val (artist, title) = Heard.parse(text, formats, { knownArtist(it) }) { a, t -> (stats?.findTrack(a, t) ?: -1) >= 0 } ?: return@execute
             heardInner(artist, title, "", at, "nowplaying")
         }
     }
@@ -1797,12 +1877,10 @@ object Core {
      */
     private fun heardInner(artist: String, title: String, album: String, at: Long, src: String): HeardSong? {
         spin?.let { s ->
-            val i = s.items.indexOfFirst {
-                it.state != SpinItem.SKIPPED && Heard.sameSong(it.track.title, title) &&
-                    (Heard.sameArtist(it.track.artist.ifEmpty { s.artist }, artist) || Heard.sameArtist(s.artist, artist))
-            }
+            val start = if (src == "nowplaying") at - Heard.LAG_MS else at
+            val i = spinItemFor(s, artist, title, start)
             if (i >= 0) {
-                followRecord(s, i, at)
+                if (followRecord(s, i, start)) tickInner()
                 return null
             }
         }
@@ -1813,23 +1891,71 @@ object Core {
         return h
     }
 
-    /** Track [i] of the spinning record [s] was heard at [at]: if the schedule says another track, it moves to match. */
-    private fun followRecord(s: Spin, i: Int, at: Long) {
+    /**
+     * The track of record [s] that song [title] by [artist], begun at [start], is: the one planned around then; else
+     * the next of that name still to play (a reprise shares its name); else one already counted that the plan has
+     * within ten minutes of then (the plan is off). -1 if the record has no such track, or only ones played at quite
+     * another time: that is a new listen, for the list.
+     */
+    private fun spinItemFor(s: Spin, artist: String, title: String, start: Long): Int {
+        val m = s.items.indices.filter { k ->
+            val it = s.items[k]
+            it.state != SpinItem.SKIPPED && Heard.sameSong(it.track.title, title) &&
+                (Heard.sameArtist(it.track.artist.ifEmpty { s.artist }, artist) || Heard.sameArtist(s.artist, artist))
+        }
+        return m.firstOrNull { start >= s.items[it].startMs - Heard.NEAR_MS && start <= s.items[it].endMs }
+            ?: m.firstOrNull { s.items[it].state == SpinItem.PLANNED }
+            ?: m.firstOrNull { start >= s.items[it].startMs - 10 * 60_000 && start <= s.items[it].endMs + 10 * 60_000 }
+            ?: -1
+    }
+
+    /**
+     * Track [i] of record [s] began at [start]: if the plan has it at another time, the plan moves to match (and true
+     * comes back: the caller brings the session up to date). A track already counted may still be named a while after
+     * it ended; that moves nothing.
+     */
+    private fun followRecord(s: Spin, i: Int, start: Long): Boolean {
         val item = s.items[i]
-        if (at >= item.startMs - Heard.LAG_MS && at <= item.endMs + 30_000) return
-        s.resync(i, at - Heard.LAG_MS)
-        tickInner()
+        val after = if (item.state == SpinItem.SCROBBLED) 90_000 else 10_000
+        if (start >= item.startMs - Heard.NEAR_MS && start <= item.endMs + after) return false
+        s.resync(i, start)
+        return true
+    }
+
+    /**
+     * Record [s] starts (or its next side does): songs on the list that were heard from it are its plays now, and
+     * the note asking about it goes. On the turntable now ([live]), the latest of them that can still be playing says
+     * where the needle is, before anything is sent.
+     */
+    private fun heardIntoRecord(s: Spin, live: Boolean) {
+        val mine = heard.waiting().mapNotNull { h -> spinItemFor(s, h.artist, h.title, began(h)).takeIf { it >= 0 }?.let { h to it } }
+        if (live) {
+            val now = System.currentTimeMillis()
+            mine.filter { (h, i) -> began(h) <= now && began(h) >= now - s.items[i].track.durSec * 1000L - 2 * 60_000 }
+                .maxByOrNull { began(it.first) }?.let { (h, i) -> followRecord(s, i, began(h)) }
+        }
+        val from = s.items.filter { it.state != SpinItem.SKIPPED }.minOfOrNull { it.startMs } ?: return
+        val to = s.endMs()
+        val settled = mine.map { it.first }.filter { began(it) >= from - 60_000 && began(it) <= to + 60_000 }
+        settled.forEach { it.status = HeardSong.VINYL }
+        if (settled.isNotEmpty()) {
+            heard.save()
+            pushHeard()
+        }
+        if (offerUp?.second == s.releaseId) dropOffer()
     }
 
     /** The record on your shelf with song [title] by [artist] (the one you spin most, else the fullest), or null. */
     private fun shelfHit(artist: String, title: String): ShelfHit? {
         var best: Triple<CollectionItem, Release, Int>? = null
-        for (c in collection.filter { Heard.sameArtist(it.artist, artist) }.take(8)) {
-            val rel = loadRelease(c.releaseId) ?: try {
+        // Every record of theirs whose tracklist is on the phone; of the others, a few are looked up.
+        var asked = 0
+        for (c in collection.filter { Heard.sameArtist(it.artist, artist) }) {
+            val rel = loadRelease(c.releaseId) ?: (if (asked++ < 4) try {
                 resolveRelease(c.releaseId).also { releaseFile(c.releaseId).write(it.toJson().toString()) }
             } catch (_: Exception) {
                 null
-            } ?: continue
+            } else null) ?: continue
             val i = Heard.trackIndex(rel.tracks.map { it.title }, title)
             if (i < 0) continue
             val b = best
@@ -1862,6 +1988,7 @@ object Core {
             val now = System.currentTimeMillis()
             if (hit != null && h.status == HeardSong.NEW && h.src == "nowplaying" && spin == null && now - (offered[hit.releaseId] ?: 0L) > OFFER_AGAIN_MS) {
                 offered[hit.releaseId] = now
+                offerUp = h.id to hit.releaseId
                 HeardNotifier.offer(ctx, h)
             }
         }
@@ -1878,6 +2005,7 @@ object Core {
             queue.add(listOf(q)).forEach { activity.add(it, h.cover, "waiting", "", if (h.src == "identify") "Identify" else "Now Playing") }
             h.status = HeardSong.SCROBBLED
         }
+        if (list.any { it.id == offerUp?.first }) dropOffer()
         heard.save()
         activity.save()
         pushHeard()
@@ -1889,25 +2017,54 @@ object Core {
      * heard. The songs of the record heard after it say where the needle is now.
      */
     private fun heardSpinInner(id: String) {
-        val h = heard.get(id) ?: return
-        val hit = h.shelf ?: return
+        val h = heard.get(id)
+        val hit = h?.shelf
+        // The note about it goes (after a restart nothing says which one is up: then it goes too).
+        val up = offerUp
+        if (up == null || up.first == id || up.second == hit?.releaseId) dropOffer()
+        // Answered already (in the app, while the note was still up), or nothing to go by: the list as it is.
+        if (h == null || hit == null || h.status != HeardSong.NEW) {
+            pushHeard()
+            return
+        }
+        val start = began(h)
+        // That record is on the turntable since (started from its page): the song is one of its plays, nothing starts anew.
+        spin?.let { s ->
+            val first = s.items.filter { it.state != SpinItem.SKIPPED }.minOfOrNull { it.startMs } ?: Long.MAX_VALUE
+            if (s.releaseId == hit.releaseId && start >= first - 45 * 60_000) {
+                h.status = HeardSong.VINYL
+                heard.save()
+                pushHeard()
+                return
+            }
+        }
         val rel = loadRelease(hit.releaseId)
         if (rel == null) {
             toast("Open the record again; its tracklist isn't loaded")
+            pushHeard()
             return
         }
-        val idx = rel.tracks.indices.filter { it >= hit.index && (hit.side.isEmpty() || rel.tracks[it].side == hit.side) }
-        val same = heard.all().filter { it.shelf?.releaseId == hit.releaseId && it.firstAt >= h.firstAt && it.status == HeardSong.NEW }
-        startSpinInner(hit.releaseId, idx, When.AT, h.firstAt - Heard.LAG_MS)
+        val side = rel.tracks.indices.filter { it >= hit.index && (hit.side.isEmpty() || rel.tracks[it].side == hit.side) }
+        // The songs of that side heard after it, within the time the side takes (and a margin for lengths only guessed).
+        val until = h.firstAt + planTracks(rel, side).sumOf { it.durSec * 1000L } * 5 / 4 + 5 * 60_000
+        val later = heard.all().filter { x ->
+            x.id != h.id && x.firstAt > h.firstAt && x.firstAt <= until && Heard.sameArtist(x.artist, h.artist) && side.any { Heard.sameSong(rel.tracks[it].title, x.title) }
+        }
+        // One you already scrobbled on its own isn't scrobbled again with the record.
+        val sent = later.filter { it.status == HeardSong.SCROBBLED }
+        val idx = side.filter { i -> sent.none { Heard.sameSong(rel.tracks[i].title, it.title) } }
+        val same = later.filter { it.status == HeardSong.NEW }
+        startSpinInner(hit.releaseId, idx, When.AT, start) { s ->
+            // Where each of them was heard is when it began, whatever the lengths say.
+            val at = HashMap<Int, Long>()
+            for (x in same) {
+                val i = s.items.indexOfFirst { Heard.sameSong(it.track.title, x.title) }
+                if (i > 0) at[i] = began(x)
+            }
+            if (at.isNotEmpty()) s.anchor(at)
+        }
         (same + h).forEach { it.status = HeardSong.VINYL }
         heard.save()
-        HeardNotifier.cancel(ctx)
-        val latest = same.filter { it.id != h.id }.maxByOrNull { it.firstAt }
-        val s = spin
-        if (latest != null && s != null && s.releaseId == hit.releaseId) {
-            val i = s.items.indexOfFirst { Heard.sameSong(it.track.title, latest.title) }
-            if (i >= 0) followRecord(s, i, latest.firstAt)
-        }
         pushHeard()
     }
 
@@ -1997,7 +2154,8 @@ object Core {
             val from = maxOf(prefs.shadowSince, now - 7 * 24 * HOUR) / 1000
             val to = (now - 10 * 60_000) / 1000
             val ours = activity.listens { it.optString("src") == "phone" && it.optString("status") == "shadow" && it.optLong("ts") in from..to }
-            val vinyl = activity.listens { it.optString("src") == "vinyl" }
+            // Records, albums scrobbled by hand and songs heard around you reached Last.fm from here, not from a music app.
+            val vinyl = activity.listens { it.optString("src") in setOf("vinyl", "manual", "heard") }
             val theirs = ArrayList<Listen>()
             if (to > from) {
                 var page = 1
@@ -3048,20 +3206,22 @@ object Core {
                 }
                 relDone++
             }
-            // The songs of new albums that may have had a release lead up to them under another name.
-            for (id in songsDue(today)) {
-                try {
-                    val titles = deezer.album(id).tracks.map { it.first }
-                    synchronized(dstore) { dpart("relSongs").put(id.toString(), JSONObject().put("at", now).put("list", JSONArray(titles))) }
-                    fails = 0
-                } catch (_: Exception) {
-                    failed()
-                }
-            }
             if (gapsDue) {
                 saveDiscover()
                 pushDiscover()
                 gapsInner(s, today)
+            }
+            // The songs of new albums that may have had a release lead up to them under another name. One Deezer
+            // won't list is noted and asked again a day later.
+            for (id in songsDue(today)) {
+                val titles = try {
+                    deezer.album(id).tracks.map { it.first }
+                } catch (_: Exception) {
+                    null
+                }
+                synchronized(dstore) {
+                    dpart("relSongs").put(id.toString(), JSONObject().put("at", now).put("list", JSONArray(titles.orEmpty())).put("failed", titles == null))
+                }
             }
         } catch (_: Exception) {
             // Offline: what was found so far; the rest is asked next time.
@@ -3074,8 +3234,12 @@ object Core {
                 val songs = dpart("relSongs")
                 songs.keys().asSequence().toList().filter { now - (songs.optJSONObject(it)?.optLong("at") ?: 0L) > 120 * 24 * HOUR }.forEach { songs.remove(it) }
             }
-            saveDiscover()
             relBusy = false
+            try {
+                saveDiscover()
+            } catch (_: Exception) {
+                // A full disk: the lists are in memory, and written the next time.
+            }
             pushDiscover()
         }
     }
@@ -3111,11 +3275,16 @@ object Core {
         rel.keys().asSequence().toList().flatMap { k ->
             val a = rel.optJSONObject(k)?.optJSONArray("list") ?: return@flatMap emptyList()
             Releases.needSongs((0 until a.length()).map { DzRelease.fromJson(a.getJSONObject(it)) }, today).map { it.id }
-        }.filter { !have.has(it.toString()) }.distinct()
+        }.filter { id ->
+            val e = have.optJSONObject(id.toString())
+            e == null || (e.optBoolean("failed") && System.currentTimeMillis() - e.optLong("at") > 24 * HOUR)
+        }.distinct()
     }
 
-    /** An album's song titles as looked up for [Releases.find], or null. */
-    private fun relSongs(r: DzRelease): List<String>? = synchronized(dstore) { dpart("relSongs").optJSONObject(r.id.toString())?.optJSONArray("list")?.strings() }
+    /** An album's song titles as looked up for [Releases.find], or null (not asked yet, or Deezer wouldn't say). */
+    private fun relSongs(r: DzRelease): List<String>? = synchronized(dstore) {
+        dpart("relSongs").optJSONObject(r.id.toString())?.takeIf { !it.optBoolean("failed") }?.optJSONArray("list")?.strings()
+    }
 
     /** The releases you said you don't want to see (album keys). */
     private fun relHidden(): Set<String> = synchronized(dstore) { dpart("relNo").keys().asSequence().toSet() }

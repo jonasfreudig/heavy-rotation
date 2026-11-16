@@ -25,6 +25,11 @@ data class DzRelease(val id: Long, val title: String, val type: String, val date
     }
 }
 
+/** An album found by searching Deezer's catalog: [type] is "album", "ep" or "single", [tracks] how many songs it has. */
+data class DzFound(val id: Long, val title: String, val artist: String, val type: String, val tracks: Int, val cover: String) {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("title", title).put("artist", artist).put("type", type).put("tracks", tracks).put("cover", cover)
+}
+
 /** An album with its tracklist (lengths in seconds, in order). */
 data class DzAlbum(
     val id: Long, val title: String, val artist: String, val date: String, val label: String, val cover: String, val link: String,
@@ -111,6 +116,17 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
             path = o.optString("next").takeIf { it.startsWith(base) }?.removePrefix(base)
         }
         return out
+    }
+
+    /** Albums matching what was typed ([query]: a title, an artist, or both), as Deezer ranks them; up to [limit]. */
+    fun searchAlbums(query: String, limit: Int = 8): List<DzFound> {
+        val data = get("/search/album?q=${q(query)}&limit=$limit").optJSONArray("data") ?: return emptyList()
+        return (0 until data.length()).map { data.getJSONObject(it) }.map {
+            DzFound(
+                it.optLong("id"), it.optString("title"), it.optJSONObject("artist")?.optString("name").orEmpty(), it.optString("record_type"),
+                it.optInt("nb_tracks"), it.optString("cover_big").takeIf { c -> c.startsWith("https://") } ?: "",
+            )
+        }.filter { it.id > 0 && it.title.isNotBlank() && it.artist.isNotBlank() }
     }
 
     /**

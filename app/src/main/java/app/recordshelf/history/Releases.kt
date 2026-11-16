@@ -66,6 +66,9 @@ object Releases {
     /** An EP out this long before an album leads up to it (once the album is out). */
     const val EP_LEAD_DAYS = 30L
 
+    /** A release with this many songs at most is EP-sized, whatever the catalog files it as. */
+    const val EP_SONGS = 6
+
     /** Parts of a series come out at most this far apart. */
     const val SERIES_DAYS = 60L
 
@@ -135,20 +138,24 @@ object Releases {
             // Mob": four songs of "Perfecth", two days before it).
             val albums = records.filter { it.type == "album" && it.date <= now && it.id > 0 }.sortedBy { it.date }
             val epLead = HashMap<DzRelease, MutableList<DzRelease>>()
-            // A release named after a song of an album out soon after it led up to it (Deezer calls "Run Away From the
-            // Mob" an album in some places).
+            // A short release named after a song of an album out soon after it led up to it. Deezer calls "Run Away From
+            // the Mob" an album in some places, so one filed as an album counts when it is EP-sized and all its songs
+            // are on that album: a whole album whose title track turns up on a later live record stays its own.
             for (e in records.filter { it.type != "single" }) {
                 val want = Text.normLoose(e.title)
+                val own = if (e.type == "album") songs(e)?.map { Text.normLoose(it) }?.takeIf { it.size in 1..EP_SONGS } ?: continue else null
                 val a = albums.firstOrNull { a ->
-                    a !== e && a.date >= e.date && !LocalDate.parse(a.date).isAfter(LocalDate.parse(e.date).plusDays(LEAD_DAYS)) &&
-                        songs(a)?.any { Text.normLoose(it) == want } == true
+                    if (a === e || a.date < e.date || LocalDate.parse(a.date).isAfter(LocalDate.parse(e.date).plusDays(LEAD_DAYS)) || kind(a.title).isNotEmpty()) return@firstOrNull false
+                    val theirs = songs(a)?.map { Text.normLoose(it) } ?: return@firstOrNull false
+                    want in theirs && (own == null || (own.size < theirs.size && theirs.containsAll(own)))
                 } ?: continue
                 epLead.getOrPut(a) { ArrayList() } += e
                 led += e
             }
             for (e in records.filter { it.type == "ep" && it !in led }) {
                 val d = LocalDate.parse(e.date)
-                val a = albums.firstOrNull { it.date >= e.date && !LocalDate.parse(it.date).isAfter(d.plusDays(EP_LEAD_DAYS)) } ?: continue
+                // (Not up to a live or remix album: that isn't what an EP of new songs announces.)
+                val a = albums.firstOrNull { it.date >= e.date && !LocalDate.parse(it.date).isAfter(d.plusDays(EP_LEAD_DAYS)) && kind(it.title).isEmpty() } ?: continue
                 epLead.getOrPut(a) { ArrayList() } += e
                 led += e
             }
@@ -217,17 +224,24 @@ object Releases {
 
     /**
      * The albums of [rels] (one artist's) whose songs would tell whether an album or EP out up to [LEAD_DAYS] before
-     * them led up to them: out by [today], in the last [BACK_DAYS] days, on Deezer.
+     * them led up to them: the ones out by [today], in the last [BACK_DAYS] days, on Deezer, and with them what Deezer
+     * files as an album among those before them (to see whether it is EP-sized and all on the later one).
      */
     fun needSongs(rels: List<DzRelease>, today: LocalDate): List<DzRelease> {
         val records = records(rels)
         val from = today.minusDays(BACK_DAYS).toString()
         val now = today.toString()
-        return records.filter { a ->
-            a.type == "album" && a.id > 0 && a.date in from..now && records.any { e ->
+        val out = LinkedHashSet<DzRelease>()
+        for (a in records) {
+            if (a.type != "album" || a.id <= 0 || a.date !in from..now || kind(a.title).isNotEmpty()) continue
+            val before = records.filter { e ->
                 e !== a && e.type != "single" && e.date <= a.date && !LocalDate.parse(a.date).isAfter(LocalDate.parse(e.date).plusDays(LEAD_DAYS))
             }
+            if (before.isEmpty()) continue
+            out += a
+            out += before.filter { it.type == "album" && it.id > 0 }
         }
+        return out.toList()
     }
 
     /**

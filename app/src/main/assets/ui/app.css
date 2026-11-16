@@ -277,12 +277,12 @@ input[type=datetime-local] { color-scheme: inherit; }
 
 /* little "playing" bars */
 .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; padding: 4px; box-sizing: content-box; border-radius: 6px; background: var(--md-primary); }
-.eq i { width: 3px; background: var(--md-on-primary); border-radius: 1px; animation: eq 1s ease-in-out infinite; }
+.eq i { width: 3px; height: 100%; transform-origin: bottom; background: var(--md-on-primary); border-radius: 1px; animation: eq 1s ease-in-out infinite; }
 .eq i:nth-child(2) { animation-delay: -.4s; }
 .eq i:nth-child(3) { animation-delay: -.7s; }
 .eq.plain { background: none; padding: 0; }
 .eq.plain i { background: var(--md-primary); }
-@keyframes eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+@keyframes eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 
 .spin-card {
   display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 4px 14px; width: 100%; padding: 12px; margin: 8px 0 4px;
@@ -385,12 +385,16 @@ input[type=datetime-local] { color-scheme: inherit; }
 .heard-line { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--md-on-surface-variant); font-size: 13px; }
 .heard-line .i { width: 20px; height: 20px; color: var(--md-primary); flex: none; }
 .heard-line .lin { flex: 1; margin: 0; }
-.heard-row { align-items: center; }
+.heard-bar i { width: 100%; transform-origin: left; transform: scaleX(0); transition: none; }
+/* The offer to scrobble the record a song is on has a line of its own under the song, as wide as its words need. */
+.heard-row { align-items: center; flex-wrap: wrap; row-gap: 6px; }
+/* The song's line is as wide as the row lets it, so the offer never fits beside it. */
+.heard-row .grow { flex: 1 1 calc(100% - 150px); }
 .heard-row .grow small + small { opacity: .8; white-space: normal; }
-.heard-row .heard-rec { margin-top: 6px; max-width: 100%; min-width: 0; justify-content: flex-start; }
+.heard-row .heard-rec { margin: 0 0 2px 56px; max-width: calc(100% - 56px); min-width: 0; justify-content: flex-start; }
 .heard-row .heard-rec span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .heard-row .heard-rec .i { width: 16px; height: 16px; flex: none; }
-.heard-btns { display: flex; gap: 2px; flex: none; }
+.heard-btns { display: flex; gap: 8px; flex: none; }
 .heard-btns .yes { background: var(--md-primary-container); color: var(--md-on-primary-container); }
 .card.heard .btn-row { margin-top: 8px; }
 
@@ -542,9 +546,11 @@ button.tile .delta { align-self: flex-start; }
 .lg-it b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 500 17px/22px var(--font); margin: 10px 2px 0; }
 .lg-it .lg-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 400 15px/20px var(--font); color: var(--md-on-surface-variant); margin: 1px 2px 0; }
 .lg-it .lg-meta { display: block; font: 500 13px/18px var(--font); color: var(--md-primary); margin: 4px 2px 0; }
+.lg-lead { transition: transform .12s; }
 .lg-it:active .cover, .lg-lead:active { transform: scale(.98); }
 .lg-x { position: absolute; top: 8px; right: 8px; z-index: 1; width: 32px; height: 32px; border-radius: 50%; background: rgba(0, 0, 0, .42); color: #fff; display: grid; place-items: center; }
 .lg-x .i { width: 16px; height: 16px; }
+.lg-x::after { content: ''; position: absolute; inset: -7px; }
 .lg-it.round .lg-x { top: 0; right: 0; }
 .xlist-year + .lgrid { margin-top: 10px; margin-bottom: 18px; }
 
@@ -690,7 +696,8 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .whybar i { height: 8px; border-radius: 4px; background: var(--md-surface-container-highest); overflow: hidden; }
 .whybar i b { display: block; height: 100%; border-radius: 4px; background: var(--md-primary); }
 .whybar small { color: var(--md-on-surface-variant); font-size: 11px; }
-.snackbar.acts { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+.snackbar.acts { display: flex; align-items: center; gap: 12px; }
+.snackbar.acts.show { pointer-events: auto; }
 .snack-act { margin-left: auto; color: var(--md-inverse-primary); font-weight: 600; padding: 6px 4px; }
 .set2 { display: grid; grid-auto-flow: column; grid-template-columns: 1fr 1fr; }
 .set2 .r { grid-template-columns: 20px minmax(0, 1fr) auto; padding: 9px 10px; gap: 6px; }
@@ -922,7 +929,7 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .slide .sumhead { display: flex; align-items: center; gap: 14px; }
 .slide .sumhead .cover { width: 72px; border-radius: 12px; flex: none; }
 .slide .eqbig { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-bottom: 18px; }
-.slide .eqbig i { width: 12px; border-radius: 3px; background: currentColor; animation: eq 1s ease-in-out infinite; }
+.slide .eqbig i { width: 12px; height: 100%; transform-origin: bottom; border-radius: 3px; background: currentColor; animation: eq 1s ease-in-out infinite; }
 .slide .eqbig i:nth-child(2) { animation-delay: -.3s; }
 .slide .eqbig i:nth-child(3) { animation-delay: -.6s; }
 .slide .eqbig i:nth-child(4) { animation-delay: -.15s; }

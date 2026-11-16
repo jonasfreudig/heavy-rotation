@@ -67,8 +67,18 @@ object Heard {
         else -> pkg in NOW_PLAYING_APPS
     }
 
-    /** How Now Playing words a song when its own words can't be read: English, then German. */
-    val FALLBACK_FORMATS = listOf("%1\$s by %2\$s", "%1\$s von %2\$s")
+    /**
+     * How Now Playing words a song when its own words can't be read: the phone's language ([lang], "de" or anything
+     * else) first, so "Killed by Death von Motörhead" reads right on a German phone.
+     */
+    fun fallbackFormats(lang: String): List<String> {
+        val en = "%1\$s by %2\$s"
+        val de = "%1\$s von %2\$s"
+        return if (lang == "de") listOf(de, en) else listOf(en, de)
+    }
+
+    /** A heard song counts as its planned track when it began this close before the track's planned start. */
+    const val NEAR_MS = 40_000L
 
     /** The same song heard again within this time is the same listen. */
     const val SAME_LISTEN_MS = 10 * 60_000L
@@ -108,13 +118,14 @@ object Heard {
 
     /**
      * The (artist, title) Now Playing's [text] names. [formats] in order of trust (its own words first); among several
-     * readings, one naming an artist you know ([known]) wins, else the one with the shortest artist: a title has
-     * " by " in it more often than a name does.
+     * readings, a song you know ([knownSong]: artist, title) wins, then an artist you know ([known]), else the one
+     * with the shortest artist in the most trusted wording: a title has " by " in it more often than a name does.
      */
-    fun parse(text: String, formats: List<String>, known: (String) -> Boolean): Pair<String, String>? {
+    fun parse(text: String, formats: List<String>, known: (String) -> Boolean, knownSong: (String, String) -> Boolean = { _, _ -> false }): Pair<String, String>? {
         val all = formats.flatMap { readings(text, it) }
         if (all.isEmpty()) return null
-        return all.firstOrNull { known(it.first) } ?: readings(text, formats.first { readings(text, it).isNotEmpty() }).minByOrNull { it.first.length }
+        return all.firstOrNull { knownSong(it.first, it.second) } ?: all.firstOrNull { known(it.first) }
+            ?: readings(text, formats.first { readings(text, it).isNotEmpty() }).minByOrNull { it.first.length }
     }
 
     private fun who(name: String) = Text.norm(name).removePrefix("the ")
@@ -162,7 +173,8 @@ class HeardLog(private val file: JsonFile, private val max: Int = 300) {
         }
         val s = HeardSong(UUID.randomUUID().toString(), artist, title, album, at, at, src)
         songs += s
-        while (songs.size > max) songs.removeAt(0)
+        // Full: the oldest one already answered goes first; songs still waiting stay as long as there is room at all.
+        while (songs.size > max) songs.removeAt(songs.indexOfFirst { it.status != HeardSong.NEW }.coerceAtLeast(0))
         return s to true
     }
 

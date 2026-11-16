@@ -1728,6 +1728,29 @@ const Mock = (() => {
 
         case 'cards': later(250, () => { const c = fakeCards(); delete c.summary; onCards({ ...c, req: m.req }); }); break;
         case 'search': later(120, () => onSearch(fakeSearch(m.q))); break;
+        // Deezer's catalog: a few made-up albums named after what was typed, none of them played.
+        case 'searchCatalog': {
+          const w = m.q.trim().replace(/\s+/g, ' ');
+          const cap = w.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+          later(450, () => onSearchCatalog({ q: m.q, error: false, albums: [
+            { id: 9101, title: cap, artist: 'Geese', type: 'album', tracks: 11, cover: '' },
+            { id: 9102, title: `${cap} (Live)`, artist: 'Geese', type: 'ep', tracks: 5, cover: '' },
+            { id: 9103, title: `The ${cap} Sessions`, artist: 'Wednesday', type: 'album', tracks: 12, cover: '' },
+          ] }));
+          break;
+        }
+        case 'scrobbleAlbum': {
+          const now = Date.now();
+          const total = m.tracks.reduce((n, t) => n + (t.dur || S.prefs.defaultTrackSec) * 1000, 0);
+          let t = m.when === 'at' ? m.at : now - total;
+          for (const tr of m.tracks) {
+            const dur = (tr.dur || S.prefs.defaultTrackSec) * 1000;
+            if (t + dur <= now) act.push({ id: 'm' + seq++, artist: m.artist, track: tr.title, album: m.album, ts: Math.floor(t / 1000), src: 'manual', cover: m.cover || '', status: 'sent', msg: '', app: 'By hand', at: now });
+            t += dur;
+          }
+          pushAct();
+          break;
+        }
         case 'phoneControl': {
           if (m.action === 'play' || m.action === 'pause') phonePlaying = m.action === 'play';
           if (m.action === 'next' || m.action === 'prev' || m.action === 'queue') {

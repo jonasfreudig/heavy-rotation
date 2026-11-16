@@ -52,6 +52,30 @@ class DiscographyTest {
     }
 
     @Test
+    fun catalogSearchGivesAlbumsAsDeezerRanksThem() {
+        val server = MiniHttp().start()
+        try {
+            server.handler = { r ->
+                if (r.path == "/search/album" && r.params["q"] == "geese getting killed") Res(
+                    200,
+                    """{"data":[{"id":7,"title":"Getting Killed","record_type":"album","nb_tracks":11,"cover_big":"https://cover","artist":{"name":"Geese"}},
+                    {"id":8,"title":"Taxes","record_type":"single","nb_tracks":1,"cover_big":"","artist":{"name":"Geese"}},
+                    {"id":0,"title":"Broken","record_type":"album","nb_tracks":3,"artist":{"name":"Nobody"}}]}""",
+                ) else Res(404, "")
+            }
+            val found = DeezerClient(server.base).searchAlbums("geese getting killed")
+            assertEquals(listOf(7L, 8L), found.map { it.id })
+            assertEquals("Geese", found[0].artist)
+            assertEquals("album", found[0].type)
+            assertEquals(11, found[0].tracks)
+            assertEquals("https://cover", found[0].cover)
+            assertEquals("", found[1].cover)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun albumCoverPrefersTheAlbumOverItsSingle() {
         val server = MiniHttp().start()
         try {

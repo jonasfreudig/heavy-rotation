@@ -63,6 +63,15 @@ object Planner {
         }
     }
 
+    /**
+     * [tracks] heard back to back some time ago (ending at [nowMs] for FINISHED, started [atMs] for AT), each with its
+     * start: those Last.fm takes now. A track that isn't over yet at [nowMs] is left out, and so is one older than
+     * [MAX_AGE_MS].
+     */
+    fun past(tracks: List<PlanTrack>, mode: When, atMs: Long, nowMs: Long): List<Pair<PlanTrack, Long>> =
+        tracks.zip(starts(tracks, if (mode == When.AT) When.AT else When.FINISHED, atMs, nowMs))
+            .filter { (t, start) -> start + t.durSec * 1000L <= nowMs && !tooOld(start, nowMs) }
+
     /** Last.fm's rule: a track counts once half of it (or 4 minutes, if sooner) has played. */
     fun dueMs(startMs: Long, durSec: Int) = startMs + min(durSec * 500L, 240_000L)
 

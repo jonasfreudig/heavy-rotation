@@ -99,7 +99,9 @@ When a song Now Playing hears is on a record on your shelf and no record is spin
 notification asks whether you're playing that record. Its button (or Scrobble the record from here
 on the list) scrobbles the record from that song to the end of its side, from when the song was
 heard. While a record spins, the songs Now Playing hears from it keep its times right: if one comes
-at another time than planned, the times move to match.
+at another time than planned, the times move to match. Start the record from its own page instead and
+the songs heard from it leave the list, as its plays; one you already ticked on its own isn't
+scrobbled again with the record.
 
 Identify listens for ten seconds through the microphone and asks AudD what is playing. A song it
 finds goes on the same list (its time is when the song started, from where in the song the
@@ -363,6 +365,9 @@ and every artist, album, song and genre (styles too) in your listening history, 
 a genre opens its page. On the shelf your
 records come first; on the other tabs what you played comes first. Every word you type has to match
 somewhere, so "fire strokes" finds Room on Fire.
+
+Under those, Albums you haven't played has what Deezer's catalog finds for what you typed, once you
+stop typing for a moment: the way to an album that isn't in your history yet.
 
 #### Genres
 
@@ -761,6 +766,15 @@ a reboot). Activity, the clock button at the top, shows what was sent, what wait
 
 Last.fm silently ignores scrobbles older than about two weeks. The app blocks scrobbling a listen
 that old and warns when waiting scrobbles get close to the limit.
+
+### An album that isn't on your shelf
+
+An album you heard somewhere the app doesn't see (a first-listen video, a friend's stereo) can be
+scrobbled by hand. Find it in search, open its page and tap Scrobble a listen: the button shows on
+any album that isn't on your shelf, once Deezer's tracklist is there. Choose all tracks or some,
+and when: "Just finished" ends the album now, "Earlier" takes the date and time you started. The
+tracks go out at once, each at the time it played, with Deezer's lengths. The listen has to be over
+(nothing follows it as it plays) and no more than two weeks ago. In Activity these say "By hand".
 
 ### Filtering the shelf
 

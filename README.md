@@ -64,6 +64,8 @@ of its own in between, and your data stays on your phone.
 - Songs that Pixel's Now Playing recognises around you wait in a list to scrobble or drop, and one
   on a record of yours can scrobble that record from there. Identify finds a song from ten seconds
   of sound.
+- Any album can be scrobbled by hand after you heard it elsewhere: find it in search (Deezer's
+  catalog is in there too) and say when you played it.
 - A home-screen widget shows what is playing now.
 - The app uses Material You colors in light and dark, with two looks (Tinted soft and Soft glass).
   Covers tilt with the phone, and the records you own get a holo foil. Your records show the

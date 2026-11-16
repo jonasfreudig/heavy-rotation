@@ -43,6 +43,45 @@ class SpinTest {
     }
 
     @Test
+    fun anAlbumScrobbledByHandTakesOnlyWhatIsOverAndRecentEnough() {
+        val now = 100L * Planner.DAY_MS
+        val tracks = listOf(pt("a", 100, ""), pt("b", 200, ""), pt("c", 300, ""))
+        // Just finished: back to back, the last one ending now, no pause where a record would be flipped.
+        val done = Planner.past(tracks, When.FINISHED, 0, now)
+        assertEquals(listOf("a", "b", "c"), done.map { it.first.title })
+        assertEquals(listOf(now - 600_000, now - 500_000, now - 300_000), done.map { it.second })
+        // Started four minutes ago: the third song isn't over yet.
+        assertEquals(listOf("a", "b"), Planner.past(tracks, When.AT, now - 400_000, now).map { it.first.title })
+        // Yesterday is fine; two weeks ago Last.fm ignores, song by song.
+        assertEquals(3, Planner.past(tracks, When.AT, now - Planner.DAY_MS, now).size)
+        assertEquals(listOf("b", "c"), Planner.past(tracks, When.AT, now - Planner.MAX_AGE_MS - 50_000, now).map { it.first.title })
+        assertTrue(Planner.past(tracks, When.AT, now + 60_000, now).isEmpty())
+    }
+
+    @Test
+    fun tracksHeardAtKnownTimesStartThenAndTheOthersFollow() {
+        // Lengths only guessed (3:30 each); the second and fourth songs were heard to begin later than planned.
+        val s = spin(listOf(pt("a", 210), pt("b", 210), pt("c", 210), pt("d", 210)), start = 1_000_000)
+        s.anchor(mapOf(1 to 1_000_000L + 360_000, 3 to 1_000_000L + 900_000))
+        assertEquals(1_000_000L, s.items[0].startMs)
+        assertEquals(1_360_000L, s.items[1].startMs)
+        // The third follows the second, as far as its guessed length goes.
+        assertEquals(1_570_000L, s.items[2].startMs)
+        assertEquals(1_900_000L, s.items[3].startMs)
+        // Tracks before the first known one stay where they were planned.
+        val t = spin(listOf(pt("a", 210), pt("b", 600), pt("c", 210)), start = 0)
+        t.anchor(mapOf(2 to 300_000L))
+        assertEquals(listOf(0L, 210_000L, 300_000L), t.items.map { it.startMs })
+        // One whose guessed length would run into the next known start begins half a minute before it.
+        val v = spin(listOf(pt("a", 600), pt("b", 210), pt("c", 210)), start = 0)
+        v.anchor(mapOf(0 to 0L, 2 to 300_000L))
+        assertEquals(listOf(0L, 270_000L, 300_000L), v.items.map { it.startMs })
+        val u = spin(listOf(pt("a", 210), pt("b", 600), pt("c", 210)), start = 0)
+        u.anchor(mapOf(1 to 250_000L, 2 to 260_000L))
+        assertEquals(listOf(0L, 250_000L, 260_000L), u.items.map { it.startMs })
+    }
+
+    @Test
     fun lastFmRuleHalfOrFourMinutes() {
         assertEquals(50_000L, Planner.dueMs(0, 100))
         assertEquals(240_000L, Planner.dueMs(0, 600))

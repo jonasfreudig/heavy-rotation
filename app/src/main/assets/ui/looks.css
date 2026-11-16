@@ -173,3 +173,5 @@
 :root[data-look="soft"] .npb { background: var(--soft); box-shadow: 6px 6px 16px var(--sh-d), -6px -6px 16px var(--sh-l); }
 :root[data-look="glass"] .npb { background: color-mix(in srgb, var(--md-surface) 80%, transparent); box-shadow: 0 14px 34px var(--drop), inset 1px 1px 0 var(--hi); }
 :root[data-look] .ch-r { background: transparent; }
+/* Identify while it listens: Stop stands out in either look (the looks' own tonal buttons would make it look idle). */
+:root[data-look] .card.heard .heard-id.on { background: var(--tint, var(--md-primary)); color: var(--on-tint, var(--md-on-primary)); box-shadow: none; }
