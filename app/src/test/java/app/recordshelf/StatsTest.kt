@@ -406,6 +406,28 @@ class StatsTest {
     }
 
     @Test
+    fun aPeriodCarriesTheChartsOfTheWholeHistoryToZoomOutTo() {
+        val plays = (1..5).map { Play(at(2023, 3, it), "Old", "a$it") } + (1..8).map { Play(at(2024, 6, it), "Mid", "b$it") } +
+            (1..6).map { Play(at(2025, 10, it), "New", "c$it") }
+        val s = Stats(history(plays), utc, at(2025, 10, 25))
+        val w = s.compute(s.range("y2024")).getJSONObject("wide")
+        val tl = w.getJSONObject("timeline")
+        assertEquals("the whole history, whatever the period", 19, (0 until tl.getJSONArray("counts").length()).sumOf { tl.getJSONArray("counts").getInt(it) })
+        assertEquals("from the first play's month", at(2023, 3, 1, 0) * 1000, tl.getJSONArray("starts").getLong(0))
+        assertEquals("month", tl.getString("unit"))
+        assertEquals(listOf("Mid", "New", "Old"), w.getJSONObject("river").getJSONArray("artists").let { a -> (0 until a.length()).map { a.getString(it) } })
+        assertEquals("finer than a period's own sixteen columns", 32, w.getJSONObject("genres").getJSONArray("periods").length())
+        // The same charts for a month of it; none for a day, and none where there is nothing to zoom out to.
+        assertEquals(w.toString(), s.compute(s.range("m2025-10")).getJSONObject("wide").toString())
+        assertFalse(s.compute(s.range("d2025-10-03")).has("wide"))
+        assertFalse(s.compute(s.range("all")).has("wide"))
+        val young = Stats(history((1..6).map { Play(at(2025, 10, it), "New", "c$it") }), utc, at(2025, 10, 25))
+        assertFalse("a history that began in this period", young.compute(young.range("y2025")).has("wide"))
+        val ended = Stats(history((1..6).map { Play(at(2025, 9, it), "New", "c$it") }), utc, at(2025, 10, 25))
+        assertTrue("one that began in a period since over", ended.compute(ended.range("m2025-09")).has("wide"))
+    }
+
+    @Test
     fun riverUsesTheRecordsOrder() {
         val plays = (1..6).map { Play(at(2025, 10, it), "Top", "a") } + (1..3).map { Play(at(2025, 10, 10 + it), "Second", "b") } +
             listOf(Play(at(2025, 10, 20), "Third", "c"))

@@ -478,9 +478,11 @@ window.onOpenHeard = openActivity;
 window.onCompare = (c) => { CMP = c; renderPhoneCard(); if (isOpen('comparePage')) renderCompare(); };
 let statsLook = '';
 window.onStats = (s) => {
+  const hold = takeHold(s);
   STATS = s;
   $('#statsBody').classList.remove('stale');
   renderStats();
+  if (hold) keepPlace(hold);
   const look = s && s.range ? [s.range.id, statsGenre, statsDecade, statsVinyl].join('|') : '';
   if (statsLook && look && look !== statsLook) {
     // The new period comes in from the side it lies on, the way the old one left.
@@ -2990,6 +2992,149 @@ function requestStats(id) {
   send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade, vinyl: statsVinyl });
 }
 
+// ---- the period, following down the page ----
+
+/** The name of the period with id [id] ("y2020"), before its stats are in. */
+function periodNameOf(id) {
+  const kind = { d: 'day', w: 'week', m: 'month', y: 'year' }[(id || '')[0]];
+  return kind ? periodName({ kind, from: idStart(id) / 1000 }) : id === '12m' ? 'Last 12 months' : 'All time';
+}
+/** The period [k] steps from the one asked for last, or null where the history ends. */
+function steppedPeriod(k) {
+  if (!STATS || STATS.empty) return null;
+  // Taps quicker than the answers: each goes on from the period asked for last, not the one on screen.
+  const pending = statsAsked && statsAsked !== STATS.range.id;
+  return pending ? stepPeriod(statsAsked, k, STATS.range.historyStart) : k < 0 ? STATS.range.prev : STATS.range.next;
+}
+/** To the period before (-1) or after (1). [hold]: what is on screen stays where it is while the page under it changes. */
+function stepStats(k, hold) {
+  const id = steppedPeriod(k);
+  if (!id) return;
+  if (hold) holdPlace(id);
+  requestStats(id);
+  renderFollow();
+}
+/**
+ * The pill that follows down the Stats page once the period's strip has scrolled away, and the arrows of a block
+ * opened on its own page: the period's name between ‹ and ›. They say the period asked for before its stats are in.
+ */
+function renderFollow() {
+  const box = $('#pFollow'), s = STATS;
+  const none = !s || s.empty;
+  box.hidden = none;
+  const steps = !none && ['day', 'week', 'month', 'year'].includes(s.range.kind);
+  [['#pfPrev', -1], ['#pfNext', 1], ['#blockPrev', -1], ['#blockNext', 1]].forEach(([sel, k]) => {
+    $(sel).hidden = !steps;
+    $(sel).disabled = !steps || !steppedPeriod(k);
+  });
+  if (none) return;
+  $('#pfPill').classList.toggle('solo', !steps);
+  const asked = statsAsked && statsAsked !== s.range.id && /^[dwmy]\d/.test(statsAsked) ? statsAsked : '';
+  $('#pfName').textContent = asked ? periodNameOf(asked) : periodName(s.range);
+}
+/** The part of the Stats page a block or section of it is, as a selector under #statsBody ('' for one without a name). */
+const holdKey = (el) => (el.dataset.blk ? `[data-blk="${el.dataset.blk}"]` : el.dataset.sw ? `[data-sw="${el.dataset.sw}"]` : el.dataset.sq ? `[data-sq="${el.dataset.sq}"]` : '');
+/** What is at the top of the screen on the Stats page, noted before the period [id] is asked for. */
+let statsHold = null;
+function holdPlace(id) {
+  statsHold = null;
+  const line = 110 + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-top')) || 0);
+  const kids = [...$('#statsBody').children];
+  for (let i = 0; i < kids.length; i++) {
+    const r = kids[i].getBoundingClientRect();
+    if (r.bottom <= line) continue;
+    statsHold = { id, el: kids[i], key: holdKey(kids[i]), i, top: r.top, y: window.scrollY, at: Date.now() };
+    return;
+  }
+}
+/** The place noted for the stats [s] coming in, if it still holds: not after you scrolled on or opened another period. */
+function takeHold(s) {
+  const h = statsHold;
+  if (!h || !s || !s.range) return null;
+  if (s.range.id !== h.id) return null;
+  statsHold = null;
+  return tab === 'stats' && Date.now() - h.at < 8000 && Math.abs(window.scrollY - h.y) < 32 ? h : null;
+}
+/** After the page was drawn again: the block that was at the top of the screen is put back where it was. */
+function keepPlace(h) {
+  const fix = () => {
+    const body = $('#statsBody');
+    const el = h.el.isConnected && h.el.parentElement === body && holdKey(h.el) === h.key ? h.el : h.key ? $(`#statsBody > ${h.key}`) : body.children[h.i];
+    if (!el) return;
+    const d = el.getBoundingClientRect().top - h.top;
+    if (Math.abs(d) >= 1) window.scrollBy(0, d);
+  };
+  fix();
+  // Once more after the browser's own say on where the page is.
+  requestAnimationFrame(fix);
+}
+
+// ---- charts along time, zoomed out to the whole history ----
+
+/** The blocks shown over the whole history instead of their period, until tapped back. */
+const ZOOM = new Set();
+/** The bins of a chart over the whole history ([starts], ms) that the period [r] covers: the first and last, or null. */
+function markOf(starts, r) {
+  if (!starts || !starts.length || !r || r.kind === 'all') return null;
+  const from = r.from * 1000, to = r.to * 1000;
+  let a = -1, b = -1;
+  for (let i = 0; i < starts.length; i++) {
+    const end = i + 1 < starts.length ? starts[i + 1] : Infinity;
+    if (end > from && starts[i] < to) { if (a < 0) a = i; b = i; }
+  }
+  return a < 0 ? null : [a, b];
+}
+/**
+ * How block [id] is drawn while the stats [s] carry the whole history's charts: the switch for its heading, and once
+ * it is on, that history's data, the bins the period covers in it and the words for it.
+ */
+function zoomOpts(id, s) {
+  const w = s.wide && s.wide[id];
+  if (!w) return {};
+  const on = ZOOM.has(id);
+  const zoom = `<button class="zoom-btn${on ? ' on' : ''}" data-zoom="${id}" aria-pressed="${on}" aria-label="${on ? 'Back to the period' : 'Zoom out to all your history'}">${icon('zoom')}<span>All time</span></button>`;
+  if (!on) return { zoom };
+  const mark = markOf(id === 'genres' ? (w.periods || []).map((p) => p.start) : w.starts, s.range);
+  const name = s.range.kind === '12m' ? 'the last 12 months' : periodName(s.range);
+  return { zoom, wide: true, mark, name, words: ` across all your history${mark ? `, with ${name} framed` : ''}`, data: w };
+}
+/** Block [id] drawn by [viz]: over the whole history while it's zoomed out (and has something to show there), else its period. */
+function zoomable(id, s, viz) {
+  const o = zoomOpts(id, s);
+  return (o.wide && viz(o.data, o)) || viz(s[id], { zoom: o.zoom });
+}
+function toggleZoom(id) {
+  const out = !ZOOM.has(id);
+  if (out) ZOOM.add(id); else ZOOM.delete(id);
+  renderStats();
+  if (!moving()) return;
+  // Out, the chart comes in from wider; back, from narrower.
+  $$(`[data-zoom="${id}"]`).forEach((b) => {
+    const c = b.closest('.viz').querySelector('.stack, .area, .cols, .river');
+    if (c && c.offsetParent) c.animate([{ opacity: 0, transform: `scaleX(${out ? 1.22 : 0.84})` }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE_OUT });
+  });
+}
+/** The frame around the bins [a]..[b] of [n] the period covers; [points]: the bins are points along a line, else columns side by side. */
+function zoomFrame([a, b], n, points) {
+  const left = Math.max(0, points ? (a - 0.5) / (n - 1) : a / n), right = Math.min(1, points ? (b + 0.5) / (n - 1) : (b + 1) / n);
+  return `<i class="zframe" style="left:${(left * 100).toFixed(2)}%;width:${((right - left) * 100).toFixed(2)}%"></i>`;
+}
+/**
+ * Ticks for a chart over several years in bins finer than a year: each year where it begins ([at]: a bin's place from
+ * 0 to 1), thinned out until they fit. Null for a chart within a year or so, whose own labels say more.
+ */
+function yearTicks(starts, unit, at) {
+  if (!starts || starts.length < 3 || unit === 'year' || unit === 'day' || starts[starts.length - 1] - starts[0] < 500 * 864e5) return null;
+  const ticks = [];
+  starts.forEach((ms, i) => { const y = new Date(ms).getFullYear(); if (!i || y !== new Date(starts[i - 1]).getFullYear()) ticks.push([at(i), y]); });
+  // The year the history starts in gives way where the next one's label would run into it; so does one that has only begun.
+  if (ticks.length > 1 && ticks[1][0] - ticks[0][0] < 0.1) ticks.shift();
+  if (ticks.length > 1 && ticks[ticks.length - 1][0] > 0.93) ticks.pop();
+  const every = Math.ceil(ticks.length / 7);
+  return ticks.filter((_, k) => (ticks.length - 1 - k) % every === 0);
+}
+const yearAxis = (ticks) => `<div class="xl yrs">${ticks.map(([p, y]) => `<span style="left:${(p * 100).toFixed(1)}%">${y}</span>`).join('')}</div>`;
+
 /** Above the stats: importing, or how fresh the history is. */
 function renderStatsHead() {
   const hs = ST.history || {}, l = ST.lastfm || {};
@@ -3228,25 +3373,27 @@ function clockViz(clock, id, title) {
     <div class="heat">${cells}</div><div class="readout" id="ro-${id}">${def}</div></div>`;
 }
 
-/** Plays per day, week or month across the period, with the average marked. */
-function timelineViz(t) {
+/**
+ * Plays per day, week or month across the period, with the average marked. [o]: the switch to the whole history for
+ * its heading, and while it shows that history, the period's frame and words (see zoomOpts).
+ */
+function timelineViz(t, o = {}) {
   const counts = (t && t.counts) || [];
   if (counts.length < 2) return '';
-  const max = Math.max(1, ...counts);
-  const step = Math.max(1, Math.ceil(counts.length / 5));
-  const labels = t.starts.filter((x, i) => i % step === 0).map((x) => periodLabel(x, t.unit, true));
+  const max = Math.max(1, ...counts), n = counts.length;
+  // Many bins are a line, a few are columns.
+  const line = n > 16;
+  const years = yearTicks(t.starts, t.unit, (i) => (line ? i / (n - 1) : i / n));
+  const step = Math.max(1, Math.ceil(n / 5));
+  const axis = years ? yearAxis(years) : `<div class="xl">${t.starts.filter((x, i) => i % step === 0).map((x) => `<span>${esc(periodLabel(x, t.unit, true))}</span>`).join('')}</div>`;
   let best = 0;
   counts.forEach((v, i) => { if (v > counts[best]) best = i; });
-  if (counts.length > 16) {
-    return `<div class="viz"><h2>Listening over time</h2><span class="sub">Plays per ${t.unit}</span>
-      ${areaViz(counts, { col: 'tl', avg: t.avg, peakLabel: (i) => `${esc(periodLabel(t.starts[i], t.unit, true))}: ${num(counts[i])}` })}
-      <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-      <div class="readout" id="ro-tl">Most: <b>${esc(periodLabel(t.starts[best], t.unit))}</b>, ${plural(counts[best], 'play')}</div></div>`;
-  }
-  return `<div class="viz"><h2>Listening over time</h2><span class="sub">Plays per ${t.unit}</span>
-    <div class="cols"><span class="ymax">${num(max)}</span>${counts.map((v, i) => `<div class="c" data-col="tl" data-i="${i}"><i style="height:${(v / max) * 100}%"></i></div>`).join('')}
-      <div class="avg" style="bottom:${(t.avg / max) * 100}%"><span>avg ${t.avg}</span></div></div>
-    <div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+  const frame = o.mark ? zoomFrame(o.mark, n, line) : '';
+  const chart = line ? areaViz(counts, { col: 'tl', avg: t.avg, extra: frame, peakLabel: (i) => `${esc(periodLabel(t.starts[i], t.unit, !years))}: ${num(counts[i])}` })
+    : `<div class="cols"><span class="ymax">${num(max)}</span>${counts.map((v, i) => `<div class="c" data-col="tl" data-i="${i}"><i style="height:${(v / max) * 100}%"></i></div>`).join('')}
+      <div class="avg" style="bottom:${(t.avg / max) * 100}%"><span>avg ${t.avg}</span></div>${frame}</div>`;
+  return `<div class="viz${o.zoom ? ' zm' : ''}"${o.wide ? ' data-zoomed="timeline"' : ''}><h2>Listening over time</h2>${o.zoom || ''}<span class="sub">Plays per ${t.unit}${o.wide ? esc(o.words) : ''}</span>
+    ${chart}${axis}
     <div class="readout" id="ro-tl">Most: <b>${esc(periodLabel(t.starts[best], t.unit))}</b>, ${plural(counts[best], 'play')}</div></div>`;
 }
 
@@ -3339,12 +3486,22 @@ function riverViz(rv, o = {}) {
     + (others ? `<span class="ink"><i class="sw" style="background:var(--md-outline-variant)"></i><span>${esc(o.other || 'Everyone else')}</span></span>` : '');
   const topN = rv.series.reduce((a, s) => a + s.reduce((p, q) => p + q, 0), 0), all = topN + rv.other.reduce((p, q) => p + q, 0);
   const share = Math.round((topN / Math.max(1, all)) * 100);
-  // A page's river spans years: its ends say which.
+  // A page's river spans years: its ends say which. On Stats, one over several years has a tick where each begins.
   const edge = (ms) => (o.title && rv.unit !== 'year' ? new Date(ms).toLocaleDateString([], { month: 'short', year: 'numeric' }) : periodLabel(ms, rv.unit, true));
-  return `<div class="viz" data-other="${esc((o.other || 'everyone else').toLowerCase())}"><h2>${esc(o.title || 'The river')}</h2>
-    <span class="sub">${o.sub ? o.sub(share) : `Your top ${rv.artists.length} are <b>${share}%</b> of your plays`}</span>
-    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}<line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
-      <text x="0" y="${H + 12}">${esc(edge(rv.starts[0]))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(edge(rv.starts[B - 1]))}</text></svg></div>
+  const years = o.title ? null : yearTicks(rv.starts, rv.unit, (b) => b / (B - 1));
+  const axis = years ? years.map(([p, y]) => `<text x="${(p * W).toFixed(1)}" y="${H + 12}">${y}</text>`).join('')
+    : `<text x="0" y="${H + 12}">${esc(edge(rv.starts[0]))}</text><text x="${W}" y="${H + 12}" text-anchor="end">${esc(edge(rv.starts[B - 1]))}</text>`;
+  // Zoomed out to the whole history ([o].wide, see zoomOpts): a frame around the period it was zoomed out of.
+  let frame = '';
+  if (o.mark) {
+    const x0 = Math.max(0, x(o.mark[0]) - cw / 2), x1 = Math.min(W, x(o.mark[1]) + cw / 2);
+    frame = `<rect class="rv-frame" x="${x0.toFixed(1)}" y="1" width="${Math.max(4, x1 - x0).toFixed(1)}" height="${H - 2}" rx="5"/>`;
+  }
+  const sub = o.sub ? o.sub(share) : `Your top ${rv.artists.length}${o.wide ? ' across all your history' : ''} are <b>${share}%</b> of your plays${o.wide && o.mark ? `, with ${esc(o.name)} framed` : ''}`;
+  return `<div class="viz${o.zoom ? ' zm' : ''}" data-other="${esc((o.other || 'everyone else').toLowerCase())}"${o.wide ? ' data-zoomed="river"' : ''}><h2>${esc(o.title || 'The river')}</h2>${o.zoom || ''}
+    <span class="sub">${sub}</span>
+    <div class="river"><svg viewBox="0 0 ${W} ${H + 14}">${paths}${labels}${gaps}${frame}<line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>${hits}
+      ${axis}</svg></div>
     <div class="readout">Tap the river for a ${rv.unit}.</div><div class="inks">${legend}</div></div>`;
 }
 function riverText(rv, b, otherWord = 'everyone else') {
@@ -3378,11 +3535,14 @@ function newArtistsText(x, unit) {
   return `${esc(periodLabel(x.start, unit))}: <b>${plural(x.count, 'new artist')}</b>${who}${x.historyStart ? ' (your history starts here, so everything is new)' : ''}`;
 }
 
-/** Genre shares over time: 100% stacked columns, fixed colors per genre, legend with the period's shares. */
-function genreViz(g) {
+/**
+ * Genre shares over time: 100% stacked columns, fixed colors per genre, legend with the period's shares. [o]: the
+ * switch to the whole history for its heading, and while it shows that history, the period's frame and words.
+ */
+function genreViz(g, o = {}) {
   const periods = g.periods || [];
   if (!periods.length || !g.names || g.names.length < 2) return '';
-  const n = g.names.length;
+  const n = g.names.length, P = periods.length;
   const totals = new Array(n).fill(0);
   let all = 0;
   periods.forEach((p) => { p.shares.forEach((s, k) => { totals[k] += s * p.total; }); all += p.total; });
@@ -3392,18 +3552,20 @@ function genreViz(g) {
     if (!p.total) return `<div class="c empty" data-col="g" data-i="${i}"></div>`;
     return `<div class="c" data-col="g" data-i="${i}">${p.shares.map((s, k) => (s > 0 ? `<i style="flex:${s} 1 0;background:${color(k)}"></i>` : '')).join('')}</div>`;
   }).join('');
-  const step = Math.max(1, Math.ceil(periods.length / 4));
-  const labels = periods.filter((x, i) => i % step === 0).map((p) => periodLabel(p.start, g.unit, true));
+  const step = Math.max(1, Math.ceil(P / 4));
+  const years = yearTicks(periods.map((p) => p.start), g.unit, (i) => i / P);
+  const axis = years ? yearAxis(years) : `<div class="xl">${periods.filter((x, i) => i % step === 0).map((p) => `<span>${esc(periodLabel(p.start, g.unit, true))}</span>`).join('')}</div>`;
   const legend = g.names.map((name, k) => {
     const key = (g.keys || [])[k];
     const open = key && key !== 'other' ? ` data-genre="${esc(key)}" data-glabel="${esc(name)}"` : '';
     return `<div${open}><span class="sw" style="background:${color(k)}"></span><span class="nm">${esc(name)}</span><span class="pc">${Math.round((totals[k] / all) * 100)}%</span></div>`;
   }).join('');
   const cov = g.coverage || {};
-  const last = periods.length - 1;
-  return `<div class="viz"><h2>Genre drift</h2><span class="sub">Share of plays per ${g.unit}</span>
-    <div class="stack">${cols}</div><div class="xl">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-    <div class="readout" id="ro-g">${genreText(g, last)}</div>
+  // It says the latest column; zoomed out, the last one of the period it came from.
+  const said = o.mark ? o.mark[1] : P - 1;
+  return `<div class="viz${o.zoom ? ' zm' : ''}"${o.wide ? ' data-zoomed="genres"' : ''}><h2>Genre drift</h2>${o.zoom || ''}<span class="sub">Share of plays per ${g.unit}${o.wide ? esc(o.words) : ''}</span>
+    <div class="stack">${cols}${o.mark ? zoomFrame(o.mark, P, false) : ''}</div>${axis}
+    <div class="readout" id="ro-g">${genreText(g, said)}</div>
     <div class="legend">${legend}</div>
     <p class="hint">One set of genres for all your music: the Discogs styles of records you own and each artist's Last.fm tags are sorted into it and weighed together (mostly Discogs for ${pct(cov.discogs)} of plays, mostly Last.fm for ${pct(cov.lastfm)}); unknown for ${pct(cov.none)}.</p></div>`;
 }
@@ -4287,7 +4449,7 @@ function areaViz(vals, opts) {
       <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tint);stop-opacity:.55"/><stop offset="1" style="stop-color:var(--tint);stop-opacity:0"/></linearGradient></defs>
       <path d="${line} L${W},${H} L0,${H} Z" fill="url(#${id})"/>
       <path d="${line}" fill="none" style="stroke:var(--tint)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-    </svg>${avg}
+    </svg>${avg}${opts.extra || ''}
     <i class="peak" style="left:${px}%;top:${py}%"></i>
     <span class="peak-label${px > 62 ? ' end' : px < 20 ? ' start' : ''}" style="left:${px}%;top:${py}%">${opts.peakLabel(peak)}</span>
     <div class="hits">${vals.map((v, i) => `<div data-col="${opts.col}" data-i="${i}"></div>`).join('')}</div>
@@ -7501,8 +7663,8 @@ const BLOCKS = {
       return recordViz(s.record, 'stats', 'Your record');
     },
   },
-  timeline: { name: 'Listening over time', html: (s) => (s.range.kind === 'week' ? '' : timelineViz(s.timeline)) },
-  river: { name: 'The river', html: (s) => (thin(s) ? '' : riverViz(s.river)) },
+  timeline: { name: 'Listening over time', html: (s) => (s.range.kind === 'week' ? '' : zoomable('timeline', s, timelineViz)) },
+  river: { name: 'The river', html: (s) => (thin(s) ? '' : zoomable('river', s, riverViz)) },
   days: { name: 'Your days', kinds: ['week'], html: (s) => daysViz(s) },
   clock: { name: 'When you listen', html: (s) => (s.range.kind === 'week' ? '' : clockViz(s.clock, 'stats')) },
   streaks: { name: 'Days and streaks', html: calendarViz },
@@ -7513,7 +7675,7 @@ const BLOCKS = {
   },
   newArtists: { name: 'New artists', html: newArtistsView, page: (s) => newArtistsView(s, true) },
   repeat: { name: 'On repeat', html: onRepeatViz, page: (s) => onRepeatViz(s, true) },
-  genres: { name: 'Genre drift', html: (s) => (thin(s) ? '' : genreViz(s.genres)) },
+  genres: { name: 'Genre drift', html: (s) => (thin(s) ? '' : zoomable('genres', s, genreViz)) },
   decades: { name: 'Decades', html: decadesView },
   rarely: { name: 'Rarely played records', html: (s) => rarelyViz(s.rarely) },
   wishlist: { name: 'Wishlist ideas', html: (s) => wishlistViz(s.wishlist) },
@@ -7590,6 +7752,7 @@ function renderStats() {
   const s = STATS;
   const body = $('#statsBody');
   renderPeriod(s);
+  renderFollow();
   // Last.fm asks for this credit, linked back to it (here: your profile).
   const lu = (ST.lastfm || {}).user;
   $('#statsCredit').hidden = !s || s.empty;
@@ -8153,7 +8316,7 @@ function cardBackHtml(t) {
     <div class="cb-big"><b>${num(plays)}</b><span>${plays === 1 ? 'play' : 'plays'}</span></div>
     <div class="cb-goal"><span class="tc-bar"><i style="width:${prog}%"></i></span><small>${goal}</small></div>
     <ol class="cb-steps">${steps}</ol>
-    <button class="cb-link" data-cardbook>All your cards${icon('chevron-right')}</button>`;
+    <button class="cb-link" data-cardbook="songs">All your cards${icon('chevron-right')}</button>`;
 }
 /**
  * An artist's songs as collector cards: bronze at 10 plays, silver at 25, gold at 50, holo at 100, each with how
@@ -8165,7 +8328,7 @@ function songCards(a) {
   const counts = CARD_TIERS.map(([n, k, l]) => [l, list.filter((x) => cardTier(x.plays)[1] === k).length]).filter(([, c]) => c);
   const cards = list.map((x, i) => tierCard({ ...x, artist: a.name }, `${i + 1}/${list.length}`, `<b>${x.first ? esc(shortDate(x.first)) : '–'}</b>first`)).join('');
   return `<div class="viz"><h2>Your cards</h2><span class="sub">Bronze at 10 plays, silver at 25, gold at 50, holo at 100.${counts.length ? ` You hold ${counts.map(([l, c]) => `${c} ${l.toLowerCase()}`).join(', ')}.` : ''}</span>
-    <div class="tcards">${cards}</div><button class="btn text" data-cardbook>${icon('chevron-right')}All your cards</button></div>`;
+    <div class="tcards">${cards}</div><button class="btn text" data-cardbook="songs">${icon('chevron-right')}All your cards</button></div>`;
 }
 /** A song [x] as a card with its tier and the way to the next one; [corner] at the top right, [second] next to its plays. */
 function tierCard(x, corner, second) {
@@ -8174,7 +8337,7 @@ function tierCard(x, corner, second) {
   const from = (CARD_TIERS.slice().reverse().filter(([n]) => n <= x.plays).pop() || [0])[0];
   const prog = next ? Math.round(((x.plays - from) / (next[0] - from)) * 100) : 100;
   return `<button class="tcard song ${tier}" ${trackAttrs(x.artist, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b>${corner ? `<small>${corner}</small>` : ''}</span>
-      <span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span>${label ? `<span class="tc-type">${label}</span>` : ''}
+      <span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span><span class="tc-type${label ? '' : ' none'}">${label || 'No card yet'}</span>
       <span class="tc-st"><span><b>${num(x.plays)}</b>${x.plays === 1 ? 'play' : 'plays'}</span><span>${second}</span></span>
       <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${prog}%"></i></span><small>${plural(next[0] - x.plays, 'play')} to ${next[2].toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
 }
@@ -8204,7 +8367,7 @@ function albumTierCard(x) {
   const from = k >= 0 ? ALBUM_TIERS[k] : 0;
   const prog = next ? Math.round(((x.through - from) / (next - from)) * 100) : 100;
   return `<button class="tcard album ${TIER_KEYS[k] || 'base'}" ${albumAttrs(x.artist, x.title)} data-cover="${esc(x.cover)}"><span class="tc-top"><b>${esc(x.title)}</b></span>
-    <span class="tc-img">${coverHtml(x.cover, x.title, x.artist)}${cardSticker(x.owned)}</span>${k >= 0 ? `<span class="tc-type">${TIER_NAMES[k]}</span>` : ''}
+    <span class="tc-img">${coverHtml(x.cover, x.title, x.artist)}${cardSticker(x.owned)}</span><span class="tc-type${k >= 0 ? '' : ' none'}">${k >= 0 ? TIER_NAMES[k] : 'No card yet'}</span>
     <span class="tc-st"><span><b>${esc(String(Math.round(x.through * 10) / 10))}×</b>through</span><span><b>${esc(x.artist)}</b>artist</span></span>
     <span class="tc-goal">${next ? `<span class="tc-bar"><i style="width:${Math.max(0, prog)}%"></i></span><small>${esc(String(Math.round((next - x.through) * 10) / 10))} more to ${(k >= 0 ? TIER_NAMES[k + 1] : 'Bronze').toLowerCase()}</small>` : '<small>Top tier</small>'}</span></button>`;
 }
@@ -8246,12 +8409,13 @@ function cardsRowHtml(s) {
   const c = s.cards;
   if (!c || (!c.total && !c.albums)) return '';
   const fan = c.best.map((x) => `<i class="tcard song ${TIER_KEYS[x.tier]}"><span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span></i>`).join('');
-  return `<button class="cards-row" data-cardbook><span class="cr-fan">${fan}</span><span class="cr-tx"><b>Your cards</b><small>${[tierCounts(c.counts), c.albums ? plural(c.albums, 'album card') : ''].filter(Boolean).join(', ')}${c.fresh ? `. ${num(c.fresh)} new this month` : ''}</small></span>${icon('chevron-right')}</button>`;
+  return `<button class="cards-row" data-cardbook><span class="cr-fan">${fan}</span><span class="cr-tx"><b>Your cards</b><small>${[c.albums ? plural(c.albums, 'album') : '', c.total ? plural(c.total, 'song') : ''].filter(Boolean).join(' and ')}${c.fresh ? `. ${plural(c.fresh, 'song')} new this month` : ''}</small></span>${icon('chevron-right')}</button>`;
 }
 let CARDBOOK = null;
+/** The binder opens at the albums; at the songs from a song's own card. */
 function openCardbook(kind) {
   openPage('cardsPage');
-  CARDBOOK = { loading: true, req: ++REQ, view: 'all', open: {}, kind: kind === 'albums' ? 'albums' : 'songs' };
+  CARDBOOK = { loading: true, req: ++REQ, view: 'all', open: {}, kind: kind === 'songs' ? 'songs' : 'albums' };
   askBadges();
   renderCardbook();
   send({ t: 'cards', req: CARDBOOK.req });
@@ -8265,13 +8429,77 @@ window.onCards = (j) => {
 /** A card in the binder's grid: the cover, the title, its plays and artist. */
 const binderCard = (x) => `<button class="tcard song ${cardTier(x.plays)[1]}" ${trackAttrs(x.artist, x.title, { album: x.album, cover: x.cover })}><span class="tc-top"><b>${esc(x.title)}</b></span>
   <span class="tc-img">${coverHtml(x.cover, x.album || x.title, x.artist)}</span><span class="tc-st"><span><b>${num(x.plays)}</b>${esc(x.artist)}</span></span></button>`;
-/** The binder's grid sections hold this many cards until you ask for all. */
-const BINDER_SHOWN = 60;
+/**
+ * A section of the binder shows this many cards until you ask for more, then so many more at each ask; "By artist"
+ * lists this many artists at a time.
+ */
+const BINDER_FIRST = 9, BINDER_STEP = 90, BINDER_ARTISTS = 20;
+/** What tells an album's songs from those of another album of that name. */
+const pileKey = (x) => `${x.artist}\u0000${x.album}`;
+/**
+ * [list]'s songs with those of one album piled up (three of them or more): each entry a song, or {pile: its songs},
+ * where the album's most played one stood.
+ */
+function pileSongs(list) {
+  const by = new Map();
+  list.forEach((x) => { if (x.album) { const k = pileKey(x); if (!by.has(k)) by.set(k, []); by.get(k).push(x); } });
+  const out = [], done = new Set();
+  for (const x of list) {
+    const k = x.album ? pileKey(x) : '', pile = k ? by.get(k) : null;
+    if (!pile || pile.length < 3) out.push(x);
+    else if (!done.has(k)) { done.add(k); out.push({ pile }); }
+  }
+  return out;
+}
+/** An album's songs as one pile of cards, in the frame of the best of them. The binder [B] keeps the piles it shows, by the number on each. */
+const pileCard = (p, B) => {
+  const x = p.pile[0];
+  return `<button class="tcard song pile ${cardTier(x.plays)[1]}" data-cbpile="${B.piles.push(p.pile) - 1}" aria-label="${esc(`${x.album}, ${p.pile.length} songs`)}"><span class="tc-top"><b>${esc(x.album)}</b></span>
+  <span class="tc-img">${coverHtml(x.cover, x.album, x.artist)}</span><span class="tc-st"><span><b>${p.pile.length} songs</b>${esc(x.artist)}</span></span></button>`;
+};
+/** A pile tapped: its songs' cards on a sheet, and the way to the album. */
+function openCardPile(i) {
+  const list = CARDBOOK && CARDBOOK.piles && CARDBOOK.piles[+i];
+  if (!list || !list.length) return;
+  const x = list[0];
+  // One tier's pile says which; an artist's holds the album's cards of every tier.
+  const tier = cardTier(x.plays), same = list.every((y) => cardTier(y.plays)[1] === tier[1]);
+  const what = plural(list.length, same ? `${tier[2].toLowerCase()} card` : 'card');
+  openSheet(`<div class="sheet-title">${esc(x.album)}</div><p class="body">${what} from this album by ${esc(x.artist)}.</p>
+    <div class="bd-grid">${list.map(binderCard).join('')}</div>
+    <div class="btn-row"><button class="btn tonal" ${albumAttrs(x.artist, x.album)}>${icon('album')}Open the album</button></div>`);
+  // A song or the album tapped opens its page: the sheet goes, or the page opened behind it.
+  $('#sheetContent').onclick = (e) => { if (e.target.closest('[data-track], [data-album]')) closeSheet(); };
+  Tilt.refresh();
+}
+/** The top of the binder: what it holds in a line, and each tier's count with where the tier begins ([from]); a tier tapped scrolls to its cards. */
+const binderHead = (sub, tiers, from) => `<div class="viz bd-head"><span class="sub">${sub}</span>
+  <div class="bd-sum">${tiers.map((t, i) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small><em>${from[i]}</em></button>`).join('')}</div></div>`;
+const binderChips = (B, fresh) => `<div class="chips bd-chips">${[['all', 'All'], ['fresh', `New this month${fresh.length ? ` (${num(fresh.length)})` : ''}`], ['artist', 'By artist']].map(([k, l]) => `<button class="chip${B.view === k ? ' on' : ''}" data-cbview="${k}">${l}</button>`).join('')}</div>`;
+/**
+ * One section of the binder ([key]): its heading ([head], HTML) with how many cards it holds, the first [first] of its
+ * [items] drawn by [card], and the way to more of them.
+ */
+function binderSection(B, key, head, count, items, card, first = BINDER_FIRST) {
+  if (!items.length) return '';
+  const n = Math.min(items.length, B.open[key] || first), left = items.length - n;
+  return `<div class="bd-sec" data-cbsec="${esc(key)}" data-cbfirst="${first}"><h2>${head} <small>${num(count)}</small></h2><div class="bd-grid">${items.slice(0, n).map(card).join('')}</div>
+    ${left ? `<button class="btn text" data-cbmore="${esc(key)}">${left > BINDER_STEP ? `Show ${BINDER_STEP} more` : `Show all ${num(count)}`}</button>` : ''}</div>`;
+}
+/** "By artist": the artists with the most cards first ([best]: what ranks two with as many), a section each, a few of them at a time. */
+function binderArtists(B, cards, best, section) {
+  const by = new Map();
+  cards.forEach((x) => { if (!by.has(x.artist)) by.set(x.artist, []); by.get(x.artist).push(x); });
+  const all = [...by.entries()].sort((a, b) => b[1].length - a[1].length || best(b[1][0]) - best(a[1][0]));
+  const n = Math.min(all.length, B.open['@artists'] || BINDER_ARTISTS);
+  return all.slice(0, n).map(([a, list]) => section(a, list, `<button class="artist-link" data-artist="${esc(a)}">${esc(a)}</button>`)).join('')
+    + (n < all.length ? `<button class="btn tonal bd-more" data-cbartists>${plural(all.length - n, 'more artist')}</button>` : '');
+}
 function renderCardbook() {
   const B = CARDBOOK;
   if (!B || !isOpen('cardsPage')) return;
   if (B.loading) { morph($('#cardsBody'), '<div class="lin inline indet"><i></i></div>'); return; }
-  const kinds = `<div class="seg small bd-kind" role="tablist">${[['songs', 'Songs'], ['albums', 'Albums']].map(([k, l]) => `<button data-cbkind="${k}" class="${B.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const kinds = `<div class="seg small bd-kind" role="tablist">${[['albums', 'Albums'], ['songs', 'Songs']].map(([k, l]) => `<button data-cbkind="${k}" class="${B.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   if (B.kind === 'albums') { renderAlbumBook(B, kinds); Tilt.refresh(); return; }
   const cards = B.cards;
   if (!cards.length) {
@@ -8280,27 +8508,20 @@ function renderCardbook() {
   }
   const tiers = CARD_TIERS.map(([, k, l]) => ({ k, l, list: cards.filter((x) => cardTier(x.plays)[1] === k) }));
   const fresh = cards.filter((x) => x.reached >= B.monthFrom);
-  let h = `${kinds}<div class="viz"><h2>Your cards</h2><span class="sub">${plural(cards.length, 'card')} from ${plural(B.artists, 'artist')}. Bronze at 10 plays, silver at 25, gold at 50, holo at 100.</span>
-    <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
+  let h = kinds + binderHead(`${plural(cards.length, 'song')} from ${plural(B.artists, 'artist')}, by how often you played each.`, tiers, CARD_TIERS.map(([n]) => `${n} plays`));
   // The cards a few plays from their next tier, and the songs a few from becoming one.
   const toGo = (x) => { const n = CARD_TIERS.slice().reverse().find(([m]) => m > x.plays); return n ? n[0] - x.plays : Infinity; };
   const almost = cards.concat(B.almost).filter((x) => toGo(x) <= 5).sort((a, b) => toGo(a) - toGo(b) || b.plays - a.plays).slice(0, 20);
   if (almost.length) h += `<div class="viz"><h2>Almost there</h2><span class="sub">A few plays from their next tier</span><div class="tcards">${almost.map((x) => tierCard(x, '', `<b>${esc(x.artist)}</b>artist`)).join('')}</div></div>`;
-  h += `<div class="chips bd-chips">${[['all', 'All'], ['fresh', `New this month${fresh.length ? ` (${num(fresh.length)})` : ''}`], ['artist', 'By artist']].map(([k, l]) => `<button class="chip${B.view === k ? ' on' : ''}" data-cbview="${k}">${l}</button>`).join('')}</div>`;
-  const section = (key, title, list, link = '') => {
-    if (!list.length) return '';
-    const shown = B.open[key] ? list : list.slice(0, BINDER_SHOWN);
-    return `<div class="bd-sec" data-cbsec="${esc(key)}"><h2>${link || esc(title)} <small>${num(list.length)}</small></h2><div class="bd-grid">${shown.map(binderCard).join('')}</div>
-      ${shown.length < list.length ? `<button class="btn text" data-cbmore="${esc(key)}">Show all ${num(list.length)}</button>` : ''}</div>`;
-  };
+  h += binderChips(B, fresh);
+  // An album's songs are one pile in a section, so the albums you played most don't fill it song by song.
+  B.piles = [];
+  const card = (x) => (x.pile ? pileCard(x, B) : binderCard(x));
   if (B.view === 'artist') {
-    const by = new Map();
-    cards.forEach((x) => { if (!by.has(x.artist)) by.set(x.artist, []); by.get(x.artist).push(x); });
-    h += [...by.entries()].sort((a, b) => b[1].length - a[1].length || b[1][0].plays - a[1][0].plays)
-      .map(([a, list]) => section(`a:${a}`, a, list, `<button class="artist-link" data-artist="${esc(a)}">${esc(a)}</button>`)).join('');
+    h += binderArtists(B, cards, (x) => x.plays, (a, list, link) => binderSection(B, `a:${a}`, link, list.length, pileSongs(list), card, 6));
   } else {
     const pool = B.view === 'fresh' ? fresh : cards;
-    h += tiers.map((t) => section(t.k, t.l, pool.filter((x) => cardTier(x.plays)[1] === t.k))).join('')
+    h += tiers.map((t) => { const list = pool.filter((x) => cardTier(x.plays)[1] === t.k); return binderSection(B, t.k, esc(t.l), list.length, pileSongs(list), card); }).join('')
       || `<p class="hint">No song reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
   }
   morph($('#cardsBody'), h);
@@ -8313,27 +8534,18 @@ function renderAlbumBook(B, kinds) {
     morph($('#cardsBody'), `${kinds}<div class="empty">${icon('album', 'i big')}<p>No album cards yet. An album becomes a bronze card once you've played it through twice, silver at 5 times, gold at 10 and holo at 20. Only its songs played as an album count: three or more of them in a row.</p></div>`);
     return;
   }
-  const tiers = [3, 2, 1, 0].map((k) => ({ k: TIER_KEYS[k], l: TIER_NAMES[k], list: cards.filter((x) => x.tier === k) }));
+  const order = [3, 2, 1, 0];
+  const tiers = order.map((k) => ({ k: TIER_KEYS[k], l: TIER_NAMES[k], list: cards.filter((x) => x.tier === k) }));
   const fresh = cards.filter((x) => x.reached >= B.monthFrom);
-  let h = `${kinds}<div class="viz"><h2>Your album cards</h2><span class="sub">${plural(cards.length, 'album')}. Bronze when you've played it through twice, silver at 5 times, gold at 10, holo at 20. Records on your shelf carry their badge.</span>
-    <div class="bd-sum">${tiers.map((t) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small></button>`).join('')}</div></div>`;
+  let h = kinds + binderHead(`${plural(cards.length, 'album')}, by how many times you played each through. Records on your shelf carry their badge.`, tiers, order.map((k) => `${ALBUM_TIERS[k]} times`));
   const almost = B.albumsAlmost || [];
   if (almost.length) h += `<div class="viz"><h2>Almost there</h2><span class="sub">Less than once through from their next tier</span><div class="tcards">${almost.slice(0, 20).map(albumTierCard).join('')}</div></div>`;
-  h += `<div class="chips bd-chips">${[['all', 'All'], ['fresh', `New this month${fresh.length ? ` (${num(fresh.length)})` : ''}`], ['artist', 'By artist']].map(([k, l]) => `<button class="chip${B.view === k ? ' on' : ''}" data-cbview="${k}">${l}</button>`).join('')}</div>`;
-  const section = (key, title, list, link = '') => {
-    if (!list.length) return '';
-    const shown = B.open[key] ? list : list.slice(0, BINDER_SHOWN);
-    return `<div class="bd-sec" data-cbsec="${esc(key)}"><h2>${link || esc(title)} <small>${num(list.length)}</small></h2><div class="bd-grid">${shown.map(albumBinderCard).join('')}</div>
-      ${shown.length < list.length ? `<button class="btn text" data-cbmore="${esc(key)}">Show all ${num(list.length)}</button>` : ''}</div>`;
-  };
+  h += binderChips(B, fresh);
   if (B.view === 'artist') {
-    const by = new Map();
-    cards.forEach((x) => { if (!by.has(x.artist)) by.set(x.artist, []); by.get(x.artist).push(x); });
-    h += [...by.entries()].sort((a, b) => b[1].length - a[1].length || b[1][0].through - a[1][0].through)
-      .map(([a, list]) => section(`aa:${a}`, a, list, `<button class="artist-link" data-artist="${esc(a)}">${esc(a)}</button>`)).join('');
+    h += binderArtists(B, cards, (x) => x.through, (a, list, link) => binderSection(B, `aa:${a}`, link, list.length, list, albumBinderCard, 6));
   } else {
     const pool = B.view === 'fresh' ? fresh : cards;
-    h += tiers.map((t) => section(t.k, t.l, pool.filter((x) => x.tier === TIER_KEYS.indexOf(t.k)))).join('')
+    h += tiers.map((t) => { const list = pool.filter((x) => x.tier === TIER_KEYS.indexOf(t.k)); return binderSection(B, t.k, esc(t.l), list.length, list, albumBinderCard); }).join('')
       || `<p class="hint">No album reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
   }
   morph($('#cardsBody'), h);
@@ -9370,6 +9582,9 @@ function arrangeDrag(list, done) {
 function onVizPointer(e, data) {
   // A finger stays captured by what it first touched, so e.target never moves along: what's under it now.
   const t = document.elementFromPoint(e.clientX, e.clientY) || e.target;
+  // A chart zoomed out to the whole history says that history's numbers.
+  const zv = t.closest('[data-zoomed]');
+  if (zv && data && data.wide && data.wide[zv.dataset.zoomed]) data = { ...data, [zv.dataset.zoomed]: data.wide[zv.dataset.zoomed] };
   const cell = t.closest('[data-heat]');
   if (cell) {
     const ro = $('#ro-' + cell.dataset.heat);
@@ -9943,6 +10158,8 @@ function build() {
     }
     const back = e.target.closest('[data-back]');
     if (back) { closePage(); return; }
+    const zb = e.target.closest('[data-zoom]');
+    if (zb) { toggleZoom(zb.dataset.zoom); return; }
     const cbk = e.target.closest('[data-cardbook]');
     if (cbk) { openCardbook(cbk.dataset.cardbook); return; }
     const cbkind = e.target.closest('#cardsPage [data-cbkind]');
@@ -9953,7 +10170,19 @@ function build() {
     const cbv = e.target.closest('#cardsPage [data-cbview]');
     if (cbv) { CARDBOOK.view = cbv.dataset.cbview; renderCardbook(); fadeAfter($('#cardsBody'), $('#cardsBody [data-cbview].on')); return; }
     const cbm = e.target.closest('#cardsPage [data-cbmore]');
-    if (cbm) { CARDBOOK.open[cbm.dataset.cbmore] = true; withNewRows($('#cardsBody'), renderCardbook); return; }
+    if (cbm) {
+      const key = cbm.dataset.cbmore;
+      CARDBOOK.open[key] = (CARDBOOK.open[key] || +cbm.closest('[data-cbsec]').dataset.cbfirst) + BINDER_STEP;
+      withNewRows($('#cardsBody'), renderCardbook);
+      return;
+    }
+    if (e.target.closest('#cardsPage [data-cbartists]')) {
+      CARDBOOK.open['@artists'] = (CARDBOOK.open['@artists'] || BINDER_ARTISTS) + 2 * BINDER_ARTISTS;
+      withNewRows($('#cardsBody'), renderCardbook);
+      return;
+    }
+    const pile = e.target.closest('#cardsPage [data-cbpile]');
+    if (pile) { openCardPile(pile.dataset.cbpile); return; }
     const cbt = e.target.closest('#cardsPage [data-cbtier]');
     if (cbt) {
       if (CARDBOOK.view !== 'all') { CARDBOOK.view = 'all'; renderCardbook(); }
@@ -10188,13 +10417,27 @@ function build() {
     requestStats(periodId(b.dataset.k, Math.max(anchor, STATS.range.from * 1000)));
   };
   $('#statsFilter').onclick = openStatsFilter;
-  const stepStats = (k) => {
-    if (!STATS || STATS.empty) return;
-    // Taps quicker than the answers: each goes on from the period asked for last, not the one on screen.
-    const pending = statsAsked && statsAsked !== STATS.range.id;
-    const id = pending ? stepPeriod(statsAsked, k, STATS.range.historyStart) : k < 0 ? STATS.range.prev : STATS.range.next;
-    if (id) requestStats(id);
-  };
+  // The pill that follows down the page: ‹ and › step the period where you are (so does a swipe on it), its name leads back up.
+  let pillSwipe = null, pillSwiped = 0;
+  const pillTap = (fn) => () => { if (Date.now() - pillSwiped > 350) fn(); };
+  $('#pfPrev').onclick = pillTap(() => stepStats(-1, true));
+  $('#pfNext').onclick = pillTap(() => stepStats(1, true));
+  $('#pfName').onclick = pillTap(() => window.scrollTo({ top: 0, behavior: moving() ? 'smooth' : 'auto' }));
+  $('#pfPill').addEventListener('pointerdown', (e) => { pillSwipe = e.isPrimary ? { x: e.clientX, y: e.clientY } : null; }, { passive: true });
+  $('#pfPill').addEventListener('pointerup', (e) => {
+    const st = pillSwipe;
+    pillSwipe = null;
+    if (!st) return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.6) { pillSwiped = Date.now(); stepStats(dx < 0 ? 1 : -1, true); }
+  });
+  // It shows once the period's own strip is gone above the top of the screen (not while its tab is away).
+  new IntersectionObserver(([en]) => {
+    const r = en.boundingClientRect;
+    $('#pFollow').classList.toggle('on', !en.isIntersecting && r.height > 0 && r.bottom < window.innerHeight / 2);
+  }, { rootMargin: '-56px 0px 0px 0px' }).observe($('#periodPick'));
+  $('#blockPrev').onclick = () => stepStats(-1);
+  $('#blockNext').onclick = () => stepStats(1);
   $('#pStrip').onclick = (e) => {
     const b = e.target.closest('[data-period]');
     if (!b) return;

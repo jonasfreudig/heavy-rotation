@@ -457,7 +457,7 @@ button.tile .delta { align-self: flex-start; }
 .xl { display: flex; justify-content: space-between; font-size: 10px; color: var(--md-on-surface-variant); margin-top: 4px; }
 
 /* stacked columns (genres, 100%) */
-.stack { display: flex; align-items: stretch; gap: 2px; height: 160px; touch-action: pan-y; }
+.stack { position: relative; display: flex; align-items: stretch; gap: 2px; height: 160px; touch-action: pan-y; }
 .stack .c { flex: 1; min-width: 0; display: flex; flex-direction: column-reverse; gap: 2px; cursor: pointer; }
 .stack .c i { display: block; width: 100%; max-width: 28px; margin: 0 auto; min-height: 0; }
 .stack .c i:last-child { border-radius: 4px 4px 0 0; }
@@ -1551,6 +1551,8 @@ details.more[open] summary { margin-bottom: 6px; }
 .tc-goal small { display: block; font: 500 10px/13px var(--mono, var(--font)); opacity: .7; margin-top: 3px; }
 .tc-bar { display: block; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, .12); overflow: hidden; }
 .tc-bar i { display: block; height: 100%; border-radius: 2px; background: #2a2238; }
+/* Below bronze: the place of the tier's name is kept, so the cards of a row are as tall as each other. */
+.tc-type.none { background: rgba(0, 0, 0, .1); color: inherit; opacity: .75; }
 .tcard.bronze { background: linear-gradient(160deg, #f6e2cf, #dfb894); }
 .tcard.bronze .tc-type { background: #8a5a30; }
 .tcard.silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); box-shadow: 0 6px 16px rgba(0, 0, 0, .2), inset 0 0 0 2px #aeb4c0; }
@@ -1586,6 +1588,16 @@ details.more[open] summary { margin-bottom: 6px; }
 .bd-sum button:disabled { opacity: .45; }
 .bd-sum b { font: 650 24px/1 var(--display, var(--font)); }
 .bd-sum small { font: 500 10.5px/14px var(--mono, var(--font)); letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+/* Where the tier begins, under its name. */
+.bd-sum em { margin-top: -2px; font: 400 10px/13px var(--mono, var(--font)); font-style: normal; opacity: .62; }
+.bd-head .sub { margin-bottom: 0; }
+.bd-more { display: flex; margin: 20px auto 4px; }
+/* An album's songs as one pile: the top card a little smaller, on two more that show at its top and right. */
+.bd-grid .tcard.pile { --ring: inset 0 0 0 1.5px rgba(0, 0, 0, .08); --pile: #ecd3ba; --edge: #b98f68; margin: 7px 7px 0 0;
+  box-shadow: var(--ring), 4px -4px 0 -1.5px var(--pile), 4px -4px 0 -.5px var(--edge), 7.5px -7.5px 0 -3px var(--pile), 7.5px -7.5px 0 -2px var(--edge); }
+.bd-grid .tcard.pile.silver { --ring: inset 0 0 0 2px #aeb4c0; --pile: #e2e5eb; --edge: #979eab; }
+.bd-grid .tcard.pile.gold { --ring: inset 0 0 0 2px hsl(45 80% 55%); --pile: #f3dc93; --edge: #b8963a; }
+.bd-grid .tcard.pile.holo { --ring: inset 0 0 0 2px hsl(45 80% 60%); --pile: #efe3f8; --edge: #b39bd3; }
 .bd-sum .bd-holo { background: linear-gradient(135deg, #f3c9ff, #b6e3ff, #c6ffd6, #fff1b3, #ffc6dd); }
 .bd-sum .bd-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
 .bd-sum .bd-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }
@@ -1724,6 +1736,39 @@ body.searching .npb { display: none; }
 .pname small { display: block; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); }
 .pstrip { display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; margin: 10px -16px 2px; padding: 2px 16px 6px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .pstrip::-webkit-scrollbar { display: none; }
+/* The period, following down the Stats page once its strip has scrolled away: its name between ‹ and ›. It takes no
+   room of its own, and is a layer of its own, so the phone keeps it in place while the page flings. */
+.pfollow { position: sticky; top: calc(var(--inset-top) + 8px); z-index: 6; height: 0; display: flex; justify-content: center; pointer-events: none; }
+.pf-pill { display: flex; align-items: center; height: 40px; padding: 0 2px; border-radius: 20px; color: var(--md-on-surface); background: var(--md-surface-container-highest);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .28), inset 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 9%, transparent);
+  opacity: 0; transform: translateY(-12px) scale(.94); transition: opacity .16s ease-out, transform .24s cubic-bezier(.2, 0, 0, 1); touch-action: pan-y; will-change: transform; }
+.pfollow.on .pf-pill { opacity: 1; transform: none; pointer-events: auto; }
+.pf-step { width: 38px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--md-on-surface-variant); transition: opacity .15s; }
+.pf-step .i { width: 22px; height: 22px; }
+.pf-step:disabled { opacity: .28; }
+.pf-step:not(:disabled):active { color: var(--md-on-surface); }
+.pf-name { height: 40px; min-width: 52px; padding: 0 4px; font: 500 14px/20px var(--font); white-space: nowrap; color: inherit; }
+.pf-pill.solo .pf-name { padding: 0 18px; }
+#blockPage .appbar .icon-btn:disabled { opacity: .3; }
+/* A chart along time widens to the whole history and back: the switch in its heading, a frame around the period
+   it was zoomed out of, and a tick where each year begins. */
+/* The switch floats at the right of the heading's line (pulled up into it); where a strip of blocks hides the heading,
+   beside the first lines under it. */
+.viz.zm > h2 { padding-right: 104px; }
+.zoom-btn { float: right; position: relative; display: inline-flex; align-items: center; gap: 5px; height: 30px; margin: -32px 0 0 10px; padding: 0 12px 0 9px; border-radius: 15px; font: 500 12.5px/18px var(--font);
+  color: var(--md-on-surface-variant); background: var(--md-surface-container-high); transition: background .15s, color .15s; }
+.sw-page > .viz.zm > .zoom-btn { margin: -3px 0 6px 12px; }
+.viz.zm > :is(.stack, .area, .cols, .river) { clear: both; }
+.zoom-btn .i { width: 16px; height: 16px; }
+.zoom-btn.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.viz.zm { overflow: clip; }
+.zframe { position: absolute; top: -4px; bottom: -4px; min-width: 6px; border-radius: 6px; pointer-events: none;
+  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); box-shadow: 0 0 0 1.5px var(--md-on-surface);
+  transition: left .32s cubic-bezier(.2, 0, 0, 1), width .32s cubic-bezier(.2, 0, 0, 1); }
+.stack .zframe { background: none; box-shadow: 0 0 0 2px var(--md-on-surface), 0 0 0 3.5px var(--md-surface-container-low); }
+.river .rv-frame { fill: color-mix(in srgb, var(--md-on-surface) 9%, transparent); stroke: var(--md-on-surface); stroke-width: 1.5; }
+.xl.yrs { position: relative; display: block; height: 14px; }
+.xl.yrs span { position: absolute; top: 0; }
 .ps-c { flex: none; min-width: 42px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 6px 7px; border-radius: 14px; color: var(--md-on-surface-variant); }
 .ps-c i { width: 12px; border-radius: 4px; background: color-mix(in srgb, var(--md-primary) 42%, transparent); }
 .ps-c span { font: 500 11px/1 var(--mono, var(--font)); white-space: nowrap; }

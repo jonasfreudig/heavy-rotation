@@ -31,7 +31,8 @@ of its own in between, and your data stays on your phone.
   before: your plays as dots on a record, the period day by day as a calendar with your streaks, who
   you played when, new artists, songs on repeat, genre drift, decades, where your artists are from
   and a top 10, ranked by plays or by time listened. A month also has a race of your top artists,
-  day by day.
+  day by day. The period follows you down the page, so you can step through the years while looking
+  at one chart, and the charts along time zoom out to your whole history with the period framed.
 - The stats know your shelf. They show the records you own but rarely play, the albums you stream a
   lot but don't own yet, and how much of your listening was vinyl. Only vinyl turns the whole Stats
   tab into stats of the records you played.

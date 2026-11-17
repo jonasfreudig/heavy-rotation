@@ -487,8 +487,14 @@ const Mock = (() => {
   }
 
   /** The day's and the week's own parts, from the made-up history (see Stats.dayDetails and weekDays). */
+  /** The charts along time over the whole made-up history, as every period carries them (see Stats.wide). */
+  let fakeWide = null;
   function fakeStats(id) {
     const s = fakeStatsBase(id);
+    if (s.range && s.range.kind !== 'day' && s.range.kind !== 'all' && (s.range.historyStart < s.range.from || !s.range.running)) {
+      if (!fakeWide) { const a = fakeStatsBase('all'); fakeWide = { timeline: a.timeline, river: a.river, genres: a.genres }; }
+      s.wide = fakeWide;
+    }
     if (s.range && s.range.kind === 'day') s.day = fakeDay(s.range);
     if (s.range && s.range.kind === 'week') s.week = fakeWeek(s.range);
     return s;
@@ -1243,7 +1249,9 @@ const Mock = (() => {
       n[t] = (n[t] || 0) + 1;
       if (tiers.includes(n[t])) at[t] = L.ts[i];
     }
-    const song = (t) => ({ title: L.titles[t], artist: L.artists[tArtist[t]], album: '', cover: '', plays: n[t] });
+    // Most songs are on their artist's record, so the binder has albums to pile up; every fifth is a single.
+    const albumOf = (a) => (RECORDS.find((x) => x[0] === L.artists[a]) || [])[1] || '';
+    const song = (t) => ({ title: L.titles[t], artist: L.artists[tArtist[t]], album: t % 5 ? albumOf(tArtist[t]) : '', cover: '', plays: n[t] });
     const ids = Object.keys(n).map(Number);
     const cards = ids.filter((t) => n[t] >= 10).sort((x, y) => n[y] - n[x] || L.titles[x].localeCompare(L.titles[y]));
     const d = new Date();

@@ -157,6 +157,13 @@ and tap one to go there, or swipe sideways on the period's name to step to the o
 A period that is still running is compared with the same stretch of the one before ("vs this time
 last week"). How many scrobbles you have and when they were last updated is at the end of the page.
 
+Further down the page the period follows you. Once the strip has scrolled out of sight, a small
+pill stays at the top of the screen with the period's name between ‹ and ›. Tap an arrow, or swipe
+the pill sideways, for the period before or after: the chart you were looking at stays where it is
+on the screen while the page changes under it, so you can go through the years on one chart. Tap
+the name to go back up to the strip. A block opened on its own page (in Cards) has the same two
+arrows in its top bar.
+
 The Day tab is built for a handful of songs. It shows the time you listened, and how that compares
 with your usual for that weekday by the same time of day over the last 8 weeks. Your day appears on
 a 24-hour strip with its listening sessions: a new session starts after half an hour without music,
@@ -238,6 +245,11 @@ time per month, quarter or year. These are the blocks for the chosen period:
   column.
 - The river shows the same over time, split into your top eight artists (in the same colors as on
   the record) stacked on everyone else. Tap it for a day's numbers.
+- Listening over time, The river and Genre drift each have a switch at their top right, All time.
+  It widens that one chart to your whole history, with a frame around the period you came from, so
+  you see what came before and after without leaving the period. Tap it again to go back. The chart
+  stays wide while you step through periods, and the frame moves along. A chart over several years
+  has a tick where each year begins. All time has no switch, as it shows everything already.
 - "When you listen" shows plays per weekday and hour. Tap a cell for its numbers.
 - Days and streaks is the period as a calendar: a box per day, darker for more plays, with your
   longest run of days with music underlined and dots on the days a new artist or a song on repeat
@@ -580,12 +592,19 @@ one, and All your cards. A song played fewer than 10 times says how many plays i
 one.
 
 All your cards are in one binder: Your cards on the Stats tab (under the numbers) or All your
-cards on an artist page. It counts what you hold of each tier, shows the songs a few plays from
-their next tier (and the ones a few plays from becoming a card at all), and lays out every card by
-tier. New this month shows the cards that reached their tier this month; By artist sorts them by
-artist instead. Tap a tier's count to jump to it, and a card for its song's page.
+cards on an artist page. It has two sides, Albums and Songs, and opens at the albums (at the songs
+from an artist page or a song's own card). Each side counts what you hold of each tier, with where
+the tier begins, shows the ones closest to their next tier (and the ones close to becoming a card
+at all), and lays out the cards by tier, the most played first. A tier shows its first nine; Show
+more brings the rest, 90 at a time. New this month shows the cards that reached their tier this
+month. By artist sorts them by artist instead, the artists with the most cards first, 20 at a
+time. Tap a tier's count to jump to it, and a card for its page.
 
-Albums are cards too, on the binder's Albums side, by how many times you played them through:
+On the Songs side, three or more songs of one album in a tier (or of one artist in By artist) lie
+as one pile with the album's cover and how many songs it holds, so an album you played a lot takes
+one place and not a dozen. Tap a pile for its songs' cards and the way to the album.
+
+Albums are cards by how many times you played them through:
 bronze at twice, silver at 5 times, gold at 10 and holo at 20. Only an album's songs played as an
 album count, three or more of them in a row (each within 20 minutes of the last), over the songs of
 it you know; a single on shuffle doesn't add up. A side of a record counts as half a time through

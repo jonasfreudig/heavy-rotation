@@ -55,6 +55,10 @@ class Stats(
         const val TOP_GENRES = 6
         const val TOP_INKS = 8
 
+        /** Bins of the charts along time over the whole history, and the columns of its Genre drift (a period's own has 16). */
+        const val WIDE_BINS = 120
+        const val WIDE_GENRE_BINS = 40
+
         /** Top lists go this far; the page shows 10 of them unless you ask for 50 or 100. */
         const val TOP_MAX = 100
 
@@ -351,7 +355,19 @@ class Stats(
             .also { o ->
                 if (r.kind == "day") o.put("day", dayDetails(r, i0, i1))
                 if (r.kind == "week") o.put("week", weekDays(r))
+                // A period that isn't the whole history: its charts along time can zoom out to all of it.
+                if (r.kind != "day" && r.kind != "all" && h.size > 0 && (historyStart < r.from || r.to <= nowSec)) o.put("wide", wide)
             }
+    }
+
+    /**
+     * The charts that run along time, over the whole history: what a period's chart zooms out to, with the period
+     * marked on it. The same for every period, so worked out once.
+     */
+    private val wide: JSONObject by lazy {
+        val all = range("all")
+        // Finer than the All period draws them: zoomed out, ten years still go by in months.
+        JSONObject().put("timeline", timeline(all, 0, h.size, WIDE_BINS)).put("river", river(all, 0, h.size, WIDE_BINS)).put("genres", genreDrift(all, 0, h.size, WIDE_GENRE_BINS))
     }
 
     // ---- one day (the Day tab) and the days of a week ----
@@ -532,9 +548,9 @@ class Stats(
         return c
     }
 
-    /** Plays per day, week or month across the period, with the average per bin. */
-    fun timeline(r: Range, i0: Int, i1: Int): JSONObject {
-        val b = binsFor(r, 60)
+    /** Plays per day, week or month across the period (about [maxBins] of them), with the average per bin. */
+    fun timeline(r: Range, i0: Int, i1: Int, maxBins: Int = 60): JSONObject {
+        val b = binsFor(r, maxBins)
         val counts = IntArray(b.count)
         for (i in i0 until i1) counts[b.index(date(h.ts[i])).coerceIn(0, b.count - 1)]++
         return JSONObject().put("unit", b.unit.id).put("starts", b.startsJson()).put("counts", JSONArray(counts.toList()))
@@ -1295,8 +1311,8 @@ class Stats(
         return counts.entries.sortedByDescending { it.value }.take(max).map { Genres.label(genreKeys[it.key]) to it.value.toDouble() / known }
     }
 
-    /** Share of each top genre per day, week, month, quarter or year of the period (part-to-whole over time). */
-    fun genreDrift(r: Range, i0: Int, i1: Int): JSONObject {
+    /** Share of each top genre per day, week, month, quarter or year of the period (part-to-whole over time), in about [maxBins] columns. */
+    fun genreDrift(r: Range, i0: Int, i1: Int, maxBins: Int = 16): JSONObject {
         val (g, src) = scrobbleGenre
         val top = topGenres
         val slot = HashMap<Int, Int>().also { m -> top.forEachIndexed { i, id -> m[id] = i } }
@@ -1304,7 +1320,7 @@ class Stats(
             .put("names", JSONArray(top.map { Genres.label(genreKeys[it]) } + "Other"))
             .put("keys", JSONArray(top.map { genreKeys[it] } + "other"))
         if (i1 <= i0) return out.put("unit", "month").put("periods", JSONArray()).put("coverage", JSONObject())
-        val b = binsFor(r, 16)
+        val b = binsFor(r, maxBins)
         val counts = Array(b.count) { IntArray(top.size + 1) }
         val coverage = IntArray(3)
         for (i in i0 until i1) {
@@ -1425,9 +1441,9 @@ class Stats(
     }
 
     /** The river: plays per bin of the [TOP_INKS] most played artists (same order and colors as the record) and everyone else. */
-    fun river(r: Range, i0: Int, i1: Int): JSONObject {
+    fun river(r: Range, i0: Int, i1: Int, maxBins: Int = 90): JSONObject {
         // Fine enough for the stream to flow (weeks over a year or two).
-        val b = binsFor(r, 90)
+        val b = binsFor(r, maxBins)
         val order = artistOrder(i0, i1).take(TOP_INKS)
         val slot = HashMap<Int, Int>().also { s -> order.forEachIndexed { k, a -> s[a] = k } }
         val series = Array(order.size) { IntArray(b.count) }
