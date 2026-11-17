@@ -20,6 +20,8 @@ import app.recordshelf.history.Globals
 import app.recordshelf.history.Hidden
 import app.recordshelf.history.History
 import app.recordshelf.history.HistorySync
+import app.recordshelf.history.ImportedPlay
+import app.recordshelf.history.TidalImport
 import app.recordshelf.history.Junk
 import app.recordshelf.history.Like
 import app.recordshelf.history.Fan
@@ -90,6 +92,9 @@ object Core {
 
         /** Lets the user pick where to save a backup ([save], suggesting [name]) or which one to restore. */
         fun pickBackup(save: Boolean, name: String)
+
+        /** Lets the user pick TIDAL's streaming.csv (from its data export). */
+        fun pickTidal()
     }
 
     private const val HOUR = 3_600_000L
@@ -869,6 +874,15 @@ object Core {
                 ui?.pickBackup(true, "heavy-rotation-backup-${java.time.LocalDate.now()}.zip")
             }
             "backupImport" -> ui?.pickBackup(false, "")
+            "tidalImport" -> ui?.pickTidal()
+            "tidalRemove" -> historyExec.execute {
+                db.clearImported()
+                prefs.tidalImport = ""
+                history = if (hasHistory()) History.from(db.everything, hidden()) else null
+                dropStats()
+                pushState()
+                statsExec.execute { statsInner() }
+            }
             "atlas" -> statsExec.execute {
                 val s = currentStats()
                 push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
@@ -2298,7 +2312,7 @@ object Core {
         }
         // What came in counts, also when the walk was cut short.
         if (histCount > before || force || history == null) {
-            history = History.from(db, hidden())
+            history = History.from(db.everything, hidden())
             dropStats()
             statsExec.execute { statsInner() }
             historyExec.execute { fetchTagsInner(c) }
@@ -2575,7 +2589,7 @@ object Core {
                 stretches = sync.compare(years, count)
                 if (added > 0) {
                     histCount = db.count()
-                    history = History.from(db, hidden())
+                    history = History.from(db.everything, hidden())
                     dropStats()
                     statsExec.execute { statsInner() }
                     pushState()
@@ -2609,6 +2623,84 @@ object Core {
         stats = null
     }
 
+    /** Whether there is any listening to make stats of: Last.fm's, or plays imported from a service's own export. */
+    private fun hasHistory() = db.count() > 0 || db.importedCount() > 0
+
+    // ---- TIDAL's own history: the export of your streams, read into the stats ----
+
+    @Volatile private var importBusy = false
+    @Volatile private var importDone = 0
+    @Volatile private var importError = ""
+
+    /**
+     * The plays in TIDAL's "streaming.csv" (from the data export it sends on request) join the history: the years
+     * before Last.fm, and what Last.fm missed since. They replace an earlier import, stay on this phone (Last.fm
+     * takes no plays that old) and are named by the Fix names rules like any scrobble.
+     */
+    fun importTidal(uri: android.net.Uri) {
+        if (importBusy) return
+        importBusy = true
+        importError = ""
+        importDone = 0
+        pushState()
+        historyExec.execute {
+            try {
+                fun open() = ctx.contentResolver.openInputStream(uri)?.bufferedReader() ?: throw IOException("Couldn't open the file.")
+                // Once through the whole file first: how long each song is, and whether it is TIDAL's file at all.
+                val lengths = open().use { TidalImport.lengths(it) }
+                val known = db.lengths()
+                val rules = FixRules.active(prefs.fixPresets, FixRules.parse(prefs.fixRules))
+                val batch = ArrayList<ImportedPlay>(2000)
+                var ok = false
+                db.beginImport()
+                val s = try {
+                    open().use { r ->
+                        TidalImport.plays(r, lengths, { a, t -> known[Stats.lengthKey(a, t)] ?: 0 }) { p ->
+                            val f = FixRules.apply(Scrobble(p.artist, p.track, p.album, timestamp = p.ts), rules)
+                            if (f.artist.isBlank() || f.track.isBlank()) return@plays
+                            batch += ImportedPlay(p.ts, f.artist, f.track, f.album, p.est)
+                            if (batch.size == 2000) {
+                                db.addImported(batch, "tidal", pending = true)
+                                batch.clear()
+                                importDone += 2000
+                                pushState()
+                            }
+                        }
+                    }.also {
+                        db.addImported(batch, "tidal", pending = true)
+                        ok = true
+                    }
+                } finally {
+                    db.endImport(ok)
+                }
+                val span = db.importedSpan()
+                prefs.tidalImport = JSONObject().put("plays", db.importedCount()).put("used", db.importedUsed()).put("from", span.first * 1000).put("to", span.second * 1000)
+                    .put("rows", s.rows).put("short", s.short).put("videos", s.videos).put("at", System.currentTimeMillis()).toString()
+                history = History.from(db.everything, hidden())
+                dropStats()
+                statsExec.execute { statsInner() }
+                lastfm()?.let { c -> historyExec.execute { fetchTagsInner(c) } }
+            } catch (e: IOException) {
+                importError = e.message ?: "The file couldn't be read."
+            } catch (_: Exception) {
+                importError = "The file couldn't be read."
+            } finally {
+                importBusy = false
+                pushState()
+            }
+        }
+    }
+
+    /** What Settings shows of the import: how many plays, from when to when, and whether one is running. */
+    private fun tidalImportJson(): JSONObject {
+        val o = try {
+            JSONObject(prefs.tidalImport.ifEmpty { "{}" })
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        return o.put("busy", importBusy).put("done", importDone).put("error", importError)
+    }
+
     /** When [retryFreshMisses] last looked (ms). */
     @Volatile private var freshMissesAt = 0L
 
@@ -2631,7 +2723,7 @@ object Core {
         stats?.takeIf { statsDay == today }?.let { return it }
         // Kept only if nothing changed meanwhile: else a slow build would put older stats over newer ones.
         val gen = statsGen
-        val h = history ?: if (db.count() > 0) History.from(db, hidden()).also { if (statsGen == gen) history = it } else return null
+        val h = history ?: if (hasHistory()) History.from(db.everything, hidden()).also { if (statsGen == gen) history = it } else return null
         retryFreshMisses(h)
         return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
             .also {
@@ -3639,8 +3731,8 @@ object Core {
 
     /** After the hidden list changed: the history without those scrobbles, new stats and tidy-up lists. On [statsExec]. */
     private fun rebuildHistory() {
-        if (db.count() == 0) return
-        history = History.from(db, hidden())
+        if (!hasHistory()) return
+        history = History.from(db.everything, hidden())
         dropStats()
         push("onTidy") { tidy() ?: JSONObject().put("empty", true) }
         statsInner()
@@ -3648,7 +3740,7 @@ object Core {
 
     /** Suggestions of scrobbles that look like videos or apps, the most played ones without an album, and what is hidden. */
     private fun tidy(): JSONObject? {
-        val h = history ?: (if (db.count() > 0) History.from(db, hidden()).also { history = it } else return null)
+        val h = history ?: (if (hasHistory()) History.from(db.everything, hidden()).also { history = it } else return null)
         if (tidyFor === h) tidyJson?.let { return it }
         val (sugg, other) = Junk.scan(h, hidden())
         return JSONObject()
@@ -4103,7 +4195,8 @@ object Core {
                 .put("importing", importing).put("syncing", histSyncing).put("fetched", histDone).put("total", histTotal)
                 .put("error", histError).put("lastSync", prefs.historyLastSync).put("tagsDone", tagsDone).put("tagsTotal", tagsTotal)
                 .put("yearsBusy", yearsBusy).put("yearsDone", yearsDone).put("yearsTotal", yearsTotal)
-                .put("globalsBusy", globalsBusy).put("globalsDone", globalsDone).put("globalsTotal", globalsTotal),
+                .put("globalsBusy", globalsBusy).put("globalsDone", globalsDone).put("globalsTotal", globalsTotal)
+                .put("tidal", tidalImportJson()),
         )
         .put(
             "tidal",

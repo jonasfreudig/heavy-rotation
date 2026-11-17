@@ -627,6 +627,30 @@ play alone, stays one band.
 
 Days, weeks and hours are in the phone's local time.
 
+### Your TIDAL history, from before Last.fm
+
+Last.fm only knows what was scrobbled to it. TIDAL knows everything you streamed there, and sends it
+to you on request as part of your data: a folder with a file called `streaming.csv`, a row per
+stream. In Settings → Your data → TIDAL history, tap Import streaming.csv and pick that file (from
+the phone or from a cloud folder). Its plays join your stats: the years before your Last.fm history
+starts, and plays since then that never reached Last.fm.
+
+- A stream counts as a play by Last.fm's rule: 30 seconds at least, and half the song or four
+  minutes. The file doesn't say how long a song is, so its length is the one most of its streams
+  ran (or what this phone knows from scrobbling it).
+- A play's time is when it began. Streams reported together after listening offline carry one
+  time; they are laid end to end before it, so their day is right and their hour is close.
+- Where Last.fm has the same song within ten minutes (within half a day for those offline ones),
+  the play counts once, as Last.fm's. That is looked at again whenever older scrobbles come in.
+- Videos are left out, and rows written twice count once. Fix names applies to the imported plays
+  as to scrobbles.
+- The plays stay in this app. Last.fm takes no plays older than two weeks, so its own pages don't
+  change, and the history check keeps comparing only what Last.fm has. Backups carry them.
+- Import a newer file any time: it replaces the one before. Remove takes the plays out again.
+
+The file also holds the address and place of every stream. The app reads the song, album, time and
+length columns and nothing else, and the file isn't copied or sent anywhere.
+
 ### The look
 
 Headings and big numbers are set in Fraunces, a soft serif, and labels and details in DM Mono, like

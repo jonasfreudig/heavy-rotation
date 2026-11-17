@@ -1,5 +1,6 @@
 package app.recordshelf
 
+import app.recordshelf.history.ImportedPlay
 import app.recordshelf.lastfm.RecentTrack
 import app.recordshelf.scrobble.Listen
 import org.json.JSONObject
@@ -43,6 +44,10 @@ class BackupTest {
         val lengths = HashMap<String, Int>()
         override fun lengths(): Map<String, Int> = lengths
         override fun saveLength(trackKey: String, sec: Int) { lengths[trackKey] = sec }
+        val imported = ArrayList<Pair<ImportedPlay, String>>()
+        override fun forEachImported(fn: (ImportedPlay, String) -> Unit) = imported.forEach { fn(it.first, it.second) }
+        override fun addImported(rows: List<ImportedPlay>, src: String) { imported += rows.map { it to src } }
+        override fun clearImported() = imported.clear()
     }
 
     private fun source(): Pair<FakeDb, File> {
@@ -57,6 +62,7 @@ class BackupTest {
         db.saveImage("air|moon safari", "https://img/air.jpg")
         db.addVinyl(listOf(Listen("Air", "La Femme d'Argent", 1_700_000_200, "Moon Safari")))
         db.saveLength("air|la femme dargent", 430)
+        db.addImported(listOf(ImportedPlay(1_504_273_808, "Tyler, The Creator feat. Kali Uchis", "See You	Again", "Flower Boy", false), ImportedPlay(1_504_290_000, "Fugees", "Ready or Not", "", true)), "tidal")
         val dir = tmp.newFolder("from")
         File(dir, "hidden.json").writeText("""{"tracks":["dubz"]}""")
         File(dir, "queue.json").writeText("[1,2,3]")
@@ -82,6 +88,7 @@ class BackupTest {
         val db = FakeDb()
         db.insert(listOf(RecentTrack("Old", "Stuff", "", 1)))
         db.addVinyl(listOf(Listen("Old", "Record", 1)))
+        db.addImported(listOf(ImportedPlay(5, "Old", "Import", "", false)), "tidal")
         val dir = tmp.newFolder("to")
         File(dir, "queue.json").writeText("[9]")
         val r = Backup.read(ByteArrayInputStream(bytes), dir, db)
@@ -93,6 +100,8 @@ class BackupTest {
         assertEquals("https://img/air.jpg", db.images["air|moon safari"])
         assertEquals("the record plays come along", listOf("La Femme d'Argent"), db.vinyl.map { it.title })
         assertEquals("and the songs' lengths", 430, db.lengths["air|la femme dargent"])
+        assertEquals("and the plays imported from TIDAL's own history, in place of the ones there before",
+            listOf(ImportedPlay(1_504_273_808, "Tyler, The Creator feat. Kali Uchis", "See You	Again", "Flower Boy", false) to "tidal", ImportedPlay(1_504_290_000, "Fugees", "Ready or Not", "", true) to "tidal"), db.imported)
         assertEquals("""{"tracks":["dubz"]}""", File(dir, "hidden.json").readText())
         assertEquals("""{"id":42}""", File(dir, "releases/42.json").readText())
         assertEquals("the queue still to send stays as it was", "[9]", File(dir, "queue.json").readText())

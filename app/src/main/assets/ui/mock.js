@@ -1864,6 +1864,21 @@ const Mock = (() => {
         case 'atlas': later(500, () => onAtlas(fakeAtlas())); break;
         case 'backupExport': later(700, () => onBackup({ scrobbles: history().ts.length })); break;
         case 'backupImport': later(400, () => onToast('In the app, a file picker opens here')); break;
+        // TIDAL's own history: in the app a file picker opens; here an import runs as it would.
+        case 'tidalImport': {
+          S.history.tidal = { busy: true, done: 0, error: '' };
+          pushState();
+          let done = 0;
+          const step = () => {
+            done += 14000;
+            if (done < 106000) { S.history.tidal = { busy: true, done, error: '' }; pushState(); later(350, step); return; }
+            S.history.tidal = { plays: 106017, used: 92871, from: +new Date(2017, 8, 1), to: Date.now() - DAY, rows: 127533, short: 21104, videos: 230, at: Date.now(), busy: false, done: 0, error: '' };
+            pushState();
+          };
+          later(350, step);
+          break;
+        }
+        case 'tidalRemove': S.history.tidal = { busy: false, done: 0, error: '' }; pushState(); break;
         case 'vs':
           if (!vsLooked) {
             // The first time: Last.fm is asked, a few artists a second.

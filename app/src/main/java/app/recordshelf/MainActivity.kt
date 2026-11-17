@@ -69,6 +69,15 @@ class MainActivity : AppCompatActivity(), Core.Ui {
     }
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) Core.backupTo(uri) }
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) Core.restoreFrom(uri) }
+    private val openTidal = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) Core.importTidal(uri) }
+
+    override fun pickTidal() = runOnUiThread {
+        try {
+            openTidal.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/octet-stream", "*/*"))
+        } catch (_: Exception) {
+            Core.toast("No app on this phone can pick files")
+        }
+    }
 
     override fun pickBackup(save: Boolean, name: String) = runOnUiThread {
         try {

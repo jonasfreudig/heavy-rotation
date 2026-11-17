@@ -1179,7 +1179,7 @@ function renderState() {
   renderHeardCard();
   renderStatsHead();
   if (isOpen('nowPage')) renderNow();
-  if (isOpen('settingsPage')) renderSettings();
+  if (isOpen('settingsPage')) renderSettings(); else renderTidalImport();
   if (isOpen('playlistPage') && $('#plTidalBlock') && !(TIDALJOB && TIDALJOB.state === 'finding')) $('#plTidalBlock').innerHTML = tidalBlock();
   if (isOpen('comparePage')) renderCompare();
   if (isOpen('spinPage')) renderSpin();
@@ -3010,7 +3010,7 @@ function renderStatsHead() {
       ${hs.error ? `<p class="error">${esc(hs.error)}</p>` : ''}
       <div class="btn-row"><button class="btn filled" id="histImport">${icon('download')}${hs.resumable ? 'Continue import' : 'Import history'}</button></div></div>`;
   } else {
-    const bits = [`${num(hs.count)} scrobbles`, hs.syncing ? 'updating…' : hs.lastSync ? `updated ${ago(hs.lastSync)}` : ''];
+    const bits = [`${num(hs.count)} scrobbles`, (hs.tidal || {}).used ? `${num(hs.tidal.used)} more plays from TIDAL` : '', hs.syncing ? 'updating…' : hs.lastSync ? `updated ${ago(hs.lastSync)}` : ''];
     if (hs.tagsTotal) bits.push(`looking up genres ${hs.tagsDone}/${hs.tagsTotal}`);
     foot = `<button class="listen-line" data-histcheck>${icon('history')}<span>${bits.filter(Boolean).join(', ')}</span></button>`;
   }
@@ -3537,21 +3537,40 @@ function drawRecord(c) {
   const ds = Math.max(1.4 * dpr, Math.min(3 * dpr, g.step * 1.3)) * (1 + (z - 1) * 0.3) / z;
   const n = rec.d.length;
   const spot = st.spot;
-  const pass = (test, color, alpha, size) => {
+  // Where each play sits and which ink it takes, worked out once per size: a long history is a hundred thousand
+  // dots, and they were placed anew in each of nine passes at every redraw.
+  let pts = st._pts;
+  if (!pts || pts.rec !== rec || pts.W !== c.width) {
+    const xs = new Float32Array(n), ys = new Float32Array(n);
+    const inks = Array.from({ length: 9 }, () => []);
+    for (let i = 0; i < n; i++) {
+      const r = g.r0 + (rec.d[i] + 0.5) * g.step, ang = Math.PI / 2 + (rec.m[i] / 1440) * 2 * Math.PI;
+      xs[i] = g.cx + r * Math.cos(ang);
+      ys[i] = g.cy + r * Math.sin(ang);
+      inks[Math.min(8, rec.a[i])].push(i);
+    }
+    pts = st._pts = { rec, W: c.width, xs, ys, inks };
+  }
+  // Zoomed in, only what is in view is drawn.
+  const half = c.width / (2 * z) + ds, x0 = v.vx - half, x1 = v.vx + half, y0 = v.vy - half, y1 = v.vy + half;
+  const all = z <= 1.01;
+  const dots = (list, color, alpha, size) => {
     ctx.fillStyle = color;
     ctx.globalAlpha = alpha;
-    for (let i = 0; i < n; i++) {
-      if (!test(rec.a[i])) continue;
-      const [x, y] = recordPos(g, rec, i);
-      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    const h = size / 2, xs = pts.xs, ys = pts.ys;
+    for (let k = 0; k < list.length; k++) {
+      const i = list[k], x = xs[i], y = ys[i];
+      if (all || (x > x0 && x < x1 && y > y0 && y < y1)) ctx.fillRect(x - h, y - h, size, size);
     }
   };
   if (spot < 0) {
-    pass((a) => a >= 8, '#9a99a3', 0.4, ds);
-    for (let k = 7; k >= 0; k--) pass((a) => a === k, INKS_ON_VINYL[k], 0.92, ds);
+    dots(pts.inks[8], '#9a99a3', 0.4, ds);
+    for (let k = 7; k >= 0; k--) dots(pts.inks[k], INKS_ON_VINYL[k], 0.92, ds);
   } else {
-    pass((a) => a !== spot, '#9a99a3', 0.16, ds);
-    pass((a) => a === spot, spot < 8 ? INKS_ON_VINYL[spot] : '#ffffff', 1, ds * 1.5);
+    const theirs = [], others = [];
+    for (let i = 0; i < n; i++) (rec.a[i] === spot ? theirs : others).push(i);
+    dots(others, '#9a99a3', 0.16, ds);
+    dots(theirs, spot < 8 ? INKS_ON_VINYL[spot] : '#ffffff', 1, ds * 1.5);
   }
   ctx.globalAlpha = 1;
   // The play tapped last, ringed.
@@ -9801,6 +9820,27 @@ function openFixSheet(id, draft) {
   show();
 }
 
+/**
+ * Settings, TIDAL history: the plays of TIDAL's own export (its streaming.csv) in your stats, what an import
+ * brought, and its progress while one runs.
+ */
+let tidalWasBusy = false;
+function renderTidalImport() {
+  const t = (ST.history || {}).tidal || {};
+  const has = t.plays > 0;
+  const text = t.busy ? `Reading the file: ${num(t.done || 0)} plays so far. A long history takes a minute.`
+    : t.error ? esc(t.error)
+      : has ? `<b>${num(t.used)} plays</b> from ${esc(monthYear(t.from))} to ${esc(monthYear(t.to))} are in your stats${t.plays > t.used ? `. Last.fm already had another ${num(t.plays - t.used)} of the file's plays, which count once` : ''}. Imported ${esc(dateLabel(t.at))}.`
+        : 'TIDAL sends you your data on request, and its streaming.csv lists every song you streamed. Pick that file and its plays join your stats: the years before your Last.fm history, and what Last.fm missed since. They stay in this app, since Last.fm takes no plays that old.';
+  if ($('#tiStatus').innerHTML !== text) $('#tiStatus').innerHTML = text;
+  $('#tiBusy').hidden = !t.busy;
+  $('#tiImport').disabled = !!t.busy;
+  $('#tiImport span').textContent = has ? 'Import a newer file' : 'Import streaming.csv';
+  $('#tiRemove').hidden = !has || !!t.busy;
+  // Done: said once, wherever you are by then.
+  if (tidalWasBusy && !t.busy && !t.error && has) toast(`${num(t.used)} plays from TIDAL are in your stats`);
+  tidalWasBusy = !!t.busy;
+}
 function renderSettings() {
   const l = ST.lastfm || {}, d = ST.discogs || {};
   $$('#ambSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === ambientMode()));
@@ -9808,6 +9848,7 @@ function renderSettings() {
   renderTidalSettings();
   renderSetlistSettings();
   renderFixSettings();
+  renderTidalImport();
   const td = (STATS && STATS.tidy) || {};
   const more = td.count ? `${plural(td.count, 'track')} (${plural(td.plays, 'play')}) look like videos or apps.` : '';
   $('#tidyStatus').textContent = td.hiddenPlays ? `${plural(td.hiddenPlays, 'play')} hidden from your stats. ${more}`
@@ -10568,6 +10609,8 @@ function build() {
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ui[k] = localStorage.getItem(k); } } catch (_) { /* preview without storage */ }
     send({ t: 'backupExport', ui });
   };
+  $('#tiImport').onclick = () => send({ t: 'tidalImport' });
+  $('#tiRemove').onclick = () => confirmSheet('Take the TIDAL plays out?', 'Your stats go back to what Last.fm has. The file can be imported again any time.', 'Take them out', () => send({ t: 'tidalRemove' }));
   $('#bkImport').onclick = () => {
     openSheet(`<div class="sheet-title">Restore a backup?</div>
       <p class="body">The backup replaces this app's history, hide list, activity, collection and settings. Heavy Rotation starts again afterwards; then connect Last.fm (and TIDAL) again.</p>

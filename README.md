@@ -66,6 +66,8 @@ of its own in between, and your data stays on your phone.
   of sound.
 - Any album can be scrobbled by hand after you heard it elsewhere: find it in search (Deezer's
   catalog is in there too) and say when you played it.
+- TIDAL's own record of your listening (the `streaming.csv` of its data export) can be imported, so
+  the stats reach back to your first stream there, long before your Last.fm history starts.
 - A home-screen widget shows what is playing now.
 - The app uses Material You colors in light and dark, with two looks (Tinted soft and Soft glass).
   Covers tilt with the phone, and the records you own get a holo foil. Your records show the
@@ -121,6 +123,8 @@ can watch the Releases page and update the app for you.
   it reads no other notifications.
 - The microphone is used only when you tap Identify: ten seconds of sound go to AudD to name the
   song, and nothing is kept.
+- A TIDAL history you import is read on the phone: only each stream's song, album, time and length
+  are kept, in the app, and nothing of it is sent anywhere.
 
 ## Credits
 

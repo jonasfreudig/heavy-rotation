@@ -1,6 +1,7 @@
 package app.recordshelf
 
 import app.recordshelf.history.HistoryStore
+import app.recordshelf.history.ImportedPlay
 import app.recordshelf.lastfm.RecentTrack
 import app.recordshelf.scrobble.Listen
 import org.json.JSONArray
@@ -30,6 +31,11 @@ interface BackupDb : HistoryStore {
     /** Songs' real lengths, kept when this app scrobbled them. */
     fun lengths(): Map<String, Int> = emptyMap()
     fun saveLength(trackKey: String, sec: Int) {}
+
+    /** Plays from a music service's own export (each with where it came from), kept next to Last.fm's. */
+    fun forEachImported(fn: (ImportedPlay, String) -> Unit) {}
+    fun addImported(rows: List<ImportedPlay>, src: String) {}
+    fun clearImported() {}
 }
 
 /**
@@ -49,6 +55,7 @@ object Backup {
     private const val TAGS = "history/tags.json"
     private const val IMAGES = "history/images.json"
     private const val LENGTHS = "history/lengths.json"
+    private const val IMPORTED = "history/imported.tsv"
     private const val PREFS = "prefs.json"
     private const val UI = "ui.json"
     private const val FILES = "files/"
@@ -86,6 +93,12 @@ object Backup {
             put(TAGS, JSONObject(db.tags().mapValues { JSONArray(it.value) }).toString())
             put(IMAGES, JSONObject(db.images()).toString())
             put(LENGTHS, JSONObject(db.lengths()).toString())
+            // Plays imported from a service's own export: time, artist, song, album, whether the time is worked out, the source.
+            zip.putNextEntry(ZipEntry(IMPORTED))
+            val iw = zip.bufferedWriter()
+            db.forEachImported { p, src -> iw.write("${p.ts}\t${field(p.artist)}\t${field(p.track)}\t${field(p.album)}\t${if (p.est) 1 else 0}\t${field(src)}\n") }
+            iw.flush()
+            zip.closeEntry()
             put(PREFS, prefsJson(prefs).toString())
             put(UI, ui.toString())
             for (f in files) {
@@ -115,6 +128,10 @@ object Backup {
                     val e = zip.nextEntry ?: break
                     if (e.isDirectory) continue
                     when {
+                        e.name == IMPORTED -> {
+                            val r = BufferedReader(InputStreamReader(zip))
+                            while (true) r.readLine() ?: break
+                        }
                         e.name == SCROBBLES || e.name == VINYL -> {
                             val r = BufferedReader(InputStreamReader(zip))
                             var n = 0
@@ -184,6 +201,7 @@ object Backup {
         val lengths = HashMap<String, Int>()
         val root = filesDir.canonicalFile
         var historyCleared = false
+        var importedCleared = false
         var vinyl: List<Listen>? = null
         ZipInputStream(input.buffered()).use { zip ->
             manifest(zip)
@@ -218,6 +236,25 @@ object Backup {
                         while (true) list += row(r.readLine() ?: break)?.let { Listen(it.artist, it.title, it.ts, it.album) } ?: continue
                         vinyl = list
                     }
+                    e.name == IMPORTED -> {
+                        db.clearImported()
+                        importedCleared = true
+                        val r = BufferedReader(InputStreamReader(zip))
+                        val bySrc = HashMap<String, ArrayList<ImportedPlay>>()
+                        fun flush(src: String) {
+                            bySrc[src]?.let { db.addImported(it, src); it.clear() }
+                        }
+                        while (true) {
+                            val p = (r.readLine() ?: break).split('\t')
+                            val ts = p.getOrNull(0)?.toLongOrNull() ?: continue
+                            if (p.size < 6) continue
+                            val src = unfield(p[5])
+                            val list = bySrc.getOrPut(src) { ArrayList(2000) }
+                            list += ImportedPlay(ts, unfield(p[1]), unfield(p[2]), unfield(p[3]), p[4] == "1")
+                            if (list.size == 2000) flush(src)
+                        }
+                        bySrc.keys.toList().forEach { flush(it) }
+                    }
                     e.name.startsWith(FILES) -> {
                         // Only into the app's own folder, whatever the entry's name says.
                         val target = File(root, e.name.removePrefix(FILES)).canonicalFile
@@ -230,6 +267,8 @@ object Backup {
             }
         }
         if (!historyCleared) db.clear()
+        // An older backup has no imported plays: none stay from before.
+        if (!importedCleared) db.clearImported()
         // An older backup has no record plays of their own: the app fills them from the restored activity log.
         db.clearVinyl()
         vinyl?.let { db.addVinyl(it) }

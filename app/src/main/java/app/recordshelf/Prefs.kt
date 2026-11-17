@@ -89,6 +89,11 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getLong("historyLastSync", 0)
         set(v) = app.edit().putLong("historyLastSync", v).apply()
 
+    /** What the last import of TIDAL's own history brought (JSON: plays, used, from, to, at), "" for none. */
+    var tidalImport: String
+        get() = app.getString("tidalImport", "").orEmpty()
+        set(v) = app.edit().putString("tidalImport", v).apply()
+
     /** The sleep timer: when the music stops (ms, 0: off), and whether that is the end of a song. */
     var sleepAt: Long
         get() = app.getLong("sleepAt", 0)
