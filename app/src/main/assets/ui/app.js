@@ -4010,13 +4010,24 @@ function sleeveBackInner(base, rel, plays, card) {
     ${card && card.tier >= 0 ? `<div class="sb-sticker cb-${TIER_KEYS[card.tier]}"><b>${TIER_NAMES[card.tier]}</b><small>${esc(timesThrough(card.through))}</small></div>` : ''}`;
 }
 
-/** Now spinning as a turntable: the record on the platter with its cover as the label. */
+/**
+ * Now spinning as a turntable: the record on the platter is a picture disc, its cover over the whole side under the
+ * grooves (a record without a cover is black, with its name on the label).
+ */
 function turntableHtml(sp, side = '') {
   const label = sp.cover ? `style="background-image:url('${cssUrl(sp.cover)}')"` : '';
   return `<div class="tt" data-key="${esc(sp.id)}" data-side="${esc(side)}" style="--h:${hue(sp.album + sp.artist)}"><div class="tt-plinth">
-    <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-rec"><div class="tt-disc"><div class="tt-label" ${label}>${sp.cover ? '' : esc(sp.album)}<span class="tt-side">${esc(side)}</span></div></div></div><i class="tt-spindle"></i></div>
+    <i class="tt-led"></i><div class="tt-platter"><div class="tt-strobe"></div><div class="tt-rec"><div class="tt-disc"><div class="tt-label${sp.cover ? ' pic' : ''}" ${label}>${sp.cover ? '' : esc(sp.album)}<span class="tt-side">${esc(side)}</span></div></div></div><i class="tt-spindle"></i></div>
     <i class="tt-counter"></i><div class="tt-arm"><i class="tube"></i><i class="head"></i></div><i class="tt-pivot"></i>
     <div class="tt-speed"><i class="on">33</i><i>45</i></div><i class="tt-start"></i></div></div>`;
+}
+/**
+ * How far from the middle the needle is [p] of the way through a side (0 to 1), as a share of the picture's radius:
+ * from the arm's angle (25° to 44°, below) and where its pivot stands on the plinth (see .tt-arm and .tt-platter).
+ */
+function needleAt(p) {
+  const th = ((25 + 19 * p) * Math.PI) / 180;
+  return Math.hypot(1.075 - 0.7 * Math.sin(th) - 0.525, 0.15 + 0.7 * Math.cos(th) - 0.5) / (0.4 * 0.96 * 0.95);
 }
 /** The tonearm travels through the side as it plays (outer groove at 25°, the label at 44°); the platter turns while a track plays. */
 /** The side on the turntable: the one playing, else the next one, else the last one played. */
@@ -4031,6 +4042,14 @@ function tickTurntable(n, now, sp) {
   if (side.length) {
     const a = side[0].start, b = Math.max(...side.map((it) => it.start + it.dur * 1000));
     arm = 25 + Math.max(0, Math.min(1, (now - a) / Math.max(1, b - a))) * 19;
+    // The gaps between the side's songs show as rings on the record, where the needle will be when each begins.
+    const bands = side.slice(1).map((it) => needleAt((it.start - a) / Math.max(1, b - a)) * 100).filter((r) => r > 48 && r < 98)
+      .map((r) => `radial-gradient(circle closest-side, transparent ${(r - 0.6).toFixed(2)}%, rgba(0,0,0,.42) ${(r - 0.2).toFixed(2)}% ${(r + 0.2).toFixed(2)}%, rgba(255,255,255,.16) ${(r + 0.5).toFixed(2)}%, transparent ${(r + 0.9).toFixed(2)}%)`).join(',');
+    if (tt._bands !== bands) {
+      tt._bands = bands;
+      const pic = tt.querySelector('.tt-label.pic');
+      if (pic) { if (bands) pic.style.setProperty('--bands', bands); else pic.style.removeProperty('--bands'); }
+    }
   }
   tt.style.setProperty('--arm', `${arm.toFixed(2)}deg`);
   tt.classList.toggle('spinning', !!n.item);

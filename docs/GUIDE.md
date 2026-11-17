@@ -721,8 +721,10 @@ The record rolls back into the sleeve first and rolls out again after you turn i
 shows the album's card, as on every album: how many times through, the way up from bronze to holo
 and when it got each. Before your history has a card for it, the back has the tracklist by side,
 the label and format, a barcode, and your plays stamped on it. Now
-spinning shows the record on a turntable: the cover is the label, the platter turns while a track
-plays, and the tonearm moves from the outer groove toward the label as the side goes on. The
+spinning shows the record on a turntable as a picture disc: the cover fills the whole side under
+its grooves, with a ring where each song of the side begins. The platter turns while a track plays
+and stops where it is, and the tonearm moves from the outer groove toward the middle as the side
+goes on, so the needle sits in the band of the song that plays. The
 turntable takes the record's colors: its body a deep shade of the cover's main color, the speed
 button and the headshell its brightest.
 
