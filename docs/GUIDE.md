@@ -343,8 +343,8 @@ up.
 With setlist.fm set up, artist pages have "On stage lately": the songs of the artist's usual set at
 their recent shows, in their usual order (songs played at about a third of the shows or more,
 encore songs last), with your plays of each and "new" for the ones you haven't heard. It also lists
-their shows coming up (as far as fans have added them on setlist.fm; tap one for its page there) and
-their recent shows, all as ticket stubs: shows to come in a stronger shade of the page's color than
+all their shows coming up, the next one first (as far as fans have added them on setlist.fm; tap
+one for its page there) and their recent shows, all as ticket stubs in rows that scroll sideways: shows to come in a stronger shade of the page's color than
 the ones lately, and shows you were at in a color of their own. Tapping Make a concert playlist turns the
 usual set into a playlist; tap a show for a playlist of that night's setlist. Both go to TIDAL or
 through Copy list, like every playlist. Fans write the setlists on setlist.fm, so recent shows can

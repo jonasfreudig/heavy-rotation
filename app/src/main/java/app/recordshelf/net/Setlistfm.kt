@@ -131,6 +131,33 @@ object Setlists {
     /** A song is part of the usual set when it was played at this share of the shows (at two of them at least). */
     const val SHARE = 0.3
 
+    /** setlist.fm sends this many setlists a page; an artist's are read up to [PAGES_MAX] pages deep. */
+    const val PAGE = 20
+    const val PAGES_MAX = 6
+
+    /** An artist page lists this many shows to come at most. */
+    const val UPCOMING_MAX = 60
+
+    /**
+     * An artist's setlists, read page by page ([page]: 1 is the newest). The shows to come are on the first pages,
+     * the farthest ahead first, so reading goes on until the past begins: stopping earlier left out the very next
+     * shows of a long tour. Where the past has begun but few recent setlists came with it (shows nobody wrote down
+     * yet), one more page is read.
+     */
+    fun gather(today: LocalDate, maxPages: Int = PAGES_MAX, page: (Int) -> List<Show>): List<Show> {
+        val all = ArrayList<Show>()
+        var more = false
+        for (p in 1..maxPages) {
+            val got = page(p)
+            all += got
+            if (got.size < PAGE) break
+            if (all.none { !it.date.isAfter(today) }) continue
+            if (more || lately(all, today).size >= 6) break
+            more = true
+        }
+        return all
+    }
+
     /** The recent shows that tell what they play: past ones with a setlist of some length, newest first. */
     fun lately(shows: List<Show>, today: LocalDate): List<Show> =
         shows.filter { !it.date.isAfter(today) && it.songs.count { s -> !s.tape } >= SONGS_MIN }.sortedByDescending { it.date }.take(SHOWS)

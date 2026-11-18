@@ -2408,10 +2408,7 @@ object Core {
         setlistCache[k]?.takeIf { System.currentTimeMillis() - it.first < LIVE_TTL }?.let { return it.second }
         val c = setlistfm ?: SetlistfmClient(prefs.setlistKey).also { setlistfm = it }
         val live = c.findArtist(name)?.let { a ->
-            val first = c.setlists(a.mbid, 1)
-            // Few recent setlists on the first page (shows to come, ones nobody wrote down yet): the next page too.
-            val shows = if (Setlists.lately(first, java.time.LocalDate.now()).size < 6 && first.size >= 20) first + c.setlists(a.mbid, 2) else first
-            Live(a.name, a.url, shows)
+            Live(a.name, a.url, Setlists.gather(java.time.LocalDate.now()) { p -> c.setlists(a.mbid, p) })
         }
         setlistCache[k] = System.currentTimeMillis() to live
         return live
@@ -2426,7 +2423,7 @@ object Core {
             .put("songs", JSONArray(s.songs.filter { !it.tape }.map { song(it.title, it.cover).put("with", it.with).put("encore", it.encore) }))
         out.put("artist", live.name).put("url", live.url).put("of", lately.size)
             .put("typical", JSONArray(Setlists.typical(lately).map { song(it.title, it.cover).put("n", it.shows).put("encore", it.encore) }))
-            .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(12).map { show(it) }))
+            .put("upcoming", JSONArray(live.shows.filter { it.date.isAfter(today) }.sortedBy { it.date }.take(Setlists.UPCOMING_MAX).map { show(it) }))
             .put("shows", JSONArray(live.shows.filter { !it.date.isAfter(today) && it.songs.any { s -> !s.tape } }.sortedByDescending { it.date }.take(15).map { show(it) }))
     }
 

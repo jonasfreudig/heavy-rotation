@@ -42,6 +42,43 @@ class ConcertsAndPagesTest {
     """.trimIndent()
 
     @Test
+    fun allShowsToComeAreReadBeforeThePastBegins() {
+        val today = LocalDate.of(2026, 11, 18)
+        fun show(id: Int, date: LocalDate, songs: Int) = app.recordshelf.net.Show(
+            "s$id", date, "IDLES", "Hall", "City", "Country", "", "",
+            List(songs) { app.recordshelf.net.SetSong("Song $it", "", "", false, false, "") },
+        )
+        // 45 shows to come (the farthest first, as setlist.fm sends them), then 60 past ones with setlists.
+        val tour = (45 downTo 1).map { show(it, today.plusDays(it.toLong()), 0) } + (0 until 60).map { show(100 + it, today.minusDays(it.toLong()), 8) }
+        val asked = ArrayList<Int>()
+        fun pages(list: List<app.recordshelf.net.Show>) = { p: Int -> asked += p; list.drop((p - 1) * Setlists.PAGE).take(Setlists.PAGE) }
+        val got = Setlists.gather(today, page = pages(tour))
+        assertEquals("the first two pages are all to come; the third brings the last five and the past", listOf(1, 2, 3), asked)
+        assertEquals("none of the next shows is missing", 45, got.count { it.date.isAfter(today) })
+        assertEquals(today.plusDays(1), got.filter { it.date.isAfter(today) }.minOf { it.date })
+
+        // The usual case: the past begins on the first page with enough setlists, and one page is all that is read.
+        asked.clear()
+        val usual = (2 downTo 1).map { show(it, today.plusDays(it.toLong()), 0) } + (0 until 40).map { show(100 + it, today.minusDays(it.toLong()), 8) }
+        assertEquals(20, Setlists.gather(today, page = pages(usual)).size)
+        assertEquals(listOf(1), asked)
+
+        // Few recent setlists on the page where the past begins: one more page, and no more than that.
+        asked.clear()
+        val bare = (0 until 100).map { show(100 + it, today.minusDays(it.toLong()), 0) }
+        assertEquals(40, Setlists.gather(today, page = pages(bare)).size)
+        assertEquals(listOf(1, 2), asked)
+
+        // A tour longer than the pages read: it stops at the limit; a short page ends the reading at once.
+        asked.clear()
+        val endless = (400 downTo 1).map { show(it, today.plusDays(it.toLong()), 0) }
+        assertEquals(Setlists.PAGES_MAX * Setlists.PAGE, Setlists.gather(today, page = pages(endless)).size)
+        asked.clear()
+        assertEquals(3, Setlists.gather(today, page = pages(endless.take(3))).size)
+        assertEquals(listOf(1), asked)
+    }
+
+    @Test
     fun setlistsAreReadAndTheirUsualSetFound() {
         val shows = SetlistfmClient.parse(JSONObject(page))
         assertEquals(3, shows.size)
