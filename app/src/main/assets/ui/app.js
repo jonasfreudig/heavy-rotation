@@ -161,20 +161,25 @@ document.addEventListener('animationstart', (e) => {
  */
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
-  // Collector cards near the screen (an observer keeps the list), and those of them in what's on top now.
-  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], pending: [], cardAt: 0, scrollAt: 0, settleT: 0, scrolledTo: new WeakMap(),
+  // Collector cards near the screen (an observer keeps the list): each has its lights while it is.
+  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, canLight: null,
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
     return pref && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   },
-  /** Starts watching the cards drawn since last time; one coming near the screen or leaving it refreshes. */
+  /** Whether cards get their moving lights: where the page can tie an animation to the scroll, and movement is on. */
+  lightable() {
+    if (this.canLight == null) this.canLight = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: view()'));
+    return this.canLight && this.allowed();
+  },
+  /** Starts watching the cards drawn since last time; one coming near the screen gets its lights, one leaving loses them. */
   watchCards() {
     if (!this.cardIo) {
       this.cardIo = new IntersectionObserver((es) => {
-        es.forEach((e) => { if (e.isIntersecting) this.cards.add(e.target); else this.cards.delete(e.target); });
-        // Mid-scroll the cards that came near wait until it stops (see scrolled).
-        if (!this.scrolling()) this.refresh();
+        es.forEach((e) => {
+          if (e.isIntersecting) { this.cards.add(e.target); this.light(e.target); } else { this.cards.delete(e.target); this.dim(e.target); }
+        });
       }, { rootMargin: '80px 0px' });
     }
     $$('.tcard:not(i)').forEach((c) => { if (!this.cardSeen.has(c)) { this.cardSeen.add(c); this.cardIo.observe(c); } });
@@ -184,18 +189,11 @@ const Tilt = {
     const story = !$('#story').hidden;
     this.els = story ? $$('#story [data-holo]') : top ? $$(`#${top} [data-holo]`) : [];
     this.watchCards();
-    this.cards.forEach((c) => { if (!c.isConnected) this.cards.delete(c); });
-    // Only the cards in the page on top (or the tab, with no page open) move; each is a layer of its own while it does.
-    const scope = top ? $(`#${top}`) : null;
-    const live = story ? [] : [...this.cards].filter((c) => (scope ? scope.contains(c) : !c.closest('.page')));
-    const want = (this.els.length > 0 || live.length > 0) && this.allowed();
-    this.live.forEach((c) => { if (!want || !live.includes(c)) this.lay(c); });
-    // The ones moving already go on (drawn again, they get back what the drawing took). New ones join two a frame
-    // (see step): a screenful of them at once is a screenful of new layers for the phone to draw in one go.
-    const was = new Set(this.live);
-    this.live = want ? live.filter((c) => was.has(c)) : [];
-    this.pending = want ? live.filter((c) => !was.has(c)) : [];
-    this.live.forEach((c) => this.lift(c));
+    // Drawn again, a card lost its lights: the ones near the screen get them back (or lose them, with movement off).
+    const lit = this.lightable();
+    this.cards.forEach((c) => { if (!c.isConnected) this.cards.delete(c); else if (lit) this.light(c); else this.dim(c); });
+    // Only the covers that tilt with the phone need its motion sensor; the cards' lights follow the scroll.
+    const want = this.els.length > 0 && this.allowed();
     if (want !== this.on) {
       this.on = want;
       send({ t: 'tilt', on: want });
@@ -239,82 +237,31 @@ const Tilt = {
       el.style.setProperty('--ty', y.toFixed(3));
       el.style.setProperty('--m', Math.min(1, Math.hypot(x, y)).toFixed(3));
     }
-    // Cards that came near start to move, two a frame, once the page holds still.
-    if (this.pending.length && !this.scrolling(now)) {
-      for (let n = 0; n < 2 && this.pending.length; n++) {
-        const c = this.pending.shift();
-        if (c.isConnected) { this.lift(c); this.live.push(c); }
-      }
-    }
-    // The cards hold still while the page scrolls, and take a new angle at most every 14 ms (each frame at 60 Hz,
-    // every other one at 120).
-    if (this.live.length && now - this.cardAt >= 14 && !this.scrolling(now)) {
-      this.cardAt = now;
-      for (const c of this.live) this.pose(c);
-    }
     this.raf = requestAnimationFrame((t) => this.step(t));
   },
-  /** A card starts to move: a layer of its own, its lights on top. One that just came near eases in from lying flat. */
-  lift(c) {
-    c.classList.add('tilting');
-    // Drawn again, a card lost its class, its lights and its angle: they all come back before the next frame. (A light
-    // the drawing made into something else of the card's is that now; a new one goes on.)
+  /**
+   * A card near the screen gets its lights: a white glint, and a rainbow one on a holo or foil card. Where they sit
+   * follows the card's way across the screen, moved by the scroll itself (look.css); nothing here runs per frame.
+   * Drawn again, a card lost them: they come back. (A light the drawing made into something else of the card's is
+   * that now; a new one goes on.)
+   */
+  light(c) {
+    if (!this.lightable()) return;
     const mine = (el, cls) => el && el.parentNode === c && el.className === cls;
-    const light = (el, cls) => { if (mine(el, cls)) return el; const n = document.createElement('i'); n.className = cls; c.append(n); return n; };
-    if (c.matches('.holo, .foil')) c._fl = light(c._fl, 'tc-fl');
+    const add = (el, cls) => { if (mine(el, cls)) return el; const n = document.createElement('i'); n.className = cls; c.append(n); return n; };
+    c._lt = add(c._lt, 'tc-lt');
+    if (c.matches('.holo, .foil')) c._fl = add(c._fl, 'tc-fl');
     else if (c._fl) { if (mine(c._fl, 'tc-fl')) c._fl.remove(); c._fl = null; }
-    c._lt = light(c._lt, 'tc-lt');
-    if (c._k == null) c._k = 0;
-    c._tx = null;
-    this.pose(c);
+    c.classList.add('lit');
   },
-  /** A card that stops moving lies flat again, without its lights, and starts from flat next time. */
-  lay(c) {
-    c.classList.remove('tilting');
-    c.style.removeProperty('transform');
+  /** A card away from the screen, or with movement off, is without its lights. */
+  dim(c) {
+    c.classList.remove('lit');
     for (const [el, cls] of [[c._lt, 'tc-lt'], [c._fl, 'tc-fl']]) if (el && el.parentNode === c && el.className === cls) el.remove();
     c._lt = c._fl = null;
-    c._k = null;
-    c._tx = null;
-  },
-  /** A card's angle and its lights for the phone's tilt; [_k] grows from 0 to 1 as it comes in. */
-  pose(c) {
-    const k = c._k < 1 ? (c._k = Math.min(1, c._k + 0.08)) : 1;
-    const e = k * k * (3 - 2 * k);
-    const x = this.x * e, y = this.y * e;
-    if (k >= 1 && Math.abs(x - (c._tx ?? 9)) < 0.004 && Math.abs(y - (c._ty ?? 9)) < 0.004) return;
-    c._tx = x;
-    c._ty = y;
-    const m = Math.min(1, Math.hypot(x, y));
-    c.style.transform = `perspective(700px) rotateX(${(y * -8).toFixed(2)}deg) rotateY(${(x * 10).toFixed(2)}deg)`;
-    // The glints only move and fade (see look.css), mostly across their slant, which is where they show it.
-    c._lt.style.transform = `translate(${(x * -15).toFixed(2)}%, ${(y * -8).toFixed(2)}%) rotate(18deg)`;
-    c._lt.style.opacity = ((0.25 + m * 0.65) * e).toFixed(3);
-    if (c._fl) {
-      c._fl.style.transform = `translate(${(x * 22).toFixed(2)}%, ${(y * 10).toFixed(2)}%) rotate(18deg)`;
-      c._fl.style.opacity = (0.25 + m * 0.4).toFixed(3);
-    }
-  },
-  /** Whether the page scrolled within the last 150 ms. */
-  scrolling(now = performance.now()) { return now - this.scrollAt < 150; },
-  /** A scroll anywhere: the cards wait, and once it stops the ones that came near join (see watchCards). */
-  scrolled(el) {
-    if (!this.on) return;
-    // A row that snaps to its cards moves by a fraction of a pixel as one of them tilts: that is no scroll, or the cards
-    // would hold still and start again over and over. Only 2 px from where the box last scrolled to count.
-    const box = el === document ? document.scrollingElement : el;
-    if (box) {
-      const was = this.scrolledTo.get(box) || [0, 0];
-      if (Math.abs(box.scrollLeft - was[0]) < 2 && Math.abs(box.scrollTop - was[1]) < 2) return;
-      this.scrolledTo.set(box, [box.scrollLeft, box.scrollTop]);
-    }
-    this.scrollAt = performance.now();
-    clearTimeout(this.settleT);
-    this.settleT = setTimeout(() => this.refresh(), 170);
   },
 };
 window.onTilt = (x, y) => { Tilt.seen = true; Tilt.tx = x; Tilt.ty = y; };
-document.addEventListener('scroll', (e) => Tilt.scrolled(e.target), { capture: true, passive: true });
 
 /**
  * Segmented controls, tabs and the tab bar: one pill (a dot under the period tabs) slides to the
@@ -8511,7 +8458,7 @@ const pilePanel = (p) => {
 /**
  * A pile tapped ([i], its number on the page): its songs spread out under its row, or go back to one pile; null closes
  * the open one. Only one is open at a time. In place, and not on a sheet: the page behind a sheet stops scrolling, and
- * the phone then drew every tilting card on it anew (they blinked, and the page stuttered once the sheet was gone).
+ * the phone then drew every card on it anew (they blinked, and the page stuttered once the sheet was gone).
  */
 function togglePile(i) {
   const B = CARDBOOK;
@@ -8520,7 +8467,7 @@ function togglePile(i) {
   B.pile = id && B.pile !== id ? id : null;
   withNewRows($('#cardsBody'), renderCardbook);
 }
-/** Drawing the binder again leaves a card that is as it was alone: it keeps tilting, with its lights. */
+/** Drawing the binder again leaves a card that is as it was alone, with its lights. */
 const keepCard = (x, y) => {
   if (!x.classList.contains('tcard')) return false;
   const h = y.outerHTML;

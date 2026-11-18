@@ -777,10 +777,11 @@ button and the headshell its brightest.
 Big covers tilt and catch the light as you move the phone. Records on your shelf also get holo foil
 wherever they show up (record page, Now spinning, album and song pages, the story), and the record
 slides out of its sleeve and spins while a side plays. Albums you don't own only tilt. Artist photos
-sit in a frame that tilts too, and so do the collector cards on screen, with a glint of light
-moving over them. While you scroll, the cards hold still; once you stop, the ones that came onto the
-screen settle into the angle. The motion sensor runs only while such a page or card is showing. Switch the
-effect off in Settings → Look → Moving covers. The "plays on Last.fm" chip on a record page opens
+sit in a frame that tilts too. The collector cards catch the light as you scroll: a glint runs
+across each card on its way up the screen (and across the cards of a row as you swipe the row), with
+a rainbow one on holo and foil cards. It follows your finger and rests when the page does. The
+motion sensor runs only while a tilting cover is showing. Switch both effects off in Settings →
+Look → Moving covers. The "plays on Last.fm" chip on a record page opens
 your Last.fm library for that album (in the Last.fm app if it's installed).
 
 ## Scrobbling a record
