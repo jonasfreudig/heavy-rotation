@@ -400,18 +400,20 @@ with more of it.
 #### Your musical atlas
 
 The Musical atlas tile, under Your taste at the end of the Stats tab, opens your whole history as a
-universe, a family tree and a map (see below). The first two are worked out from the order of your
+map of islands, a family tree and a world map (see below). The first two are worked out from the order of your
 scrobbles.
 
-- Universe shows your 150 most played artists as stars, sized by plays. Two stars are linked when
-  you often play them back to back (in the same listening session, relative to how much you play
-  both), or, for artists you rarely play next to anything, when they share the same months. Linked
-  stars are pulled close, so groups form. These groups are the constellations, each colored, named
-  after its biggest star and labeled with its main genre. Bridges are artists strongly linked into
-  two constellations. Drag to move, pinch or use + and − to zoom, and tap near a star: the nearest
-  one within a finger's width is picked, the map flies to it and a card shows its links as buttons,
-  so you can hop from star to star without aiming. The card also says how you found the artist and
-  what you usually play before and after them. You can search for an artist, pick a constellation,
+- Islands shows your 150 most played artists as their photos, sized by plays, on a map. Two
+  artists are linked when you often play them back to back (in the same listening session, relative
+  to how much you play both), or, for artists you rarely play next to anything, when they share the
+  same months. Linked artists form groups, and each group is an island: in a color of its own, named
+  after its biggest artist and labeled with its main genre. Islands that share the most lie next to
+  each other, and artists of no group lie between them. Bridges are artists strongly linked into
+  two islands; a dotted line ties each to the other island. Drag to move, pinch or use + and − to
+  zoom, and tap an artist: the nearest one within a finger's width is picked, the map flies to it,
+  its links are drawn and a card shows them as buttons, so you can hop from one artist to the next
+  without aiming. The card also says how you found the artist and
+  what you usually play before and after them. You can search for an artist, pick an island,
   or pick a year to light up the artists you played then.
 - Family tree shows, for every artist you kept playing (5 plays or more), what you played right
   before your very first play of them, in the same session. The artists that led you to the most
@@ -445,7 +447,7 @@ it. The hours in Totals are counted the same way. Milestones lists round numbers
 A month has its own race under your chart: your top 10 artists of the month by plays so far, day
 by day up to today. Press play to watch the days add up, or drag the slider.
 
-The atlas's Map shows where your 300 most played artists are from, shaded by plays, with the
+The atlas's World shows where your 300 most played artists are from, shaded by plays, with the
 countries ranked below it. Tap a country for its artists. The countries come from MusicBrainz, one
 artist a second, so the first time takes about five minutes; the map fills in as they arrive and
 the answers stay on the phone. Stats has the same map for the period you pick, "Where they're from",

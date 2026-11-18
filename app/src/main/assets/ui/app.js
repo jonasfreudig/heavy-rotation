@@ -493,6 +493,8 @@ window.onTheme = (th) => {
   root.dataset.theme = th.dark ? 'dark' : 'light';
   root.style.colorScheme = th.dark ? 'dark' : 'light';
   for (const k in th.c) root.style.setProperty('--md-' + k, th.c[k]);
+  UNI.col = null;
+  drawUni();
   drawRecords();
 };
 let insetsSet = '';
@@ -5596,10 +5598,10 @@ const runText = (t, i) => { const r = (t.runs || []).slice(-RUNS_SHOWN)[i]; retu
 let ATLAS = null;
 let atlasView = 'universe';
 const TREE_OPEN = new Set();
-/** The universe on its canvas: the camera, what is picked, and the fingers on it. */
-const UNI = { cam: { x: 0, y: 0, k: 1 }, sel: -1, cluster: -1, year: 0, src: null, nodes: [], adj: [], w: 0, h: 0, dpr: 1, raf: 0, fly: null, pts: new Map(), gesture: null, lastTap: null };
-/** Constellations take the record's inks, in order; loose stars are gray. */
-const starColor = (c) => (c >= 0 && c < INKS_ON_VINYL.length ? INKS_ON_VINYL[c] : '#8b8a99');
+/** The map of islands on its canvas: the camera, what is picked, and the fingers on it. */
+const UNI = { cam: { x: 0, y: 0, k: 1 }, home: { x: 0, y: 0, k: 1 }, sel: -1, cluster: -1, year: 0, src: null, nodes: [], isles: [], adj: [], w: 0, h: 0, dpr: 1, raf: 0, fly: null, pts: new Map(), gesture: null, lastTap: null, col: null };
+/** Islands take the page's eight inks in turn; artists of no island are gray. (As a CSS color, for the chips.) */
+const starColor = (c) => (c >= 0 ? `var(--a${(c % 8) + 1})` : 'var(--md-outline)');
 
 function openAtlas(view) {
   openPage('atlasPage');
@@ -5688,22 +5690,89 @@ function worldMapHtml(m, o = {}) {
 // -- the universe --
 
 function universeHtml(u) {
-  if (!u || !u.nodes.length) return '<div class="empty"><p>Not enough plays yet for a universe.</p></div>';
+  if (!u || !u.nodes.length) return '<div class="empty"><p>Not enough plays yet for a map of your artists.</p></div>';
   const cl = u.clusters || [];
   const tot = Math.max(1, u.plays);
   const big = cl[0];
   const bridges = u.bridges || [];
   const years = [...new Set(u.nodes.flatMap((n) => Object.keys(n.years || {})))].sort();
-  return `<p class="uni-intro">Your ${num(u.nodes.length)} most played artists as stars${cl.length ? ` in ${plural(cl.length, 'constellation')}` : ''}: close together when you play them back to back or in the same months.</p>
-    <div class="uni-wrap" id="uniWrap"><canvas id="uniCanvas" aria-label="Your artists as a universe of stars"></canvas>
+  return `<p class="uni-intro">Your ${num(u.nodes.length)} most played artists${cl.length ? ` on ${plural(cl.length, 'island')}` : ''}. An island is a group you play back to back, or in the same months.</p>
+    <div class="uni-wrap" id="uniWrap"><canvas id="uniCanvas" aria-label="Your artists as islands on a map"></canvas>
       <div class="uni-find">${icon('search')}<input id="uniFind" type="search" placeholder="Find an artist" autocomplete="off" enterkeyhint="search"><div id="uniFound"></div></div>
       <div class="uni-zoom"><button data-uz="in" aria-label="Zoom in">+</button><button data-uz="out" aria-label="Zoom out">−</button><button data-uz="fit" aria-label="Show everything">All</button></div>
-      <p class="uni-hint">Drag, pinch, tap near a star</p>
+      <p class="uni-hint">Drag, pinch, tap an artist</p>
       <div class="uni-card" id="uniCard" hidden></div>
     </div>
     ${cl.length ? `<div class="chip-row uni-cons">${cl.map((c, k) => `<button class="chip${UNI.cluster === k ? ' on' : ''}" data-uni-c="${k}"><i class="dot" style="background:${starColor(k)}"></i>${esc(c.name)} &amp; co.<small class="n">${pct(c.plays / tot)}</small></button>`).join('')}</div>` : ''}
     ${years.length > 1 ? `<div class="chip-row uni-years"><button class="chip${!UNI.year ? ' on' : ''}" data-uni-y="0">All years</button>${years.map((y) => `<button class="chip${UNI.year === +y ? ' on' : ''}" data-uni-y="${y}">${y}</button>`).join('')}</div>` : ''}
-    <p class="uni-intro">${big ? `The biggest constellation, <b>${esc(big.name)} &amp; co.</b>${big.genre ? ` (mostly ${esc(big.genre)})` : ''}, holds ${pct(big.plays / tot)} of these plays.` : ''}${bridges.length ? ` Bridges between constellations: ${bridges.map((x) => `<button class="link" data-uni-go="${esc(x.name)}">${esc(x.name)}</button>`).join(', ')}.` : ''} Colors are constellations; a star's size is its plays.</p>`;
+    <p class="uni-intro">${big ? `The biggest island, <b>${esc(big.name)} &amp; co.</b>${big.genre ? ` (mostly ${esc(big.genre)})` : ''}, holds ${pct(big.plays / tot)} of these plays.` : ''}${bridges.length ? ` The dotted lines are bridges, artists tied to two islands: ${bridges.map((x) => `<button class="link" data-uni-go="${esc(x.name)}">${esc(x.name)}</button>`).join(', ')}.` : ''} A picture's size is the artist's plays.</p>`;
+}
+
+/**
+ * Where everyone sits on the map. Each island's artists are packed around its biggest one, and the islands around the
+ * biggest island, each as close as it gets to the island it shares the most with. Artists of no island lie between
+ * them on their own. All of it is measured so that it fills the map at first sight ([W] by [H], the top kept free
+ * for the search field).
+ */
+function islandLayout(u, W, H) {
+  const max = Math.max(1, ...u.nodes.map((x) => x.plays));
+  const groups = new Map();
+  u.nodes.forEach((x, i) => { const k = x.c >= 0 ? x.c : -1 - i; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
+  const isles = [...groups].map(([c, ids]) => {
+    ids.sort((a, b) => u.nodes[b].plays - u.nodes[a].plays);
+    const pl = [];
+    for (const i of ids) {
+      const r = 5 + 21 * Math.sqrt(u.nodes[i].plays / max);
+      // Outwards along a spiral to the first free place.
+      for (let a = c * 1.7, d = 0; ; a += 0.45, d += 0.5 + r * 0.05) {
+        const x = Math.cos(a) * d, y = Math.sin(a) * d;
+        if (pl.every((q) => Math.hypot(q.x - x, q.y - y) > q.r + r + 3)) { pl.push({ i, r, x, y }); break; }
+      }
+    }
+    return { c, pl, x: 0, y: 0, R: Math.max(...pl.map((q) => Math.hypot(q.x, q.y) + q.r)) + (c >= 0 ? 12 : 3), plays: ids.reduce((s, i) => s + u.nodes[i].plays, 0) };
+  }).sort((a, b) => (b.c >= 0) - (a.c >= 0) || b.plays - a.plays);
+  // What two islands share: the links between their artists.
+  const isleOf = new Map();
+  isles.forEach((s, k) => s.pl.forEach((q) => isleOf.set(q.i, k)));
+  const tie = isles.map(() => new Map());
+  for (const [a, b, , , w] of u.links) {
+    const i = isleOf.get(a), j = isleOf.get(b);
+    if (i === j) continue;
+    tie[i].set(j, (tie[i].get(j) || 0) + w);
+    tie[j].set(i, (tie[j].get(i) || 0) + w);
+  }
+  const put = [];
+  isles.forEach((s, k) => {
+    if (put.length) {
+      let friend = put[0], most = 0;
+      for (const q of put) { const w = tie[k].get(q) || 0; if (w > most) { most = w; friend = q; } }
+      const f = isles[friend];
+      let spot = null;
+      for (let d = f.R + s.R + 4; !spot; d += 6) {
+        let near = Infinity;
+        for (let a = 0; a < 2 * Math.PI; a += Math.PI / 18) {
+          const x = f.x + Math.cos(a) * d, y = f.y + Math.sin(a) * d;
+          if (put.some((q) => Math.hypot(isles[q].x - x, isles[q].y - y) < isles[q].R + s.R + 4)) continue;
+          // The whole stays near the middle, in the shape of the map.
+          const far = Math.hypot(x, y * (W / H));
+          if (far < near) { near = far; spot = [x, y]; }
+        }
+      }
+      [s.x, s.y] = spot;
+    }
+    put.push(k);
+  });
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  isles.forEach((s) => { x0 = Math.min(x0, s.x - s.R); x1 = Math.max(x1, s.x + s.R); y0 = Math.min(y0, s.y - s.R); y1 = Math.max(y1, s.y + s.R); });
+  const S = (Math.min(W, H) / 2) * 0.9;
+  const f = Math.min((W * 0.96) / (x1 - x0), ((H - 60) * 0.96) / (y1 - y0)) / S;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const nodes = u.nodes.map((n) => ({ ...n }));
+  isles.forEach((s) => {
+    s.pl.forEach((q) => Object.assign(nodes[q.i], { x: (s.x + q.x - cx) * f, y: (s.y + q.y - cy) * f, r: q.r * f }));
+    Object.assign(s, { x: (s.x - cx) * f, y: (s.y - cy) * f, R: s.R * f, heart: s.pl[0].i });
+  });
+  return { nodes, isles, home: { x: 0, y: -26 / S, k: 1 } };
 }
 
 function setupUniverse(u) {
@@ -5711,29 +5780,27 @@ function setupUniverse(u) {
   const wrap = $('#uniWrap');
   if (!cv || !wrap) return;
   const W = wrap.clientWidth;
-  const H = Math.round(Math.min(window.innerHeight * 0.6, W * 1.2));
+  const H = Math.round(Math.min(window.innerHeight * 0.62, W * 1.3));
   wrap.style.height = `${H}px`;
   const dpr = Math.min(2.5, window.devicePixelRatio || 1);
   cv.width = Math.round(W * dpr);
   cv.height = Math.round(H * dpr);
   cv.style.width = `${W}px`;
   cv.style.height = `${H}px`;
-  Object.assign(UNI, { w: W, h: H, dpr });
-  if (UNI.src !== u) {
+  const fresh = UNI.src !== u || UNI.w !== W || UNI.h !== H;
+  Object.assign(UNI, { w: W, h: H, dpr, col: null });
+  if (fresh) {
+    const same = UNI.src === u;
+    const lay = islandLayout(u, W, H);
     UNI.src = u;
-    UNI.nodes = u.nodes;
-    UNI.maxPlays = Math.max(1, ...u.nodes.map((n) => n.plays));
+    UNI.nodes = lay.nodes;
+    UNI.isles = lay.isles;
+    UNI.home = lay.home;
     UNI.adj = u.nodes.map(() => []);
     u.links.forEach(([a, b, t, s, w]) => { UNI.adj[a].push({ o: b, t, s, w }); UNI.adj[b].push({ o: a, t, s, w }); });
     UNI.adj.forEach((l) => l.sort((p, q) => q.w - p.w));
-    UNI.cam = { x: 0, y: 0, k: 1 };
-    UNI.sel = -1;
-    UNI.cluster = -1;
-    UNI.year = 0;
-    // A sky of faint dust behind the stars, the same every time.
-    let s = 7;
-    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    UNI.dust = Array.from({ length: 140 }, () => [rnd(), rnd(), 0.3 + rnd() * 0.9, 0.15 + rnd() * 0.35]);
+    UNI.cam = { ...lay.home };
+    if (!same) { UNI.sel = -1; UNI.cluster = -1; UNI.year = 0; }
   }
   bindUniverse(cv);
   uniCard();
@@ -5742,20 +5809,58 @@ function setupUniverse(u) {
 
 const uniScale = () => (Math.min(UNI.w, UNI.h) / 2) * 0.9;
 const uniToScreen = (x, y) => [UNI.w / 2 + (x - UNI.cam.x) * uniScale() * UNI.cam.k, UNI.h / 2 + (y - UNI.cam.y) * uniScale() * UNI.cam.k];
-/** Plays that count for a star: all of them, or one year's. */
+/** Plays that count for an artist: all of them, or one year's. */
 const uniPlays = (n) => (UNI.year ? (n.years || {})[UNI.year] || 0 : n.plays);
-function uniRadius(n) {
-  const p = uniPlays(n);
-  if (!p) return 1.6;
-  return (2 + 10 * Math.sqrt(p / UNI.maxPlays)) * (0.8 + 0.2 * Math.min(4, UNI.cam.k));
-}
-/** Whether a star is in focus: the picked one and its links, the picked constellation, and stars played in the picked year. */
+/** An artist's picture on screen: it grows with the map. */
+const uniRadius = (n) => n.r * uniScale() * UNI.cam.k;
+/** Whether an artist is in focus: the picked one and its links, the picked island, and artists played in the picked year. */
 function uniLit(i) {
   const n = UNI.nodes[i];
   if (UNI.year && !uniPlays(n)) return false;
   if (UNI.sel >= 0) return i === UNI.sel || UNI.adj[UNI.sel].some((l) => l.o === i);
   if (UNI.cluster >= 0) return n.c === UNI.cluster;
   return true;
+}
+/** The page's colors and fonts as the canvas needs them, read again whenever the theme changes. */
+function uniColors() {
+  const root = getComputedStyle(document.documentElement), v = (k, d) => root.getPropertyValue(k).trim() || d;
+  const ui = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  return {
+    inks: [1, 2, 3, 4, 5, 6, 7, 8].map((k) => v(`--a${k}`, '#8b8a99')),
+    text: v('--md-on-surface', '#1d1b20'), soft: v('--md-on-surface-variant', '#49454f'), paper: v('--md-surface', '#fef7ff'),
+    line: v('--md-outline', '#79747e'), pick: v('--md-primary', '#6750a4'), ui, display: v('--display', '') || ui,
+  };
+}
+/** [hex] (#rrggbb) at opacity [a]. */
+const inkAt = (hex, a) => (/^#[0-9a-f]{6}$/i.test(hex) ? hex + Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0') : hex);
+/**
+ * An artist's photo as a round stamp, made once (a quarter-size picture, cut round) and drawn from then on: cutting
+ * every picture round anew in every frame of a drag was too much. Null until the picture is there.
+ */
+const uniPics = new Map();
+function uniStamp(n) {
+  if (!n.photo) return null;
+  let e = uniPics.get(n.photo);
+  if (!e) {
+    e = { cv: null };
+    uniPics.set(n.photo, e);
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      const c = document.createElement('canvas'), S = 160;
+      c.width = c.height = S;
+      const x = c.getContext('2d');
+      x.beginPath();
+      x.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
+      x.clip();
+      const k = Math.max(S / img.naturalWidth, S / img.naturalHeight);
+      x.drawImage(img, (S - img.naturalWidth * k) / 2, (S - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+      e.cv = c;
+      drawUni();
+    };
+    img.src = n.photo.replace('/500x500-', '/250x250-');
+  }
+  return e.cv;
 }
 
 function drawUni() { if (!UNI.raf) UNI.raf = requestAnimationFrame(uniFrame); }
@@ -5770,88 +5875,126 @@ function uniFrame(now) {
     UNI.cam = { x: f.from.x + (f.to.x - f.from.x) * e, y: f.from.y + (f.to.y - f.from.y) * e, k: f.from.k * Math.pow(f.to.k / f.from.k, e) };
     if (p < 1) drawUni(); else UNI.fly = null;
   }
-  const { w: W, h: H, dpr, nodes } = UNI;
+  if (!UNI.col) UNI.col = uniColors();
+  const { w: W, h: H, dpr, nodes, col } = UNI;
   const ctx = cv.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#0b0d17';
-  ctx.fillRect(0, 0, W, H);
-  // dust drifts a little with the camera, for depth
-  for (const [dx, dy, r, a] of UNI.dust) {
-    const x = (((dx * W - UNI.cam.x * 18) % W) + W) % W, y = (((dy * H - UNI.cam.y * 18) % H) + H) % H;
-    ctx.fillStyle = `rgba(230,225,255,${a})`;
-    ctx.fillRect(x, y, r, r);
-  }
+  ctx.clearRect(0, 0, W, H);
+  const S = uniScale() * UNI.cam.k;
   const P = nodes.map((n) => uniToScreen(n.x, n.y));
   const lit = nodes.map((_, i) => uniLit(i));
-  const R = nodes.map((n) => uniRadius(n));
-  // links
-  ctx.lineCap = 'round';
-  for (const [a, b, , , wgt] of UNI.src.links) {
-    const on = lit[a] && lit[b];
-    const picked = UNI.sel >= 0 && (a === UNI.sel || b === UNI.sel);
-    ctx.strokeStyle = picked ? 'rgba(255,240,215,0.75)' : on ? `rgba(200,205,255,${(0.06 + 0.26 * wgt).toFixed(3)})` : 'rgba(200,205,255,0.03)';
-    ctx.lineWidth = picked ? 1.6 : 0.5 + wgt;
-    ctx.beginPath();
-    ctx.moveTo(P[a][0], P[a][1]);
-    ctx.lineTo(P[b][0], P[b][1]);
-    ctx.stroke();
+  const R = nodes.map((n) => n.r * S);
+  const ink = (c) => (c >= 0 ? col.inks[c % 8] : col.line);
+  const round = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); };
+  // the islands: a soft wash of each one's color under its artists
+  for (const s of UNI.isles) {
+    if (s.c < 0) continue;
+    const [x, y] = uniToScreen(s.x, s.y), r = s.R * S * 1.2;
+    if (x + r < 0 || y + r < 0 || x - r > W || y - r > H) continue;
+    const a = UNI.cluster >= 0 && UNI.cluster !== s.c ? 0.1 : 0.36;
+    const g = ctx.createRadialGradient(x, y, r * 0.15, x, y, r);
+    g.addColorStop(0, inkAt(ink(s.c), a));
+    g.addColorStop(0.72, inkAt(ink(s.c), a * 0.72));
+    g.addColorStop(1, inkAt(ink(s.c), 0));
+    ctx.fillStyle = g;
+    round(x, y, r);
+    ctx.fill();
   }
-  // stars, small first so the big ones sit on top
-  const order = nodes.map((_, i) => i).sort((p, q) => R[p] - R[q]);
-  for (const i of order) {
-    const [x, y] = P[i];
-    const r = R[i];
-    if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
-    const col = starColor(nodes[i].c);
-    ctx.globalAlpha = lit[i] ? 1 : 0.16;
-    if (lit[i] && r > 3) {
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
-      g.addColorStop(0, col + '66');
-      g.addColorStop(1, col + '00');
-      ctx.fillStyle = g;
+  ctx.lineCap = 'round';
+  // bridges: an artist tied to another island too, by a dotted line to its heart
+  if (UNI.sel < 0) {
+    ctx.setLineDash([1, 6]);
+    ctx.lineWidth = 1.7;
+    ctx.strokeStyle = inkAt(col.text.length === 7 ? col.text : '#333333', 0.34);
+    for (const b of UNI.src.bridges || []) {
+      const i = nodes.findIndex((n) => n.name === b.name);
+      const to = UNI.isles.find((s) => s.c === (i >= 0 && nodes[i].c === b.from ? b.to : b.from));
+      if (i < 0 || !to || (UNI.cluster >= 0 && nodes[i].c !== UNI.cluster && to.c !== UNI.cluster)) continue;
+      const [x0, y0] = P[i], [x1, y1] = P[to.heart];
       ctx.beginPath();
-      ctx.arc(x, y, r * 3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo((x0 + x1) / 2 + (y1 - y0) * 0.14, (y0 + y1) / 2 - (x1 - x0) * 0.14, x1, y1);
+      ctx.stroke();
     }
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.setLineDash([]);
+  } else {
+    // the picked artist's links, stronger ones thicker
+    for (const l of UNI.adj[UNI.sel]) {
+      ctx.strokeStyle = inkAt(col.pick.length === 7 ? col.pick : '#6750a4', 0.25 + 0.5 * l.w);
+      ctx.lineWidth = 1.4 + 2.6 * l.w;
+      ctx.beginPath();
+      ctx.moveTo(P[UNI.sel][0], P[UNI.sel][1]);
+      ctx.lineTo(P[l.o][0], P[l.o][1]);
+      ctx.stroke();
+    }
+  }
+  // the artists, small ones first so the big ones lie on top: a photo where there is room for one, a dot else
+  const order = nodes.map((_, i) => i).sort((p, q) => R[p] - R[q]);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const i of order) {
+    const [x, y] = P[i], r = R[i], n = nodes[i];
+    if (x < -r || y < -r || x > W + r || y > H + r) continue;
+    ctx.globalAlpha = lit[i] ? 1 : 0.2;
+    if (r < 5.5) {
+      ctx.fillStyle = ink(n.c);
+      round(x, y, Math.max(1.8, r * 0.8));
+      ctx.fill();
+      continue;
+    }
+    ctx.fillStyle = col.paper;
+    round(x, y, r + 1.6);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.beginPath();
-    ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.35, 0, Math.PI * 2);
-    ctx.fill();
+    const stamp = uniStamp(n);
+    if (stamp) ctx.drawImage(stamp, x - r, y - r, r * 2, r * 2);
+    else {
+      ctx.fillStyle = inkAt(ink(n.c), 0.45);
+      round(x, y, r);
+      ctx.fill();
+      // Room for a letter only on the bigger ones.
+      if (r >= 11) {
+        ctx.fillStyle = col.text;
+        ctx.font = `600 ${Math.round(r * 0.95)}px ${col.ui}`;
+        ctx.fillText((n.name.trim()[0] || '?').toUpperCase(), x, y + r * 0.06);
+      }
+    }
   }
   ctx.globalAlpha = 1;
   if (UNI.sel >= 0) {
-    const [x, y] = P[UNI.sel];
-    ctx.strokeStyle = '#fff6e4';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, R[UNI.sel] + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = col.pick;
+    ctx.lineWidth = 2.5;
+    round(P[UNI.sel][0], P[UNI.sel][1], R[UNI.sel] + 4);
     ctx.stroke();
   }
-  // names: the picked star and its links first, then the biggest, wherever there is room
-  ctx.font = '500 11px "DM Mono", ui-monospace, monospace';
-  ctx.textBaseline = 'middle';
+  // names where there is room: the islands' first, then the picked artist and its links, then the biggest
   const placed = [];
-  const want = (i) => i === UNI.sel || (UNI.sel >= 0 && lit[i]) || (lit[i] && (R[i] >= 6.5 || (UNI.cam.k >= 2 && R[i] >= 3.5)));
-  const labelOrder = nodes.map((_, i) => i).filter(want)
-    .sort((p, q) => (q === UNI.sel) - (p === UNI.sel) || R[q] - R[p]);
-  for (const i of labelOrder.slice(0, 60)) {
-    const [x, y] = P[i];
-    const t = nodes[i].name.length > 22 ? nodes[i].name.slice(0, 21) + '…' : nodes[i].name;
+  const write = (t, x, y, hue) => {
     const tw = ctx.measureText(t).width;
-    const lx = x + R[i] + 5, ly = y;
-    const box = [lx - 2, ly - 8, lx + tw + 2, ly + 8];
-    if (box[2] > W - 4 || box[0] < 0 || ly < 10 || ly > H - 10) continue;
-    if (placed.some((b) => b[0] < box[2] && box[0] < b[2] && b[1] < box[3] && box[1] < b[3])) continue;
+    const box = [x - tw / 2 - 3, y - 9, x + tw / 2 + 3, y + 9];
+    if (box[0] < 2 || box[2] > W - 2 || box[1] < 2 || box[3] > H - 2) return;
+    if (placed.some((b) => b[0] < box[2] && box[0] < b[2] && b[1] < box[3] && box[1] < b[3])) return;
     placed.push(box);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(11,13,23,0.85)';
-    ctx.strokeText(t, lx, ly);
-    ctx.fillStyle = i === UNI.sel ? '#fff6e4' : 'rgba(236,232,250,0.9)';
-    ctx.fillText(t, lx, ly);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = inkAt(col.paper.length === 7 ? col.paper : '#ffffff', 0.82);
+    ctx.strokeText(t, x, y);
+    ctx.fillStyle = col.text;
+    ctx.fillText(t, x, y);
+    // An island's name takes some of its color.
+    if (hue) { ctx.globalAlpha = 0.5; ctx.fillStyle = hue; ctx.fillText(t, x, y); ctx.globalAlpha = 1; }
+  };
+  ctx.font = `italic 650 15px ${col.display}`;
+  for (const s of UNI.isles) {
+    if (s.c < 0 || (UNI.cluster >= 0 && UNI.cluster !== s.c) || UNI.sel >= 0) continue;
+    const c = UNI.src.clusters[s.c], [x, y] = uniToScreen(s.x, s.y);
+    if (c) write(`${c.name} & co.`, x, y - s.R * S + 2, ink(s.c));
+  }
+  ctx.font = `600 11.5px ${col.ui}`;
+  const want = (i) => i === UNI.sel || (UNI.sel >= 0 && lit[i]) || (lit[i] && R[i] >= 15);
+  const labelOrder = nodes.map((_, i) => i).filter(want).sort((p, q) => (q === UNI.sel) - (p === UNI.sel) || R[q] - R[p]);
+  for (const i of labelOrder.slice(0, 60)) {
+    const t = nodes[i].name.length > 20 ? nodes[i].name.slice(0, 19) + '…' : nodes[i].name;
+    write(t, P[i][0], P[i][1] + Math.max(R[i], 4) + 10, '');
   }
 }
 
@@ -5881,18 +6024,19 @@ function uniShowCluster(c) {
   UNI.sel = -1;
   UNI.cluster = UNI.cluster === c ? -1 : c;
   $$('.uni-cons .chip').forEach((b) => b.classList.toggle('on', +b.dataset.uniC === UNI.cluster));
-  if (UNI.cluster < 0) { uniCard(); uniFly({ x: 0, y: 0, k: 1 }); return; }
+  if (UNI.cluster < 0) { uniCard(); uniFly({ ...UNI.home }); return; }
   const m = UNI.nodes.filter((n) => n.c === c);
-  const xs = m.map((n) => n.x), ys = m.map((n) => n.y);
-  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const [x0, x1, y0, y1] = [Math.min(...m.map((n) => n.x - n.r)), Math.max(...m.map((n) => n.x + n.r)), Math.min(...m.map((n) => n.y - n.r)), Math.max(...m.map((n) => n.y + n.r))];
   const S = uniScale();
-  const k = Math.max(0.8, Math.min(6, (UNI.w * 0.8) / ((x1 - x0) * S + 1), (UNI.h * 0.5) / ((y1 - y0) * S + 1)));
+  // All of it between the search field and the card: the upper three fifths of the map, less the field.
+  const room = UNI.h * 0.6 - 76;
+  const k = Math.max(0.8, Math.min(6, (UNI.w * 0.9) / ((x1 - x0) * S + 1), room / ((y1 - y0) * S + 1)));
   uniCard();
-  uniFly({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 + (UNI.h * 0.17) / (S * k), k });
+  uniFly({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 + (UNI.h * 0.2 - 34) / (S * k), k });
 }
 function uniZoomAt(x, y, f) {
   const S = uniScale();
-  const k = Math.max(0.7, Math.min(10, UNI.cam.k * f));
+  const k = Math.max(0.7, Math.min(7, UNI.cam.k * f));
   const wx = UNI.cam.x + (x - UNI.w / 2) / (S * UNI.cam.k), wy = UNI.cam.y + (y - UNI.h / 2) / (S * UNI.cam.k);
   UNI.fly = null;
   UNI.cam = { k, x: wx - (x - UNI.w / 2) / (S * k), y: wy - (y - UNI.h / 2) / (S * k) };
@@ -5942,7 +6086,7 @@ function bindUniverse(cv) {
       }
     } else if (g.kind === 'pinch' && UNI.pts.size === 2) {
       const [a, b] = two();
-      const k = Math.max(0.7, Math.min(10, (g.cam.k * Math.hypot(a.x - b.x, a.y - b.y)) / g.d0));
+      const k = Math.max(0.7, Math.min(7, (g.cam.k * Math.hypot(a.x - b.x, a.y - b.y)) / g.d0));
       const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       const wx = g.cam.x + (g.m0.x - UNI.w / 2) / (S * g.cam.k), wy = g.cam.y + (g.m0.y - UNI.h / 2) / (S * g.cam.k);
       UNI.cam = { k, x: wx - (m.x - UNI.w / 2) / (S * k), y: wy - (m.y - UNI.h / 2) / (S * k) };
@@ -5995,9 +6139,9 @@ function uniCard() {
       return `<button class="chip" data-uni-i="${l.o}"><i class="dot" style="background:${starColor(m.c)}"></i>${esc(m.name)}<small class="n">${l.t >= 2 ? `${l.t}× in a row` : 'same months'}</small></button>`;
     }).join('');
     card.innerHTML = `<button class="icon-btn x" data-uni-x aria-label="Close">${icon('close')}</button>
-      <button class="uh" data-artist="${esc(n.name)}">${coverHtml(n.photo, n.name, n.name, 'tiny round')}<span><b>${esc(n.name)}</b><small>${[n.genre, plural(UNI.year ? uniPlays(n) : n.plays, 'play') + (UNI.year ? ` in ${UNI.year}` : ''), c ? `${c.name} & co.` : 'a loose star'].filter(Boolean).map(esc).join(', ')}</small></span>${icon('chevron-right')}</button>
+      <button class="uh" data-artist="${esc(n.name)}">${coverHtml(n.photo, n.name, n.name, 'tiny round')}<span><b>${esc(n.name)}</b><small>${[n.genre, plural(UNI.year ? uniPlays(n) : n.plays, 'play') + (UNI.year ? ` in ${UNI.year}` : ''), c ? `${c.name} & co.` : 'on no island'].filter(Boolean).map(esc).join(', ')}</small></span>${icon('chevron-right')}</button>
       <p>${how}${ba ? ` Usually played ${ba}.` : ''}</p>
-      ${near ? `<div class="chip-row">${near}</div>` : '<p class="hint">No strong links: a star of its own.</p>'}`;
+      ${near ? `<div class="chip-row">${near}</div>` : '<p class="hint">No strong links to anyone else.</p>'}`;
     card.hidden = false;
   } else if (UNI.cluster >= 0) {
     const c = u.clusters[UNI.cluster];
@@ -9004,7 +9148,7 @@ function tastePills() {
   const concerts = (ST.setlist || {}).concerts;
   const out = [card('id="openConcerts"', 'Your concerts', concerts ? plural(concerts, 'show') : 'Concerts', concerts ? 'you were at' : 'from setlist.fm', '', 'ticket')];
   const last = [
-    card('data-atlas', 'Musical atlas', '', 'Universe, family tree, map', ATLAS_ART),
+    card('data-atlas', 'Musical atlas', '', 'Islands, family tree, world map', ATLAS_ART),
   ];
   if (T) {
     const race = (T.race || {}).artists || [];
@@ -9038,7 +9182,7 @@ function tasteHtml(s, small) {
     <div class="tp-row">${tastePills()}</div>${vsMiniHtml()}${genreMapHtml(x.genreMap)}</section>`;
   return `<section class="stats-taste"><div class="xrow-head"><h2>Your taste</h2></div><span class="sub">All time</span>${intro}
     <div class="xp-tiles">
-      <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Universe, family tree, map</small></button>
+      <button class="xp-tile" data-atlas>${ATLAS_ART}<b>Musical atlas</b><small>Islands, family tree, world map</small></button>
       <button class="xp-tile" id="openVs">${VS_ART}<b>You vs everyone</b><small id="vsTileLine">Compared with all of Last.fm</small></button>
       <button class="xp-tile wide" id="openThrough">${THROUGH_ART}<span><b>Through the years</b><small>The race, every play, gaps, how deep you go</small></span></button>
       <button class="xp-tile wide" id="openConcerts">${TICKET_ART}<span><b>Your concerts</b><small>${(ST.setlist || {}).concerts ? `${plural(ST.setlist.concerts, 'show')} you were at, and what they did to your listening` : 'The shows you were at, from setlist.fm'}</small></span></button>
@@ -10932,7 +11076,7 @@ function build() {
   $('#atlasBody').onclick = (e) => {
     const t = e.target;
     const z = t.closest('[data-uz]');
-    if (z) { const f = z.dataset.uz; if (f === 'fit') { UNI.sel = -1; UNI.cluster = -1; uniCard(); $$('.uni-cons .chip').forEach((c) => c.classList.remove('on')); uniFly({ x: 0, y: 0, k: 1 }); } else uniZoomAt(UNI.w / 2, UNI.h / 2, f === 'in' ? 1.6 : 1 / 1.6); return; }
+    if (z) { const f = z.dataset.uz; if (f === 'fit') { UNI.sel = -1; UNI.cluster = -1; uniCard(); $$('.uni-cons .chip').forEach((c) => c.classList.remove('on')); uniFly({ ...UNI.home }); } else uniZoomAt(UNI.w / 2, UNI.h / 2, f === 'in' ? 1.6 : 1 / 1.6); return; }
     const i = t.closest('[data-uni-i]');
     if (i) { const f = $('#uniFind'); if (f) { f.value = ''; $('#uniFound').innerHTML = ''; } uniSelect(+i.dataset.uniI); return; }
     const go = t.closest('[data-uni-go]');

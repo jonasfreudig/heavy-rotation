@@ -1388,22 +1388,23 @@ button.listen-line { width: 100%; text-align: left; color: inherit; }
 button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padding: 0; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; flex: none; }
 .dot.big { width: 16px; height: 16px; margin: 0; }
-.uni-find { position: absolute; left: 10px; right: 60px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 21px; background: rgba(30, 32, 48, .82); color: #f1ecff; }
-.uni-find .i { width: 20px; height: 20px; color: rgba(241, 236, 255, .7); flex: none; }
+.uni-find { position: absolute; left: 10px; right: 60px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 21px; background: color-mix(in srgb, var(--md-surface-container-high) 92%, transparent); color: var(--md-on-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.uni-find .i { width: 20px; height: 20px; color: var(--md-on-surface-variant); flex: none; }
 .uni-find input { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 15px; outline: none; }
-.uni-find input::placeholder { color: rgba(241, 236, 255, .55); }
+.uni-find input::placeholder { color: var(--md-on-surface-variant); }
 #uniFound { position: absolute; left: 0; right: 0; top: 46px; z-index: 6; color: var(--md-on-surface); display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; background: var(--md-surface-container-highest); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 #uniFound:empty { display: none; }
 #uniFound button { display: flex; align-items: center; gap: 4px; padding: 12px 16px; text-align: left; color: inherit; font-size: 15px; }
 #uniFound button small { margin-left: auto; color: var(--md-on-surface-variant); font-size: 12px; }
 .uni-cons, .uni-years { margin-top: 8px; }
-.uni-wrap { position: relative; margin: 6px -16px 0; overflow: hidden; background: #0b0d17; touch-action: none; }
+/* The map lies on the page's own paper: a shade of it, between two hairlines. */
+.uni-wrap { position: relative; margin: 6px -16px 0; overflow: hidden; background: color-mix(in srgb, var(--md-surface-container-low) 55%, transparent); border-block: 1px solid var(--md-outline-variant); touch-action: none; }
 .uni-wrap canvas { display: block; touch-action: none; }
 .uni-zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.uni-zoom button { width: 40px; height: 40px; border-radius: 12px; background: rgba(255, 255, 255, .1); color: #f1ecff; font: 500 18px/1 var(--font); }
+.uni-zoom button { width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--md-surface-container-high) 92%, transparent); color: var(--md-on-surface); font: 500 18px/1 var(--font); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
 .uni-zoom button[data-uz="fit"] { font-size: 11px; letter-spacing: .06em; }
-.uni-hint { position: absolute; left: 12px; bottom: 8px; margin: 0; font: 400 10.5px/14px var(--mono, var(--font)); letter-spacing: .04em; color: rgba(236, 232, 250, .55); pointer-events: none; }
-.uni-card { position: absolute; left: 8px; right: 8px; bottom: 8px; max-height: 46%; overflow-y: auto; padding: 12px 12px 10px; border-radius: 20px; background: color-mix(in srgb, var(--md-surface-container) 94%, transparent); color: var(--md-on-surface); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.uni-hint { position: absolute; left: 12px; bottom: 8px; margin: 0; font: 400 10.5px/14px var(--mono, var(--font)); letter-spacing: .04em; color: var(--md-on-surface-variant); opacity: .8; pointer-events: none; }
+.uni-card { position: absolute; left: 8px; right: 8px; bottom: 8px; max-height: 46%; overflow-y: auto; padding: 12px 12px 10px; border-radius: 20px; background: color-mix(in srgb, var(--md-surface-container) 94%, transparent); color: var(--md-on-surface); box-shadow: 0 6px 22px rgba(0, 0, 0, .2); }
 .uni-card .x { position: absolute; right: 4px; top: 4px; }
 .uni-card .uh { display: flex; align-items: center; gap: 10px; width: calc(100% - 40px); text-align: left; color: inherit; padding: 0; }
 .uni-card .uh span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
