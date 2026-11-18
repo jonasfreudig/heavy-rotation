@@ -492,7 +492,7 @@ window.onBack = () => {
   if (!(mine && fx.kind === 'page' && pageStack.length && t.el === $('#' + pageStack[pageStack.length - 1]))) backSettle(fx, true);
   if (!$('#story').hidden) {
     const st = $('#story');
-    if (mine && st.style.transform && moving() && !st._leaving) {
+    if (mine && (st.style.transform || backHeld(st).length) && moving() && !st._leaving) {
       st._leaving = true;
       st.inert = true;
       animateOut(st, 'slide', () => { st._leaving = false; st.inert = false; closeStory(); });
@@ -571,6 +571,8 @@ function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
     ? [{ transform: from, opacity: 1 }, { transform: from, opacity: 0 }]
     : [{ transform: from }, { transform: `translateX(${window.innerWidth}px)` }],
   { duration: ms, easing: how === 'fade' ? EASE_IN : EASE_OUT, fill: 'forwards' });
+  // It goes on from where a swipe held it: that hold lets go now.
+  backHeld(el).forEach((h) => h.cancel());
   // Finished, cancelled, or never run (a page in the background): either way it ends once.
   let over = false;
   const end = () => {
@@ -590,15 +592,37 @@ function animateOut(el, how, done, ms = how === 'fade' ? 200 : slideMs(el)) {
   return a;
 }
 /**
- * What an open page covers whole (the tabs, the pages under it) is hidden once it has settled, and shown
- * again the moment anything may reveal it: going back, a back swipe, another page coming in. Drawn on
- * under a long page, the tabs' own long layers took the phone's memory, and parts of the page on top
- * went blank for a frame while its cover tilted.
+ * What an open page covers whole (the tabs, the pages under it) is hidden once it has settled, and the one
+ * layer something is about to reveal is shown again the moment before: going back, a back swipe, another page
+ * coming in. Drawn on under a long page, the tabs' own long layers took the phone's memory, and parts of the
+ * page on top went blank for a frame while its cover tilted.
  */
 let coverTimer = 0;
-function uncover() {
+/** Shows [els] again, or everything that is hidden. */
+function uncover(els) {
   clearTimeout(coverTimer);
-  $$('.covered').forEach((el) => el.classList.remove('covered'));
+  (els || $$('.covered')).forEach((el) => el.classList.remove('covered'));
+}
+/** The page on top and the layer right under it (another page, or the tabs): all that can show while a page comes in or goes back. */
+function topLayers() {
+  const els = [];
+  for (let i = pageStack.length - 1; i >= 0 && els.length < 2; i--) {
+    const el = $('#' + pageStack[i]);
+    if (!els.includes(el)) els.push(el);
+  }
+  return els.length < 2 ? [...els, ...homeLayers()] : els;
+}
+/**
+ * All but [keep] is hidden at once, save what is still on the move. A page coming in used to show everything
+ * under it for the length of its slide: the tabs and three pages deep (an album, its artist, another album, a
+ * song), the phone had no memory left for the page on top, and most of it went missing for a frame or two the
+ * moment the slide ended.
+ */
+function coverBut(keep) {
+  for (const el of [...$$('.page'), ...homeLayers()]) {
+    if (el.hidden || keep.includes(el) || el._closing || el.getAnimations().some((a) => a.playState === 'running')) continue;
+    el.classList.add('covered');
+  }
 }
 function coverSoon(ms = 420) {
   clearTimeout(coverTimer);
@@ -620,7 +644,7 @@ function openPage(id, how) {
   const p = $('#' + id);
   pageOpened = p;
   pageOpenedAt = performance.now();
-  uncover();
+  clearTimeout(coverTimer);
   tidyLayers();
   if (p._closing) {
     p._closing.cancel();
@@ -646,6 +670,10 @@ function openPage(id, how) {
   pageSaved.length = pageStack.length;
   p.style.zIndex = 10 + pageStack.length;
   p.scrollTop = 0;
+  // This page and what it comes in over show; whatever lies further down stays hidden, or is now.
+  const shown = topLayers();
+  uncover(shown);
+  if ($('#story').hidden) coverBut(shown);
   coverSoon();
   // In from the right; a page a cover flies into only fades in, so the cover has a still place to land.
   // Held clear for two frames while the phone draws it: shown at once, it was a blank page for those.
@@ -673,7 +701,7 @@ function watchBar(scroller, bar, onAway) {
  * as it slides out; closed by a tap, it is set up the same way first, so both look alike.
  */
 function closePage(swipe = null) {
-  uncover();
+  clearTimeout(coverTimer);
   const id = pageStack.pop();
   pageSaved.length = pageStack.length;
   if (!id) return;
@@ -681,6 +709,8 @@ function closePage(swipe = null) {
   const i = pageStack.lastIndexOf(id);
   const saved = i >= 0 ? pageSaved[i] : null;
   const top = pageStack.length ? $('#' + pageStack[pageStack.length - 1]) : null;
+  // Only what back leads to shows again; the pages under that stay hidden.
+  uncover(top && top !== p ? [top] : topLayers());
   if (saved && top !== p) {
     // This page also shows something further down the stack (artist, genre, then artist again):
     // it slides off like any page, the one under it coming home, and only then takes up what it
@@ -695,12 +725,14 @@ function closePage(swipe = null) {
       PAGE_STATE[id].set(saved.state);
       p.style.zIndex = 10 + i + 1;
       p.scrollTop = saved.scroll;
+      warmPage(p);
     };
     const a = animateOut(p, 'slide', () => { if (p._closing === a) { p._closing = null; if (p._restore) p._restore(); } }, ms);
     p._closing = a;
   } else if (saved) {
     // The same kind of page right under it, that is this very page: show what it showed, where it was.
     if (swipe) backSettle(swipe, true);
+    backHeld(p).forEach((h) => h.cancel());
     p._restore = null;
     pageSaved[i] = undefined;
     PAGE_STATE[id].set(saved.state);
@@ -815,51 +847,73 @@ function backTarget() {
   if (searching()) return { el: $('#searchPage'), kind: 'page', under: homeLayers() };
   return null;
 }
+/**
+ * On the way back, pages are moved by animations alone: one held still and set to how far the swipe has come
+ * (backHold), then one that glides on from there (backGlide). The pages' own styles stay as they are. Giving a page
+ * a transform, a layer hint or an edge shadow of its own for the way back made the phone draw the whole page anew
+ * when the way back began and again when it ended: for a frame or two the page showed with most of itself missing.
+ */
+function backHold(el, frames) {
+  const a = el.animate(frames, { duration: 1000, fill: 'both', easing: 'linear' });
+  a.pause();
+  a._back = true;
+  return a;
+}
+/** The held animations on [el] (see backHold). */
+const backHeld = (el) => el.getAnimations().filter((a) => a._back);
+/** [el] glides from where it is now to [to] in [ms]; what held it lets go. */
+function backGlide(el, to, ms) {
+  const from = getComputedStyle(el).transform;
+  const a = el.animate([{ transform: from === 'none' ? 'none' : from }, { transform: to }], { duration: ms, easing: EASE_OUT });
+  backHeld(el).forEach((h) => h.cancel());
+  return a;
+}
+/** The shade right under the page going back, and the two held animations: the page out to the right, what it covers in from the left. */
+function backLayers(fx) {
+  const w = window.innerWidth;
+  const z = getComputedStyle(fx.el).zIndex;
+  backShade.style.zIndex = z === 'auto' ? '' : z;
+  backShade.style.transition = 'none';
+  fx.el.before(backShade);
+  fx.held = [backHold(fx.el, [{ transform: 'none' }, { transform: `translateX(${w}px)` }]),
+    ...fx.under.map((u) => backHold(u, [{ transform: `translateX(${(-w * BACK_UNDER).toFixed(1)}px)` }, { transform: 'none' }]))];
+}
 window.onBackStart = () => {
-  uncover();
+  clearTimeout(coverTimer);
   if (flight && flight.playState === 'running') flight.cancel();
   backFx = backTarget();
   if (!backFx) return;
-  backFx.el.style.transition = 'none';
-  // Layers of their own from the start, and the corners rounded once: redrawing them on every
-  // frame of the swipe is what made it stutter.
-  backFx.el.style.willChange = 'transform';
-  if (!backFx.under) return;
-  // The shade sits right under the page: same layer, just before it.
-  const z = getComputedStyle(backFx.el).zIndex;
-  backShade.style.zIndex = z === 'auto' ? '' : z;
-  backShade.style.transition = 'none';
-  backFx.el.before(backShade);
-  backFx.el.style.boxShadow = '-10px 0 32px rgba(0, 0, 0, .24)';
-  backFx.under.forEach((u) => { u.style.transition = 'none'; u.style.willChange = 'transform'; });
+  // Only what the swipe may reveal shows again (under a sheet, nothing does).
+  if (backFx.kind !== 'sheet') uncover(backFx.under || topLayers());
+  if (backFx.kind === 'sheet') {
+    // A sheet is no page: it moves by its own style, as it does when dragged.
+    backFx.el.style.transition = 'none';
+    backFx.el.style.willChange = 'transform';
+    return;
+  }
+  if (backFx.kind === 'inplace') {
+    backFx.held = [backHold(backFx.el, [{ transform: 'none' }, { transform: `translateX(${(window.innerWidth * 0.12).toFixed(1)}px) scale(0.9)` }])];
+    return;
+  }
+  backLayers(backFx);
   window.onBackProgress(0);
 };
 window.onBackProgress = (p) => {
   if (!backFx) return;
-  const el = backFx.el, k = Math.min(1, Math.max(0, p)), w = window.innerWidth;
-  if (backFx.kind === 'sheet') { el.style.transform = `translateY(${(k * 80).toFixed(1)}px)`; return; }
-  if (backFx.kind === 'inplace') {
-    el.style.transform = `translateX(${(k * w * 0.12).toFixed(1)}px) scale(${(1 - k * 0.1).toFixed(3)})`;
-    return;
-  }
-  el.style.transform = `translateX(${(k * w).toFixed(1)}px)`;
-  backFx.under.forEach((u) => { u.style.transform = `translateX(${(-(1 - k) * w * BACK_UNDER).toFixed(1)}px)`; });
-  backShade.style.opacity = ((1 - k) * BACK_SHADE).toFixed(3);
+  const k = Math.min(1, Math.max(0, p));
+  if (backFx.kind === 'sheet') { backFx.el.style.transform = `translateY(${(k * 80).toFixed(1)}px)`; return; }
+  (backFx.held || []).forEach((a) => { a.currentTime = k * 1000; });
+  if (backFx.kind === 'page') backShade.style.opacity = ((1 - k) * BACK_SHADE).toFixed(3);
 };
 /** After the swipe: what was under the page settles home (it was chosen) or back under it (cancelled). */
 function backSettle(fx, chosen, ms = chosen ? 260 : 300) {
   if (!fx || !fx.under) return;
   const w = window.innerWidth;
-  fx.under.forEach((u) => {
-    u.style.transition = `transform ${ms}ms cubic-bezier(.2, 0, 0, 1)`;
-    u.style.transform = chosen ? '' : `translateX(${(-w * BACK_UNDER).toFixed(1)}px)`;
-  });
+  fx.under.forEach((u) => backGlide(u, chosen ? 'none' : `translateX(${(-w * BACK_UNDER).toFixed(1)}px)`, ms));
   backShade.style.transition = `opacity ${ms}ms`;
   backShade.style.opacity = chosen ? '0' : String(BACK_SHADE);
   setTimeout(() => {
-    if (!backFx || backFx.el !== fx.el) fx.el.style.boxShadow = '';
     if (backFx) return; // a new swipe has started and owns the rest now
-    fx.under.forEach((u) => { u.style.transition = ''; u.style.transform = ''; u.style.willChange = ''; });
     backShade.remove();
     tidyLayers();
   }, ms + 30);
@@ -873,6 +927,7 @@ function tidyLayers() {
   if (backFx) return;
   for (const el of [...$$('.page'), ...homeLayers()]) {
     if (el.getAnimations().some((a) => a.playState === 'running')) continue;
+    backHeld(el).forEach((a) => a.cancel());
     if (el.style.transform || el.style.willChange || el.style.boxShadow) {
       el.style.transition = '';
       el.style.transform = '';
@@ -884,6 +939,8 @@ function tidyLayers() {
 }
 /** A layer the swipe moved springs back to its place. */
 function backSpring(el) {
+  // A page was held by an animation: it glides home from there. (A sheet moved by its own style, below.)
+  if (backHeld(el).length) { backGlide(el, 'none', 300); return; }
   el.style.transition = 'transform .3s cubic-bezier(.2, 0, 0, 1), border-radius .3s';
   el.style.transform = '';
   el.style.borderRadius = '';
@@ -891,19 +948,11 @@ function backSpring(el) {
 }
 /** Back by a tap: what the page covers waits a little to the left under the shade, as at the start of a swipe. */
 function backReveal(el, under) {
-  const z = getComputedStyle(el).zIndex;
-  backShade.style.zIndex = z === 'auto' ? '' : z;
-  backShade.style.transition = 'none';
+  const fx = { el, kind: 'page', under };
+  backLayers(fx);
   backShade.style.opacity = String(BACK_SHADE);
-  el.before(backShade);
-  el.style.boxShadow = '-10px 0 32px rgba(0, 0, 0, .24)';
-  under.forEach((u) => {
-    u.style.transition = 'none';
-    u.style.willChange = 'transform';
-    u.style.transform = `translateX(${(-window.innerWidth * BACK_UNDER).toFixed(1)}px)`;
-  });
   void el.offsetWidth; // from there, not from where they were
-  return { el, kind: 'page', under };
+  return fx;
 }
 window.onBackCancel = () => {
   if (!backFx) return;
@@ -4096,12 +4145,36 @@ function morphNode(x, y, keep) {
  */
 function keepSleeve(old, fresh) {
   if (!old.hasAttribute('data-holo') || old.dataset.key !== fresh.dataset.key) return false;
+  // The same song or album, now known to be on your shelf (or not): the sleeve stays and takes on what that changes,
+  // its foil, the record in it, its back. Built anew when the page's numbers came in, it was gone for a few frames.
+  const STATE = ['flipped', 'turning', 'settled'];
+  const kind = (el) => [...el.classList].filter((c) => !STATE.includes(c) && c !== 'nudge').sort().join(' ');
+  if (kind(old) !== kind(fresh)) {
+    const state = STATE.filter((c) => old.classList.contains(c));
+    old.className = fresh.className;
+    state.forEach((c) => old.classList.add(c));
+    const h3 = old.querySelector('.h3d'), fd = fresh.querySelector('.disc'), od = old.querySelector('.disc');
+    if (fd && !od && h3) h3.prepend(fd); else if (!fd && od) { od.remove(); old.classList.remove('settled'); }
+    const fx = old.querySelector('.sleeve .fx'), fs = fresh.querySelector('.sheen'), os = old.querySelector('.sheen');
+    if (fs && !os && fx) fx.prepend(fs); else if (!fs && os) os.remove();
+  }
+  if (fresh.dataset.rel) old.dataset.rel = fresh.dataset.rel; else delete old.dataset.rel;
+  if (fresh.hasAttribute('data-flip')) old.setAttribute('data-flip', '');
+  // A record's own back (its tracklist, filled in when it comes) where the sleeve has no back yet.
+  const fbk = fresh.querySelector('.sleeve-back:not(.card-back)');
+  if (fbk && !old.querySelector('.sleeve-back')) old.querySelector('.h3d').append(fbk);
   if (old.dataset.cover !== fresh.dataset.cover) {
+    const want = fresh.dataset.cover;
+    old.dataset.cover = want;
     const oc = old.querySelector('.sleeve .cover'), nc = fresh.querySelector('.sleeve .cover');
-    if (oc && nc) oc.replaceWith(nc);
     const ol = old.querySelector('.vinyl .lbl'), nl = fresh.querySelector('.vinyl .lbl');
     if (ol && nl) ol.setAttribute('style', nl.getAttribute('style') || '');
-    old.dataset.cover = fresh.dataset.cover;
+    // The better picture takes the old one's place once it is ready to show: swapped at once, the cover stood empty until then.
+    const img = nc && nc.querySelector('img');
+    const swap = () => { const now = old.querySelector('.sleeve .cover:not(.x-in)'); if (now && old.dataset.cover === want) now.replaceWith(nc); };
+    if (oc && nc) {
+      if (img && img.decode && oc.querySelector('img')) { img.loading = 'eager'; img.decode().then(swap, swap); } else swap();
+    }
   }
   // A song's card comes with its page's numbers, after the sleeve: it goes on the back then, and follows them.
   const fb = fresh.querySelector('.card-back'), ob = old.querySelector('.card-back');
@@ -5191,11 +5264,32 @@ function genreInsideHtml(g) {
 
 // ---- one song ----
 
+/**
+ * What the last pages of an artist, an album and a song showed, by name (the latest 15 of each). Opened again, a page
+ * shows that at once and changes only where the fresh answer differs: it used to start empty every time and fill in
+ * a moment later, also on the way back and forth between an album, its artist and their other albums.
+ */
+const SEEN = { artist: new Map(), album: new Map(), track: new Map() };
+const seenKey = (...parts) => parts.map((x) => norm(x)).join('|');
+function noteSeen(kind, key, data) {
+  const m = SEEN[kind];
+  m.delete(key);
+  m.set(key, data);
+  if (m.size > 15) m.delete(m.keys().next().value);
+}
+/** A page drawn again while it lies under others is hidden, and hidden pictures neither load nor decode: they'd come in one by one when it shows again. So they load now. */
+function warmPage(p) {
+  const imgs = [...p.querySelectorAll('img')].slice(0, 60);
+  const go = () => imgs.forEach((i) => { if (!i.isConnected) return; i.loading = 'eager'; if (i.decode) i.decode().catch(() => {}); });
+  if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 150);
+}
+
 let TRACK = null;
 function openTrack(artist, title, extra = {}) {
   if (!artist || !title) return;
   openPage('trackPage');
-  TRACK = { loading: true, artist, title, albumTitle: extra.album || '', cover: extra.cover || '', req: ++REQ };
+  const seen = SEEN.track.get(seenKey(artist, title));
+  TRACK = seen ? { ...seen, req: ++REQ } : { loading: true, artist, title, albumTitle: extra.album || '', cover: extra.cover || '', req: ++REQ };
   renderTrack();
   send({ t: 'track', artist, title, range: statsRange, req: TRACK.req });
 }
@@ -5204,7 +5298,7 @@ const sameData = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 window.onTrack = (t) => {
   TRACK = deliver('trackPage', t.req, TRACK, (s, shown) => {
     const next = { ...s, ...t, req: s.req, loading: false };
-    if (!next.missing) noteTier('tr', next.artist, next.title, songTier(next.plays));
+    if (!next.missing) { noteTier('tr', next.artist, next.title, songTier(next.plays)); noteSeen('track', seenKey(s.artist, s.title), next); }
     if (shown) { const changed = !sameData(next, s); TRACK = next; if (changed) renderTrack(); }
     return next;
   });
@@ -5237,7 +5331,7 @@ function renderTrack() {
   const tierIn = tierArrival($('#trackBody'), tier === 'base' ? '' : tier, `${t.artist}|${t.title}`);
   // Its back is the song's card: plays, the way to the next tier, when it reached each one.
   const card = t.loading || t.missing ? null : { cls: `cb-${tier}`, html: cardBackHtml(t) };
-  let h = `<div class="hero page-hero"><i class="glow"></i>${tier && tier !== 'base' ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, card, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i><i class="tier-glow"></i>${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, card, rel: shelfId, key: `track|${t.artist}|${t.title}` })}
     <h1>${esc(t.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(t.artist)}">${esc(t.artist)}</button>${albumTitle ? `<span class="dot">,</span><button class="artist-link" ${albumAttrs(al ? al.artist : t.artist, albumTitle)}>${esc(albumTitle)}</button>` : ''}</div>
     ${genreChips(t.genres)}
@@ -5275,7 +5369,9 @@ let ALBUM = null;
 function openAlbum(artist, title, extra = {}) {
   if (!artist || !title) return;
   openPage('albumPage');
-  ALBUM = { loading: true, artist, title, cover: extra.cover || '', dz: +extra.dz || 0, req: ++REQ };
+  const seen = SEEN.album.get(seenKey(artist, title));
+  ALBUM = seen ? { ...seen, dz: seen.dz || +extra.dz || 0, dzAsked: !!seen.dzInfo, tab: undefined, req: ++REQ }
+    : { loading: true, artist, title, cover: extra.cover || '', dz: +extra.dz || 0, req: ++REQ };
   renderAlbum();
   send({ t: 'album', artist, title, range: statsRange, req: ALBUM.req });
   albumNeedsDz();
@@ -5284,6 +5380,7 @@ window.onAlbum = (a) => {
   ALBUM = deliver('albumPage', a.req, ALBUM, (s, shown) => {
     const next = { ...s, ...a, req: s.req, loading: false };
     if (next.card) noteTier('al', next.artist, next.title, TIER_KEYS[next.card.tier] || '');
+    if (!next.missing) noteSeen('album', seenKey(s.artist, s.title), next);
     if (shown) { const changed = !sameData(next, s); ALBUM = next; if (changed) renderAlbum(); }
     return next;
   });
@@ -5302,7 +5399,7 @@ function renderAlbum() {
   const tier = card ? (card.tier >= 0 ? TIER_KEYS[card.tier] : '') : a.loading ? knownTier('al', a.artist, a.title) : '';
   const tierIn = tierArrival($('#albumBody'), tier, `${a.artist}|${a.title}`);
   const back = card ? { cls: `cb-${tier || 'base'}`, html: albumCardBackHtml({ ...card, title: a.title }) } : null;
-  let h = `<div class="hero page-hero"><i class="glow"></i>${tier ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, card: back, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
+  let h = `<div class="hero page-hero"><i class="glow"></i><i class="tier-glow"></i>${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, card: back, rel: shelfId, key: `album|${a.artist}|${a.title}` })}
     <h1>${esc(a.title)}</h1>
     <div class="artist"><button class="artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</button></div>
     ${cardLine(card, shelfId)}
@@ -7164,17 +7261,19 @@ let artistTopOpen = false;
 function openArtist(name) {
   if (!name) return;
   openPage('artistPage');
-  ARTIST = { name, loading: true, req: ++REQ };
+  const seen = SEEN.artist.get(seenKey(name));
+  ARTIST = seen ? { ...seen, req: ++REQ, tab: undefined } : { name, loading: true, req: ++REQ };
   artistTopOpen = false;
   requestDiscography(name);
   requestLive(name);
-  $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
+  if (seen) renderArtist(); else $('#artistBody').innerHTML = `<div class="empty"><p>Looking up ${esc(name)}…</p></div>`;
   send({ t: 'artist', name, range: statsRange, req: ARTIST.req });
 }
 window.onArtist = (a) => {
   ARTIST = deliver('artistPage', a.req, ARTIST, (s, shown) => {
     const next = { ...a, req: s.req, tab: s.tab };
     (a.tracks || []).forEach((x) => noteTier('tr', a.name, x.title, songTier(x.plays)));
+    if (!a.missing) { noteSeen('artist', seenKey(s.name), next); if (a.name) noteSeen('artist', seenKey(a.name), next); }
     if (shown) { const changed = !sameData(next, s); ARTIST = next; if (changed) renderArtist(); }
     return next;
   });

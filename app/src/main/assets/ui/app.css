@@ -1245,6 +1245,8 @@ button.listen-line { width: 100%; text-align: left; color: inherit; }
 :is(#trackBody, #albumBody, #recordBody)[data-tier="silver"] { --f1: #626a78; --f2: #f1f3f7; --f3: #9aa1ad; --g0: #5d6472; --g1: #9aa1ad; --g2: #d4d8df; --tg: rgba(195, 205, 225, .28); --tg2: rgba(235, 240, 255, .14); }
 :is(#trackBody, #albumBody, #recordBody)[data-tier="gold"] { --f1: #8a6610; --f2: #f3d77a; --f3: #c79a2e; --g0: #7a5a10; --g1: #b88a26; --g2: #e3c262; --tg: rgba(212, 170, 60, .32); --tg2: rgba(255, 230, 150, .18); }
 :is(#trackBody, #albumBody, #recordBody)[data-tier="holo"] { --tg: rgba(170, 130, 255, .28); --tg2: rgba(140, 255, 210, .18); }
+/* Its place is always there, so nothing next to it is built anew when a tier comes in; it shows only with a tier. */
+:is(#trackBody, #albumBody):is([data-tier=""], :not([data-tier])) .tier-glow { display: none; }
 .tier-glow { position: absolute; z-index: -1; left: -16px; right: -16px; top: -90px; height: 520px; pointer-events: none;
   background: radial-gradient(60% 45% at 50% 40%, var(--tg), transparent 70%), radial-gradient(30% 25% at 70% 25%, var(--tg2), transparent 70%); }
 :is(#trackBody, #albumBody, #recordBody)[data-tier]:not([data-tier=""]) .page-hero .holo .sleeve { padding: 6px; border-radius: 22px;
