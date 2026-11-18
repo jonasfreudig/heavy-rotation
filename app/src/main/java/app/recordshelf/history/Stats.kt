@@ -2827,9 +2827,10 @@ class Stats(
 
     /**
      * A playlist from the Explore lists ([kind] lost, lostAlbums, regulars, oneDay, deepCuts,
-     * onThisDay, dig) or the top tracks of a period (top, with [rangeId]), as name, note and tracks.
+     * onThisDay, dig), the [size] most played songs of a period (top, with [rangeId]) or the [size] songs of
+     * [artist] you played most (artistTop), as name, note and tracks. The last two say each song's length too.
      */
-    fun playlist(kind: String, rangeId: String = "", size: Int = PLAYLIST_SIZE): JSONObject {
+    fun playlist(kind: String, rangeId: String = "", size: Int = PLAYLIST_SIZE, artist: String = ""): JSONObject {
         fun ofArtists(artists: List<Int>, per: Int): List<Int> {
             val tops = topTracksOf(artists, per)
             // Round-robin, so one artist's songs don't come in a block.
@@ -2862,13 +2863,25 @@ class Stats(
                 val pool = h.trackTitles.indices.filter { trackPlays[it] in 2..6 && last[it] < nowSec - 120 * DAY_SEC }
                 Triple("Crate dig", "Songs you played a few times, then forgot", pool.shuffled())
             }
+            "artistTop" -> {
+                val a = artistIndex[Text.norm(artist)] ?: artistIndex[Text.norm(Artists.main(artist, artistIndex.keys))]
+                    ?: return JSONObject().put("kind", "artistTop").put("artist", artist).put("size", size).put("songs", 0).put("tracks", JSONArray())
+                val tp = HashMap<Int, Int>()
+                for (i in 0 until h.size) if (h.artist[i] == a || h.also[i] == a) tp.merge(h.track[i], 1, Int::plus)
+                // One of each song: the version you played most stands for its other versions.
+                val titles = HashSet<String>()
+                val songs = tp.entries.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key }).filter { titles.add(Text.normLoose(h.trackTitles[it.key])) }
+                return JSONObject().put("kind", "artistTop").put("artist", h.artistNames[a]).put("size", size).put("songs", songs.size)
+                    .put("tracks", JSONArray(songs.take(size).map { trackJson(it.key).put("plays", it.value).put("sec", trackSec[it.key]) }))
+            }
             else -> {
-                // The page names it after the period, in the phone's language.
+                // The page names it after the period, in the phone's language, and steps on to the periods next to it.
                 val r = range(rangeId)
                 val tp = IntArray(h.trackTitles.size)
                 for (i in h.lowerBound(r.from) until h.lowerBound(r.to)) tp[h.track[i]]++
-                return JSONObject().put("kind", "top").put("range", JSONObject().put("id", r.id).put("kind", r.kind).put("label", r.label).put("from", r.from).put("to", r.to))
-                    .put("tracks", JSONArray(tp.indices.filter { tp[it] > 0 }.sortedByDescending { tp[it] }.take(size).map { trackJson(it).put("plays", tp[it]) }))
+                val songs = tp.indices.filter { tp[it] > 0 }.sortedWith(compareByDescending<Int> { tp[it] }.thenBy { it })
+                return JSONObject().put("kind", "top").put("range", rangeJson(r)).put("size", size).put("songs", songs.size)
+                    .put("tracks", JSONArray(songs.take(size).map { trackJson(it).put("plays", tp[it]).put("sec", trackSec[it]) }))
             }
         }
         return JSONObject().put("kind", kind).put("name", name).put("note", note)

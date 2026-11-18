@@ -39,6 +39,8 @@ of its own in between, and your data stays on your phone.
 - Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
 - Every artist, album, song and genre has its own page: plays over time, a song's chart run month by
   month, their discography, and a genre's lineup poster and its year day by day.
+- Highlights are playlists of your most played songs of any year or month, or of one artist, as
+  long as you like.
 - Songs you play a lot become collector cards (bronze at 10 plays, up to holo at 100), and so do
   albums you play through, all in one binder. A cover turns over to its card.
 - Under Your taste, Stats also has a musical atlas of the artists you play back to back with a

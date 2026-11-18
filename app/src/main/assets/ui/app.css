@@ -1186,6 +1186,14 @@ button.xlist-year h3 { display: flex; align-items: baseline; gap: 10px; margin: 
 .np-sleep { margin: 14px auto 0; gap: 6px; }
 /* A genre's playlist: its mix and size, and the songs new to you marked. */
 .pl-ctl { display: grid; gap: 8px; margin: 12px 0 16px; }
+/* A highlights playlist's period (its kind, and the way to the ones next to it) and how many songs it holds. */
+.pl-period { display: grid; gap: 6px; }
+.pl-period .seg { margin: 0; }
+.pl-step { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.pl-step b { min-width: 150px; text-align: center; font: 500 15px/20px var(--font); }
+.pl-step .icon-btn:disabled { opacity: .3; }
+.pl-sizes { align-items: center; margin-top: 0; }
+.pl-lab { margin-right: 2px; font-size: 13px; color: var(--md-on-surface-variant); }
 .new-tag { font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 8px;
   background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
 /* The history against Last.fm: a small table per year (and per artist that differs). */

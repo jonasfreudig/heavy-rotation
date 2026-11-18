@@ -428,6 +428,36 @@ class StatsTest {
     }
 
     @Test
+    fun highlightPlaylistsOfAPeriodAndOfAnArtist() {
+        val plays = (1..5).map { Play(at(2024, 6, it), "Air", "Kelly Watch the Stars") } + (1..3).map { Play(at(2024, 7, it), "Air", "Sexy Boy") } +
+            (1..2).map { Play(at(2024, 7, 10 + it), "Air", "Sexy Boy (Live)") } + listOf(Play(at(2024, 8, 1), "Air", "Talisman")) +
+            (1..4).map { Play(at(2025, 3, it), "Shame", "Concrete") } + (1..2).map { Play(at(2025, 3, 10 + it), "Air", "Talisman") }
+        val s = Stats(history(plays), utc, at(2025, 10, 25))
+        fun titles(j: org.json.JSONObject) = j.getJSONArray("tracks").let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("title") } }
+        val year = s.playlist("top", "y2024", 2)
+        assertEquals("the two most played of 2024", listOf("Kelly Watch the Stars", "Sexy Boy"), titles(year))
+        assertEquals("of the four songs played then", 4, year.getInt("songs"))
+        assertEquals("y2025", year.getJSONObject("range").getString("next"))
+        assertTrue("with each song's length", year.getJSONArray("tracks").getJSONObject(0).getInt("sec") > 0)
+        assertEquals(listOf("Concrete", "Talisman"), titles(s.playlist("top", "y2025", 10)))
+        val air = s.playlist("artistTop", "", 10, "air")
+        assertEquals("Air", air.getString("artist"))
+        assertEquals("all time, a song's versions once", listOf("Kelly Watch the Stars", "Sexy Boy", "Talisman"), titles(air))
+        assertEquals(3, air.getInt("songs"))
+        assertEquals("nobody of that name", 0, s.playlist("artistTop", "", 10, "Nobody").getJSONArray("tracks").length())
+    }
+
+    @Test
+    fun theShelfsRecordsComeWithTheirAlbumCards() {
+        val plays = (0 until 6).flatMap { k -> (1..3).map { Play(at(2025, 5, 1 + k) + it * 200L, "Air", "Song $it", "Moon Safari") } }
+        val shelf = listOf(item(7, "Air", "Moon Safari", emptyList()), item(8, "Shame", "Songs of Praise", emptyList()))
+        val s = Stats(history(plays), utc, at(2025, 10, 25), shelf)
+        val cards = s.shelfCards()
+        assertEquals("only the record you played", listOf("7"), cards.keys().asSequence().toList())
+        assertEquals(s.albumCard("Air", "Moon Safari").toString(), cards.getJSONObject("7").toString())
+    }
+
+    @Test
     fun riverUsesTheRecordsOrder() {
         val plays = (1..6).map { Play(at(2025, 10, it), "Top", "a") } + (1..3).map { Play(at(2025, 10, 10 + it), "Second", "b") } +
             listOf(Play(at(2025, 10, 20), "Third", "c"))

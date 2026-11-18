@@ -1364,7 +1364,7 @@ const Mock = (() => {
       lostArtists: lost, lostAlbums: lost.slice(0, 5).map((o) => ({ title: albumOf(o.a), artist: o.name, cover: '', key: '', owned: 0, plays: Math.round(o.plays * 0.6), last: o.last })),
       regulars, oneDay, deepCuts, onThisDay: otd };
   }
-  function fakePlaylist(kind) {
+  function fakePlaylist(kind, m = {}) {
     const L = history();
     const x = fakeExplore();
     const of = (list) => list.flatMap((o) => topTrackOf(o.a).slice(0, 2));
@@ -1376,11 +1376,11 @@ const Mock = (() => {
       onThisDay: ['On this day', 'What you played on this day in earlier years', () => x.onThisDay.flatMap((y) => y.tracks)],
       dig: ['Crate dig', 'Songs you played a few times, then forgot', () => artistLives().flatMap((o) => topTrackOf(o.a).slice(-1)).sort(() => Math.random() - 0.5)] };
     if (kind === 'top' || !names[kind]) {
-      const r = mockRange(statsRange);
+      const r = mockRange(m.range || statsRange), size = m.size || 40;
       const tc = counts(lowerBound(L.ts, r.from * 1000), lowerBound(L.ts, r.to * 1000), (L2, i) => L2.t[i]);
       const ta = {};
       L.t.forEach((t, i) => { ta[t] = L.a[i]; });
-      return { kind: 'top', range: r, tracks: ranked(tc).slice(0, 40).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], album: albumOf(ta[t]), plays: tc[t] })) };
+      return { kind: 'top', range: r, size, songs: ranked(tc).length, tracks: ranked(tc).slice(0, size).map((t) => ({ title: L.titles[t], artist: L.artists[ta[t]], album: albumOf(ta[t]), plays: tc[t], sec: fakeLen(t) })) };
     }
     const [name, note, fn] = names[kind];
     return { kind, name, note, tracks: fn().slice(0, 40) };
@@ -1927,7 +1927,11 @@ const Mock = (() => {
           } else if (m.kind === 'artistBest') {
             const tracks = ['Their Best-Known Song', 'The Second Most Played', 'A Live Favorite', 'An Early Single', 'The Newest One'].map((title) => ({ artist: m.artist, title, album: '', plays: 0, source: 'new' }));
             later(400, () => onPlaylist({ kind: 'artistBest', artist: m.artist, name: `Best of ${m.artist}`, note: 'Their most played songs on Last.fm', tracks }));
-          } else later(300, () => onPlaylist(fakePlaylist(m.kind)));
+          } else if (m.kind === 'artistTop') {
+            // The artist's songs from the made-up log, most played first.
+            const tr = (fakeArtist(m.artist).tracks || []);
+            later(300, () => onPlaylist({ kind: 'artistTop', artist: m.artist, size: m.size, songs: tr.length, req: m.req, tracks: tr.slice(0, m.size).map((t, i) => ({ title: t.title, artist: m.artist, album: t.album || '', cover: '', plays: t.plays, sec: fakeLen(i * 7 + t.title.length) })) }));
+          } else later(300, () => onPlaylist({ ...fakePlaylist(m.kind, m), req: m.req }));
           break;
         case 'hide': case 'unhide': case 'keep':
           tidyApply(m.t, m.items || [m]);

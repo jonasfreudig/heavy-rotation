@@ -571,8 +571,20 @@ rest as a grid of covers, or of photos for artists. The Playlist button by its t
 playlist. All of Artists you might like looks the same, with your best match first.
 
 Each list can become a playlist of up to 40 songs. So can Crate dig (songs you played a few times
-and forgot, shuffled anew each time) and Playlist of the top 40, under Top 10 on the Stats tab. A
-playlist shows each song with its album's cover (or the artist's photo for songs you haven't played),
+and forgot, shuffled anew each time).
+
+Highlights are playlists of what you played most:
+
+- Of a period: Make a playlist under the top list on the Stats tab takes the period Stats shows,
+  and the Highlights card at the top of Explore starts at last year. On the playlist itself, Month,
+  Year and All time pick the kind of period, and ‹ and › step to the one before or after, so you can
+  go back through the years or to one month without leaving the page.
+- Of an artist: Playlist next to Top tracks on their page takes the songs of theirs you played most,
+  over all your time with them. A song you played in several versions is in it once.
+- Songs sets how long it is: 10, 20, 30, 50 or 100 songs. The line under the name says how long it
+  runs.
+
+A playlist shows each song with its album's cover (or the artist's photo for songs you haven't played),
 and its first four covers make its picture. On a playlist, Copy list puts it on the clipboard as "Artist - Title" lines, which you can paste into
 TuneMyMusic or Soundiiz (import from text) to send it to TIDAL. Share hands the playlist to any
 app. The pencil next to a playlist's name lets you give it your own name and description; TIDAL

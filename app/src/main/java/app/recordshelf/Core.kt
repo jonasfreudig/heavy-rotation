@@ -991,7 +991,12 @@ object Core {
                 if (msg.optString("kind") == "artistBest") return@execute discoverExec.execute { artistBest(msg) }
                 if (msg.optString("kind") == "newReleases") return@execute webExec.execute { newReleasesMix() }
                 if (msg.optString("kind") == "similarSongs") return@execute discoverExec.execute { similarSongsMix() }
-                push("onPlaylist") { s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }) ?: JSONObject().put("empty", true) }
+                // A period's or an artist's highlights come as long as asked for; the page tells the answers apart by [req].
+                val size = msg.optInt("size", Stats.PLAYLIST_SIZE).coerceIn(5, 200)
+                push("onPlaylist") {
+                    (s?.playlist(msg.optString("kind"), msg.optString("range").ifEmpty { statsRange }, size, msg.optString("artist")) ?: JSONObject().put("empty", true))
+                        .put("req", msg.optInt("req"))
+                }
             }
             "genre" -> {
                 val key = msg.optString("key")

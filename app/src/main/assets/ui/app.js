@@ -6195,7 +6195,7 @@ function discoverWait(d) {
     <div class="lin inline${p ? '' : ' indet'}"><i style="${p ? `width:${p}%` : ''}"></i></div>`;
 }
 /** A mix in Explore's top row: three covers stacked, its name and what's in it; a tap makes the playlist [kind]. */
-const mixTile = (kind, covers, title, sub) => `<button class="fy-mix" data-pl="${kind}"><span class="stack">${covers.map(([c, t, a], i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(c, t, a, 'tiny')}</i>`).join('')}</span>
+const mixTile = (kind, covers, title, sub, attrs = '') => `<button class="fy-mix" data-pl="${kind}"${attrs}><span class="stack">${covers.map(([c, t, a], i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(c, t, a, 'tiny')}</i>`).join('')}</span>
     <span class="txt"><b>${title}</b><small>${sub}</small></span></button>`;
 const mixCard = (d) => `<button class="fy-mix" data-pl="discover"><span class="stack">${(d.artists || []).slice(0, 3).map((a, i) => `<i style="left:${i * 9}px;top:${i * 9}px">${coverHtml(a.photo, a.name, a.name, 'tiny')}</i>`).join('')}</span>
     <span class="txt"><b>Discovery mix</b><small>${d.mix * 2} songs you haven't played, new every Monday</small></span></button>`;
@@ -6481,7 +6481,12 @@ function exploreRows(x, P) {
   const otd = (x.onThisDay || []).flatMap((y) => y.tracks || []);
   const today = otd.length ? mixTile('onThisDay', otd.slice(0, 3).map((t) => [t.cover, t.album || t.title, t.artist]),
     'On this day', `What you played on ${esc(new Date().toLocaleDateString([], { day: 'numeric', month: 'long' }))} in earlier years`) : '';
-  const cards = [mix, on ? simTile(d) : '', dig, fresh, today].filter(Boolean);
+  // Highlights: last year's most played songs to start with (this year's while the history is younger), and from
+  // there on to any year or month.
+  const lastYear = new Date().getFullYear() - 1, started = STATS && STATS.range ? STATS.range.historyStart * 1000 : 0;
+  const hlYear = !started || new Date(started).getFullYear() <= lastYear ? lastYear : lastYear + 1;
+  const highlights = (ST.history || {}).count ? mixTile('top', (x.lostAlbums || []).slice(0, 3).map((t) => [t.cover, t.title, t.artist]), 'Highlights', `Your most played songs of ${hlYear}, or of any year or month`, ` data-range="y${hlYear}"`) : '';
+  const cards = [mix, on ? simTile(d) : '', dig, highlights, fresh, today].filter(Boolean);
   let h = `<div class="mixrow${cards.length > 1 ? '' : ' solo'}">${cards.join('')}</div>`;
   if (on) {
     const arts = (d && d.artists) || [];
@@ -6598,12 +6603,67 @@ const plNote = (p) => (PLNAME ? PLNAME.note : `${p.note}. Made with Heavy Rotati
 function openPlaylist(kind, range, el) {
   if (kind === 'discover') { openDiscoverMix(); return; }
   if (kind === 'artistBest') { openArtistBest(el && el.dataset.artist); return; }
+  if (kind === 'top') { openTopPlaylist((el && el.dataset.range) || range || statsRange); return; }
+  if (kind === 'artistTop') { openArtistTop(el && el.dataset.artist); return; }
   openPage('playlistPage');
   PLAYLIST = { loading: true, kind };
   TIDALJOB = null;
   PLNAME = null;
   renderPlaylist();
   send({ t: 'playlist', kind, range: range || statsRange });
+}
+/**
+ * Highlights: the songs you played most in a period, or of one artist over all your time with them. As long as you
+ * like (the sizes below), and for a period, on to the month, year or all time next to it without leaving the page.
+ */
+const PL_SIZES = [10, 20, 30, 50, 100];
+function openTopPlaylist(rangeId, size = 30) {
+  openPage('playlistPage');
+  PLAYLIST = { loading: true, kind: 'top', rangeId, size, req: ++REQ };
+  TIDALJOB = null;
+  PLNAME = null;
+  renderPlaylist();
+  askTopPlaylist();
+}
+function openArtistTop(artist, size = 20) {
+  if (!artist) return;
+  openPage('playlistPage');
+  PLAYLIST = { loading: true, kind: 'artistTop', artist, size, req: ++REQ };
+  TIDALJOB = null;
+  PLNAME = null;
+  renderPlaylist();
+  askTopPlaylist();
+}
+function askTopPlaylist() {
+  const p = PLAYLIST;
+  send(p.kind === 'artistTop' ? { t: 'playlist', kind: 'artistTop', artist: p.artist, size: p.size, req: p.req } : { t: 'playlist', kind: 'top', range: p.rangeId, size: p.size, req: p.req });
+}
+/** What a highlights playlist is called and says of itself, from what it holds. */
+function nameHighlights(p) {
+  if (p.kind === 'artistTop') {
+    p.name = `${p.artist}, your favorites`;
+    p.note = `The songs by ${p.artist} you played most`;
+  } else if (p.range) {
+    const all = p.range.kind === 'all';
+    p.name = all ? 'Your all-time favorites' : `${periodName(p.range)} on record`;
+    p.note = all ? 'Your most played songs of all time' : `Your most played songs of ${p.range.kind === '12m' ? 'the last 12 months' : periodName(p.range)}`;
+  }
+}
+/** A highlights playlist's own controls: for a period, its kind and the way to the ones next to it; and how many songs. */
+function topPlControls(p) {
+  const r = p.range || null;
+  let period = '';
+  if (p.kind === 'top') {
+    const kind = r ? (r.kind === '12m' ? 'year' : r.kind) : ({ m: 'month', y: 'year', w: 'week', d: 'day' }[(p.rangeId || '')[0]] || (p.rangeId === 'all' ? 'all' : ''));
+    const name = r ? periodName(r) : periodNameOf(p.rangeId);
+    const steps = kind === 'month' || kind === 'year' || kind === 'week' || kind === 'day';
+    period = `<div class="pl-period"><div class="seg small" role="tablist">${[['month', 'Month'], ['year', 'Year'], ['all', 'All time']].map(([k, l]) => `<button data-plkind="${k}" class="${k === kind ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${steps ? `<div class="pl-step"><button class="icon-btn small" data-plstep="-1" aria-label="The period before"${r && r.prev ? '' : ' disabled'}>${icon('chevron-left')}</button><b>${esc(name)}</b><button class="icon-btn small" data-plstep="1" aria-label="The period after"${r && r.next ? '' : ' disabled'}>${icon('chevron-right')}</button></div>` : ''}</div>`;
+  }
+  // No more sizes than there are songs: the first one that takes them all is the last.
+  const have = p.songs || 0;
+  const sizes = PL_SIZES.filter((n, i) => !have || i === 0 || PL_SIZES[i - 1] < have);
+  return `<div class="pl-ctl" id="plCtl">${period}<div class="chips pl-sizes"><span class="pl-lab">Songs</span>${sizes.map((n) => `<button class="chip${p.size === n || (n === sizes[sizes.length - 1] && p.size > n) ? ' on' : ''}" data-plsize="${n}">${n}</button>`).join('')}</div></div>`;
 }
 /** A genre's playlist: 30 songs, mixed, until you pick another size or mix. */
 function openGenrePlaylist(key, label) {
@@ -6628,6 +6688,30 @@ function genrePlControls(p) {
 function wireGenrePlControls() {
   const box = $('#plCtl');
   if (!box) return;
+  if (PLAYLIST && (PLAYLIST.kind === 'top' || PLAYLIST.kind === 'artistTop')) {
+    box.onclick = (e) => {
+      const p = PLAYLIST;
+      const s = e.target.closest('[data-plsize]'), k = e.target.closest('[data-plkind]'), st = e.target.closest('[data-plstep]');
+      let rangeId = p.rangeId;
+      if (k) {
+        // Another kind of period keeps the moment in view, like the kinds on Stats: from October 2024 to 2024.
+        const r = p.range;
+        const at = r && r.kind !== 'all' ? Math.max(r.from * 1000, Math.min(r.to * 1000 - 1, Date.now())) : Date.now();
+        rangeId = periodId(k.dataset.plkind, at);
+      } else if (st) {
+        rangeId = p.range && (+st.dataset.plstep < 0 ? p.range.prev : p.range.next);
+      }
+      if ((!s && !k && !st) || !rangeId && p.kind === 'top') return;
+      const size = s ? +s.dataset.plsize : p.size;
+      if (rangeId === p.rangeId && size === p.size) return;
+      PLAYLIST = { loading: true, kind: p.kind, artist: p.artist, rangeId, size, songs: rangeId === p.rangeId ? p.songs : 0, req: ++REQ };
+      TIDALJOB = null;
+      if (rangeId !== p.rangeId) PLNAME = null;
+      renderPlaylist();
+      askTopPlaylist();
+    };
+    return;
+  }
   if (PLAYLIST && PLAYLIST.kind === 'discover') {
     box.onclick = (e) => {
       const r = e.target.closest('[data-plreach]'), again = e.target.closest('[data-plagain]');
@@ -6656,7 +6740,9 @@ window.onPlaylist = (p) => {
   if (p.kind === 'genre' && PLAYLIST && PLAYLIST.kind === 'genre' && (p.key !== PLAYLIST.key || p.size !== PLAYLIST.size || p.mode !== PLAYLIST.mode || p.seed !== PLAYLIST.seed)) return;
   if (p.kind === 'discover' && PLAYLIST && (PLAYLIST.kind !== 'discover' || p.seed !== PLAYLIST.seed)) return;
   if (p.kind === 'artistBest' && PLAYLIST && (PLAYLIST.kind !== 'artistBest' || p.artist !== PLAYLIST.artist)) return;
-  if (p.kind === 'top' && p.range) { p.name = `${periodName(p.range)} on record`; p.note = `Your most played songs of ${periodName(p.range)}`; }
+  // Highlights that are no longer the ones asked for (another size or period since): left out.
+  if ((p.kind === 'top' || p.kind === 'artistTop') && PLAYLIST && (PLAYLIST.kind !== p.kind || PLAYLIST.req !== p.req)) return;
+  if (p.kind === 'top' || p.kind === 'artistTop') { nameHighlights(p); if (p.range) p.rangeId = p.range.id; }
   PLAYLIST = p;
   renderPlaylist();
 };
@@ -6738,20 +6824,33 @@ function renderPlaylist() {
     wireGenrePlControls();
     return;
   }
+  const hl = p.kind === 'top' || p.kind === 'artistTop';
+  if (p.loading && hl) {
+    // Its controls stay where they are while another size or period is on its way.
+    body.innerHTML = `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.kind === 'artistTop' ? p.artist : periodNameOf(p.rangeId))}</h1><p>Picking ${p.size} songs…</p></div></div>${topPlControls(p)}<div class="lin inline indet"><i></i></div>`;
+    wireGenrePlControls();
+    return;
+  }
   if (p.loading) { body.innerHTML = '<div class="lin inline indet"><i></i></div>'; return; }
-  if (p.empty || !p.tracks || !p.tracks.length) { body.innerHTML = `<div class="empty">${icon('playlist', 'i big')}<p>No songs for this playlist yet.</p></div>`; return; }
+  if (p.empty || !p.tracks || !p.tracks.length) {
+    body.innerHTML = `${hl ? `<div class="pl-head"><div class="pl-icon">${icon('playlist')}</div><div><h1>${esc(p.name || '')}</h1></div></div>${topPlControls(p)}` : ''}<div class="empty">${icon('playlist', 'i big')}<p>${hl && p.kind === 'top' ? 'Nothing played in this period.' : 'No songs for this playlist yet.'}</p></div>`;
+    wireGenrePlControls();
+    return;
+  }
   const about = PLNAME ? PLNAME.note : p.note;
+  // How long it runs, where every song's length is known (the highlights say them).
+  const secs = p.tracks.every((t) => t.sec > 0) ? p.tracks.reduce((n, t) => n + t.sec, 0) : 0;
   // Its first four different covers as the playlist's picture, once it has that many.
   const pics = [...new Set(p.tracks.map((t) => t.cover).filter(Boolean))].slice(0, 4);
   const pic = pics.length === 4 ? `<div class="pl-icon pl-mosaic">${pics.map((c) => `<img src="${esc(c)}" alt="" decoding="async">`).join('')}</div>` : `<div class="pl-icon">${icon('playlist')}</div>`;
-  body.innerHTML = `<div class="pl-head">${pic}<div class="pl-txt" id="plName"><h1>${esc(plTitle(p))}</h1><p>${about ? `${esc(about)}, ` : ''}${plural(p.tracks.length, 'song')}</p></div>
+  body.innerHTML = `<div class="pl-head">${pic}<div class="pl-txt" id="plName"><h1>${esc(plTitle(p))}</h1><p>${about ? `${esc(about)}, ` : ''}${plural(p.tracks.length, 'song')}${secs ? `, about ${fmtLong(secs)}` : ''}</p></div>
       <button class="icon-btn pl-edit" id="plEdit" aria-label="Name and description">${icon('edit')}</button></div>
     <div class="btn-row">
       <button class="btn filled" id="plCopy">${icon('copy')}Copy list</button>
       <button class="btn tonal" id="plShare">${icon('share')}Share</button>
       ${p.kind === 'dig' ? `<button class="btn text" data-pl="dig">${icon('shuffle')}Dig again</button>` : ''}
     </div>
-    ${p.kind === 'genre' ? genrePlControls(p) : p.kind === 'discover' ? discoverPlControls(p) : ''}
+    ${p.kind === 'genre' ? genrePlControls(p) : p.kind === 'discover' ? discoverPlControls(p) : hl ? topPlControls(p) : ''}
     <div id="plTidalBlock">${tidalBlock()}</div>
     <div class="card how">
       <div class="card-title">${icon('open')}${(ST.tidal || {}).loggedIn ? 'Or with TuneMyMusic or Soundiiz (also for Spotify)' : 'Into TIDAL (or Spotify)'}</div>
@@ -7138,7 +7237,7 @@ function renderArtist() {
     const rows = a.tracks.slice(0, n).map((x, i) => `<button class="ch-r plain${i === 0 ? ' one' : ''}" ${trackAttrs(a.name, x.title, { album: x.album, cover: x.cover })}><span class="ch-n">${i + 1}</span>${coverHtml(x.cover, x.album || x.title, a.name)}
       <span class="t"><b>${esc(x.title)}</b><small>${x.album ? `${esc(x.album)}, ` : ''}${num(x.plays)}×</small></span></button>`).join('');
     const more = a.tracks.length > 5 ? `<div class="btn-row top-more"><button class="btn text small" data-ttoggle>${artistTopOpen ? 'Show top 5' : `Show all ${a.tracks.length}`}</button></div>` : '';
-    P.tracks = `<div class="viz"><h2>Top tracks</h2><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="ch-rows">${rows}</div>${more}</div>`;
+    P.tracks = `<div class="viz"><div class="xhead"><h2>Top tracks</h2><button class="btn tonal small" data-pl="artistTop" data-artist="${esc(a.name)}">${icon('playlist')}Playlist</button></div><span class="sub">Hold a song to hide it from your stats or fix its name.</span><div class="ch-rows">${rows}</div>${more}</div>`;
   }
   P.cards = songCards(a);
   P.concerts = concertsBlock(a.concerts);
@@ -9155,7 +9254,7 @@ function chartViz(s) {
   const sub = cmp ? `Up and down since ${lastWord(k)}, and where each stood then` : 'Most played first';
   return `<div class="viz"><div class="ch-head"><h2>${cmp ? 'Your chart' : `Top ${list.length > 10 ? list.length : 10}`}</h2>${switcher}</div>${kinds}
     <span class="sub ch-sub">${sub}</span><div class="ch-rows">${rows || '<p class="hint">Nothing in this period.</p>'}</div>${topMore('stats', all.length)}
-    ${rows ? `<div class="btn-row">${plButton('top', 'Playlist of the top 40')}<button class="btn text" ${rankAttrs(topKind, statsRange)} data-rshown="1">${icon('view-list')}The whole list</button></div>` : ''}</div>`;
+    ${rows ? `<div class="btn-row">${plButton('top', 'Make a playlist')}<button class="btn text" ${rankAttrs(topKind, statsRange)} data-rshown="1">${icon('view-list')}The whole list</button></div>` : ''}</div>`;
 }
 /** The period's artists as a festival bill: the most played on top, the names smaller down the poster. */
 function lineupViz(s, o = {}) {
