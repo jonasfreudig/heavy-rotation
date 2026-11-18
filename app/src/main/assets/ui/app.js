@@ -439,7 +439,7 @@ window.onStats = (s) => {
   const hold = takeHold(s);
   STATS = s;
   $('#statsBody').classList.remove('stale');
-  renderStats();
+  renderStats(true);
   if (hold) keepPlace(hold);
   const look = s && s.range ? [s.range.id, statsGenre, statsDecade, statsVinyl].join('|') : '';
   if (statsLook && look && look !== statsLook) {
@@ -1405,6 +1405,7 @@ function askBadges() {
   if (!hs.done || !COLL.length || key === badgesAsked) return;
   badgesAsked = key;
   send({ t: 'badges' });
+  send({ t: 'shelfCards' });
 }
 window.onBadges = (b) => {
   BADGES = b || {};
@@ -2307,7 +2308,7 @@ function renderRecord() {
   if (title && !acardAsked.has(recordId) && (ST.history || {}).count) { acardAsked.add(recordId); send({ t: 'albumCard', id: recordId, artist, title }); }
   const card = ACARD[recordId] || null;
   const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
-  $('#recordBody').dataset.tier = tier;
+  const tierIn = tierArrival($('#recordBody'), tier, String(recordId));
   // Keep the moving sleeve across re-renders, so the record doesn't slide out again; another picture fades in on it.
   const holoKey = String(recordId);
   const keep = $('#recordBody [data-holo]');
@@ -2361,6 +2362,7 @@ function renderRecord() {
   }
   renderRecordSpinNote();
   Tilt.refresh();
+  tierIn();
 }
 
 const lfEnc = (s) => encodeURIComponent(s).replace(/%20/g, '+');
@@ -3023,18 +3025,21 @@ function renderFollow() {
 const followWidth = {};
 /** The part of the Stats page a block or section of it is, as a selector under #statsBody ('' for one without a name). */
 const holdKey = (el) => (el.dataset.blk ? `[data-blk="${el.dataset.blk}"]` : el.dataset.sw ? `[data-sw="${el.dataset.sw}"]` : el.dataset.sq ? `[data-sq="${el.dataset.sq}"]` : '');
-/** What is at the top of the screen on the Stats page, noted before the period [id] is asked for. */
-let statsHold = null;
-function holdPlace(id) {
-  statsHold = null;
+/** What is at the top of the screen on the Stats page right now (the first block reaching below the pill), and where: or null. */
+function placeNow() {
   const line = 110 + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-top')) || 0);
   const kids = [...$('#statsBody').children];
   for (let i = 0; i < kids.length; i++) {
     const r = kids[i].getBoundingClientRect();
-    if (r.bottom <= line) continue;
-    statsHold = { id, el: kids[i], key: holdKey(kids[i]), i, top: r.top, y: window.scrollY, at: Date.now() };
-    return;
+    if (r.bottom > line) return { el: kids[i], key: holdKey(kids[i]), i, top: r.top, y: window.scrollY, at: Date.now() };
   }
+  return null;
+}
+/** The place on the Stats page, noted before the period [id] is asked for. */
+let statsHold = null;
+function holdPlace(id) {
+  const p = placeNow();
+  statsHold = p ? { ...p, id } : null;
 }
 /** The place noted for the stats [s] coming in, if it still holds: not after you scrolled on or opened another period. */
 function takeHold(s) {
@@ -3611,8 +3616,9 @@ const recSeen = new IntersectionObserver((es) => es.forEach((e) => {
   e.target.classList.replace('spin-wait', 'spin-in');
   e.target.addEventListener('animationend', () => e.target.classList.remove('spin-in'), { once: true });
 }), { threshold: 0.3 });
-function drawRecords() {
+function drawRecords(which) {
   $$('canvas[data-record]').forEach((c) => {
+    if (which && !which(c)) return;
     drawRecord(c);
     if (!recSpun.has(c)) { recSpun.add(c); c.classList.add('spin-wait'); recSeen.observe(c); }
   });
@@ -4383,6 +4389,10 @@ function paintTint(el, css) {
     if (i > 0) page.style.setProperty(d.slice(0, i), d.slice(i + 1));
   }
 }
+/** The colors of every cover seen before, when the app starts: pages open in them, where they used to change color a moment after. */
+window.onPalettes = (m) => {
+  for (const url of Object.keys(m || {})) if (!TINTS[url]) TINTS[url] = { ...m[url], url };
+};
 window.onPalette = (p) => {
   TINTS[p.url] = p;
   if (p.url === ambientUrl) applyAmbient();
@@ -5194,6 +5204,7 @@ const sameData = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 window.onTrack = (t) => {
   TRACK = deliver('trackPage', t.req, TRACK, (s, shown) => {
     const next = { ...s, ...t, req: s.req, loading: false };
+    if (!next.missing) noteTier('tr', next.artist, next.title, songTier(next.plays));
     if (shown) { const changed = !sameData(next, s); TRACK = next; if (changed) renderTrack(); }
     return next;
   });
@@ -5221,8 +5232,9 @@ function renderTrack() {
   const cover = (al && al.cover) || t.cover;
   const shelfId = (al && al.owned) || (albumTitle ? shelfIdOf(al ? al.artist : t.artist, albumTitle) : 0);
   // Its card's tier shows on the cover: a frame of the tier's metal, its glow behind, and a record of it if you own the album.
-  const tier = t.loading || t.missing ? '' : cardTier(t.plays || 0)[1];
-  $('#trackBody').dataset.tier = tier === 'base' ? '' : tier;
+  // Before its numbers are in, the tier it was seen with elsewhere (its card in the binder, an earlier visit).
+  const tier = t.missing ? '' : t.loading ? knownTier('tr', t.artist, t.title) : cardTier(t.plays || 0)[1];
+  const tierIn = tierArrival($('#trackBody'), tier === 'base' ? '' : tier, `${t.artist}|${t.title}`);
   // Its back is the song's card: plays, the way to the next tier, when it reached each one.
   const card = t.loading || t.missing ? null : { cls: `cb-${tier}`, html: cardBackHtml(t) };
   let h = `<div class="hero page-hero"><i class="glow"></i>${tier && tier !== 'base' ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, albumTitle || t.title, t.artist, { owned: !!shelfId, card, rel: shelfId, key: `track|${t.artist}|${t.title}|${shelfId}` })}
@@ -5254,6 +5266,7 @@ function renderTrack() {
   }
   keepHolo($('#trackBody'), h);
   tint($('#trackBody'), cover, (albumTitle || t.title) + t.artist);
+  tierIn();
 }
 
 // ---- one album ----
@@ -5270,6 +5283,7 @@ function openAlbum(artist, title, extra = {}) {
 window.onAlbum = (a) => {
   ALBUM = deliver('albumPage', a.req, ALBUM, (s, shown) => {
     const next = { ...s, ...a, req: s.req, loading: false };
+    if (next.card) noteTier('al', next.artist, next.title, TIER_KEYS[next.card.tier] || '');
     if (shown) { const changed = !sameData(next, s); ALBUM = next; if (changed) renderAlbum(); }
     return next;
   });
@@ -5284,8 +5298,9 @@ function renderAlbum() {
   // Its card: the tier's frame and glow, on the line under the title, and on the back, a record's sleeve too (its
   // tracklist only while there is no card).
   const card = a.card || null;
-  const tier = card && card.tier >= 0 ? TIER_KEYS[card.tier] : '';
-  $('#albumBody').dataset.tier = tier;
+  // Before its numbers are in, the tier it was seen with elsewhere (the shelf's cards, the binder, an earlier visit).
+  const tier = card ? (card.tier >= 0 ? TIER_KEYS[card.tier] : '') : a.loading ? knownTier('al', a.artist, a.title) : '';
+  const tierIn = tierArrival($('#albumBody'), tier, `${a.artist}|${a.title}`);
   const back = card ? { cls: `cb-${tier || 'base'}`, html: albumCardBackHtml({ ...card, title: a.title }) } : null;
   let h = `<div class="hero page-hero"><i class="glow"></i>${tier ? '<i class="tier-glow"></i>' : ''}${holoCover(cover, a.title, a.artist, { owned: !!shelfId, back: !!shelfId, card: back, rel: shelfId, key: `album|${a.artist}|${a.title}|${shelfId}` })}
     <h1>${esc(a.title)}</h1>
@@ -5333,6 +5348,7 @@ function renderAlbum() {
   tint($('#albumBody'), cover, a.title + a.artist);
   syncPageTabs($('#albumPage'));
   warmTabs($('#albumPage'));
+  tierIn();
 }
 
 // ---- album and song pages: the album's shape for you, when it clicked, where a song sits, its runs on repeat ----
@@ -7059,6 +7075,7 @@ function openArtist(name) {
 window.onArtist = (a) => {
   ARTIST = deliver('artistPage', a.req, ARTIST, (s, shown) => {
     const next = { ...a, req: s.req, tab: s.tab };
+    (a.tracks || []).forEach((x) => noteTier('tr', a.name, x.title, songTier(x.plays)));
     if (shown) { const changed = !sameData(next, s); ARTIST = next; if (changed) renderArtist(); }
     return next;
   });
@@ -7737,9 +7754,16 @@ function saveLayout(group, order, hidden, small) {
   try { localStorage.setItem('statsLayout', JSON.stringify(all)); } catch (_) { /* preview without storage */ }
 }
 
-function renderStats() {
+/**
+ * Draws the Stats page from STATS. [staged]: the stats just came in (another period, or the same one once more), and
+ * the page is long: only the blocks near the screen are drawn now, the rest right after, a few at a time (see
+ * statsRest). All of the page at once held the phone up for a moment at every step through the periods.
+ */
+function renderStats(staged = false) {
   const s = STATS;
   const body = $('#statsBody');
+  // A staged drawing still under way is dropped: this one draws all of it, or stages anew.
+  statsRest(null);
   renderPeriod(s);
   renderFollow();
   // Last.fm asks for this credit, linked back to it (here: your profile).
@@ -7760,10 +7784,11 @@ function renderStats() {
   const view = k === 'day' ? 'full' : statsView();
   // Each block marked by its id, so a highlight or a number can lead to it.
   const mark = (id, h) => h.replace(/^\s*<([a-z0-9]+)/i, (m, t) => `<${t} data-blk="${id}"`);
+  let html;
   if (view === 'sections') {
-    morph(body, sectionsHtml(ids, s, mark) + arrange);
+    html = sectionsHtml(ids, s, mark) + arrange;
   } else if (view !== 'cards') {
-    morph(body, ids.map((id) => mark(id, blockHtml(id, s))).join('') + arrange);
+    html = ids.map((id) => mark(id, blockHtml(id, s))).join('') + arrange;
   } else {
     // Cards one under the other, in the order Arrange gives them; a full-size block between them starts a new group.
     let h = '', run = [];
@@ -7780,11 +7805,48 @@ function renderStats() {
       h += mark(id, x);
     }
     flush();
-    morph(body, h + arrange);
+    html = h + arrange;
   }
-  drawRecords();
+  // Staged: the blocks well off the screen stay as they are for now (their places read in one go, before anything changes).
+  const far = staged && !statsGoTo && body.offsetParent ? farBlocks(body) : [];
+  if (far.length) {
+    const wait = new Set(far);
+    morph(body, html, (x) => wait.has(x));
+    drawRecords((c) => !far.some((el) => el.contains(c)));
+    statsRest({ body, html, far, wait });
+  } else {
+    morph(body, html);
+    drawRecords();
+  }
   afterStats();
   renderBlock();
+}
+/** The Stats page's blocks well above or below the screen, the ones nearest to it first. */
+function farBlocks(body) {
+  const vh = window.innerHeight, out = [];
+  for (const el of body.children) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < -0.4 * vh) out.push([el, -r.bottom]); else if (r.top > 1.5 * vh) out.push([el, r.top - vh]);
+  }
+  return out.sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+}
+/**
+ * The rest of a staged drawing ([job], or null to drop the one under way): once the blocks on screen have come in,
+ * the others follow a few a turn, nearest first, and what is on screen stays where it is while they change size.
+ */
+let statsLater = null;
+function statsRest(job) {
+  if (statsLater) { clearTimeout(statsLater.t); statsLater = null; }
+  if (!job) return;
+  const step = () => {
+    job.far.splice(0, 4).forEach((el) => job.wait.delete(el));
+    const done = !job.wait.size;
+    const hold = tab === 'stats' && !pageStack.length ? placeNow() : null;
+    morph(job.body, job.html, done ? undefined : (x) => job.wait.has(x));
+    if (hold) keepPlace(hold);
+    if (done) { statsLater = null; drawRecords(); afterStats(); } else statsLater.t = setTimeout(step, 40);
+  };
+  statsLater = { t: setTimeout(step, 340) };
 }
 /** After the page is drawn: the genre map fitted to its boxes, you vs everyone's line, and a block asked for. */
 let statsGoTo = '';
@@ -8389,8 +8451,49 @@ const ACARD = {};
 const acardAsked = new Set();
 window.onAlbumCard = (c) => {
   ACARD[c.id] = c.title ? c : null;
+  if (c.title) noteTier('al', c.artist, c.title, TIER_KEYS[c.tier] || '');
   if (isOpen('recordPage') && recordId === c.id) renderRecord();
 };
+/**
+ * The album cards of all the shelf's records at once (asked for with the badges). A record's page then wears its
+ * tier's frame from the first moment: asked for only when the page opened, the frame, the glow and the record's metal
+ * came in a moment after it.
+ */
+window.onShelfCards = (m) => {
+  const was = isOpen('recordPage') ? JSON.stringify(ACARD[recordId] || null) : '';
+  COLL.forEach((r) => {
+    const c = m && m[r.id];
+    ACARD[r.id] = c && c.title ? { ...c, id: r.id } : null;
+    acardAsked.add(r.id);
+    if (c && c.title) { noteTier('al', c.artist, c.title, TIER_KEYS[c.tier] || ''); noteTier('al', r.artist, r.title, TIER_KEYS[c.tier] || ''); }
+  });
+  if (isOpen('recordPage') && JSON.stringify(ACARD[recordId] || null) !== was) renderRecord();
+};
+/**
+ * The card tier of the albums ('al') and songs ('tr') seen so far, by artist and title ('' for no card): a page that
+ * opens before its numbers are in wears its tier's frame at once where it's known.
+ */
+const TIERS = new Map();
+const tierKeyOf = (kind, artist, title) => `${kind}|${norm(artist)}|${looseKey(title)}`;
+const noteTier = (kind, artist, title, tier) => { if (artist && title) TIERS.set(tierKeyOf(kind, artist, title), tier || ''); };
+const knownTier = (kind, artist, title) => TIERS.get(tierKeyOf(kind, artist, title)) || '';
+/** A song's tier by its plays as the pages name it ('' below bronze). */
+const songTier = (plays) => { const t = cardTier(plays || 0)[1]; return t === 'base' ? '' : t; };
+/**
+ * Sets a page's tier ([key]: what the page shows). One that only arrives once the page is on screen eases in: the
+ * frame grows around the cover and the glow fades up. Returns what to run after the page is drawn.
+ */
+function tierArrival(body, tier, key) {
+  const late = body._tierKey === key && !(body.dataset.tier || '') && !!tier;
+  body._tierKey = key;
+  body.dataset.tier = tier;
+  if (!late || !moving() || !body.offsetParent) return () => {};
+  return () => {
+    const sleeve = body.querySelector('.page-hero .holo .sleeve'), glow = body.querySelector('.tier-glow');
+    if (sleeve) sleeve.animate([{ padding: '0px' }, { padding: getComputedStyle(sleeve).padding }], { duration: 340, easing: EASE_OUT });
+    if (glow) glow.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 460, easing: 'ease-out' });
+  };
+}
 /** "3 holo, 6 gold, 6 silver, 15 bronze" from counts bronze first. */
 const tierCounts = (counts) => counts.map((n, k) => (n ? `${num(n)} ${TIER_KEYS[k]}` : '')).filter(Boolean).reverse().join(', ');
 /** On Stats: a few of your best cards fanned out, and what you hold. Opens the binder. */
@@ -8413,6 +8516,8 @@ window.onCards = (j) => {
   const B = CARDBOOK;
   if (!B || j.req !== B.req) return;
   Object.assign(B, { loading: false, cards: j.cards || [], almost: j.almost || [], artists: j.artists || 0, monthFrom: j.monthFrom || 0, albums: j.albums || [], albumsAlmost: j.albumsAlmost || [] });
+  B.cards.forEach((x) => noteTier('tr', x.artist, x.title, songTier(x.plays)));
+  B.albums.forEach((x) => noteTier('al', x.artist, x.title, TIER_KEYS[x.tier] || ''));
   renderCardbook();
 };
 /** A card in the binder's grid: the cover, the title, its plays and artist. */

@@ -125,6 +125,9 @@ object Core {
     /** Album covers looked up for the activity list at a time (newest first). */
     private const val COVER_BATCH = 40
 
+    /** Covers whose colors are kept (and handed to the page when it starts). */
+    private const val PALETTES_KEPT = 1500
+
     /** Covers looked up for the binder's cards before the page hears of them and other lookups get a turn. */
     private const val CARD_COVER_LOT = 12
 
@@ -672,6 +675,12 @@ object Core {
             "hello" -> {
                 Phone.refresh(ctx)
                 pushAll()
+                // The colors of the covers seen so far, all at once: a page then opens in its cover's colors. Asked for
+                // one by one as pages opened, each came a moment after its page, which changed color before your eyes.
+                paletteExec.execute {
+                    val all = synchronized(palettes) { JSONObject(palettes as Map<*, *>).toString() }
+                    push("onPalettes") { JSONObject(all) }
+                }
             }
             "setPhoneMode" -> {
                 val mode = msg.optString("mode").takeIf { it in listOf(Phone.OFF, Phone.SHADOW, Phone.ON) } ?: return
@@ -875,6 +884,10 @@ object Core {
             "badges" -> statsExec.execute {
                 val j = if (prefs.historyDone) currentStats()?.shelfBadges() else null
                 push("onBadges") { j ?: JSONObject() }
+            }
+            "shelfCards" -> statsExec.execute {
+                val j = if (prefs.historyDone) currentStats()?.shelfCards() else null
+                push("onShelfCards") { j ?: JSONObject() }
             }
             "backupExport" -> {
                 backupUi = msg.optJSONObject("ui") ?: JSONObject()
@@ -3929,7 +3942,7 @@ object Core {
         if (known == null) {
             synchronized(palettes) {
                 palettes[url] = c
-                while (palettes.size > 400) palettes.remove(palettes.keys.first())
+                while (palettes.size > PALETTES_KEPT) palettes.remove(palettes.keys.first())
                 file("palettes.json").write(JSONObject(palettes as Map<*, *>).toString())
             }
         }

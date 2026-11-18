@@ -1797,6 +1797,7 @@ const Mock = (() => {
         case 'dzAlbum': later(250, () => onDzAlbum({ ...fakeDzAlbum(m.id), req: m.req })); break;
         case 'track': later(250, () => onTrack({ ...fakeTrack(m.artist, m.title), req: m.req })); break;
         case 'album': later(250, () => onAlbum({ ...fakeAlbum(m.artist, m.title), req: m.req })); break;
+        case 'shelfCards': later(200, () => { const m = {}; coll.forEach((x, k) => { m[x.id] = fakeAlbumCard(x.title, x.artist, x.id, k); }); onShelfCards(m); }); break;
         case 'albumCard': later(150, () => { const k = coll.findIndex((x) => x.id === m.id); onAlbumCard({ ...fakeAlbumCard(m.title, m.artist, m.id, k), id: m.id }); }); break;
         case 'explore': {
           const x = fakeExplore();

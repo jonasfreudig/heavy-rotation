@@ -2686,6 +2686,19 @@ class Stats(
             .put("reached", if (tier >= 0) albumThrough.second[al][tier] * 1000 else 0)
     }
 
+    /**
+     * The album card of every record on the shelf that you have played, by release id: a record's page has its tier
+     * when it opens, with nothing to wait for.
+     */
+    fun shelfCards(): JSONObject {
+        val out = JSONObject()
+        for (c in collection.distinctBy { it.releaseId }) {
+            val al = findAlbum(c.artist, c.title)
+            if (al >= 0) out.put(c.releaseId.toString(), albumCardJson(al))
+        }
+        return out
+    }
+
     /** The card of the album [artist] – [title], or null when you never played it. */
     fun albumCard(artist: String, title: String): JSONObject? = findAlbum(artist, title).takeIf { it >= 0 }?.let { albumCardJson(it) }
 
