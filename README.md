@@ -5,15 +5,17 @@ An Android app for your record shelf, everything else you listen to, and what it
 ![Heavy Rotation: the shelf, a record, a year as a river of artists, an artist and now playing with its lyrics](docs/screenshots/banner.jpg)
 
 Hiii! Heavy Rotation has been a very fun project to work on so far - and I hope that you'll enjoy it too!
-I wanted one place for my records and everything else I
-listen to: put a record on, tap once, and have it count next to what the phone plays, then see what
-it all adds up to and what cool stats I can get out of it. 
-It grew into much more than that, and there will probably be more changes in the future. I
-hope it turns out to be useful for you too!
 
-Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of covers and
-scrobbles the records you play to [Last.fm](https://www.last.fm). It scrobbles what plays on your
-phone as well, and it turns your whole Last.fm history into stats that know which records you own.
+It started because I wanted better stats for my listening. I use TIDAL, which sadly has nothing
+like Spotify Wrapped, but I've been scrobbling to [Last.fm](https://www.last.fm) for years, so I
+figured I could make my own stats from that. Then I wanted my vinyl in there too: put a record on,
+tap once, and have it count next to what the phone plays. And since the Last.fm app wasn't always
+reliable at scrobbling from my phone, I added that as well. One thing led to another, and it got a
+bit out of hand :)
+
+So now Heavy Rotation shows your [Discogs](https://www.discogs.com) collection as a shelf of
+covers, scrobbles the records you play and the music on your phone to Last.fm, and turns your whole
+listening history into stats that know which records you own.
 
 It is free and open source (MIT). You don't create an account, and there are no ads and no
 tracking. The app talks to Discogs, Last.fm, Deezer, MusicBrainz and TIDAL directly, with no server
@@ -21,84 +23,79 @@ of its own in between, and your data stays on your phone.
 
 ## What it does
 
-- One tap scrobbles a side, the whole record or a few tracks, timed to start now or earlier
-  ("last night"), or to have just finished. Tracks are timed from their real lengths, Last.fm shows "now
-  playing" while a side spins, the next side is one more tap, and all of it works offline.
-- The phone is scrobbled too: TIDAL, Spotify or any other music app, by Last.fm's rules (half the
-  track or 4 minutes). If you already use another scrobbler, shadow mode logs plays
-  without sending them, so you can check it works for you before you switch.
-- Stats cover a day, a week, a month, a year or all time, and each period is compared with the one
-  before: your plays as dots on a record, the period day by day as a calendar with your streaks, who
-  you played when, new artists, songs on repeat, genre drift, decades, where your artists are from
-  and a top 10, ranked by plays or by time listened. A month also has a race of your top artists,
-  day by day. The period follows you down the page, so you can step through the years while looking
-  at one chart, and the charts along time zoom out to your whole history with the period framed.
-- The stats know your shelf. They show the records you own but rarely play, the albums you stream a
-  lot but don't own yet, and how much of your listening was vinyl. Only vinyl turns the whole Stats
-  tab into stats of the records you played.
-- Any period also comes as a Wrapped-style story you tap through, in the colors of your top album.
-- Every artist, album, song and genre has its own page: plays over time, a song's chart run month by
-  month, their discography, and a genre's lineup poster and its year day by day.
-- Highlights are playlists of your most played songs of any year or month, or of one artist, as
-  long as you like.
-- Songs you play a lot become collector cards (bronze at 10 plays, up to holo at 100), and so do
-  albums you play through, all in one binder. A cover turns over to its card.
-- Under Your taste, Stats also has a musical atlas of the artists you play back to back with a
-  world map of where they're from, Through the years (the race of your top artists month by month,
-  every play, gaps and comebacks), you against everyone on Last.fm, your concerts and a map of your
-  genres.
-- The Explore tab suggests artists you haven't played yet, from who Last.fm's and Deezer's listeners
-  find alike to the artists you play, each with the reason, plus a weekly discovery mix and new
-  releases by your artists. It also has lost favorites, albums to rediscover and playlists to send
-  to TIDAL.
-- Stats comes as full-size blocks, as short cards that open full size, or in sections that mix
-  the two. Explore comes in rows you scroll sideways, artist, album and genre pages in tabs you swipe
-  between, and each can be one long page instead. The tabs stay at the bottom of every page, so one
-  tap takes you back.
-- A Now playing page for the phone shows the position, the controls, the music app's queue, the
-  album the song is on and the lyrics in time (from LRCLIB) on the song's blurred cover, over the
-  whole screen if you like. Now spinning has them for the record's track too. What plays can also
-  sit in the bottom bar, with the line being sung.
-- Concerts come from setlist.fm: a playlist of what an artist has been playing live lately, the
-  setlist of one show, their shows coming up, and the shows you were at, with what each did to your
-  listening.
-- The Fix names setting cleans up names before they're scrobbled ("Remastered", "feat." and your
-  own rules).
-- Songs that Pixel's Now Playing recognises around you wait in a list to scrobble or drop, and one
-  on a record of yours can scrobble that record from there. Identify finds a song from ten seconds
-  of sound.
-- Any album can be scrobbled by hand after you heard it elsewhere: find it in search (Deezer's
-  catalog is in there too) and say when you played it.
-- TIDAL's own record of your listening (the `streaming.csv` of its data export) can be imported, so
-  the stats reach back to your first stream there, long before your Last.fm history starts.
-- A home-screen widget shows what is playing now.
-- The app uses Material You colors in light and dark, with two looks (Tinted soft and Soft glass).
-  Covers tilt with the phone, and the records you own get a holo foil. Your records show the
-  album's usual cover, or the picture of your own copy if you'd rather.
+This is the short version. [The guide](docs/GUIDE.md) has everything.
+
+- Scrobble your vinyl. Pick a record from your shelf and scrobble a side, the whole album or a few
+  tracks, starting now, earlier ("last night") or just finished. Tracks are timed from their real
+  lengths, the next side is one more tap, and all of it works offline.
+- Scrobble your phone. TIDAL, Spotify or any other music app, by Last.fm's rules. If you already
+  use another scrobbler, shadow mode only logs what it would send and then compares that with what
+  reached Last.fm, so you can check it works for you before you switch.
+- Dig through your stats. A day, a week, a month, a year or all time, each compared with the one
+  before: a calendar with your streaks, who you played when, new artists, songs on repeat, genres,
+  decades, where your artists are from and a top 10 by plays or by time listened. The period
+  follows you down the page, so you can step through the years while looking at one chart, and
+  the charts along time zoom out to your whole history.
+- See what your shelf has to do with it. The stats show the records you own but rarely play, the
+  albums you keep streaming but don't own yet, and how much of your listening was vinyl. Only
+  vinyl turns the whole Stats tab into stats of the records you played.
+- Watch it move. There is a race of your top artists through the years (and day by day within a
+  month), a year as a river of artists, and a Wrapped-style story for any period in the colors of
+  your top album.
+- Open anything. Every artist, album, song and genre has its own page: plays over time, a song's
+  chart run month by month, the discography, and a genre's lineup poster.
+- Collect cards. A slightly silly one: songs you play a lot become collector cards (bronze at 10
+  plays, up to holo at 100), and so do albums you play through, all in one binder.
+- Make playlists from your history. Highlights are your most played songs of any year or month,
+  or of one artist, as long as you like. They go straight into TIDAL, or anywhere else as a list
+  you copy.
+- Get ready for a concert. Before a show I used to look up what the artist had been playing
+  lately and put a playlist together to get to know the songs. With setlist.fm connected, the app
+  does that for me. It also knows the shows you were at and what each did to your listening.
+- Find something to play. Explore suggests artists you haven't played yet, each with the reason,
+  plus a weekly discovery mix, new releases by your artists, lost favorites and albums to
+  rediscover.
+- Sing along. Now playing has the lyrics in time (from LRCLIB) on the song's blurred cover, over
+  the whole screen if you like, and the line being sung can sit in the bottom bar.
+- Bring your older history. TIDAL's own record of your listening (the `streaming.csv` of its data
+  export) can be imported, so the stats reach back to your first stream there, long before your
+  Last.fm history starts. Importing Spotify's history the same way is planned.
+
+And there is more in there: songs that Pixel's Now Playing recognises around you wait in a list to
+scrobble or drop, Identify finds a song from ten seconds of sound, any album can be scrobbled by
+hand after you heard it elsewhere, Fix names cleans up "Remastered" and "feat." before a scrobble
+goes out, a home-screen widget shows what is playing, and the app wears Material You colors in
+light and dark with two looks (Tinted soft and Soft glass).
 
 | | | |
 | :---: | :---: | :---: |
 | <img src="docs/screenshots/shelf.jpg" width="240" alt="The shelf"> | <img src="docs/screenshots/record.jpg" width="240" alt="A record"> | <img src="docs/screenshots/stats-month.jpg" width="240" alt="A month of stats"> |
-| Your shelf | A record, ready to scrobble | A month, compared with the last |
-| <img src="docs/screenshots/race.jpg" width="240" alt="The race of your top artists"> | <img src="docs/screenshots/story.jpg" width="240" alt="The story"> | <img src="docs/screenshots/now-playing.jpg" width="240" alt="Lyrics on the song's cover"> |
-| The race, through the years | The story | Lyrics on the cover |
-| <img src="docs/screenshots/artist.jpg" width="240" alt="An artist"> | <img src="docs/screenshots/cards.jpg" width="240" alt="Your cards"> | <img src="docs/screenshots/explore.jpg" width="240" alt="Explore"> |
-| An artist | Your cards | Explore |
+| Your shelf | A record from the shelf | A month, compared with the last |
+| <img src="docs/screenshots/day.jpg" width="240" alt="Today's listening, session by session"> | <img src="docs/screenshots/river.jpg" width="240" alt="A year as a river of artists"> | <img src="docs/screenshots/race.jpg" width="240" alt="The race of your top artists"> |
+| Today so far | A year as a river | The race, through the years |
+| <img src="docs/screenshots/story.jpg" width="240" alt="The story"> | <img src="docs/screenshots/artist.jpg" width="240" alt="An artist"> | <img src="docs/screenshots/cards.jpg" width="240" alt="Your cards"> |
+| The story | An artist | Your cards |
+| <img src="docs/screenshots/playlist.jpg" width="240" alt="A playlist of a year's most played songs"> | <img src="docs/screenshots/now-playing.jpg" width="240" alt="Now playing, with the song's lyrics"> | <img src="docs/screenshots/explore.jpg" width="240" alt="Explore"> |
+| Highlights of a year | Now playing, with lyrics | Explore |
 | <img src="docs/screenshots/covers.jpg" width="240" alt="A month in covers"> | <img src="docs/screenshots/glass.jpg" width="240" alt="The shelf in Soft glass"> | <img src="docs/screenshots/shelf-dark.jpg" width="240" alt="The shelf in the dark"> |
 | A month in covers | Soft glass | In the dark |
 
-The screenshots show the app's demo data, with real covers and artist photos from Deezer.
+The screenshots are from my own phone, so that is my shelf and my listening (and my phone speaks
+German, hence "Okt."). The colors follow the song that is playing.
 
 ## Get it
 
-Download the latest `HeavyRotation-x.y.apk` from the Releases page and open it on the phone
-(Android 8 or newer). Android asks once to allow installs from the app you opened it with.
+Download the latest `HeavyRotation-x.y.apk` from the [Releases page](../../releases/latest) and
+open it on the phone (Android 8 or newer). Android asks once to allow installs from the app you
+opened it with.
 
 Play Protect may warn about an unknown app, mostly because the app isn't from the Play Store and
 can use notification access (for phone scrobbling). Tap More details, then Install anyway.
 
 To update, install a newer APK over the old one; your data stays. [Obtainium](https://obtainium.imranr.dev/)
 can watch the Releases page and update the app for you.
+
+Android only for now, sorry!
 
 ## Set up
 
@@ -110,7 +107,8 @@ can watch the Releases page and update the app for you.
    notification access. Switch it to On once it matches what you expect.
 5. Optional: connect TIDAL in Settings → TIDAL for exact links and for playlists that go straight
    into your TIDAL. Until TIDAL approves the app, this needs your own free TIDAL developer app (the
-   guide shows how); without it, the TIDAL buttons open TIDAL's search.
+   guide shows how); without it, the TIDAL buttons open TIDAL's search. Scrobbling what plays in
+   TIDAL works either way.
 
 [The guide](docs/GUIDE.md) covers every step and everything else the app does.
 
@@ -145,13 +143,16 @@ The world map's outlines are from [Natural Earth](https://www.naturalearthdata.c
 
 ## Feedback
 
-I'd love to hear from you: what works, what doesn't, and what you'd like it to do. Open an
-[issue](../../issues) for bugs and ideas alike.
+I'd love to hear from you: what works, what doesn't, and what you'd like it to do. I'm sure there
+are still bugs. Open an [issue](../../issues) for bugs and ideas alike, especially if you have
+ideas for other fun things to do with Last.fm data.
 
 ## How it was made
 
-I designed Heavy Rotation and tested it on my own shelf and phone, and wrote it with the help of
-Claude, Anthropic's AI coding assistant.
+I'm not an Android developer. I designed Heavy Rotation and tested it on my own shelf and phone,
+and built it with a lot of help from Claude, Anthropic's AI coding assistant. I couldn't have made
+something like this from scratch otherwise, and it has been a really fun project to work on and
+learn from.
 
 ## Building it yourself
 
