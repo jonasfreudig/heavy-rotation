@@ -12,6 +12,31 @@
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+/**
+ * Dates are written by formatters kept by their options. A date's own toLocale… methods make a new formatter on
+ * every call, and that is slow: a Stats page writes a few hundred dates, which was a quarter of the time each
+ * drawing of it took. Only the plain case is taken over (the phone's own language, options that name what to
+ * show); anything else goes the usual way. The formatters are dropped whenever the app comes back to the front,
+ * in case the phone's language or time zone changed meanwhile.
+ */
+(() => {
+  const made = new Map();
+  const NAMED = { toLocaleDateString: ['weekday', 'year', 'month', 'day'], toLocaleTimeString: ['dayPeriod', 'hour', 'minute', 'second', 'fractionalSecondDigits'] };
+  for (const name of Object.keys(NAMED)) {
+    const own = Date.prototype[name];
+    Date.prototype[name] = function (locales, opts) {
+      const plain = (locales === undefined || (Array.isArray(locales) && !locales.length)) && opts && !opts.dateStyle && !opts.timeStyle
+        && NAMED[name].some((k) => opts[k] !== undefined) && !Number.isNaN(this.getTime());
+      if (!plain) return own.call(this, locales, opts);
+      const key = name[8] + JSON.stringify(opts);
+      let f = made.get(key);
+      if (!f) made.set(key, f = new Intl.DateTimeFormat([], opts));
+      return f.format(this);
+    };
+  }
+  document.addEventListener('visibilitychange', () => made.clear());
+})();
 const Native = window.ShelfNative;
 const send = (msg) => (Native ? Native.send(JSON.stringify(msg)) : Mock.handle(msg));
 
@@ -2916,7 +2941,8 @@ const GENRE_COLORS = ['var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g4)', 'var(-
 /** Artist inks (page) and the same hues for the black record (its dark steps). */
 const INKS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)', 'var(--a6)', 'var(--a7)', 'var(--a8)'];
 const INKS_ON_VINYL = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
-const num = (n) => Number(n || 0).toLocaleString();
+const numFormat = new Intl.NumberFormat();
+const num = (n) => numFormat.format(Number(n || 0));
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 function compact(n) {
   n = Number(n || 0);
@@ -3276,19 +3302,28 @@ function renderStrip(s) {
   const box = $('#pStrip'), st = s.strip || {}, items = st.items || [];
   box.hidden = items.length < 2;
   if (box.hidden) { stripSig = ''; return; }
-  const sig = [st.kind, items[0].id, items.length, items[items.length - 1].plays, s.range.id].join('|');
+  const same = [st.kind, items[0].id, items.length, items[items.length - 1].plays].join('|');
+  const sig = `${same}|${s.range.id}`;
   if (sig === stripSig) return;
   const fresh = !stripSig.startsWith(`${st.kind}|`), first = !stripSig;
+  // The same periods with another one chosen (a step to the next): only the mark moves. Building all of them
+  // anew took a good part of every step's drawing, with a hundred months in the strip.
+  const moved = stripSig.startsWith(`${same}|`) && box.querySelector(`.ps-c[data-period="${s.range.id}"]`);
   stripSig = sig;
-  const max = Math.max(1, ...items.map((x) => x.plays));
-  let h = '', year = null;
-  for (const x of items) {
-    const y = new Date(x.start).getFullYear();
-    if (st.kind !== 'year' && y !== year) { h += `<span class="ps-y" aria-hidden="true">${y}</span>`; year = y; }
-    h += `<button class="ps-c${x.id === s.range.id ? ' on' : ''}" data-period="${x.id}" data-key="${x.id}" aria-label="${esc(`${periodLabel(x.start, st.kind)}, ${plural(x.plays, 'play')}`)}"><i style="height:${(3 + (x.plays / max) * 34).toFixed(1)}px"></i><span>${esc(stripLabel(x, st.kind))}</span></button>`;
+  if (moved) {
+    box.querySelectorAll('.ps-c.on').forEach((b) => b.classList.remove('on'));
+    moved.classList.add('on');
+  } else {
+    const max = Math.max(1, ...items.map((x) => x.plays));
+    let h = '', year = null;
+    for (const x of items) {
+      const y = new Date(x.start).getFullYear();
+      if (st.kind !== 'year' && y !== year) { h += `<span class="ps-y" aria-hidden="true">${y}</span>`; year = y; }
+      h += `<button class="ps-c${x.id === s.range.id ? ' on' : ''}" data-period="${x.id}" data-key="${x.id}" aria-label="${esc(`${periodLabel(x.start, st.kind)}, ${plural(x.plays, 'play')}`)}"><i style="height:${(3 + (x.plays / max) * 34).toFixed(1)}px"></i><span>${esc(stripLabel(x, st.kind))}</span></button>`;
+    }
+    // In place (each period keyed), so the chosen one's color can fade over (CSS).
+    morph(box, h);
   }
-  // In place (each period keyed), so the chosen one's color can fade over (CSS).
-  morph(box, h);
   // The chosen one in view: in the middle when the kind changed (at once) or it is off to a side (gliding there).
   const on = box.querySelector('.on');
   if (on && (fresh || on.offsetLeft < box.scrollLeft || on.offsetLeft + on.offsetWidth > box.scrollLeft + box.clientWidth)) {
@@ -8008,10 +8043,11 @@ function renderStats(staged = false) {
   // Staged: the blocks well off the screen stay as they are for now (their places read in one go, before anything changes).
   const far = staged && !statsGoTo && body.offsetParent ? farBlocks(body) : [];
   if (far.length) {
-    const wait = new Set(far);
-    morph(body, html, (x) => wait.has(x));
+    // Each block that waits keeps the new self it will be brought up to: the page's HTML is read once, here.
+    const wait = new Set(far), fresh = new Map();
+    morph(body, html, (x, y) => wait.has(x) && (fresh.set(x, y), true));
     drawRecords((c) => !far.some((el) => el.contains(c)));
-    statsRest({ body, html, far, wait });
+    statsRest({ far: far.filter((el) => fresh.has(el)), fresh });
   } else {
     morph(body, html);
     drawRecords();
@@ -8034,17 +8070,32 @@ function farBlocks(body) {
  */
 let statsLater = null;
 function statsRest(job) {
-  if (statsLater) { clearTimeout(statsLater.t); statsLater = null; }
-  if (!job) return;
-  const step = () => {
-    job.far.splice(0, 4).forEach((el) => job.wait.delete(el));
-    const done = !job.wait.size;
-    const hold = tab === 'stats' && !pageStack.length ? placeNow() : null;
-    morph(job.body, job.html, done ? undefined : (x) => job.wait.has(x));
-    if (hold) keepPlace(hold);
-    if (done) { statsLater = null; drawRecords(); afterStats(); } else statsLater.t = setTimeout(step, 40);
+  if (statsLater) {
+    clearTimeout(statsLater.t);
+    if (statsLater.idle && window.cancelIdleCallback) cancelIdleCallback(statsLater.idle);
+    statsLater = null;
+  }
+  if (!job || !job.far.length) return;
+  const all = job.far.slice();
+  // A few blocks whenever the page has a moment to spare (or after a second at the latest), so a scroll or a tap comes first.
+  const soon = () => {
+    if (window.requestIdleCallback) statsLater.idle = requestIdleCallback(step, { timeout: 1000 }); else statsLater.t = setTimeout(step, 40);
   };
-  statsLater = { t: setTimeout(step, 340) };
+  const step = (spare) => {
+    statsLater.idle = 0;
+    do {
+      const some = job.far.splice(0, 3).filter((el) => el.isConnected);
+      // Only a block above the screen can move what is on it: the place is held for those alone.
+      const hold = tab === 'stats' && !pageStack.length && some.some((el) => el.getBoundingClientRect().bottom < 0) ? placeNow() : null;
+      some.forEach((el) => morphNode(el, job.fresh.get(el)));
+      if (hold) keepPlace(hold);
+    } while (job.far.length && spare && spare.timeRemaining && spare.timeRemaining() > 8);
+    if (job.far.length) { soon(); return; }
+    statsLater = null;
+    drawRecords((c) => all.some((el) => el.contains(c)));
+    afterStats();
+  };
+  statsLater = { idle: 0, t: setTimeout(soon, 300) };
 }
 /** After the page is drawn: the genre map fitted to its boxes, you vs everyone's line, and a block asked for. */
 let statsGoTo = '';
