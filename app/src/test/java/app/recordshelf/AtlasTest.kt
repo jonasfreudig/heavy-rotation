@@ -60,10 +60,15 @@ class AtlasTest {
         assertEquals("around from the start", Atlas.KNEW to "start", Atlas.found(3 * 86_400L, 1, 0, 2017))
         assertEquals("all of their music is newer than the history", Atlas.FOUND to "newer", Atlas.found(30 * 86_400L, 12, 2019, 2017))
         assertEquals("music from the year it starts could have been around", Atlas.UNSURE to "", Atlas.found(30 * 86_400L, 12, 2017, 2017))
-        assertEquals("three years in, an old favorite would have turned up", Atlas.FOUND to "late", Atlas.found(3 * year + 86_400, 14, 1977, 2017))
+        assertEquals("two years in, an old favorite would have turned up", Atlas.FOUND to "late", Atlas.found(2 * year + 86_400, 14, 1977, 2017))
         assertEquals("a year in, beginning with one song", Atlas.FOUND to "small", Atlas.found(year + 86_400, 1, 1977, 2017))
         assertEquals("a year in with a whole catalogue: can't be told", Atlas.UNSURE to "", Atlas.found(year + 86_400, 9, 1977, 2017))
-        assertEquals("the first year, old music: can't be told", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 1, 1977, 2017))
+        assertEquals("the first year, music much older than the history: most likely known", Atlas.KNEW to "old", Atlas.found(200 * 86_400L, 1, 1977, 2017))
+        assertEquals(Atlas.KNEW to "old", Atlas.found(200 * 86_400L, 9, 2014, 2017))
+        assertEquals("the first year, music of the last few years: can't be told", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 9, 2015, 2017))
+        assertEquals("after the first year old music says nothing", Atlas.UNSURE to "", Atlas.found(year + 86_400, 9, 1977, 2017))
+        assertEquals("one old album known among little that is dated is enough for old", Atlas.KNEW to "old", Atlas.found(200 * 86_400L, 9, 0, 2017, 1969))
+        assertEquals("but not for new", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 9, 0, 2017, 2019))
         assertEquals("no years known", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 1, 0, 2017))
     }
 

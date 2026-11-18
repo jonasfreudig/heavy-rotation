@@ -1112,7 +1112,7 @@ class Stats(
             // The years say something only when most of what you played of them has one.
             val year = if (withAlbum[a] > 0 && dated[a] * 5 >= withAlbum[a] * 4) earliest[a] else 0
             val (s, w) = if (said != null) (if (said) Atlas.KNEW else Atlas.FOUND) to "said"
-            else Atlas.found(h.ts[first[a]] - h.ts[0], songs[a]?.size ?: 1, year, startYear)
+            else Atlas.found(h.ts[first[a]] - h.ts[0], songs[a]?.size ?: 1, year, startYear, earliest[a])
             state[a] = s
             why[a] = w
         }

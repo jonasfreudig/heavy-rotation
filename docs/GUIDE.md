@@ -420,8 +420,10 @@ scrobbles.
   though, and an old favorite played for the first time since it began looks just like a find. So
   an artist (of those you kept playing, 5 plays or more) counts as found only where that is sure or
   likely: everything of theirs you played came out after the year your history starts, or the first
-  play came three years or more into it, or a year or more into it and it began with a song or two.
-  Artists from the first two weeks were with you already. For everyone else the app asks you.
+  play came two years or more into it, or a year or more into it and it began with a song or two.
+  Artists from the first two weeks were with you already, and so, most likely, were those of the
+  first year whose music is three years older than your history or more (an artist's page says so,
+  and takes your "No, I found them then"). For everyone else the app asks you.
   Under the tree, "Found then, or known before?" lists them, the most played first, with Found and
   Knew, and an artist's page asks the same under "How you found them". Your word is kept, the tree
   follows it, and "Your word" lists what you said, to take back. The tree shows one gateway at a

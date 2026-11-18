@@ -6131,7 +6131,7 @@ function uniCard() {
     const c = u.clusters[n.c];
     const o = n.origin || {};
     const state = o.state || (o.how === 'start' ? 'knew' : 'found');
-    const how = state === 'knew' ? (o.why === 'said' ? 'You knew them before your history starts.' : 'With you since your history starts.')
+    const how = state === 'knew' ? (o.why === 'said' ? 'You knew them before your history starts.' : o.why === 'old' ? 'Most likely known before your history starts.' : 'With you since your history starts.')
       : state === 'unsure' ? `First played ${esc(dateLabel(o.at))}.`
       : o.how === 'after' ? `Found right after <button class="link" data-uni-go="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.` : `Found out of the blue, ${esc(dateLabel(o.at))}.`;
     const ba = [n.before ? `after <b>${esc(n.before.name)}</b>` : '', n.after ? `before <b>${esc(n.after.name)}</b>` : ''].filter(Boolean).join(' and ');
@@ -6209,7 +6209,7 @@ function treeHtml(t) {
   const found = t.found != null ? t.found : (t.after || 0) + (t.blue || 0);
   const open = t.open || 0;
   const knew = t.knew || t.start || 0;
-  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), ${found ? `<b>${num(found)}</b> ${found === 1 ? 'was a find' : 'were finds'}: ${num(t.after)} came right after another artist in the same session, ${num(t.blue)} out of the blue.` : 'none is a sure find yet.'}${knew ? ` ${num(knew)} you knew before.` : ''}${open ? ` For ${num(open)} your history can't tell: they wait below for your word.` : ''}`;
+  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), ${found ? `<b>${num(found)}</b> ${found === 1 ? 'was a find' : 'were finds'}: ${num(t.after)} came right after another artist in the same session, ${num(t.blue)} out of the blue.` : 'none is a sure find yet.'}${knew ? ` ${num(knew)} you knew before, as far as it can tell.` : ''}${open ? ` For ${num(open)} it can't tell: ${open > (t.unsure || []).length ? 'the most played of them' : 'they'} wait below for your word.` : ''}`;
   const path = TREE_AT.path;
   const at = path[path.length - 1];
   const gws = t.gateways || [];
@@ -6247,8 +6247,11 @@ function originHtml(a) {
   let title = 'How you found them', line, ask = '';
   if (state === 'knew') {
     title = 'Known before';
-    line = o.why === 'said' ? 'You said you knew them before your history starts.' : 'With you since your Last.fm history starts.';
+    line = o.why === 'said' ? 'You said you knew them before your history starts.'
+      : o.why === 'old' ? `First played ${esc(dateLabel(o.at))}, in the first year of your history, and their music is a good deal older: most likely you knew them already.`
+      : 'With you since your Last.fm history starts.';
     if (o.why === 'said') ask = markBtn(a.name, '', 'Take that back');
+    else if (o.why === 'old') ask = markBtn(a.name, 'found', 'No, I found them then');
   } else if (state === 'found') {
     const why = { newer: ' Everything of theirs you played came out after your history begins.', late: ' So far into your history, an old favorite would have turned up sooner.', small: ' It began with a song or two.', said: ' You said so.' }[o.why] || '';
     line = `${o.how === 'after' ? 'Right' : 'Out of the blue'} ${o.how === 'after' ? after.slice(6) : ''}${o.how === 'after' ? ', ' : 'on '}${esc(dateLabel(o.at))}.${why}`;

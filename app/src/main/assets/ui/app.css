@@ -1401,7 +1401,7 @@ button.link:not(.chip):not(.btn) { color: var(--md-primary); font: inherit; padd
 .uni-wrap { position: relative; margin: 6px -16px 0; overflow: hidden; background: color-mix(in srgb, var(--md-surface-container-low) 55%, transparent); border-block: 1px solid var(--md-outline-variant); touch-action: none; }
 .uni-wrap canvas { display: block; touch-action: none; }
 .uni-zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.uni-zoom button { width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--md-surface-container-high) 92%, transparent); color: var(--md-on-surface); font: 500 18px/1 var(--font); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.uni-zoom button { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; text-align: center; border-radius: 12px; background: color-mix(in srgb, var(--md-surface-container-high) 92%, transparent); color: var(--md-on-surface); font: 500 18px/1 var(--font); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
 .uni-zoom button[data-uz="fit"] { font-size: 11px; letter-spacing: .06em; }
 .uni-hint { position: absolute; left: 12px; bottom: 8px; margin: 0; font: 400 10.5px/14px var(--mono, var(--font)); letter-spacing: .04em; color: var(--md-on-surface-variant); opacity: .8; pointer-events: none; }
 .uni-card { position: absolute; left: 8px; right: 8px; bottom: 8px; max-height: 46%; overflow-y: auto; padding: 12px 12px 10px; border-radius: 20px; background: color-mix(in srgb, var(--md-surface-container) 94%, transparent); color: var(--md-on-surface); box-shadow: 0 6px 22px rgba(0, 0, 0, .2); }
