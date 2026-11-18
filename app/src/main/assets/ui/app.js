@@ -5597,7 +5597,6 @@ const runText = (t, i) => { const r = (t.runs || []).slice(-RUNS_SHOWN)[i]; retu
 
 let ATLAS = null;
 let atlasView = 'universe';
-const TREE_OPEN = new Set();
 /** The map of islands on its canvas: the camera, what is picked, and the fingers on it. */
 const UNI = { cam: { x: 0, y: 0, k: 1 }, home: { x: 0, y: 0, k: 1 }, sel: -1, cluster: -1, year: 0, src: null, nodes: [], isles: [], adj: [], w: 0, h: 0, dpr: 1, raf: 0, fly: null, pts: new Map(), gesture: null, lastTap: null, col: null };
 /** Islands take the page's eight inks in turn; artists of no island are gray. (As a CSS color, for the chips.) */
@@ -6131,8 +6130,10 @@ function uniCard() {
     const n = u.nodes[UNI.sel];
     const c = u.clusters[n.c];
     const o = n.origin || {};
-    const how = o.how === 'after' ? `Found right after <button class="link" data-uni-go="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.`
-      : o.how === 'start' ? 'With you since your history starts.' : `Out of the blue, ${esc(dateLabel(o.at))}.`;
+    const state = o.state || (o.how === 'start' ? 'knew' : 'found');
+    const how = state === 'knew' ? (o.why === 'said' ? 'You knew them before your history starts.' : 'With you since your history starts.')
+      : state === 'unsure' ? `First played ${esc(dateLabel(o.at))}.`
+      : o.how === 'after' ? `Found right after <button class="link" data-uni-go="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.` : `Found out of the blue, ${esc(dateLabel(o.at))}.`;
     const ba = [n.before ? `after <b>${esc(n.before.name)}</b>` : '', n.after ? `before <b>${esc(n.after.name)}</b>` : ''].filter(Boolean).join(' and ');
     const near = UNI.adj[UNI.sel].slice(0, 8).map((l) => {
       const m = u.nodes[l.o];
@@ -6156,6 +6157,8 @@ function uniCard() {
 // -- the family tree --
 
 let TREE = null;
+/** The tree on screen: the way down from a gateway to the artist at its top now, and whether all of that artist's finds show. */
+const TREE_AT = { path: [], all: false, unsure: false };
 function treeIndex(t) {
   if (TREE && TREE.src === t) return TREE;
   const byId = new Map(t.nodes.map((n) => [n.id, n]));
@@ -6163,40 +6166,102 @@ function treeIndex(t) {
   t.nodes.forEach((n) => { if (n.p >= 0 && byId.has(n.p)) { if (!kids.has(n.p)) kids.set(n.p, []); kids.get(n.p).push(n.id); } });
   kids.forEach((l) => l.sort((a, b) => byId.get(b).plays - byId.get(a).plays));
   TREE = { src: t, byId, kids };
-  if (!TREE_OPEN.size && t.gateways.length) TREE_OPEN.add(t.gateways[0].id);
+  // The place in the tree is kept through a new drawing where it still exists.
+  if (!TREE_AT.path.length || !TREE_AT.path.every((id, i) => byId.has(id) && (!i || byId.get(id).p === TREE_AT.path[i - 1]))) TREE_AT.path = t.gateways.length ? [t.gateways[0].id] : [];
   return TREE;
 }
-function treeRow(id, depth) {
-  const T = TREE;
-  const n = T.byId.get(id);
+const facePic = (n, cls) => coverHtml(n.photo || '', n.name, n.name, cls);
+/** One artist and the finds that came right after them, as a drawn tree: rows of four under the artist, tied to a trunk. */
+function treeDraw(id) {
+  const T = TREE, r = T.byId.get(id);
   const kids = T.kids.get(id) || [];
-  const open = TREE_OPEN.has(id);
-  const gw = depth === 0 ? (TREE.src.gateways.find((g) => g.id === id) || {}) : null;
-  const meta = [depth ? `found ${monthYear(n.at)}` : '', n.kept ? plural(n.plays, 'play') : 'a stepping stone', n.d ? `led to ${n.d}` : ''].filter(Boolean).join(', ');
-  return `<div class="tnode${n.kept ? '' : ' via'}" style="--depth:${Math.min(depth, 7)}">
-    <div class="trow">${kids.length ? `<button class="tt" data-tree="${id}" aria-expanded="${open}" aria-label="${open ? 'Fold' : 'Unfold'}">${icon(open ? 'down' : 'chevron-right')}</button>` : '<span class="tt"></span>'}
-      ${gw ? coverHtml(gw.photo, n.name, n.name, 'tiny round') : ''}<button class="tn" data-artist="${esc(n.name)}"><b>${esc(n.name)}</b><small>${esc(meta)}</small></button></div>
-    ${open && kids.length ? `<div class="tkids">${kids.map((k) => treeRow(k, depth + 1)).join('')}</div>` : ''}</div>`;
+  const shown = TREE_AT.all ? kids : kids.slice(0, 8);
+  const rows = [];
+  for (let i = 0; i < shown.length; i += 4) rows.push(shown.slice(i, i + 4));
+  const TOP = 138, ROW = 118;
+  let svg = '', h = '';
+  rows.forEach((row, ri) => {
+    const y = TOP + ri * ROW;
+    // A single row spreads over the width; more rows keep four columns, the last one in the middle.
+    const xs = row.map((_, i) => (rows.length === 1 ? ((i + 0.5) * 100) / row.length : 50 + (i - (row.length - 1) / 2) * 25));
+    svg += `<path d="M${xs[0]} ${y} H${xs[xs.length - 1]}"/>${xs.map((x) => `<path d="M${x} ${y} V${y + 12}"/>`).join('')}`;
+    row.forEach((k, i) => {
+      const n = T.byId.get(k);
+      const more = (T.kids.get(k) || []).length;
+      h += `<button class="tnd${n.kept ? '' : ' via'}" style="left:${xs[i]}%;top:${y + 14}px" ${more ? `data-tgo="${k}"` : `data-artist="${esc(n.name)}"`}>${facePic(n, 'round')}${more ? `<i class="tmore">+${n.d || more}</i>` : ''}<b>${esc(n.name)}</b><small>${esc(monthYear(n.at))}</small></button>`;
+    });
+  });
+  if (rows.length) svg += `<path d="M50 ${TOP - 16} V${TOP + (rows.length - 1) * ROW}"/>`;
+  const sub = [plural(r.plays, 'play'), r.found ? `found ${monthYear(r.at)}` : '', kids.length ? `led you to ${r.d}` : ''].filter(Boolean).join(', ');
+  const root = `<button class="tnd root" style="left:50%;top:0" data-artist="${esc(r.name)}">${facePic(r, 'round')}<b>${esc(r.name)}</b><small>${esc(sub)}</small></button>`;
+  const height = TOP + rows.length * ROW;
+  return `<div class="tdraw" style="height:${height}px"><svg viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true">${svg}</svg>${root}${h}</div>
+    ${kids.length > shown.length ? `<button class="btn text" data-tall>Show all ${kids.length}</button>` : ''}`;
 }
+/** A row of the lists under the tree: the artist, a line about them, and what you can say. */
+function treeAsk(x, line, buttons) {
+  return `<div class="tq"><button class="tq-a" data-artist="${esc(x.name)}">${facePic(x, 'tiny round')}<span><b>${esc(x.name)}</b><small>${esc(line)}</small></span></button><span class="tq-b">${buttons}</span></div>`;
+}
+const markBtn = (name, v, label) => `<button class="chip" data-mark="${v}" data-a="${esc(name)}">${label}</button>`;
 function treeHtml(t) {
-  if (!t || !t.nodes || !t.nodes.length) return '<div class="empty"><p>Not enough plays yet for a family tree.</p></div>';
+  if (!t || !t.nodes) return '<div class="empty"><p>Not enough plays yet for a family tree.</p></div>';
   treeIndex(t);
-  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), <b>${num(t.after)}</b> came right after another artist in the same listening session, ${num(t.blue)} came out of the blue (a search, an album, a tip), and ${num(t.start)} were with you from the start of your history.`;
-  return `<p class="uni-intro">${intro}</p>
-    <div class="viz"><h2>Gateways</h2><span class="sub">Artists that led you to others you kept playing</span>
-    <div class="tree">${t.gateways.map((g) => treeRow(g.id, 0)).join('') || '<p class="hint">No artist has led you to two or more others yet.</p>'}</div></div>`;
+  const found = t.found != null ? t.found : (t.after || 0) + (t.blue || 0);
+  const open = t.open || 0;
+  const knew = t.knew || t.start || 0;
+  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), ${found ? `<b>${num(found)}</b> ${found === 1 ? 'was a find' : 'were finds'}: ${num(t.after)} came right after another artist in the same session, ${num(t.blue)} out of the blue.` : 'none is a sure find yet.'}${knew ? ` ${num(knew)} you knew before.` : ''}${open ? ` For ${num(open)} your history can't tell: they wait below for your word.` : ''}`;
+  const path = TREE_AT.path;
+  const at = path[path.length - 1];
+  const gws = t.gateways || [];
+  const chips = gws.length ? `<div class="chip-row tree-gw">${gws.map((g) => `<button class="chip${path[0] === g.id ? ' on' : ''}" data-troot="${g.id}">${esc(g.name)}<small class="n">${g.d}</small></button>`).join('')}</div>` : '';
+  const crumbs = path.length > 1 ? `<div class="lineage">${path.map((id, i) => (i < path.length - 1 ? `<button class="chip" data-tup="${i}">${esc(TREE.byId.get(id).name)}</button><span class="arr">→</span>` : `<span class="chip static on">${esc(TREE.byId.get(id).name)}</span>`)).join('')}</div>` : '';
+  const tree = at != null ? `<div class="viz tree-card"><h2>Who led to whom</h2><span class="sub">A gateway and the finds you first played right after them. Tap one with a number to go on from there.</span>${chips}${crumbs}${treeDraw(at)}</div>`
+    : `<div class="viz tree-card"><h2>Who led to whom</h2><p class="hint">No artist has led you to two or more finds yet${open ? ', as far as your history can tell. Sorting the list below can change that' : ''}.</p></div>`;
+  const blue = (t.blueList || []).length ? `<div class="viz"><h2>Out of the blue</h2><span class="sub">Finds nothing led to: a search, an album, a tip. The newest first.</span>
+    <div class="tblue">${t.blueList.map((x) => `<button data-artist="${esc(x.name)}">${facePic(x, 'round')}<b>${esc(x.name)}</b><small>${esc(monthYear(x.at))}</small></button>`).join('')}</div></div>` : '';
+  const un = t.unsure || [];
+  const unShown = TREE_AT.unsure ? un : un.slice(0, 6);
+  const unsure = un.length ? `<div class="viz" id="treeUnsure"><h2>Found then, or known before?</h2><span class="sub">Your history starts too late to tell for these: an old favorite played for the first time looks just like a find. Say which, and the tree follows.</span>
+    ${unShown.map((x) => treeAsk(x, [`first played ${monthYear(x.at)}`, x.from ? `after ${x.from}` : '', plural(x.plays, 'play')].filter(Boolean).join(', '), markBtn(x.name, 'found', 'Found') + markBtn(x.name, 'knew', 'Knew'))).join('')}
+    ${un.length > unShown.length ? `<button class="btn text" data-tunsure>Show all ${open > un.length ? `${un.length} most played` : un.length}</button>` : ''}</div>` : '';
+  const said = (t.said || []).length ? `<div class="viz"><h2>Your word</h2><span class="sub">What you said about artists, to take back</span>
+    ${t.said.map((x) => treeAsk(x, x.state === 'knew' ? 'known before your history starts' : `found ${monthYear(x.at)}`, markBtn(x.name, '', 'Take back'))).join('')}</div>` : '';
+  return `<p class="uni-intro">${intro}</p>${tree}${blue}${unsure}${said}`;
+}
+/** You say how it was with artist [name]: 'found', 'knew', or '' to take it back. The tree and their page follow. */
+function markFound(name, v) {
+  send({ t: 'markFound', name, v });
+  if (isOpen('artistPage') && ARTIST && ARTIST.name && norm(ARTIST.name) === norm(name)) send({ t: 'artist', name: ARTIST.name, range: statsRange, req: ARTIST.req });
 }
 
-/** How you found an artist, back along the chain of first plays, and who they led you to. */
+/**
+ * How you found an artist, back along the chain of first plays, and who they led you to: where that can be told.
+ * An old favorite first played after your history begins looks like a find, so the page says what it is sure of and
+ * asks about the rest.
+ */
 function originHtml(a) {
   const o = a.origin;
   if (!o) return '';
-  const line = o.how === 'after' ? `Right after <button class="link" data-artist="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.`
-    : o.how === 'start' ? 'With you since your Last.fm history starts.' : `Out of the blue on ${esc(dateLabel(o.at))}: nothing played right before.`;
-  const chain = (o.chain || []).slice().reverse();
+  const state = o.state || (o.how === 'start' ? 'knew' : 'found');
+  const after = o.how === 'after' ? `right after <button class="link" data-artist="${esc(o.from)}">${esc(o.from)}</button>` : 'with nothing played right before';
+  let title = 'How you found them', line, ask = '';
+  if (state === 'knew') {
+    title = 'Known before';
+    line = o.why === 'said' ? 'You said you knew them before your history starts.' : 'With you since your Last.fm history starts.';
+    if (o.why === 'said') ask = markBtn(a.name, '', 'Take that back');
+  } else if (state === 'found') {
+    const why = { newer: ' Everything of theirs you played came out after your history begins.', late: ' So far into your history, an old favorite would have turned up sooner.', small: ' It began with a song or two.', said: ' You said so.' }[o.why] || '';
+    line = `${o.how === 'after' ? 'Right' : 'Out of the blue'} ${o.how === 'after' ? after.slice(6) : ''}${o.how === 'after' ? ', ' : 'on '}${esc(dateLabel(o.at))}.${why}`;
+    ask = o.why === 'said' ? markBtn(a.name, '', 'Take that back') : markBtn(a.name, 'knew', 'I knew them before');
+  } else {
+    title = 'Found then, or known before?';
+    line = `First played ${esc(dateLabel(o.at))}, ${after}. Your history can't tell whether you knew them before that.`;
+    ask = markBtn(a.name, 'found', 'Found them then') + markBtn(a.name, 'knew', 'Knew them before');
+  }
+  const chain = state === 'found' ? (o.chain || []).slice().reverse() : [];
   const path = chain.length ? `<div class="lineage">${chain.map((c) => `<button class="chip" data-artist="${esc(c.name)}">${esc(c.name)}</button>`).join('<span class="arr">→</span>')}<span class="arr">→</span><span class="chip static on">${esc(a.name)}</span></div>` : '';
   const led = (a.ledTo || []).length ? `<p class="hint">Led you to ${a.ledTo.map((x) => `<button class="link" data-artist="${esc(x.name)}">${esc(x.name)}</button>`).join(', ')}.</p>` : '';
-  return `<div class="viz origin"><h2>How you found them</h2><span class="sub">${line}</span>${path}${led}<button class="btn text" data-atlas="tree">${icon('atlas')}Your family tree</button></div>`;
+  return `<div class="viz origin"><h2>${title}</h2><span class="sub">${line}</span>${path}${led}<div class="chip-row origin-ask">${ask}</div><button class="btn text" data-atlas="tree">${icon('atlas')}Your family tree</button></div>`;
 }
 
 // ---- you against everyone on Last.fm (all time) ----
@@ -10764,6 +10829,8 @@ function build() {
       afterStats();
       return;
     }
+    const mk = e.target.closest('[data-mark]');
+    if (mk) { mk.closest('.tq, .origin-ask')?.classList.add('sent'); markFound(mk.dataset.a, mk.dataset.mark); return; }
     const atl = e.target.closest('[data-atlas]');
     if (atl) { openAtlas(atl.dataset.atlas || ''); return; }
     if (e.target.closest('[data-gpick]')) { openGenreSheet(); return; }
@@ -11090,16 +11157,19 @@ function build() {
     const y = t.closest('[data-uni-y]');
     if (y) { UNI.year = +y.dataset.uniY; $$('.uni-years .chip').forEach((b) => b.classList.toggle('on', +b.dataset.uniY === UNI.year)); uniCard(); drawUni(); return; }
     if (t.closest('[data-uni-x]')) { uniClear(); return; }
-    const tr = t.closest('[data-tree]');
-    if (tr) {
-      const id = +tr.dataset.tree, open = !TREE_OPEN.has(id);
-      if (open) TREE_OPEN.add(id); else TREE_OPEN.delete(id);
+    // The tree: another gateway, on from one of its finds, back up, or all of them.
+    const tRoot = t.closest('[data-troot]'), tGo = t.closest('[data-tgo]'), tUp = t.closest('[data-tup]');
+    if (tRoot || tGo || tUp || t.closest('[data-tall]')) {
+      if (tRoot) TREE_AT.path = [+tRoot.dataset.troot];
+      else if (tGo) TREE_AT.path.push(+tGo.dataset.tgo);
+      else if (tUp) TREE_AT.path.length = +tUp.dataset.tup + 1;
+      TREE_AT.all = !(tRoot || tGo || tUp);
       renderAtlas();
-      // The branch that opened fades in under its artist.
-      const row = open && $(`#atlasBody [data-tree="${id}"]`);
-      if (row) settle(row.closest('.tnode').querySelector(':scope > .tkids'));
+      const d = $('#atlasBody .tdraw');
+      if (d && !t.closest('[data-tall]') && moving()) d.animate([{ opacity: 0.3, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: EASE_OUT });
       return;
     }
+    if (t.closest('[data-tunsure]')) { TREE_AT.unsure = true; renderAtlas(); return; }
   };
   const exploreClick = (e) => {
     const no = e.target.closest('[data-nope]');

@@ -797,6 +797,8 @@ const Mock = (() => {
   }
   // The atlas from the made-up log, worked out like Atlas.kt does (links, spring layout, constellations, shapes).
   let atlasCache = null;
+  /** What was said about artists in the demo (see Core's markFound), by lower-case name: 'knew' or 'found'. */
+  const MARKS = {};
   function fakeAtlas() {
     if (atlasCache) return atlasCache;
     const L = history();
@@ -863,7 +865,18 @@ const Mock = (() => {
     const first = {}, from = {};
     L.ts.forEach((ts, i) => { if (first[L.a[i]] == null) first[L.a[i]] = i; });
     Object.entries(first).forEach(([a, f]) => { from[a] = L.ts[f] < L.start + 14 * DAY ? -2 : f > 0 && L.ts[f] - L.ts[f - 1] <= GAP && L.a[f - 1] !== +a ? L.a[f - 1] : -1; });
-    const originOf = (a) => ({ how: from[a] >= 0 ? 'after' : from[a] === -2 ? 'start' : 'blue', at: L.ts[first[a]], ...(from[a] >= 0 ? { from: L.artists[from[a]] } : {}) });
+    // Found, known before or not to be told, as Atlas.found has it. The demo knows no release years, and its history
+    // is three years short, so its "late" comes after one year and its "small" after three months.
+    const YEAR = 365 * DAY, firstDay = {};
+    L.ts.forEach((ts, i) => { const a = L.a[i]; if (ts - L.ts[first[a]] < DAY) (firstDay[a] || (firstDay[a] = new Set())).add(L.t[i]); });
+    const stateOf = (a) => {
+      const said = MARKS[L.artists[a].toLowerCase()];
+      if (said) return [said, 'said'];
+      const since = L.ts[first[a]] - L.start;
+      return since < 14 * DAY ? ['knew', 'start'] : since >= YEAR ? ['found', 'late'] : since >= 90 * DAY && firstDay[a].size <= 2 ? ['found', 'small'] : ['unsure', ''];
+    };
+    const cameFrom = (a) => (stateOf(a)[0] === 'found' ? Math.max(-1, from[a]) : -2);
+    const originOf = (a) => ({ how: from[a] >= 0 ? 'after' : from[a] === -2 ? 'start' : 'blue', state: stateOf(a)[0], why: stateOf(a)[1], at: L.ts[first[a]], ...(from[a] >= 0 ? { from: L.artists[from[a]] } : {}) });
     const genreName = (a) => GENRES[genreOf(a)] || '';
     const near = (a, dir) => { let best = -1, bn = 0; trans.forEach((c, kk) => { const [p, q] = kk.split(':').map(Number); if (c >= 2 && (dir ? p === a : q === a) && c > bn) { bn = c; best = dir ? q : p; } }); return best >= 0 ? { name: L.artists[best], n: bn } : null; };
     const nodes = stars.map((a, i) => ({ name: L.artists[a], plays: plays[i], x: Math.round(((x[i] - cx) / rr) * 1000) / 1000, y: Math.round(((y[i] - cy) / rr) * 1000) / 1000, c: cl[i], genre: genreName(a), photo: '', origin: originOf(a), years: years[i], before: near(a, 0), after: near(a, 1) }));
@@ -874,16 +887,23 @@ const Mock = (() => {
       .filter((b) => b && b[2] > 0).sort((p, q) => q[2] - p[2]).slice(0, 4).map(([i, to]) => ({ name: L.artists[stars[i]], from: cl[i], to }));
     // family tree
     const kept = (a) => (ac[a] || 0) >= 5;
-    const inTree = new Set(Object.keys(first).map(Number).filter(kept));
-    [...inTree].forEach((a) => { let p = from[a]; while (p >= 0 && !inTree.has(p)) { inTree.add(p); p = from[p]; } });
-    const desc = {};
-    [...inTree].sort((p, q) => first[q] - first[p]).forEach((a) => { const p = from[a]; if (p >= 0) desc[p] = (desc[p] || 0) + (desc[a] || 0) + (kept(a) ? 1 : 0); });
-    const ids = [...inTree];
     const keptIds = Object.keys(first).map(Number).filter(kept);
-    const tree = { nodes: ids.map((a) => ({ id: a, name: L.artists[a], plays: ac[a] || 0, at: L.ts[first[a]], p: from[a], d: desc[a] || 0, kept: kept(a) })),
-      gateways: ids.filter((a) => (desc[a] || 0) >= 2).sort((p, q) => desc[q] - desc[p]).slice(0, 8).map((a) => ({ id: a, name: L.artists[a], d: desc[a], photo: '' })),
-      after: keptIds.filter((a) => from[a] >= 0).length, blue: keptIds.filter((a) => from[a] === -1).length, start: keptIds.filter((a) => from[a] === -2).length, kept: keptIds.length };
-    atlasCache = { plays: L.ts.length, universe: { nodes, clusters, links: links.map((l) => [l[0], l[1], l[2], l[3], Math.round(l[4] * 1000) / 1000]), bridges, plays: plays.reduce((s, v) => s + v, 0) }, tree };
+    const inTree = new Set(keptIds.filter((a) => stateOf(a)[0] === 'found'));
+    [...inTree].forEach((a) => { let p = cameFrom(a); while (p >= 0 && !inTree.has(p)) { inTree.add(p); p = cameFrom(p); } });
+    const desc = {};
+    [...inTree].sort((p, q) => first[q] - first[p]).forEach((a) => { const p = cameFrom(a); if (p >= 0) desc[p] = (desc[p] || 0) + (desc[a] || 0) + (kept(a) ? 1 : 0); });
+    const ids = [...inTree];
+    const line = (a) => ({ name: L.artists[a], plays: ac[a] || 0, at: L.ts[first[a]], photo: '', from: from[a] >= 0 ? L.artists[from[a]] : null });
+    const isFound = (a) => stateOf(a)[0] === 'found';
+    const tree = { nodes: ids.map((a) => ({ id: a, name: L.artists[a], plays: ac[a] || 0, at: L.ts[first[a]], p: cameFrom(a), d: desc[a] || 0, kept: kept(a), found: isFound(a), photo: '' })),
+      gateways: ids.filter((a) => (desc[a] || 0) >= 2).sort((p, q) => desc[q] - desc[p]).slice(0, 12).map((a) => ({ id: a, name: L.artists[a], d: desc[a], photo: '' })),
+      blueList: keptIds.filter((a) => isFound(a) && from[a] < 0).sort((p, q) => first[q] - first[p]).slice(0, 30).map(line),
+      unsure: keptIds.filter((a) => stateOf(a)[0] === 'unsure').sort((p, q) => ac[q] - ac[p]).slice(0, 60).map(line),
+      said: keptIds.filter((a) => stateOf(a)[1] === 'said').sort((p, q) => ac[q] - ac[p]).map((a) => ({ ...line(a), state: stateOf(a)[0] })),
+      found: keptIds.filter(isFound).length, after: keptIds.filter((a) => isFound(a) && from[a] >= 0).length, blue: keptIds.filter((a) => isFound(a) && from[a] < 0).length,
+      knew: keptIds.filter((a) => stateOf(a)[0] === 'knew').length, start: keptIds.filter((a) => stateOf(a)[1] === 'start').length, open: keptIds.filter((a) => stateOf(a)[0] === 'unsure').length, kept: keptIds.length };
+    atlasCache = { plays: L.ts.length, universe: { nodes, clusters, links: links.map((l) => [l[0], l[1], l[2], l[3], Math.round(l[4] * 1000) / 1000]), bridges, plays: plays.reduce((s, v) => s + v, 0) }, tree,
+      origins: new Map(Object.keys(first).map(Number).map((a) => [L.artists[a], { ...originOf(a), p: cameFrom(a) }])) };
     return atlasCache;
   }
   function fakeStory(id) {
@@ -1449,16 +1469,15 @@ const Mock = (() => {
       owned, genres: [GENRES[Math.max(0, genreOf(ai))] || 'Indie Rock'],
       global: globalOf(name, plays),
       ...(() => {
-        const t = fakeAtlas().tree;
-        const byName = new Map(t.nodes.map((nd) => [nd.name, nd]));
-        const me = byName.get(name);
-        if (!me) return {};
+        const A = fakeAtlas(), t = A.tree;
+        const mine = A.origins.get(name);
+        if (!mine) return {};
+        const me = t.nodes.find((nd) => nd.name === name);
         const byId = new Map(t.nodes.map((nd) => [nd.id, nd]));
-        const how = (nd) => (nd.p >= 0 ? 'after' : nd.p === -2 ? 'start' : 'blue');
         const chain = [];
-        for (let p = byId.get(me.p); p && chain.length < 6; p = byId.get(p.p)) chain.push({ name: p.name, plays: p.plays, how: how(p), at: p.at, ...(p.p >= 0 && byId.get(p.p) ? { from: byId.get(p.p).name } : {}) });
-        return { origin: { how: how(me), at: me.at, ...(me.p >= 0 && byId.get(me.p) ? { from: byId.get(me.p).name } : {}), chain },
-          ledTo: t.nodes.filter((nd) => nd.p === me.id && nd.kept).sort((p, q) => q.plays - p.plays).slice(0, 8).map((nd) => ({ name: nd.name, plays: nd.plays, at: nd.at })) };
+        for (let p = me ? byId.get(me.p) : null; p && chain.length < 6; p = byId.get(p.p)) chain.push({ name: p.name, plays: p.plays, ...A.origins.get(p.name) });
+        return { origin: { ...mine, chain },
+          ledTo: me ? t.nodes.filter((nd) => nd.p === me.id && nd.kept).sort((p, q) => q.plays - p.plays).slice(0, 8).map((nd) => ({ name: nd.name, plays: nd.plays, at: nd.at })) : [] };
       })(),
       globalTop: (() => {
         const mine = topTrackOf(ai);
@@ -1871,6 +1890,13 @@ const Mock = (() => {
           onGenre({ ...g, req: m.req });
         }); break;
         case 'atlas': later(500, () => onAtlas(fakeAtlas())); break;
+        case 'markFound': {
+          const k = String(m.name || '').toLowerCase();
+          if (m.v === 'knew' || m.v === 'found') MARKS[k] = m.v; else delete MARKS[k];
+          atlasCache = null;
+          later(250, () => onAtlas(fakeAtlas()));
+          break;
+        }
         case 'backupExport': later(700, () => onBackup({ scrobbles: history().ts.length })); break;
         case 'backupImport': later(400, () => onToast('In the app, a file picker opens here')); break;
         // TIDAL's own history: in the app a file picker opens; here an import runs as it would.

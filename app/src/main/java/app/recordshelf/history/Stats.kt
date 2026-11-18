@@ -40,6 +40,8 @@ class Stats(
     private val songLengths: Map<String, Int> = emptyMap(),
     /** The records of yours showing their own picture, not the album's usual cover (release ids; see [CollectionItem.face]). */
     @Volatile private var ownCovers: Set<Long> = emptySet(),
+    /** What you said about artists ([Text.norm] of the name): true, you knew them before your history starts; false, you found them at their first play. */
+    private val known: Map<String, Boolean> = emptyMap(),
 ) {
     /**
      * New covers, photos or Last.fm counts arrived, or a record's picture was switched ([own]): the same stats, now with
@@ -950,7 +952,7 @@ class Stats(
         val family = key.substringBefore(':')
         // A style that is no play's main one: its family's page instead.
         if (sub.size == 0) return if (':' in key) genrePage(family) else null
-        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals, songLengths, ownCovers)
+        val s = Stats(sub, zone, nowSec, collection, genres, vinyl, albumImages, albumYears, globals, songLengths, ownCovers, known)
         val o = s.life { true } ?: return null
         // Each part on its own: one that fails on some history leaves the rest of the page, and says why.
         val broken = ArrayList<String>()
@@ -1078,10 +1080,56 @@ class Stats(
 
     private fun genreOfArtist(a: Int) = artistGenre[a].let { if (it >= 0) Genres.label(genreKeys[it]) else "" }
 
-    /** How you found artist [a]: "after" (with [from]), "start" (around from the start) or "blue" (nothing right before it). */
+    /**
+     * Per artist: whether they were new to you at their first play ([Atlas.found], or what you said), and why
+     * ("said" when it is your word).
+     */
+    private val finds: Pair<Array<String>, Array<String>> by lazy {
+        val (first, _) = origins
+        val n = h.artistNames.size
+        val songs = arrayOfNulls<HashSet<Int>>(n)
+        // Of each artist's plays: how many are of albums with a known year, and the earliest of those years.
+        val withAlbum = IntArray(n)
+        val dated = IntArray(n)
+        val earliest = IntArray(n)
+        for (i in 0 until h.size) {
+            val a = h.artist[i]
+            if (h.ts[i] - h.ts[first[a]] < DAY_SEC) (songs[a] ?: HashSet<Int>().also { songs[a] = it }).add(h.track[i])
+            if (h.album[i] < 0) continue
+            withAlbum[a]++
+            val y = yearOf(i)
+            if (y > 0) {
+                dated[a]++
+                if (earliest[a] == 0 || y < earliest[a]) earliest[a] = y
+            }
+        }
+        val startYear = if (h.size > 0) date(h.ts[0]).year else 0
+        val state = Array(n) { Atlas.UNSURE }
+        val why = Array(n) { "" }
+        for (a in 0 until n) {
+            if (first[a] < 0) continue
+            val said = known[Text.norm(h.artistNames[a])]
+            // The years say something only when most of what you played of them has one.
+            val year = if (withAlbum[a] > 0 && dated[a] * 5 >= withAlbum[a] * 4) earliest[a] else 0
+            val (s, w) = if (said != null) (if (said) Atlas.KNEW else Atlas.FOUND) to "said"
+            else Atlas.found(h.ts[first[a]] - h.ts[0], songs[a]?.size ?: 1, year, startYear)
+            state[a] = s
+            why[a] = w
+        }
+        state to why
+    }
+
+    /** What led to artist [a], where they were a find: the artist played right before (>= 0) or -1; -2 where how you found them isn't known. */
+    private fun cameFrom(a: Int): Int = if (finds.first[a] == Atlas.FOUND) maxOf(-1, origins.second[a]) else -2
+
+    /**
+     * How you found artist [a]. "state": found, knew or unsure ([Atlas.found]), with "why". "how": "after" (with
+     * "from") or "blue" (nothing right before it) for the first play, "start" for one around from the start.
+     */
     private fun originJson(a: Int): JSONObject {
         val (first, from) = origins
         val o = JSONObject().put("how", when { from[a] >= 0 -> "after"; from[a] == -2 -> "start"; else -> "blue" })
+            .put("state", finds.first[a]).put("why", finds.second[a])
         if (first[a] >= 0) o.put("at", h.ts[first[a]] * 1000)
         if (from[a] >= 0) o.put("from", h.artistNames[from[a]])
         return o
@@ -1155,33 +1203,46 @@ class Stats(
             .put("links", JSONArray(links.map { JSONArray().put(it.a).put(it.b).put(it.together).put(round(it.sameTime)).put(round(it.w)) }))
             .put("bridges", JSONArray(bridges.map { (i, c2, _) -> JSONObject().put("name", h.artistNames[stars[i]]).put("from", cl[i]).put("to", c2) }))
             .put("plays", plays.sum()))
-        // The family tree: the artists you kept playing, and everyone on the way to them.
+        // The family tree: the artists you kept playing that were finds, and everyone on the way to them. An artist
+        // you knew before, or that can't be told, has nothing leading to it: it can only be where a branch starts.
         val (first, from) = origins
+        val (state, why) = finds
         val kept = BooleanArray(h.artistNames.size) { l.plays[it] >= Atlas.KEPT_MIN }
-        val inTree = kept.copyOf()
-        for (a in kept.indices) if (kept[a]) {
-            var p = from[a]
+        val inTree = BooleanArray(h.artistNames.size) { kept[it] && state[it] == Atlas.FOUND }
+        for (a in kept.indices) if (kept[a] && state[a] == Atlas.FOUND) {
+            var p = cameFrom(a)
             while (p >= 0 && !inTree[p]) {
                 inTree[p] = true
-                p = from[p]
+                p = cameFrom(p)
             }
         }
         // Latest first, so each artist's count is complete before it's added to the one before it.
         val desc = IntArray(h.artistNames.size)
         for (a in h.artistNames.indices.filter { inTree[it] && first[it] >= 0 }.sortedByDescending { first[it] }) {
-            val p = from[a]
+            val p = cameFrom(a)
             if (p >= 0) desc[p] += desc[a] + (if (kept[a]) 1 else 0)
         }
         val treeIds = h.artistNames.indices.filter { inTree[it] && first[it] >= 0 }
+        fun line(a: Int) = JSONObject().put("name", h.artistNames[a]).put("plays", l.plays[a]).put("at", h.ts[first[a]] * 1000).put("photo", artistPhoto(h.artistNames[a]))
+            .put("from", if (from[a] >= 0) h.artistNames[from[a]] else JSONObject.NULL)
+        val keptIds = kept.indices.filter { kept[it] && first[it] >= 0 }
         o.put("tree", JSONObject()
             .put("nodes", JSONArray(treeIds.map { a ->
-                JSONObject().put("id", a).put("name", h.artistNames[a]).put("plays", l.plays[a]).put("at", h.ts[first[a]] * 1000).put("p", from[a]).put("d", desc[a]).put("kept", kept[a])
+                JSONObject().put("id", a).put("name", h.artistNames[a]).put("plays", l.plays[a]).put("at", h.ts[first[a]] * 1000).put("p", cameFrom(a)).put("d", desc[a]).put("kept", kept[a])
+                    .put("found", state[a] == Atlas.FOUND).put("photo", artistPhoto(h.artistNames[a]))
             }))
-            .put("gateways", JSONArray(treeIds.filter { desc[it] >= 2 }.sortedByDescending { desc[it] }.take(8).map { a ->
+            .put("gateways", JSONArray(treeIds.filter { desc[it] >= 2 }.sortedByDescending { desc[it] }.take(12).map { a ->
                 JSONObject().put("id", a).put("name", h.artistNames[a]).put("d", desc[a]).put("photo", artistPhoto(h.artistNames[a]))
             }))
-            .put("after", kept.indices.count { kept[it] && from[it] >= 0 }).put("blue", kept.indices.count { kept[it] && from[it] == -1 })
-            .put("start", kept.indices.count { kept[it] && from[it] == -2 }).put("kept", kept.count { it }))
+            // The finds nothing led to, the newest first: they have no place in a tree, but they are finds.
+            .put("blueList", JSONArray(keptIds.filter { state[it] == Atlas.FOUND && from[it] < 0 }.sortedByDescending { first[it] }.take(30).map { line(it) }))
+            // What can't be told, the most played first, and what you said, to take back.
+            .put("unsure", JSONArray(keptIds.filter { state[it] == Atlas.UNSURE }.sortedByDescending { l.plays[it] }.take(60).map { line(it) }))
+            .put("said", JSONArray(keptIds.filter { why[it] == "said" }.sortedByDescending { l.plays[it] }.map { line(it).put("state", state[it]) }))
+            .put("found", keptIds.count { state[it] == Atlas.FOUND })
+            .put("after", keptIds.count { state[it] == Atlas.FOUND && from[it] >= 0 }).put("blue", keptIds.count { state[it] == Atlas.FOUND && from[it] < 0 })
+            .put("knew", keptIds.count { state[it] == Atlas.KNEW }).put("start", keptIds.count { state[it] == Atlas.KNEW && why[it] == "start" })
+            .put("open", keptIds.count { state[it] == Atlas.UNSURE }).put("kept", keptIds.size))
     }
 
     // ---- you against everyone on Last.fm (all time) ----
@@ -2247,13 +2308,13 @@ class Stats(
         pageRiver(h.ts[first], { h.artist[it] == a || h.also[it] == a }, { h.album[it] }, { h.albumTitles[it] })?.let { o.put("river", it) }
         // How you found them, back as far as the history goes, and who they led you to.
         val chain = JSONArray()
-        var p = origins.second[a]
+        var p = cameFrom(a)
         while (p >= 0 && chain.length() < 6) {
             chain.put(originJson(p).put("name", h.artistNames[p]).put("plays", artistLife.plays[p]))
-            p = origins.second[p]
+            p = cameFrom(p)
         }
         o.put("origin", originJson(a).put("chain", chain))
-        o.put("ledTo", JSONArray(h.artistNames.indices.filter { origins.second[it] == a && artistLife.plays[it] >= Atlas.KEPT_MIN }
+        o.put("ledTo", JSONArray(h.artistNames.indices.filter { cameFrom(it) == a && artistLife.plays[it] >= Atlas.KEPT_MIN }
             .sortedByDescending { artistLife.plays[it] }.take(8).map { JSONObject().put("name", h.artistNames[it]).put("plays", artistLife.plays[it]).put("at", h.ts[origins.first[it]] * 1000) }))
         globals.artist(h.artistNames[a])?.let { o.put("global", vsJson(plays, it)) }
         globals.top(h.artistNames[a])?.let { top ->

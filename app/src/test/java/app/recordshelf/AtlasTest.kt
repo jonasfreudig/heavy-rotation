@@ -55,8 +55,56 @@ class AtlasTest {
     }
 
     @Test
+    fun whetherAnArtistWasAFindIsOnlySaidWhereItIsLikely() {
+        val year = 365L * 86_400
+        assertEquals("around from the start", Atlas.KNEW to "start", Atlas.found(3 * 86_400L, 1, 0, 2017))
+        assertEquals("all of their music is newer than the history", Atlas.FOUND to "newer", Atlas.found(30 * 86_400L, 12, 2019, 2017))
+        assertEquals("music from the year it starts could have been around", Atlas.UNSURE to "", Atlas.found(30 * 86_400L, 12, 2017, 2017))
+        assertEquals("three years in, an old favorite would have turned up", Atlas.FOUND to "late", Atlas.found(3 * year + 86_400, 14, 1977, 2017))
+        assertEquals("a year in, beginning with one song", Atlas.FOUND to "small", Atlas.found(year + 86_400, 1, 1977, 2017))
+        assertEquals("a year in with a whole catalogue: can't be told", Atlas.UNSURE to "", Atlas.found(year + 86_400, 9, 1977, 2017))
+        assertEquals("the first year, old music: can't be told", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 1, 1977, 2017))
+        assertEquals("no years known", Atlas.UNSURE to "", Atlas.found(200 * 86_400L, 1, 0, 2017))
+    }
+
+    @Test
+    fun theTreeHoldsOnlyFindsAndTakesYourWord() {
+        // In the first months nothing can be told: X, B1..B4 came 50 to 64 days in, with music of no known year.
+        val open = stats().atlas().getJSONObject("tree")
+        assertEquals(9, open.getInt("kept"))
+        assertEquals(4, open.getInt("knew"))
+        assertEquals(0, open.getInt("found"))
+        assertEquals(5, open.getInt("open"))
+        assertEquals(0, open.getJSONArray("gateways").length())
+        assertEquals(listOf("B1", "B2", "B3", "B4", "X"), (0 until 5).map { open.getJSONArray("unsure").getJSONObject(it).getString("name") }.sorted())
+        assertEquals("unsure", stats().artist("B2", stats().range("all"))!!.getJSONObject("origin").getString("state"))
+
+        // You say B1 was a find and that you knew B3: B1 hangs on X (which stays open, so nothing leads to X), B3 is out.
+        val said = Stats(history(), ZoneId.of("UTC"), day(115), known = mapOf("b1" to false, "b2" to false, "b3" to true))
+        val t = said.atlas().getJSONObject("tree")
+        assertEquals(2, t.getInt("found"))
+        assertEquals(5, t.getInt("knew"))
+        assertEquals(2, t.getInt("open"))
+        val nodes = t.getJSONArray("nodes")
+        val byName = (0 until nodes.length()).associate { nodes.getJSONObject(it).getString("name") to nodes.getJSONObject(it) }
+        assertEquals(setOf("X", "B1", "B2"), byName.keys)
+        assertEquals("X is where the branch starts", -2, byName.getValue("X").getInt("p"))
+        assertEquals(byName.getValue("X").getInt("id"), byName.getValue("B1").getInt("p"))
+        assertEquals(byName.getValue("B1").getInt("id"), byName.getValue("B2").getInt("p"))
+        assertEquals(listOf("X" to 2), (0 until t.getJSONArray("gateways").length()).map { t.getJSONArray("gateways").getJSONObject(it).let { g -> g.getString("name") to g.getInt("d") } })
+        assertEquals(listOf("B1", "B2", "B3"), (0 until 3).map { t.getJSONArray("said").getJSONObject(it).getString("name") }.sorted())
+        val o = said.artist("B2", said.range("all"))!!.getJSONObject("origin")
+        assertEquals("found", o.getString("state"))
+        assertEquals("said", o.getString("why"))
+        assertEquals(listOf("B1", "X"), (0 until o.getJSONArray("chain").length()).map { o.getJSONArray("chain").getJSONObject(it).getString("name") })
+        assertEquals(0, said.artist("B3", said.range("all"))!!.getJSONObject("origin").getJSONArray("chain").length())
+        assertEquals("B3 came after B2 but is no find", 0, said.artist("B2", said.range("all"))!!.getJSONArray("ledTo").length())
+    }
+
+    @Test
     fun familyTreeFollowsFirstPlays() {
-        val s = stats()
+        // Every one of them said to be a find, so the tree is the whole chain of first plays.
+        val s = Stats(history(), ZoneId.of("UTC"), day(115), known = listOf("x", "b1", "b2", "b3", "b4").associateWith { false })
         val t = s.atlas().getJSONObject("tree")
         assertEquals(9, t.getInt("kept"))
         assertEquals("A1-A4 were there from the start", 4, t.getInt("start"))

@@ -26,6 +26,35 @@ object Atlas {
     /** Artists first played this soon after the history starts were already around; how you found them is unknown. */
     const val START_GRACE = 14L * 24 * 3600
 
+    /** Whether an artist was new to you at their first play ([found]): found then, known before, or it can't be told. */
+    const val FOUND = "found"
+    const val KNEW = "knew"
+    const val UNSURE = "unsure"
+
+    /** A first play this long into the history is taken as a find; after [SMALL_AFTER], one that began with a song or two. */
+    const val LATE_AFTER = 3L * 365 * 24 * 3600
+    const val SMALL_AFTER = 365L * 24 * 3600
+    const val SMALL_SONGS = 2
+
+    /**
+     * Whether an artist was new to you when you first played them, and why. A history only knows the first scrobble:
+     * an old favorite played for the first time since it began looks just like a find, and the family tree was full
+     * of artists you had known for years. So an artist counts as found only where that is sure or likely:
+     * - "newer": everything of theirs you played came out after the year your history starts, so they can't have been
+     *   around before it ([earliestYear], 0 when the release years aren't known well enough);
+     * - "late": the first play came [LATE_AFTER] into the history (an old favorite would have turned up by then);
+     * - "small": it came [SMALL_AFTER] in and began with a song or two ([songsFirstDay]), not with a catalogue.
+     * The first [START_GRACE] are artists that were around already ("start"). Everything else is left open, for you
+     * to say. [sinceStart]: seconds from the history's first play to theirs.
+     */
+    fun found(sinceStart: Long, songsFirstDay: Int, earliestYear: Int, startYear: Int): Pair<String, String> = when {
+        sinceStart < START_GRACE -> KNEW to "start"
+        earliestYear > startYear -> FOUND to "newer"
+        sinceStart >= LATE_AFTER -> FOUND to "late"
+        sinceStart >= SMALL_AFTER && songsFirstDay <= SMALL_SONGS -> FOUND to "small"
+        else -> UNSURE to ""
+    }
+
     /** Two stars linked: played back to back [together] times, [sameTime] how alike their months are (0..1), [w] the strength (0..1). */
     data class Link(val a: Int, val b: Int, val together: Int, val sameTime: Double, val w: Double)
 

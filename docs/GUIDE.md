@@ -415,12 +415,20 @@ scrobbles.
   without aiming. The card also says how you found the artist and
   what you usually play before and after them. You can search for an artist, pick an island,
   or pick a year to light up the artists you played then.
-- Family tree shows, for every artist you kept playing (5 plays or more), what you played right
-  before your very first play of them, in the same session. The artists that led you to the most
-  others are the gateways; unfold them into their tree. "Right after" means the very next song, so
-  with radio or autoplay the new artist was the app's pick. Artists from the first two weeks of your
-  history have no known origin. Artist pages show the same under "How you found them": the chain
-  back as far as it goes, and who they led you to.
+- Family tree shows who led you to whom: for an artist you found, what you played right before
+  your very first play of them, in the same session. A history only knows your first scrobble,
+  though, and an old favorite played for the first time since it began looks just like a find. So
+  an artist (of those you kept playing, 5 plays or more) counts as found only where that is sure or
+  likely: everything of theirs you played came out after the year your history starts, or the first
+  play came three years or more into it, or a year or more into it and it began with a song or two.
+  Artists from the first two weeks were with you already. For everyone else the app asks you.
+  Under the tree, "Found then, or known before?" lists them, the most played first, with Found and
+  Knew, and an artist's page asks the same under "How you found them". Your word is kept, the tree
+  follows it, and "Your word" lists what you said, to take back. The tree shows one gateway at a
+  time, an artist that led you to two or more finds: pick one from the row above it, and tap a find
+  with a number on it to go on from there. Finds nothing led to are listed as Out of the blue.
+  "Right after" means the very next song, so with radio or autoplay the new artist was the app's
+  pick. Artist pages show the chain back as far as it goes, and who they led you to.
 
 Play counts are song plays: an album's "124 plays" means 124 scrobbles of its songs. Record and
 album pages turn that into "≈ 12 times through" when the number of songs is known.

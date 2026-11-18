@@ -113,6 +113,9 @@ object Core {
     /** Last.fm takes scrobbles up to two weeks late (a phone that was offline, a record logged afterwards). */
     private const val LATE_SEC = 14 * 24 * 3600L
     private const val HIDDEN_FILE = "hidden.json"
+
+    /** What you said about artists the history can't tell: known before it starts, or found at their first play. */
+    private const val KNOWN_FILE = "known.json"
     private const val DISCO_FILE = "discographies.json"
     private const val YEARS_FILE = "album_years.json"
     private const val GLOBALS_FILE = "global_counts.json"
@@ -904,6 +907,22 @@ object Core {
                 statsExec.execute { statsInner() }
             }
             "atlas" -> statsExec.execute {
+                val s = currentStats()
+                push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
+            }
+            // You say how it was with an artist: known before ("knew"), found at their first play ("found"), or take that back.
+            "markFound" -> statsExec.execute {
+                val key = Text.norm(msg.optString("name"))
+                if (key.isEmpty()) return@execute
+                val m = HashMap(known())
+                when (msg.optString("v")) {
+                    "knew" -> m[key] = true
+                    "found" -> m[key] = false
+                    else -> m.remove(key)
+                }
+                knownCache = m
+                file(KNOWN_FILE).write(JSONObject(m as Map<*, *>).toString())
+                dropStats()
                 val s = currentStats()
                 push("onAtlas") { s?.atlas() ?: JSONObject().put("empty", true) }
             }
@@ -2747,7 +2766,7 @@ object Core {
         val gen = statsGen
         val h = history ?: if (hasHistory()) History.from(db.everything, hidden()).also { if (statsGen == gen) history = it } else return null
         retryFreshMisses(h)
-        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers)
+        return Stats(h, java.time.ZoneId.systemDefault(), System.currentTimeMillis() / 1000, collection, Genres(collection, db.tags()), vinylListens(), db.images(), yearsSnapshot(), globalsSnapshot(), db.lengths(), prefs.ownCovers, known())
             .also {
                 if (statsGen == gen) {
                     stats = it
@@ -3752,6 +3771,16 @@ object Core {
     // ---- hiding scrobbles from the stats ----
 
     private fun hidden(): Hidden = hiddenCache ?: Hidden.fromJson(file(HIDDEN_FILE).read()).also { hiddenCache = it }
+
+    /** Artists you said you knew before your history starts (true) or found at their first play (false), by [Text.norm] of the name. */
+    @Volatile private var knownCache: Map<String, Boolean>? = null
+    private fun known(): Map<String, Boolean> = knownCache ?: (
+        try {
+            file(KNOWN_FILE).read()?.let { JSONObject(it) }?.let { o -> o.keys().asSequence().associateWith { k -> o.optBoolean(k) } }
+        } catch (_: Exception) {
+            null
+        } ?: emptyMap()
+        ).also { knownCache = it }
 
     private fun saveHidden(h: Hidden) {
         hiddenCache = h
