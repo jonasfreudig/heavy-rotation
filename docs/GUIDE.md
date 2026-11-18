@@ -602,7 +602,8 @@ time. Tap a tier's count to jump to it, and a card for its page.
 
 On the Songs side, three or more songs of one album in a tier (or of one artist in By artist) lie
 as one pile with the album's cover and how many songs it holds, so an album you played a lot takes
-one place and not a dozen. Tap a pile for its songs' cards and the way to the album.
+one place and not a dozen. Tap a pile and its songs spread out under its row, each its own card,
+with the album's name leading to its page. Tap the pile again, or the ✕, to pile them up again.
 
 Albums are cards by how many times you played them through:
 bronze at twice, silver at 5 times, gold at 10 and holo at 20. Only an album's songs played as an

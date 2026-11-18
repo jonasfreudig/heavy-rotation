@@ -1598,6 +1598,14 @@ details.more[open] summary { margin-bottom: 6px; }
 .bd-grid .tcard.pile.silver { --ring: inset 0 0 0 2px #aeb4c0; --pile: #e2e5eb; --edge: #979eab; }
 .bd-grid .tcard.pile.gold { --ring: inset 0 0 0 2px hsl(45 80% 55%); --pile: #f3dc93; --edge: #b8963a; }
 .bd-grid .tcard.pile.holo { --ring: inset 0 0 0 2px hsl(45 80% 60%); --pile: #efe3f8; --edge: #b39bd3; }
+/* An open pile is one card left lying; its songs lie under its row, across the grid. */
+.bd-grid .tcard.pile.on { box-shadow: var(--ring); opacity: .6; }
+.bd-open { grid-column: 1 / -1; min-width: 0; padding: 8px 10px 12px 12px; border-radius: 16px; background: var(--md-surface-container-low); }
+.bd-open-h { display: flex; align-items: center; gap: 8px; }
+.bd-open-t { flex: 1; min-width: 0; text-align: left; color: var(--md-on-surface); }
+.bd-open-t b { display: block; font: 600 15px/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-open-t small { display: block; font-size: 12.5px; line-height: 17px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-open .bd-grid { margin: 8px 0 0; }
 .bd-sum .bd-holo { background: linear-gradient(135deg, #f3c9ff, #b6e3ff, #c6ffd6, #fff1b3, #ffc6dd); }
 .bd-sum .bd-gold { background: linear-gradient(160deg, #fff3c9, #e9c766); }
 .bd-sum .bd-silver { background: linear-gradient(160deg, #f3f4f7, #c9ced8); }

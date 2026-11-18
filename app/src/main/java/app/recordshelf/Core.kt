@@ -125,6 +125,9 @@ object Core {
     /** Album covers looked up for the activity list at a time (newest first). */
     private const val COVER_BATCH = 40
 
+    /** Covers looked up for the binder's cards before the page hears of them and other lookups get a turn. */
+    private const val CARD_COVER_LOT = 12
+
     /** Albums played this many days back have a missing cover asked again after a day (see retryFreshMisses). */
     private const val FRESH_MISS_DAYS = 14L
 
@@ -783,10 +786,14 @@ object Core {
             "cards" -> statsExec.execute {
                 val s = currentStats() ?: return@execute
                 val j = s.cards()
-                push("onCards") { j.put("req", msg.optInt("req")) }
-                // Covers for cards of albums nothing else looked up; the page comes again with them.
-                val covers = missingCovers(j, db.images().keys)
-                if (covers.isNotEmpty()) historyExec.execute { fetchImagesInner(covers) { handle(msg) } }
+                val req = msg.optInt("req")
+                cardsReq = req
+                push("onCards") { j.put("req", req) }
+                // Covers for cards of albums nothing else looked up follow a few at a time, each put on its cards in
+                // place: a long history has thousands of cards, and the whole binder again for every lot of covers
+                // held the page up every few seconds.
+                val covers = missingCovers(j, db.images().keys, max = Int.MAX_VALUE)
+                if (covers.isNotEmpty()) historyExec.execute { cardCoversInner(covers, req) }
             }
             "rankList" -> {
                 val id = msg.optString("range").ifEmpty { statsRange }
@@ -3696,9 +3703,16 @@ object Core {
         // Everyone's counts on Last.fm, for the comparisons, likewise.
         if (globalsDue() && System.currentTimeMillis() - globalsTried > 6 * HOUR) historyExec.execute { globalsInner() }
         val missing = s.albumsNeedingImages(id)
-        if (missing.isNotEmpty()) historyExec.execute { fetchImagesInner(missing) }
         val photos = s.artistsNeedingPhotos(id)
-        if (photos.isNotEmpty()) historyExec.execute { fetchPhotosInner(photos) }
+        if (missing.isNotEmpty() || photos.isNotEmpty()) {
+            historyExec.execute {
+                val covers = fetchImagesInner(missing, tell = false)
+                val faces = fetchPhotosInner(photos, tell = false)
+                // The page once more for both together, unless it has moved on to another period meanwhile (stepping
+                // through the years, every period drawn twice over made the page stumble).
+                if (covers || faces) picturesArrived { if (statsRange == id) statsInner() }
+            }
+        }
     }
 
     /** Finds the songs on TIDAL and makes the playlist there, telling the page how far it got. On [tidalExec]. */
@@ -3828,9 +3842,10 @@ object Core {
 
     /**
      * Covers of albums that aren't on your shelf, from Deezer (Last.fm's terms leave its artwork
-     * out of what apps may show). "" is kept when there is none. On [historyExec].
+     * out of what apps may show). "" is kept when there is none. Whether any were looked up; [tell]: the page that
+     * asked is shown again then (see [picturesArrived]). On [historyExec].
      */
-    private fun fetchImagesInner(missing: List<Triple<String, String, String>>, after: (() -> Unit)? = null) {
+    private fun fetchImagesInner(missing: List<Triple<String, String, String>>, tell: Boolean = true, after: (() -> Unit)? = null): Boolean {
         val tried = db.images().keys
         var any = false
         for ((artist, album, key) in missing) {
@@ -3842,11 +3857,41 @@ object Core {
                 break
             }
         }
-        if (any) picturesArrived(after)
+        if (any && tell) picturesArrived(after)
+        return any
+    }
+
+    /** The binder's request whose covers are being looked up: a binder opened anew starts its own. */
+    @Volatile private var cardsReq = 0
+
+    /**
+     * Covers for the binder's cards, a lot at a time: each lot's finds go to the page to put on their cards
+     * (onCardCovers), and the next lot waits its turn behind other lookups. On [historyExec].
+     */
+    private fun cardCoversInner(missing: List<Triple<String, String, String>>, req: Int) {
+        if (cardsReq != req || missing.isEmpty()) return
+        val tried = db.images().keys
+        val found = JSONArray()
+        var looked = false
+        for ((artist, album, key) in missing.take(CARD_COVER_LOT)) {
+            if (key in tried) continue
+            try {
+                val url = deezer.albumCover(artist, album).orEmpty()
+                db.saveImage(key, url)
+                looked = true
+                if (url.isNotEmpty()) found.put(JSONObject().put("artist", artist).put("album", album).put("cover", url))
+            } catch (_: Exception) {
+                return // offline or over the quota: the next time the binder opens
+            }
+        }
+        if (looked) refreshPictures()
+        if (found.length() > 0) push("onCardCovers") { JSONObject().put("req", req).put("covers", found) }
+        val rest = missing.drop(CARD_COVER_LOT)
+        if (rest.isNotEmpty()) historyExec.execute { cardCoversInner(rest, req) }
     }
 
     /** Artist photos from Deezer for [names] not looked up yet ("" is kept when there is none). On [historyExec]. */
-    private fun fetchPhotosInner(names: List<String>, after: (() -> Unit)? = null) {
+    private fun fetchPhotosInner(names: List<String>, tell: Boolean = true, after: (() -> Unit)? = null): Boolean {
         val tried = db.images().keys
         var any = false
         for (n in names) {
@@ -3859,7 +3904,8 @@ object Core {
                 break // offline or over the quota: next time
             }
         }
-        if (any) picturesArrived(after)
+        if (any && tell) picturesArrived(after)
+        return any
     }
 
     /** The colors of a cover or photo (downloaded once, scaled down), for tinting its page. On [paletteExec]. */

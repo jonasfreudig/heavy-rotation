@@ -162,7 +162,7 @@ document.addEventListener('animationstart', (e) => {
 const Tilt = {
   els: [], x: 0, y: 0, tx: 0, ty: 0, px: null, py: 0, raf: 0, on: false, seen: false, t0: 0,
   // Collector cards near the screen (an observer keeps the list), and those of them in what's on top now.
-  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], cardAt: 0, scrollAt: 0, settleT: 0, scrolledTo: new WeakMap(),
+  cards: new Set(), cardSeen: new WeakSet(), cardIo: null, live: [], pending: [], cardAt: 0, scrollAt: 0, settleT: 0, scrolledTo: new WeakMap(),
   allowed() {
     let pref = true;
     try { pref = localStorage.getItem('tilt') !== 'off'; } catch (_) { /* preview without storage */ }
@@ -190,7 +190,11 @@ const Tilt = {
     const live = story ? [] : [...this.cards].filter((c) => (scope ? scope.contains(c) : !c.closest('.page')));
     const want = (this.els.length > 0 || live.length > 0) && this.allowed();
     this.live.forEach((c) => { if (!want || !live.includes(c)) this.lay(c); });
-    this.live = want ? live : [];
+    // The ones moving already go on (drawn again, they get back what the drawing took). New ones join two a frame
+    // (see step): a screenful of them at once is a screenful of new layers for the phone to draw in one go.
+    const was = new Set(this.live);
+    this.live = want ? live.filter((c) => was.has(c)) : [];
+    this.pending = want ? live.filter((c) => !was.has(c)) : [];
     this.live.forEach((c) => this.lift(c));
     if (want !== this.on) {
       this.on = want;
@@ -234,6 +238,13 @@ const Tilt = {
       el.style.setProperty('--tx', x.toFixed(3));
       el.style.setProperty('--ty', y.toFixed(3));
       el.style.setProperty('--m', Math.min(1, Math.hypot(x, y)).toFixed(3));
+    }
+    // Cards that came near start to move, two a frame, once the page holds still.
+    if (this.pending.length && !this.scrolling(now)) {
+      for (let n = 0; n < 2 && this.pending.length; n++) {
+        const c = this.pending.shift();
+        if (c.isConnected) { this.lift(c); this.live.push(c); }
+      }
     }
     // The cards hold still while the page scrolls, and take a new angle at most every 14 ms (each frame at 60 Hz,
     // every other one at 120).
@@ -486,9 +497,19 @@ window.onStats = (s) => {
   const look = s && s.range ? [s.range.id, statsGenre, statsDecade, statsVinyl].join('|') : '';
   if (statsLook && look && look !== statsLook) {
     // The new period comes in from the side it lies on, the way the old one left.
-    const b = $('#statsBody'), d = statsSlide;
+    const b = $('#statsBody'), d = statsSlide, quiet = statsQuiet;
     statsSlide = 0;
-    if (b.offsetParent) b.animate([{ opacity: 0.3, transform: `translateX(${d * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE_OUT });
+    statsQuiet = false;
+    if (quiet) {
+      // Stepped from the pill: only the blocks on screen ease in, a little way from the side the new period lies on.
+      const vh = window.innerHeight;
+      if (b.offsetParent && moving()) {
+        [...b.children].forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.bottom > 0 && r.top < vh) el.animate([{ opacity: 0.45, transform: `translateX(${d * 14}px)` }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });
+        });
+      }
+    } else if (b.offsetParent) b.animate([{ opacity: 0.3, transform: `translateX(${d * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE_OUT });
   }
   if (look) statsLook = look;
   if (isOpen('settingsPage')) renderSettings();
@@ -2981,14 +3002,17 @@ function idStart(id) {
 }
 /** Which way the page slides for the period asked for: 1 later, -1 earlier, 0 another kind (it fades). */
 let statsSlide = 0;
-function requestStats(id) {
+/** The period was asked for from the pill: the page stays as it is until the answer, and only what is on screen eases in. */
+let statsQuiet = false;
+function requestStats(id, quiet = false) {
   if (id && STATS && STATS.range && !STATS.empty && id !== STATS.range.id) {
     statsSlide = id[0] === STATS.range.id[0] ? Math.sign(idStart(id) - idStart(STATS.range.id)) : 0;
     $('#statsBody').style.setProperty('--sx', `${-statsSlide * 20}px`);
   }
   if (id) statsRange = statsAsked = id;
   if (!STATS || STATS.empty) { if ((ST.history || {}).count > 0) send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade, vinyl: statsVinyl }); return; }
-  $('#statsBody').classList.add('stale');
+  statsQuiet = quiet;
+  if (!quiet) $('#statsBody').classList.add('stale');
   send({ t: 'stats', range: statsRange, genre: statsGenre, decade: statsDecade, vinyl: statsVinyl });
 }
 
@@ -3011,7 +3035,8 @@ function stepStats(k, hold) {
   const id = steppedPeriod(k);
   if (!id) return;
   if (hold) holdPlace(id);
-  requestStats(id);
+  // From the pill you are looking at a chart: the page doesn't fade out for the wait, the pill says where it's going.
+  requestStats(id, !!hold);
   renderFollow();
 }
 /**
@@ -3030,8 +3055,25 @@ function renderFollow() {
   if (none) return;
   $('#pfPill').classList.toggle('solo', !steps);
   const asked = statsAsked && statsAsked !== s.range.id && /^[dwmy]\d/.test(statsAsked) ? statsAsked : '';
-  $('#pfName').textContent = asked ? periodNameOf(asked) : periodName(s.range);
+  const name = $('#pfName');
+  name.textContent = asked ? periodNameOf(asked) : periodName(s.range);
+  // As wide as the widest name of this kind of period so far, so the arrows stay under the finger from one to the next.
+  name.style.minWidth = '';
+  if (s.range.kind === 'month' && !followWidth.month && name.offsetParent) {
+    // Months: every one's name is measured once, so not even the first step moves them.
+    const y = new Date(s.range.from * 1000).getFullYear(), shown = name.textContent;
+    for (let m = 0; m < 12; m++) {
+      name.textContent = periodName({ kind: 'month', from: +new Date(y, m, 1) / 1000 });
+      followWidth.month = Math.max(followWidth.month || 0, name.offsetWidth + 1);
+    }
+    name.textContent = shown;
+  }
+  // Its width as laid out (the pill is drawn a little smaller while it is away), and a pixel for the rounding.
+  const w = name.offsetWidth;
+  if (w) followWidth[s.range.kind] = Math.max(followWidth[s.range.kind] || 0, w + 1);
+  if (followWidth[s.range.kind]) name.style.minWidth = `${followWidth[s.range.kind]}px`;
 }
+const followWidth = {};
 /** The part of the Stats page a block or section of it is, as a selector under #statsBody ('' for one without a name). */
 const holdKey = (el) => (el.dataset.blk ? `[data-blk="${el.dataset.blk}"]` : el.dataset.sw ? `[data-sw="${el.dataset.sw}"]` : el.dataset.sq ? `[data-sq="${el.dataset.sq}"]` : '');
 /** What is at the top of the screen on the Stats page, noted before the period [id] is asked for. */
@@ -8451,27 +8493,59 @@ function pileSongs(list) {
   }
   return out;
 }
-/** An album's songs as one pile of cards, in the frame of the best of them. The binder [B] keeps the piles it shows, by the number on each. */
-const pileCard = (p, B) => {
+/**
+ * An album's songs as one pile of cards, in the frame of the best of them; [i]: its number among the piles on the page
+ * (see binderSection). [on]: spread out under its row, where the pile itself is one card left lying.
+ */
+const pileCard = (p, i, on) => {
   const x = p.pile[0];
-  return `<button class="tcard song pile ${cardTier(x.plays)[1]}" data-cbpile="${B.piles.push(p.pile) - 1}" aria-label="${esc(`${x.album}, ${p.pile.length} songs`)}"><span class="tc-top"><b>${esc(x.album)}</b></span>
+  return `<button class="tcard song pile ${cardTier(x.plays)[1]}${on ? ' on' : ''}" data-cbpile="${i}" aria-expanded="${on}" aria-label="${esc(`${x.album}, ${p.pile.length} songs`)}"><span class="tc-top"><b>${esc(x.album)}</b></span>
   <span class="tc-img">${coverHtml(x.cover, x.album, x.artist)}</span><span class="tc-st"><span><b>${p.pile.length} songs</b>${esc(x.artist)}</span></span></button>`;
 };
-/** A pile tapped: its songs' cards on a sheet, and the way to the album. */
-function openCardPile(i) {
-  const list = CARDBOOK && CARDBOOK.piles && CARDBOOK.piles[+i];
-  if (!list || !list.length) return;
-  const x = list[0];
-  // One tier's pile says which; an artist's holds the album's cards of every tier.
-  const tier = cardTier(x.plays), same = list.every((y) => cardTier(y.plays)[1] === tier[1]);
-  const what = plural(list.length, same ? `${tier[2].toLowerCase()} card` : 'card');
-  openSheet(`<div class="sheet-title">${esc(x.album)}</div><p class="body">${what} from this album by ${esc(x.artist)}.</p>
-    <div class="bd-grid">${list.map(binderCard).join('')}</div>
-    <div class="btn-row"><button class="btn tonal" ${albumAttrs(x.artist, x.album)}>${icon('album')}Open the album</button></div>`);
-  // A song or the album tapped opens its page: the sheet goes, or the page opened behind it.
-  $('#sheetContent').onclick = (e) => { if (e.target.closest('[data-track], [data-album]')) closeSheet(); };
-  Tilt.refresh();
+/** An open pile's songs, each its own card, across the grid under the pile's row: with the way to the album and back to one pile. */
+const pilePanel = (p) => {
+  const x = p.pile[0];
+  return `<div class="bd-open"><div class="bd-open-h"><button class="bd-open-t" ${albumAttrs(x.artist, x.album)}><b>${esc(x.album)}</b><small>${plural(p.pile.length, 'song')} by ${esc(x.artist)}</small></button><button class="icon-btn small" data-cbpileclose aria-label="Back to one pile">${icon('close')}</button></div>
+    <div class="bd-grid">${p.pile.map(binderCard).join('')}</div></div>`;
+};
+/**
+ * A pile tapped ([i], its number on the page): its songs spread out under its row, or go back to one pile; null closes
+ * the open one. Only one is open at a time. In place, and not on a sheet: the page behind a sheet stops scrolling, and
+ * the phone then drew every tilting card on it anew (they blinked, and the page stuttered once the sheet was gone).
+ */
+function togglePile(i) {
+  const B = CARDBOOK;
+  if (!B || !B.piles) return;
+  const id = i == null ? null : B.piles[+i];
+  B.pile = id && B.pile !== id ? id : null;
+  withNewRows($('#cardsBody'), renderCardbook);
 }
+/** Drawing the binder again leaves a card that is as it was alone: it keeps tilting, with its lights. */
+const keepCard = (x, y) => {
+  if (!x.classList.contains('tcard')) return false;
+  const h = y.outerHTML;
+  if (x._html === h) return true;
+  x._html = h;
+  return false;
+};
+/**
+ * Covers looked up after the binder opened (a few at a time, see Core.cardCoversInner): each goes on its cards in
+ * what the binder holds, and the page is drawn again shortly after, changing only the cards that got one.
+ */
+window.onCardCovers = (j) => {
+  const B = CARDBOOK;
+  if (!B || B.loading || j.req !== B.req) return;
+  const by = new Map((j.covers || []).map((c) => [`${c.artist}\n${c.album}`, c.cover]));
+  let any = false;
+  const put = (x, album) => { const c = album && !x.cover && by.get(`${x.artist}\n${album}`); if (c) { x.cover = c; any = true; } };
+  B.cards.forEach((x) => put(x, x.album));
+  B.almost.forEach((x) => put(x, x.album));
+  B.albums.forEach((x) => put(x, x.title));
+  B.albumsAlmost.forEach((x) => put(x, x.title));
+  if (!any) return;
+  clearTimeout(B.coverT);
+  B.coverT = setTimeout(() => { if (CARDBOOK === B) renderCardbook(); }, 300);
+};
 /** The top of the binder: what it holds in a line, and each tier's count with where the tier begins ([from]); a tier tapped scrolls to its cards. */
 const binderHead = (sub, tiers, from) => `<div class="viz bd-head"><span class="sub">${sub}</span>
   <div class="bd-sum">${tiers.map((t, i) => `<button class="bd-${t.k}" data-cbtier="${t.k}"${t.list.length ? '' : ' disabled'}><b>${num(t.list.length)}</b><small>${t.l}</small><em>${from[i]}</em></button>`).join('')}</div></div>`;
@@ -8483,7 +8557,17 @@ const binderChips = (B, fresh) => `<div class="chips bd-chips">${[['all', 'All']
 function binderSection(B, key, head, count, items, card, first = BINDER_FIRST) {
   if (!items.length) return '';
   const n = Math.min(items.length, B.open[key] || first), left = items.length - n;
-  return `<div class="bd-sec" data-cbsec="${esc(key)}" data-cbfirst="${first}"><h2>${head} <small>${num(count)}</small></h2><div class="bd-grid">${items.slice(0, n).map(card).join('')}</div>
+  // The grid, three to a row. A pile is known by its section and album; the open one's songs lie under its row.
+  let grid = '', open = null;
+  items.slice(0, n).forEach((x, i, shown) => {
+    if (x.pile) {
+      const id = `${key}\n${pileKey(x.pile[0])}`, on = B.pile === id;
+      if (on) open = x;
+      grid += pileCard(x, B.piles.push(id) - 1, on);
+    } else grid += card(x);
+    if (open && (i % 3 === 2 || i === shown.length - 1)) { grid += pilePanel(open); open = null; }
+  });
+  return `<div class="bd-sec" data-cbsec="${esc(key)}" data-cbfirst="${first}"><h2>${head} <small>${num(count)}</small></h2><div class="bd-grid">${grid}</div>
     ${left ? `<button class="btn text" data-cbmore="${esc(key)}">${left > BINDER_STEP ? `Show ${BINDER_STEP} more` : `Show all ${num(count)}`}</button>` : ''}</div>`;
 }
 /** "By artist": the artists with the most cards first ([best]: what ranks two with as many), a section each, a few of them at a time. */
@@ -8500,6 +8584,8 @@ function renderCardbook() {
   if (!B || !isOpen('cardsPage')) return;
   if (B.loading) { morph($('#cardsBody'), '<div class="lin inline indet"><i></i></div>'); return; }
   const kinds = `<div class="seg small bd-kind" role="tablist">${[['albums', 'Albums'], ['songs', 'Songs']].map(([k, l]) => `<button data-cbkind="${k}" class="${B.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  // The piles on the page, as drawn: each one's number leads back to which it is (see binderSection).
+  B.piles = [];
   if (B.kind === 'albums') { renderAlbumBook(B, kinds); Tilt.refresh(); return; }
   const cards = B.cards;
   if (!cards.length) {
@@ -8515,16 +8601,14 @@ function renderCardbook() {
   if (almost.length) h += `<div class="viz"><h2>Almost there</h2><span class="sub">A few plays from their next tier</span><div class="tcards">${almost.map((x) => tierCard(x, '', `<b>${esc(x.artist)}</b>artist`)).join('')}</div></div>`;
   h += binderChips(B, fresh);
   // An album's songs are one pile in a section, so the albums you played most don't fill it song by song.
-  B.piles = [];
-  const card = (x) => (x.pile ? pileCard(x, B) : binderCard(x));
   if (B.view === 'artist') {
-    h += binderArtists(B, cards, (x) => x.plays, (a, list, link) => binderSection(B, `a:${a}`, link, list.length, pileSongs(list), card, 6));
+    h += binderArtists(B, cards, (x) => x.plays, (a, list, link) => binderSection(B, `a:${a}`, link, list.length, pileSongs(list), binderCard, 6));
   } else {
     const pool = B.view === 'fresh' ? fresh : cards;
-    h += tiers.map((t) => { const list = pool.filter((x) => cardTier(x.plays)[1] === t.k); return binderSection(B, t.k, esc(t.l), list.length, pileSongs(list), card); }).join('')
+    h += tiers.map((t) => { const list = pool.filter((x) => cardTier(x.plays)[1] === t.k); return binderSection(B, t.k, esc(t.l), list.length, pileSongs(list), binderCard); }).join('')
       || `<p class="hint">No song reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
   }
-  morph($('#cardsBody'), h);
+  morph($('#cardsBody'), h, keepCard);
   Tilt.refresh();
 }
 /** The binder's albums: what you hold of each tier, the ones almost at their next, and every album card by tier. */
@@ -8548,7 +8632,7 @@ function renderAlbumBook(B, kinds) {
     h += tiers.map((t) => { const list = pool.filter((x) => x.tier === TIER_KEYS.indexOf(t.k)); return binderSection(B, t.k, esc(t.l), list.length, list, albumBinderCard); }).join('')
       || `<p class="hint">No album reached a new tier since ${esc(new Date(B.monthFrom).toLocaleDateString([], { month: 'long', day: 'numeric' }))} yet.</p>`;
   }
-  morph($('#cardsBody'), h);
+  morph($('#cardsBody'), h, keepCard);
 }
 /** Songs on repeat, one entry per song: most plays in one week and the longest run back to back. */
 function repeatList(s) {
@@ -10182,7 +10266,8 @@ function build() {
       return;
     }
     const pile = e.target.closest('#cardsPage [data-cbpile]');
-    if (pile) { openCardPile(pile.dataset.cbpile); return; }
+    if (pile) { togglePile(pile.dataset.cbpile); return; }
+    if (e.target.closest('#cardsPage [data-cbpileclose]')) { togglePile(null); return; }
     const cbt = e.target.closest('#cardsPage [data-cbtier]');
     if (cbt) {
       if (CARDBOOK.view !== 'all') { CARDBOOK.view = 'all'; renderCardbook(); }
