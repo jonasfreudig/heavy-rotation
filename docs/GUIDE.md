@@ -334,7 +334,8 @@ its own card in the discography keeps all the plays it had. A cover Deezer didn'
 weeks, is asked for again after a day (a new album often plays under its name before Deezer lists it). Covers
 are asked for by the album's name as your player has it, then without what players add to it ("(Special
 Version)", "EP"), then through the song you played most from the album. A single, and a compilation you know
-only a song or two of, show the cover Deezer has for that song. An album Deezer doesn't have stays without one. Each
+only a song or two of, show the cover Deezer has for that song. An album Deezer doesn't have at all gets its
+cover from the Cover Art Archive, MusicBrainz's collection of covers, if it is there. Each
 title shows your plays, a foil star if it's on your shelf and "New" for the last two months; titles
 you haven't heard are dimmed. Records of theirs you played that Deezer doesn't list, such as a live
 album, come last under Also played. Filter by Most played (everything you played in one row, most

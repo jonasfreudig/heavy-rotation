@@ -253,6 +253,45 @@ class DiscogsTest {
     }
 
     @Test
+    fun aCoverFromTheCoverArtArchive() {
+        fun group(id: String, title: String, type: String, artist: String, score: Int = 100) =
+            """{"id":"$id","score":$score,"title":"$title","primary-type":"$type","artist-credit":[{"name":"$artist","artist":{"name":"$artist"}}]}"""
+        server.handler = { r ->
+            val q = r.params["query"].orEmpty()
+            when {
+                r.path == "/release-group" && q == "releasegroup:\"Elephants on Acid\" AND artist:\"Cypress Hill\"" -> Res(
+                    200,
+                    """{"release-groups":[${group("other", "Elephants on Acid", "Album", "Invisible Reality")},${group("single", "Elephants on Acid", "Single", "Cypress Hill")},
+                    ${group("weak", "Elephants on Acid", "Album", "Cypress Hill", 60)},${group("album", "Elephants On Acid", "Album", "Cypress Hill")}]}""",
+                )
+                r.path == "/release-group" && q == "releasegroup:\"Nothing\" AND artist:\"Cypress Hill\"" -> Res(200, """{"release-groups":[${group("bare", "Nothing", "Album", "Cypress Hill")}]}""")
+                r.path == "/release-group" && q == "releasegroup:\"Down\" AND artist:\"Cypress Hill\"" -> Res(200, """{"release-groups":[${group("down", "Down", "Album", "Cypress Hill")}]}""")
+                r.path == "/release-group" -> Res(200, """{"release-groups":[]}""")
+                r.path == "/caa/release-group/album" -> Res(
+                    200,
+                    """{"images":[{"front":false,"thumbnails":{"500":"http://coverartarchive.org/release/x/1-500.jpg"}},
+                    {"front":true,"image":"http://coverartarchive.org/release/x/2.jpg","thumbnails":{"250":"http://coverartarchive.org/release/x/2-250.jpg","500":"http://coverartarchive.org/release/x/2-500.jpg"}}]}""",
+                )
+                r.path == "/caa/release-group/single" -> Res(200, """{"images":[{"front":true,"thumbnails":{"500":"http://coverartarchive.org/release/x/9-500.jpg"}}]}""")
+                r.path == "/caa/release-group/down" -> Res(503, "")
+                else -> Res(404, "")
+            }
+        }
+        val mb = MusicBrainzClient(server.base, minGapMs = 0, covers = server.base + "/caa") { }
+        assertEquals("the album's front picture, over https", "https://coverartarchive.org/release/x/2-500.jpg", mb.albumCover("Cypress Hill", "Elephants on Acid (Deluxe)"))
+        assertEquals("only what was needed was asked", listOf("/release-group", "/caa/release-group/album"), server.requests.map { it.path })
+        assertNull("an album the archive has no picture of", mb.albumCover("Cypress Hill", "Nothing"))
+        assertNull("an album MusicBrainz doesn't know", mb.albumCover("Cypress Hill", "Black Sunday"))
+        var failed = false
+        try {
+            mb.albumCover("Cypress Hill", "Down")
+        } catch (_: java.io.IOException) {
+            failed = true
+        }
+        assertTrue("an archive that doesn't answer isn't an album without a cover", failed)
+    }
+
+    @Test
     fun musicBrainzCountryOfTheArtistByThatName() {
         server.handler = { r ->
             when (r.params["query"]) {

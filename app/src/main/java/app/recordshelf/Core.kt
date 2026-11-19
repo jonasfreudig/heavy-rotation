@@ -134,6 +134,12 @@ object Core {
     /** Covers looked up for the binder's cards before the page hears of them and other lookups get a turn. */
     private const val CARD_COVER_LOT = 12
 
+    /** Counts the ways covers are looked up: one more, and the covers none was found for are asked for again. */
+    private const val COVER_LOOKUPS = 2
+
+    /** After the Cover Art Archive failed to answer, it isn't asked again for this long (ms). */
+    private const val ARCHIVE_PAUSE = 15 * 60_000L
+
     /** Albums played this many days back have a missing cover asked again after a day (see retryFreshMisses). */
     private const val FRESH_MISS_DAYS = 14L
 
@@ -596,10 +602,11 @@ object Core {
                     }
                     // Lookups began to try the first artist of a credit naming several ("D'Angelo & The Vanguard"):
                     // the pictures and discographies none was found for come again as pages need them.
-                    // Lookups began to ask Deezer in more ways, and to take a song's cover where its album isn't listed.
-                    if (!prefs.missesRechecked) {
+                    // Lookups began to ask Deezer in more ways, to take a song's cover where its album isn't listed,
+                    // and to ask the Cover Art Archive: covers none was found for are asked for again.
+                    if (prefs.coverLookups < COVER_LOOKUPS) {
                         db.dropMissedImages(Long.MAX_VALUE)
-                        prefs.missesRechecked = true
+                        prefs.coverLookups = COVER_LOOKUPS
                     }
                     if (!prefs.creditsRechecked) {
                         db.dropMissedImages(Long.MAX_VALUE)
@@ -3900,7 +3907,7 @@ object Core {
         for ((artist, album, key) in missing) {
             if (key in tried) continue
             try {
-                db.saveImage(key, lookUpCover(artist, album))
+                db.saveImage(key, lookUpCover(artist, album) ?: continue)
                 any = true
             } catch (_: Exception) {
                 break
@@ -3910,16 +3917,29 @@ object Core {
         return any
     }
 
+    /** When the Cover Art Archive last failed to answer (ms). */
+    @Volatile private var archiveFailedAt = 0L
+
     /**
-     * An album's cover from Deezer, "" when it has none: the album as its search finds it, else as the song you
-     * played most from it leads to it, else for a single or a compilation the cover Deezer shows for that song (see
-     * [Stats.albumSong]). A compilation is filed under "Various Artists" there and not under the artist you played
-     * from it, and a single is often listed only with the album its song is on. On [historyExec].
+     * An album's cover, "" when there is none to find. From Deezer: the album as its search finds it, else as the
+     * song you played most from it leads to it, else for a single or a compilation the cover Deezer shows for that
+     * song (see [Stats.albumSong]). A compilation is filed under "Various Artists" there and not under the artist
+     * you played from it, and a single is often listed only with the album its song is on. An album Deezer doesn't
+     * have at all (Cypress Hill's Elephants on Acid) comes from the Cover Art Archive. Null when the archive didn't
+     * answer: nothing is kept then, the album is asked for again another time, and the archive is left alone for a
+     * while. On [historyExec].
      */
-    private fun lookUpCover(artist: String, album: String): String =
-        deezer.albumCover(artist, album)
-            ?: currentStats()?.albumSong(artist, album)?.let { (song, standsIn) -> deezer.albumCoverBySong(artist, album, song, standsIn) }
-            ?: ""
+    private fun lookUpCover(artist: String, album: String): String? {
+        deezer.albumCover(artist, album)?.let { return it }
+        currentStats()?.albumSong(artist, album)?.let { (song, standsIn) -> deezer.albumCoverBySong(artist, album, song, standsIn) }?.let { return it }
+        if (System.currentTimeMillis() - archiveFailedAt < ARCHIVE_PAUSE) return null
+        return try {
+            mbz.albumCover(artist, album).orEmpty()
+        } catch (_: Exception) {
+            archiveFailedAt = System.currentTimeMillis()
+            null
+        }
+    }
 
     /** The binder's request whose covers are being looked up: a binder opened anew starts its own. */
     @Volatile private var cardsReq = 0
@@ -3930,13 +3950,18 @@ object Core {
      */
     private fun cardCoversInner(missing: List<Triple<String, String, String>>, req: Int) {
         if (cardsReq != req || missing.isEmpty()) return
-        val tried = db.images().keys
+        val known = db.images()
         val found = JSONArray()
         var looked = false
         for ((artist, album, key) in missing.take(CARD_COVER_LOT)) {
-            if (key in tried) continue
+            // Looked up meanwhile (a binder opened before this one was still asking): its cover goes to the page too.
+            val had = known[key]
+            if (had != null) {
+                if (had.isNotEmpty()) found.put(JSONObject().put("artist", artist).put("album", album).put("cover", had))
+                continue
+            }
             try {
-                val url = lookUpCover(artist, album)
+                val url = lookUpCover(artist, album) ?: continue
                 db.saveImage(key, url)
                 looked = true
                 if (url.isNotEmpty()) found.put(JSONObject().put("artist", artist).put("album", album).put("cover", url))

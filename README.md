@@ -116,7 +116,7 @@ Android only for now, sorry!
 
 - Your history, collection and settings live in the app's storage on your phone. Backups are files
   you save yourself; keys, tokens and logins never go into them.
-- The app only talks to Discogs, Last.fm, Deezer, MusicBrainz, LRCLIB (lyrics), TIDAL and setlist.fm
+- The app only talks to Discogs, Last.fm, Deezer, MusicBrainz and its Cover Art Archive, LRCLIB (lyrics), TIDAL and setlist.fm
   (once you connect them), AudD (when you tap Identify) and the servers the covers come from. It has no server of its own, no
   analytics and no crash reporting.
 - Notification access is how Android lets an app see what music apps play. Heavy Rotation uses it
@@ -134,7 +134,8 @@ This application uses Discogs’ API but is not affiliated with, sponsored or en
 
 Listening data powered by AudioScrobbler ([Last.fm](https://www.last.fm)). Covers, artist photos,
 discographies and release years come from [Deezer](https://www.deezer.com), track lengths and artists'
-countries also from [MusicBrainz](https://musicbrainz.org), lyrics from [LRCLIB](https://lrclib.net) and setlists from
+countries also from [MusicBrainz](https://musicbrainz.org), the covers Deezer doesn't have from the
+[Cover Art Archive](https://coverartarchive.org), lyrics from [LRCLIB](https://lrclib.net) and setlists from
 [setlist.fm](https://www.setlist.fm). Identify uses [AudD](https://audd.io). Exact links and playlists use [TIDAL](https://tidal.com).
 Heavy Rotation isn't affiliated with any of them.
 

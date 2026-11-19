@@ -1,6 +1,8 @@
 package app.recordshelf.mb
 
 import app.recordshelf.net.Http
+import app.recordshelf.net.coreTitle
+import app.recordshelf.net.sameButEdition
 import app.recordshelf.scrobble.SourceTrack
 import app.recordshelf.util.Text
 import app.recordshelf.util.objects
@@ -11,15 +13,21 @@ import java.io.IOException
 /**
  * MusicBrainz, used for track lengths Discogs doesn't have. Many MusicBrainz releases link to
  * the exact Discogs release, which gives the right pressing; a text search is the fallback.
- * MusicBrainz allows about one request per second.
+ * MusicBrainz allows about one request per second. Its Cover Art Archive ([covers]) has the covers of
+ * albums Deezer doesn't list.
  */
 class MusicBrainzClient(
     private val base: String = API,
     private val minGapMs: Long = 1100,
+    private val covers: String = COVERS,
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) {
     companion object {
         const val API = "https://musicbrainz.org/ws/2"
+        const val COVERS = "https://coverartarchive.org"
+
+        /** A cover is asked for from this many albums of the name at most (the album, then its EP or single). */
+        private const val COVER_TRIES = 2
         private var last = 0L
         private val lock = Any()
     }
@@ -81,6 +89,46 @@ class MusicBrainzClient(
                 g.optJSONArray("secondary-types")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
             )
         }
+    }
+
+    /**
+     * The front cover (500 px) of the album [title] by [artist] from the Cover Art Archive; null if MusicBrainz
+     * doesn't know the album or the archive has no cover of it. What a player adds to a title ("(Deluxe)", "EP")
+     * doesn't matter. Of several releases of that name the album comes before an EP and a single.
+     */
+    fun albumCover(artist: String, title: String): String? {
+        val q = "releasegroup:\"${quote(coreTitle(title))}\" AND artist:\"${quote(artist)}\""
+        val j = get("/release-group?query=${Http.enc(q)}&fmt=json&limit=10") ?: return null
+        val want = Text.normLoose(title)
+        val who = Text.norm(artist).removePrefix("the ")
+        val groups = j.optJSONArray("release-groups")?.objects().orEmpty().filter { g ->
+            val name = Text.normLoose(g.str("title"))
+            g.optInt("score") >= 90 && (name == want || sameButEdition(name, want)) && g.optJSONArray("artist-credit")?.objects().orEmpty().any { c ->
+                listOf(c.str("name"), c.optJSONObject("artist")?.str("name").orEmpty()).any { n ->
+                    val a = Text.norm(n).removePrefix("the ")
+                    a.isNotEmpty() && (a == who || a.startsWith("$who ") || a.endsWith(" $who") || who.startsWith("$a "))
+                }
+            }
+        }.sortedBy { when (it.str("primary-type").lowercase()) { "album" -> 0; "ep" -> 1; "single" -> 3; else -> 2 } }
+        return groups.take(COVER_TRIES).firstNotNullOfOrNull { front(it.str("id")) }
+    }
+
+    /** The archive's front picture of a release group, null if it has none. */
+    private fun front(groupId: String): String? {
+        if (groupId.isEmpty()) return null
+        val r = Http.get("$covers/release-group/${Http.enc(groupId)}")
+        if (r.code == 404) return null
+        if (r.code !in 200..299) throw IOException("The Cover Art Archive answered HTTP ${r.code}")
+        val images = try {
+            JSONObject(r.body).optJSONArray("images")?.objects().orEmpty()
+        } catch (_: Exception) {
+            throw IOException("The Cover Art Archive sent something unreadable")
+        }
+        val pic = images.firstOrNull { it.optBoolean("front") } ?: return null
+        val thumbs = pic.optJSONObject("thumbnails")
+        val url = thumbs?.str("500").orEmpty().ifEmpty { thumbs?.str("large").orEmpty() }.ifEmpty { pic.str("image") }
+        // The archive lists its pictures with http addresses, and serves them over https too.
+        return url.replaceFirst("http://", "https://").takeIf { it.startsWith("https://") }
     }
 
     private fun quote(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")

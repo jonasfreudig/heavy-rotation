@@ -111,10 +111,13 @@ class Prefs(ctx: Context) : TidalStore {
         get() = app.getBoolean("creditsRechecked", false)
         set(v) = app.edit().putBoolean("creditsRechecked", v).apply()
 
-    /** Covers none was found for were looked up again once, when lookups began to ask Deezer in more ways and to take a song's cover for its album. */
-    var missesRechecked: Boolean
-        get() = app.getBoolean("missesRechecked", false)
-        set(v) = app.edit().putBoolean("missesRechecked", v).apply()
+    /**
+     * How covers were looked up when the ones none was found for were last asked for again (see Core.COVER_LOOKUPS):
+     * a better way of looking finds some of them.
+     */
+    var coverLookups: Int
+        get() = app.getInt("coverLookups", 0)
+        set(v) = app.edit().putInt("coverLookups", v).apply()
 
     var sleepSong: Boolean
         get() = app.getBoolean("sleepSong", false)
