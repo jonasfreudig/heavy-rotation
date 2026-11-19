@@ -422,7 +422,7 @@
         <button data-v="corner">In the corner</button>
         <button data-v="bar">In the bar</button>
       </div>
-      <p class="hint">What plays, on the turntable or the phone. On the shelf: a line at the top of the shelf, and a small pill by the title on Stats and Explore. In the corner: a record peeking out above the search button. In the bar: the bottom bar grows into a player with the song, play and pause, and the line being sung if you like.</p>
+      <p class="hint">Where the app shows what's playing, whether that's a record or music on the phone. On the shelf: a line at the top of the shelf, and a small pill next to the title on Stats and Explore. In the corner: a record peeking out above the search button. In the bar: the bottom bar grows into a small player with the song, play and pause, and the lyrics line by line if you want.</p>
       <div class="row-label"><span>Pages</span></div>
       <div class="seg" id="pageSeg">
         <button data-v="tabs">Tabs</button>
@@ -442,7 +442,7 @@
         <button data-v="cards">Cards</button>
         <button data-v="sections">Sections</button>
       </div>
-      <p class="hint">Full size shows every block on the page. Cards keeps the page short: some blocks come as a sentence and a small picture, and open full size when you tap them; Arrange this page, at the bottom of Stats, picks which. Classic is the long page as it was up to version 0.58.</p>
+      <p class="hint">Full size shows every chart in full on one long page. Cards keeps the page short: some charts shrink to a one-line summary with a small picture and open in full when you tap them. Sections mixes both and puts related charts side by side. With Arrange this page, at the bottom of Stats, you choose what shows up and in what order.</p>
       <div class="row-label"><span>Explore</span></div>
       <div class="seg" id="mainSeg">
         <button data-v="compact">Rows</button>
@@ -455,7 +455,7 @@
         <button data-v="wallpaper">Wallpaper</button>
         <button data-v="off">Off</button>
       </div>
-      <p class="hint">The shade of the tabs and the glow behind their top: the colors of what plays now (the record spinning or the song on the phone, else the last one you played), your wallpaper's colors, or none.</p>
+      <p class="hint">Tints the tabs and the glow at the top of the screen. Your records uses the colors of what's playing right now (or of the last thing you played), Wallpaper uses your phone's colors, and Off leaves it plain.</p>
       <label class="switch-row"><span>Moving covers<small>Album covers tilt and shine as you move the phone, and cards catch the light as you scroll</small></span><input type="checkbox" id="tiltSw"><i class="switch"></i></label>
     </div>
 
@@ -495,9 +495,9 @@
       </div>
     </details>
     <div class="card">
-      <div class="row-label"><span>Length of tracks nobody knows</span></div>
+      <div class="row-label"><span>Default track length</span></div>
       <div class="chips" id="defLen"></div>
-      <p class="hint">Used when Discogs, MusicBrainz and Last.fm all lack a track's length. Such tracks show as ≈3:30 on the record page.</p>
+      <p class="hint">Used when neither Discogs, MusicBrainz nor Last.fm knows how long a track is. You can spot those tracks by the ≈ on the record page (≈3:30).</p>
     </div>
 
     <h2 class="group-head">Stats and listening</h2>
@@ -512,7 +512,7 @@
       <button class="btn tonal" data-tidy><svg class="i"><use href="#i-clean"/></svg>Tidy up stats</button>
     </div>
     <div class="card" id="dvSection">
-      <label class="switch-row"><span>Suggestions on Explore<small>Artists you haven't played, a weekly discovery mix and new releases by your artists. They come from who Last.fm's and Deezer's listeners find alike to the artists you play.</small></span><input type="checkbox" id="discoverSw"><i class="switch"></i></label>
+      <label class="switch-row"><span>Suggestions on Explore<small>Artists you haven't played, a weekly discovery mix and new releases by your artists. They're based on what people on Last.fm and Deezer listen to alongside your artists.</small></span><input type="checkbox" id="discoverSw"><i class="switch"></i></label>
       <div id="dvNo" hidden><p class="hint" id="dvNoText"></p><button class="btn text" id="dvClear">Suggest them again</button></div>
     </div>
 

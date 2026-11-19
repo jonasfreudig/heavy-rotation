@@ -2058,7 +2058,7 @@ function openSleepSheet() {
   const s = ST.sleep;
   const opts = [[15, '15 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour'], [90, '1½ hours']];
   openSheet(`<div class="sheet-title">Sleep timer</div>
-    <p class="body">${s ? `${esc(sleepLabel())}${s.song ? '' : ` (at ${esc(fmtTime(s.at))})`}. Pick another time, or turn it off.` : 'Stops what plays after a while. The music fades out over the last half minute, then pauses; the volume is back where it was for next time.'}</p>
+    <p class="body">${s ? `${esc(sleepLabel())}${s.song ? '' : ` (at ${esc(fmtTime(s.at))})`}. Pick another time, or turn it off.` : 'Stops the music after a while. It fades out over the last half minute and then pauses. Your volume is back to normal the next time you play something.'}</p>
     <div class="chips">${opts.map(([m, l]) => `<button class="chip" data-sleepset="${m}">${l}</button>`).join('')}<button class="chip" data-sleepsong>${icon('music', 'i small')}End of this song</button></div>
     ${s ? `<div class="btn-row"><button class="btn tonal" data-sleepoff>Turn off</button></div>` : ''}`);
   $('#sheetContent').onclick = (e) => {
@@ -2748,8 +2748,8 @@ function renderHeardCard() {
       <span class="grow"><b>${esc(h.title)}</b><small>${esc(h.artist)}${h.album ? ', ' + esc(h.album) : ''}</small><small>${esc(from)}, ${esc(heardWhen(h))}${heardFor(h)}</small></span>
       <span class="heard-btns"><button class="icon-btn small" data-heard-no="${esc(h.id)}" aria-label="Drop ${esc(h.title)}">${icon('close')}</button><button class="icon-btn small yes" data-heard-yes="${esc(h.id)}" aria-label="Scrobble ${esc(h.title)}">${icon('check')}</button></span>${rec}</div>`;
   }).join('');
-  const how = p.access ? 'Songs Now Playing recognises on your Pixel show up here to scrobble or drop. Turn on its notifications in Settings, Sound and vibration, Now Playing.'
-    : 'Songs Now Playing recognises on your Pixel show up here once Heavy Rotation has notification access (Settings, Phone scrobbling).';
+  const how = p.access ? 'Songs Now Playing recognizes on your Pixel show up here to scrobble or drop. Turn on its notifications in Settings, Sound and vibration, Now Playing.'
+    : 'Songs Now Playing recognizes on your Pixel show up here once Heavy Rotation has notification access (Settings, Phone scrobbling).';
   const intro = !HEARD.length && !line ? `<p class="hint">${how} Identify listens for ten seconds and looks the song up on AudD.</p>` : '';
   const all = HEARD.length > 1 ? `<div class="btn-row"><button class="btn tonal small" data-heard-all>Scrobble all ${HEARD.length}</button></div>` : '';
   morph(el, `<div class="card heard"><div class="card-title heard-title"><span>Heard around you</span>${btn}</div>${line}${intro}${rows ? `<div class="list">${rows}</div>` : ''}${all}</div>`);
@@ -3273,7 +3273,7 @@ function hcHtml() {
   return `${head}
     <div class="hc"><div class="hc-row hc-h"><b>Year</b><span>Last.fm</span><span>Here</span><em></em></div>${rows}</div>
     ${short.length ? '<div class="btn-row"><button class="btn filled" data-hcfix>Fetch those years again</button></div>' : ''}
-    ${artists ? `<h3 class="hc-t">Artists that differ</h3><p class="hint">Of your ${num(r.checked)} most played on Last.fm, counted by the name as scrobbled. A gap left after the years match usually means Last.fm merged spellings of a name that are apart here.</p><div class="hc">${artists}</div>` : ''}`;
+    ${artists ? `<h3 class="hc-t">Artists that differ</h3><p class="hint">Your ${num(r.checked)} most played artists on Last.fm, compared by name exactly as it was scrobbled. If the years match and an artist still differs, Last.fm has usually merged two spellings of the name that are counted separately here.</p><div class="hc">${artists}</div>` : ''}`;
 }
 
 /** Week / Month / Year / All, and ‹ period › to step through them. */
@@ -3647,7 +3647,7 @@ function genreViz(g, o = {}) {
     <div class="stack">${cols}${o.mark ? zoomFrame(o.mark, P, false) : ''}</div>${axis}
     <div class="readout" id="ro-g">${genreText(g, said)}</div>
     <div class="legend">${legend}</div>
-    <p class="hint">One set of genres for all your music: the Discogs styles of records you own and each artist's Last.fm tags are sorted into it and weighed together (mostly Discogs for ${pct(cov.discogs)} of plays, mostly Last.fm for ${pct(cov.lastfm)}); unknown for ${pct(cov.none)}.</p></div>`;
+    <p class="hint">Where the genres come from: the Discogs styles of the records you own and each artist's tags on Last.fm, combined into one set of genres. Discogs decides most for ${pct(cov.discogs)} of your plays, Last.fm for ${pct(cov.lastfm)}, and ${pct(cov.none)} have no genre.</p></div>`;
 }
 function genreText(g, i) {
   const p = g.periods[i];
@@ -5460,7 +5460,7 @@ function renderAlbum() {
       ${tile('Biggest day', plural(a.bestDay.count, 'play'), esc(dateLabel(a.bestDay.day)), '', 'fire')}
     </div>`;
     const songs = a.dzInfo && !a.dzInfo.error && a.dzInfo.tracks ? a.dzInfo.tracks.length : 0;
-    if (card && card.plays) P.tiles += `<p class="hint center">Plays count songs, not whole albums. Times through count only its songs played as an album, three or more in a row, so a single on shuffle doesn't add up.</p>`;
+    if (card && card.plays) P.tiles += `<p class="hint center">Plays are song plays: every song you played from it counts as one. Times through only goes up when you play it as an album (three or more of its songs in a row), so one song on shuffle doesn't add to it.</p>`;
     const tl = a.trackList || [];
     P.period = periodBlock(r, a.rangeTracks, 'album', (x) => trackAttrs(a.artist, x.title, { album: a.title, cover }));
     P.shape = trackShapeViz(a);
@@ -6131,7 +6131,7 @@ function uniCard() {
     const c = u.clusters[n.c];
     const o = n.origin || {};
     const state = o.state || (o.how === 'start' ? 'knew' : 'found');
-    const how = state === 'knew' ? (o.why === 'said' ? 'You knew them before your history starts.' : o.why === 'old' ? 'Most likely known before your history starts.' : 'With you since your history starts.')
+    const how = state === 'knew' ? (o.why === 'said' ? 'You already knew them before your history starts.' : o.why === 'old' ? 'You probably knew them before your history starts.' : 'They\'ve been there since your history starts.')
       : state === 'unsure' ? `First played ${esc(dateLabel(o.at))}.`
       : o.how === 'after' ? `Found right after <button class="link" data-uni-go="${esc(o.from)}">${esc(o.from)}</button>, ${esc(dateLabel(o.at))}.` : `Found out of the blue, ${esc(dateLabel(o.at))}.`;
     const ba = [n.before ? `after <b>${esc(n.before.name)}</b>` : '', n.after ? `before <b>${esc(n.after.name)}</b>` : ''].filter(Boolean).join(' and ');
@@ -6209,22 +6209,22 @@ function treeHtml(t) {
   const found = t.found != null ? t.found : (t.after || 0) + (t.blue || 0);
   const open = t.open || 0;
   const knew = t.knew || t.start || 0;
-  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), ${found ? `<b>${num(found)}</b> ${found === 1 ? 'was a find' : 'were finds'}: ${num(t.after)} came right after another artist in the same session, ${num(t.blue)} out of the blue.` : 'none is a sure find yet.'}${knew ? ` ${num(knew)} you knew before, as far as it can tell.` : ''}${open ? ` For ${num(open)} it can't tell: ${open > (t.unsure || []).length ? 'the most played of them' : 'they'} wait below for your word.` : ''}`;
+  const intro = `Of the ${num(t.kept)} artists you kept playing (5 plays or more), ${found ? `<b>${num(found)}</b> ${found === 1 ? 'was new to you' : 'were new to you'}: ${num(t.after)} came right after another artist in the same session, ${num(t.blue)} out of the blue.` : 'none is clearly new to you yet.'}${knew ? ` ${num(knew)} you most likely knew already.` : ''}${open ? ` For ${num(open)} the app can't tell. ${open > (t.unsure || []).length ? 'The most played of them are' : 'They are'} listed below, and you can say which it was.` : ''}`;
   const path = TREE_AT.path;
   const at = path[path.length - 1];
   const gws = t.gateways || [];
   const chips = gws.length ? `<div class="chip-row tree-gw">${gws.map((g) => `<button class="chip${path[0] === g.id ? ' on' : ''}" data-troot="${g.id}">${esc(g.name)}<small class="n">${g.d}</small></button>`).join('')}</div>` : '';
   const crumbs = path.length > 1 ? `<div class="lineage">${path.map((id, i) => (i < path.length - 1 ? `<button class="chip" data-tup="${i}">${esc(TREE.byId.get(id).name)}</button><span class="arr">→</span>` : `<span class="chip static on">${esc(TREE.byId.get(id).name)}</span>`)).join('')}</div>` : '';
-  const tree = at != null ? `<div class="viz tree-card"><h2>Who led to whom</h2><span class="sub">A gateway and the finds you first played right after them. Tap one with a number to go on from there.</span>${chips}${crumbs}${treeDraw(at)}</div>`
-    : `<div class="viz tree-card"><h2>Who led to whom</h2><p class="hint">No artist has led you to two or more finds yet${open ? ', as far as your history can tell. Sorting the list below can change that' : ''}.</p></div>`;
-  const blue = (t.blueList || []).length ? `<div class="viz"><h2>Out of the blue</h2><span class="sub">Finds nothing led to: a search, an album, a tip. The newest first.</span>
+  const tree = at != null ? `<div class="viz tree-card"><h2>Who led to whom</h2><span class="sub">An artist that led you to others, and the ones you first played right after them. Tap one with a number to keep going from there.</span>${chips}${crumbs}${treeDraw(at)}</div>`
+    : `<div class="viz tree-card"><h2>Who led to whom</h2><p class="hint">No artist has led you to two or more new ones yet${open ? ', as far as your history shows. Answering the list below can change that' : ''}.</p></div>`;
+  const blue = (t.blueList || []).length ? `<div class="viz"><h2>Out of the blue</h2><span class="sub">Artists that came out of nowhere: a search, an album, a tip from someone. Newest first.</span>
     <div class="tblue">${t.blueList.map((x) => `<button data-artist="${esc(x.name)}">${facePic(x, 'round')}<b>${esc(x.name)}</b><small>${esc(monthYear(x.at))}</small></button>`).join('')}</div></div>` : '';
   const un = t.unsure || [];
   const unShown = TREE_AT.unsure ? un : un.slice(0, 6);
-  const unsure = un.length ? `<div class="viz" id="treeUnsure"><h2>Found then, or known before?</h2><span class="sub">Your history starts too late to tell for these: an old favorite played for the first time looks just like a find. Say which, and the tree follows.</span>
+  const unsure = un.length ? `<div class="viz" id="treeUnsure"><h2>New find or old favorite?</h2><span class="sub">Your history doesn't go back far enough to tell for these. An old favorite you played for the first time since then looks just like a new find. Tell the app which it was and the tree updates.</span>
     ${unShown.map((x) => treeAsk(x, [`first played ${monthYear(x.at)}`, x.from ? `after ${x.from}` : '', plural(x.plays, 'play')].filter(Boolean).join(', '), markBtn(x.name, 'found', 'Found') + markBtn(x.name, 'knew', 'Knew'))).join('')}
     ${un.length > unShown.length ? `<button class="btn text" data-tunsure>Show all ${open > un.length ? `${un.length} most played` : un.length}</button>` : ''}</div>` : '';
-  const said = (t.said || []).length ? `<div class="viz"><h2>Your word</h2><span class="sub">What you said about artists, to take back</span>
+  const said = (t.said || []).length ? `<div class="viz"><h2>Your answers</h2><span class="sub">What you told the app so far. Take back undoes an answer.</span>
     ${t.said.map((x) => treeAsk(x, x.state === 'knew' ? 'known before your history starts' : `found ${monthYear(x.at)}`, markBtn(x.name, '', 'Take back'))).join('')}</div>` : '';
   return `<p class="uni-intro">${intro}</p>${tree}${blue}${unsure}${said}`;
 }
@@ -6248,17 +6248,17 @@ function originHtml(a) {
   if (state === 'knew') {
     title = 'Known before';
     line = o.why === 'said' ? 'You said you knew them before your history starts.'
-      : o.why === 'old' ? `First played ${esc(dateLabel(o.at))}, in the first year of your history, and their music is a good deal older: most likely you knew them already.`
-      : 'With you since your Last.fm history starts.';
+      : o.why === 'old' ? `First played ${esc(dateLabel(o.at))}, in the first year of your history, and their music is a good deal older. You probably knew them already.`
+      : 'They\'ve been there since your Last.fm history starts.';
     if (o.why === 'said') ask = markBtn(a.name, '', 'Take that back');
     else if (o.why === 'old') ask = markBtn(a.name, 'found', 'No, I found them then');
   } else if (state === 'found') {
-    const why = { newer: ' Everything of theirs you played came out after your history begins.', late: ' So far into your history, an old favorite would have turned up sooner.', small: ' It began with a song or two.', said: ' You said so.' }[o.why] || '';
+    const why = { newer: ' Everything of theirs you played came out after your history begins.', late: ' So far into your history, an old favorite would have turned up sooner.', small: ' You started with just a song or two, the way it goes with someone new.', said: ' You said so.' }[o.why] || '';
     line = `${o.how === 'after' ? 'Right' : 'Out of the blue'} ${o.how === 'after' ? after.slice(6) : ''}${o.how === 'after' ? ', ' : 'on '}${esc(dateLabel(o.at))}.${why}`;
     ask = o.why === 'said' ? markBtn(a.name, '', 'Take that back') : markBtn(a.name, 'knew', 'I knew them before');
   } else {
-    title = 'Found then, or known before?';
-    line = `First played ${esc(dateLabel(o.at))}, ${after}. Your history can't tell whether you knew them before that.`;
+    title = 'New find or old favorite?';
+    line = `First played ${esc(dateLabel(o.at))}, ${after}. Your history doesn't go back far enough to tell whether you knew them before.`;
     ask = markBtn(a.name, 'found', 'Found them then') + markBtn(a.name, 'knew', 'Knew them before');
   }
   const chain = state === 'found' ? (o.chain || []).slice().reverse() : [];
@@ -6598,7 +6598,7 @@ function forYouParts(d) {
   parts.push({ title: 'Albums to start with', sub: 'The best-known album of each artist you might like',
     cards: (d.starts || []).map((a) => `<button class="xcard" ${albumAttrs(a.artist, a.title)} data-cover="${esc(a.cover)}">${coverHtml(a.cover, a.title, a.artist)}<b>${esc(a.title)}</b>
       <small>${esc(a.artist)}</small><small class="meta">${a.like ? `Like ${esc(a.like)}` : ''}</small></button>`).join('') });
-  parts.push({ title: 'New from artists you might like', sub: 'Out lately by artists your listening points to',
+  parts.push({ title: 'New from artists you might like', sub: 'New music from artists that fit what you listen to',
     cards: (d.sugReleases || []).map((r) => relCard(r, esc(releaseWhen(r)), `${esc(r.artist)}${r.like ? `, like ${esc(r.like)}` : ''}`)).join('') });
   parts.push({ title: 'Albums you\'re missing', sub: 'Albums by artists you love that you\'ve never played and don\'t own',
     cards: (d.gaps || []).map((r) => relCard(r, esc(r.date.slice(0, 4)))).join('') });
@@ -6660,7 +6660,7 @@ function likeHtml() {
   const names = LIKE.seeds.map((x) => x.name);
   const who = names.length > 1 ? `${names.slice(0, -1).map(esc).join(', ')} and ${esc(names[names.length - 1])}` : esc(names[0]);
   const list = LIKE.artists || [];
-  const body = LIKE.loading ? `<p class="hint">Looking up who Last.fm's and Deezer's listeners find alike to them.</p><div class="lin inline indet"><i></i></div>`
+  const body = LIKE.loading ? `<p class="hint">Checking what people on Last.fm and Deezer listen to alongside them.</p><div class="lin inline indet"><i></i></div>`
     : LIKE.error ? `<p class="hint">${esc(LIKE.error)}</p>`
       : list.length ? suggestionGrid(list, 'Your best match') : '<p class="hint">Nothing new to suggest from them yet.</p>';
   return `<h1 class="page-h">More like your new artists</h1><p class="xl-sub">Artists you haven't played that are like the ones you found ${esc(inPeriod(LIKE.period))}: ${who}. Tap one to see why; ✕ means not for you.</p>${body}`;
@@ -6671,8 +6671,8 @@ function renderForYou() {
   const d = DISCOVER || {};
   const wait = discoverWait(d);
   const arts = d.artists || [];
-  morph($('#forYouBody'), `<h1 class="page-h">Artists you might like</h1><p class="xl-sub">Artists you haven't played that your listening points to. Tap one to see why; ✕ means not for you.</p>
-    ${wait || `${reachChips(d)}<p class="hint">Further out brings less known artists, and ones a step further from yours.</p>
+  morph($('#forYouBody'), `<h1 class="page-h">Artists you might like</h1><p class="xl-sub">Artists you haven't played yet that fit what you listen to. Tap one to see why; ✕ means not for you.</p>
+    ${wait || `${reachChips(d)}<p class="hint">Further out adds lesser-known artists, and ones a bit further from your usual taste.</p>
       ${arts.length ? suggestionGrid(arts, 'Your best match') : '<p class="hint">Nothing new to suggest from here. Try another setting above.</p>'}`}`);
 }
 
@@ -6838,7 +6838,7 @@ function exploreRows(x, P) {
     h += wait ? `<section class="xrow"><div class="xrow-head"><h2>Artists you might like</h2></div>${wait}</section>`
       : xrow('Artists you might like', arts.length ? `<button class="xrow-more" data-dmore>All ${arts.length}</button>` : '',
         arts.slice(0, 12).map((a) => `<button class="xcard round" data-why="${esc(a.name)}">${coverHtml(a.photo, a.name, a.name, 'round')}<b>${esc(a.name)}</b><small class="meta">${esc(a.via ? `Like ${a.via}` : a.because && a.because[0] ? `Like ${a.because[0].name}` : a.genre || '')}</small></button>`).join(''),
-        'Artists you haven\'t played that your listening points to. Tap one to see why.');
+        'Artists you haven\'t played yet that fit what you listen to. Tap one to see why.');
     if (d && !wait) h += forYouParts(d).map(xrowOf).join('');
   }
   const n = x.counts || {};
@@ -6895,8 +6895,8 @@ function whyHtml() {
   const songs = (x.songs || []).map((t, i) => `<div class="r"><span class="n">${i + 1}</span><span class="t"><b>${esc(t)}</b></span></div>`).join('');
   const start = ((DISCOVER || {}).starts || []).find((a) => a.artist === x.name);
   return `<div class="why-sheet"><div class="why-hero">${coverHtml(x.photo, x.name, x.name, 'tiny round')}<div><h2>${esc(x.name)}</h2><div class="meta">${esc([x.genre, fansLabel(x.fans)].filter(Boolean).join(', ')) || 'Not in your history yet'}</div></div></div>
-    ${bars ? `<div class="row-label"><span>What points to them</span></div>${bars}
-      <p class="hint">Each bar: how alike listeners on Last.fm and Deezer find the two, weighed by how much you play your artist lately.${(x.because || []).length > 1 ? ` ${plural(x.because.length, 'artist')} of yours point here, so they rank high.` : ''}</p>` : x.via ? `<p class="body">${esc(becauseText(x))}.</p>` : ''}
+    ${bars ? `<div class="row-label"><span>Why they're suggested</span></div>${bars}
+      <p class="hint">Each bar shows how close people on Last.fm and Deezer think the two are, and counts for more the more you've been playing your artist lately.${(x.because || []).length > 1 ? ` ${plural(x.because.length, 'artist')} of yours lead here, which is why they rank high.` : ''}</p>` : x.via ? `<p class="body">${esc(becauseText(x))}.</p>` : ''}
     ${start ? `<div class="row-label"><span>Album to start with</span></div><div class="rank"><button class="r with-cover" ${albumAttrs(x.name, start.title)} data-cover="${esc(start.cover)}">${coverHtml(start.cover, start.title, x.name, 'tiny')}
       <span class="t"><b>${esc(start.title)}</b><small>Their best-known album on Last.fm</small></span>${icon('chevron-right')}</button></div>` : ''}
     <div class="row-label"><span>${start ? 'Songs to start with' : 'Start with'}</span></div>
@@ -7478,7 +7478,7 @@ function liveHtml(name) {
   } else if (shows.length) {
     h += `<h3 class="live-h">Recent shows</h3><div class="rank">${shows.slice(0, 8).map((s, i) => `<button class="r" data-show="${i}"><span class="t"><b>${esc(showDate(s.date))}, ${esc(s.city || s.venue)}</b><small>${esc([s.venue, s.country].filter(Boolean).join(', '))}, ${plural(s.songs.length, 'song')}</small></span><span class="v">${icon('chevron-right')}</span></button>`).join('')}</div>`;
   }
-  return `${h}<p class="hint">Setlists and dates to come from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, added by fans, so a show not listed there yet won't show here. "New" are songs you haven't played yet.</p></div>`;
+  return `${h}<p class="hint">Setlists and upcoming dates come from <button class="link-inline" data-url="${esc(L.url || 'https://www.setlist.fm/')}">setlist.fm</button>, where fans add them, so a show that isn't listed there yet won't show up here. "New" marks songs you haven't played yet.</p></div>`;
 }
 
 /** A concert playlist: their usual set lately ([i] < 0) or the setlist of show [i]. */
@@ -10643,7 +10643,7 @@ function renderTidalImport() {
   const text = t.busy ? `Reading the file: ${num(t.done || 0)} plays so far. A long history takes a minute.`
     : t.error ? esc(t.error)
       : has ? `<b>${num(t.used)} plays</b> from ${esc(monthYear(t.from))} to ${esc(monthYear(t.to))} are in your stats${t.plays > t.used ? `. Last.fm already had another ${num(t.plays - t.used)} of the file's plays, which count once` : ''}. Imported ${esc(dateLabel(t.at))}.`
-        : 'TIDAL sends you your data on request, and its streaming.csv lists every song you streamed. Pick that file and its plays join your stats: the years before your Last.fm history, and what Last.fm missed since. They stay in this app, since Last.fm takes no plays that old.';
+        : 'You can ask TIDAL for a copy of your data. It includes a file called streaming.csv with every song you streamed. Pick that file here and those plays are added to your stats: the years before your Last.fm history starts, and anything Last.fm missed since. They only live in this app, because Last.fm doesn\'t accept plays that old.';
   if ($('#tiStatus').innerHTML !== text) $('#tiStatus').innerHTML = text;
   $('#tiBusy').hidden = !t.busy;
   $('#tiImport').disabled = !!t.busy;
