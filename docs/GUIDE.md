@@ -331,7 +331,10 @@ song on a single or an EP (five songs or fewer played) that you also played from
 albums (six or more) counts for that album: "More" for Sorry's 925, "Quiet Life" for shame's
 Cutthroat, never for a best-of or a live record. Songs only the single or EP has stay with it, and
 its own card in the discography keeps all the plays it had. A cover Deezer didn't have yet, for an album you played in the last two
-weeks, is asked for again after a day (a new album often plays under its name before Deezer lists it). Each
+weeks, is asked for again after a day (a new album often plays under its name before Deezer lists it). Covers
+are asked for by the album's name as your player has it, then without what players add to it ("(Special
+Version)", "EP"), then through the song you played most from the album. A single, and a compilation you know
+only a song or two of, show the cover Deezer has for that song. An album Deezer doesn't have stays without one. Each
 title shows your plays, a foil star if it's on your shelf and "New" for the last two months; titles
 you haven't heard are dimmed. Records of theirs you played that Deezer doesn't list, such as a live
 album, come last under Also played. Filter by Most played (everything you played in one row, most
@@ -667,7 +670,21 @@ your record, shares of your listening), it goes to the main artist: for "feat." 
 "A, B", "A & B", "A with B" and the like, the one whose album the song is on (they have songs of
 their own on it), else the one you play most on their own. "ROSALÍA, Fontaines D.C." on a Fontaines
 D.C. album is theirs, with ROSALÍA credited too, and "Earth, Wind & Fire", none of whose names you
-play alone, stays one band.
+play alone, stays one band. Such a song is the same artist's on its single too: "The God of Lying"
+by "Gorillaz, IDLES" is on a Gorillaz album, so the single counts for Gorillaz as well.
+
+A song is one song with and without the guest in its title: "The God of Lying" and "The God of Lying
+(feat. IDLES)" are counted together, under the spelling played last.
+
+An artist you played under two names is one artist. That is a band that renamed itself (Slaves, now
+Soft Play): the two names share at least two albums with the same songs, and nearly all plays under
+the old name came before the first under the new one. A music service renames everything it has, and
+your history keeps what the band was called when you played it. It is also a name with words added
+or left out (Damian Marley and Damian "Jr. Gong" Marley, Beginner and Absolute Beginner) wherever
+the same song was played from the same album under both. A renamed band shows under its new name,
+two spellings under the one naming the fewest artists, then the one you played most. The old name
+still finds them, in search and from your shelf. Two artists who only share an album title, a cover
+of a whole album and a compilation both are on stay apart.
 
 Days, weeks and hours are in the phone's local time.
 
@@ -803,7 +820,8 @@ wherever they show up (record page, Now spinning, album and song pages, the stor
 slides out of its sleeve and spins while a side plays. Albums you don't own only tilt. Artist photos
 sit in a frame that tilts too. The collector cards catch the light as you scroll: a glint runs
 across each card on its way up the screen (and across the cards of a row as you swipe the row), with
-a rainbow one on holo and foil cards. It follows your finger and rests when the page does. The
+a rainbow one on holo and foil cards, which is faint while it crosses the picture: a holo card's
+rainbow is in its paper, and the cover stays clear. It follows your finger and rests when the page does. The
 motion sensor runs only while a tilting cover is showing. Switch both effects off in Settings →
 Look → Moving covers. The "plays on Last.fm" chip on a record page opens
 your Last.fm library for that album (in the Last.fm app if it's installed).

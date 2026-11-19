@@ -902,12 +902,15 @@ html.locked .page { overflow: hidden; }
 .tcard.lit { overflow: visible; }
 .tc-lt, .tc-fl { position: absolute; pointer-events: none; will-change: transform, opacity; }
 .tc-lt { inset: 0; z-index: 3; opacity: 0; background: radial-gradient(ellipse 15% 40%, rgb(255 255 255 / .55), rgb(255 255 255 / .3) 45%, rgb(255 255 255 / 0)); }
+/* On a holo or foil card the white glint is fainter: its paper shines already. */
+.tcard:is(.holo, .foil) > .tc-lt { background: radial-gradient(ellipse 15% 40%, rgb(255 255 255 / .34), rgb(255 255 255 / .18) 45%, rgb(255 255 255 / 0)); }
 /* A holo or foil card's rainbow glint, over the one painted on it (rounded, with the card not clipping it). */
 .tc-fl { inset: 8% 22%; opacity: .25;
   background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><defs><linearGradient id='c'><stop offset='0' stop-color='%2386e5f9' stop-opacity='0'/><stop offset='.25' stop-color='%2386e5f9' stop-opacity='.8'/><stop offset='.5' stop-color='%23fa9efa' stop-opacity='.8'/><stop offset='.75' stop-color='%23fce883' stop-opacity='.8'/><stop offset='1' stop-color='%23fce883' stop-opacity='0'/></linearGradient><radialGradient id='m'><stop offset='.5' stop-color='white'/><stop offset='1' stop-color='black'/></radialGradient><mask id='k'><rect width='100' height='100' fill='url(%23m)'/></mask></defs><rect width='100' height='100' fill='url(%23c)' mask='url(%23k)'/></svg>") 0 0 / 100% 100% no-repeat; }
-/* From one corner to the other while the card crosses the screen, brightest in the middle; the rainbow runs the other way. */
+/* From one corner to the other while the card crosses the screen, brightest in the middle; the rainbow runs the other way,
+   and is faint while it crosses the middle of the card, where the picture is (it shows on its way in and out). */
 @keyframes tc-glint { from { transform: translate(-42%, 26%) rotate(18deg) scale(1.2); opacity: 0; } 22% { opacity: .75; } 50% { opacity: 1; } 78% { opacity: .75; } to { transform: translate(42%, -26%) rotate(18deg) scale(1.2); opacity: 0; } }
-@keyframes tc-foil { from { transform: translate(48%, 22%) rotate(18deg) scale(1.15); opacity: 0; } 22% { opacity: .7; } 50% { opacity: .9; } 78% { opacity: .7; } to { transform: translate(-48%, -22%) rotate(18deg) scale(1.15); opacity: 0; } }
+@keyframes tc-foil { from { transform: translate(48%, 22%) rotate(18deg) scale(1.15); opacity: 0; } 18% { opacity: .5; } 38% { opacity: .14; } 62% { opacity: .14; } 82% { opacity: .5; } to { transform: translate(-48%, -22%) rotate(18deg) scale(1.15); opacity: 0; } }
 .tcard.lit > .tc-lt { animation: tc-glint linear both; animation-timeline: view(); animation-range: cover 8% cover 92%; }
 .tcard.lit > .tc-fl { animation: tc-foil linear both; animation-timeline: view(); animation-range: cover 8% cover 92%; }
 /* In a row of cards that scrolls sideways, the row's own scroll moves them. Their glints reach past the cards, which

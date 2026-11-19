@@ -150,6 +150,60 @@ class DiscographyTest {
         assertEquals(true, app.recordshelf.net.sameButEdition("ok computer", "ok computer 2017 remaster"))
         assertEquals("Blue Train isn't Blue", false, app.recordshelf.net.sameButEdition("blue train", "blue"))
         assertEquals(false, app.recordshelf.net.sameButEdition("a", "a deluxe"))
+        assertEquals("a player's \"EP\" at the end", true, app.recordshelf.net.sameButEdition("steaming satellites ep", "steaming satellites"))
+        assertEquals("Invaders Must Die", app.recordshelf.net.coreTitle("Invaders Must Die (Special Version)"))
+        assertEquals("The Moustache Mozart Affaire", app.recordshelf.net.coreTitle("The Moustache Mozart Affaire EP"))
+        assertEquals("Heroes", app.recordshelf.net.coreTitle("Heroes - Single"))
+        assertEquals("a title that is only such a word stays", "EP", app.recordshelf.net.coreTitle("EP"))
+    }
+
+    @Test
+    fun aCoverIsAskedForInMoreWaysThanOne() {
+        // Deezer's search by fields finds nothing with what a player adds to a title, and for some songs nothing at all.
+        val server = MiniHttp().start()
+        try {
+            fun album(title: String, artist: String, cover: String, type: String = "album") =
+                """{"id":1,"title":"$title","record_type":"$type","nb_tracks":11,"cover_big":"$cover","artist":{"name":"$artist"}}"""
+            server.handler = { r ->
+                val q = r.params["q"].orEmpty()
+                when {
+                    r.path == "/search/album" && q == "artist:\"The Prodigy\" album:\"Invaders Must Die\"" -> Res(200, """{"data":[${album("Invaders Must Die", "The Prodigy", "https://invaders")}]}""")
+                    r.path == "/search/album" && q == "Steaming Satellites Steaming Satellites EP" -> Res(200, """{"data":[${album("Steaming Satellites", "Steaming Satellites", "https://satellites")}]}""")
+                    r.path == "/search/album" && q == "Cat Stevens Tea for the Tillerman" ->
+                        Res(200, """{"data":[${album("Tea for the Tillerman", "Somebody Else", "https://wrong")},${album("Tea For The Tillerman", "Yusuf / Cat Stevens", "https://tea")}]}""")
+                    r.path == "/search/track" && q == "Roosevelt Forgive" -> Res(
+                        200,
+                        """{"data":[{"title":"Forgive and Forget","artist":{"name":"Roosevelt"},"album":{"cover_big":"https://wrong"}},
+                        {"title":"Forgive feat. Washed Out","artist":{"name":"Roosevelt"},"album":{"cover_big":""}},
+                        {"title":"Forgive (feat. Washed Out)","artist":{"name":"Roosevelt"},"album":{"cover_big":"https://forgive"}}]}""",
+                    )
+                    r.path.startsWith("/search/") -> Res(200, """{"data":[]}""")
+                    else -> Res(404, "")
+                }
+            }
+            val d = DeezerClient(server.base)
+            assertEquals("without what stands in brackets", "https://invaders", d.albumCover("The Prodigy", "Invaders Must Die (Special Version)"))
+            assertEquals("an album a player calls an EP", "https://satellites", d.albumCover("Steaming Satellites", "Steaming Satellites EP"))
+            assertEquals("an artist filed under two names", "https://tea", d.albumCover("Cat Stevens", "Tea for the Tillerman"))
+            assertEquals("a song Deezer names with its guest, the first that has a cover", "https://forgive", d.trackCover("Roosevelt", "Forgive"))
+            assertEquals("nothing is asked twice", server.requests.size, server.requests.map { it.path + "?" + it.query }.toSet().size)
+            assertEquals(null, d.albumCover("The Prodigy", "The Fat of the Land"))
+
+            // An album found through one of its songs: the song's release that is this album, not the first one.
+            server.handler = { r ->
+                if (r.path == "/search/track" && r.params["q"] == "I.L.L. Will Swing Thing") Res(
+                    200,
+                    """{"data":[{"title":"Swing Thing","artist":{"name":"I.L.L. Will"},"album":{"title":"Jazz Hop Vol. 3","cover_big":"https://other"}},
+                    {"title":"Swing thing","artist":{"name":"I.L.L. Will"},"album":{"title":"Expedition Vol. 20: One Will","cover_big":"https://one-will"}}]}""",
+                ) else if (r.path.startsWith("/search/")) Res(200, """{"data":[]}""") else Res(404, "")
+            }
+            assertEquals("https://one-will", d.albumCoverBySong("I.L.L. Will", "One Will", "Swing Thing", false))
+            assertEquals("no other release's cover on an album", null, d.albumCoverBySong("I.L.L. Will", "Two Wills", "Swing Thing", false))
+            assertEquals("a single or a compilation song takes it", "https://other", d.albumCoverBySong("I.L.L. Will", "Chill Beats", "Swing Thing", true))
+            assertEquals("https://other", d.trackCover("I.L.L. Will", "Swing Thing"))
+        } finally {
+            server.stop()
+        }
     }
 
     @Test

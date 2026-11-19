@@ -1575,8 +1575,9 @@ details.more[open] summary { margin-bottom: 6px; }
 .tc-st { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; margin-top: 4px; padding: 4px 2px 0; border-top: 1px solid rgba(0, 0, 0, .12); font: 400 10px/14px var(--mono, var(--font)); }
 .tc-st b { display: block; font: 700 15px/18px var(--display, var(--font)); }
 .tc-from { display: block; margin-top: 6px; padding: 0 2px; font: italic 500 11px/14px var(--display, var(--font)); opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tcard.foil { box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
-.tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
+/* A foil or holo card's rainbow is in its paper, under the picture: over it lies only a faint sheen, so the picture stays clear. */
+.tcard.foil { background: linear-gradient(115deg, transparent 16%, hsl(190 90% 75% / .5) 33%, hsl(300 90% 80% / .5) 46%, hsl(50 95% 75% / .5) 59%, transparent 76%), linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
+.tcard.foil::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .1;
   background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
 
 /* Song cards: a cover in the frame, a tier by plays, and the way to the next one. */
@@ -1593,11 +1594,12 @@ details.more[open] summary { margin-bottom: 6px; }
 .tcard.silver .tc-type { background: #5d6472; }
 .tcard.gold { background: linear-gradient(160deg, #fff3c9, #e9c766); box-shadow: 0 6px 18px rgba(160, 120, 20, .35), inset 0 0 0 2px hsl(45 80% 55%); }
 .tcard.gold .tc-type { background: #8a6610; }
-.tcard.holo { background: linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
-.tcard.holo::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .32;
+.tcard.holo { background: linear-gradient(115deg, transparent 16%, hsl(190 90% 75% / .5) 33%, hsl(300 90% 80% / .5) 46%, hsl(50 95% 75% / .5) 59%, transparent 76%), linear-gradient(160deg, #fff8ec, #f1e6d6); box-shadow: 0 6px 18px rgba(120, 80, 200, .35), inset 0 0 0 2px hsl(45 80% 60%); }
+.tcard.holo::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .1;
   background: linear-gradient(115deg, transparent 20%, hsl(190 90% 75% / .8) 35%, hsl(300 90% 80% / .8) 45%, hsl(50 95% 75% / .8) 55%, transparent 70%); }
-/* A holo card is no holo cover: none of the cover's size and margins. */
-.tcard.holo { width: 150px; margin: 0; perspective: none; }
+/* A holo card is no holo cover: none of the cover's size and margins, and a row of them scrolls sideways under the finger
+   (the cover takes drags up and down only, and an artist's most played songs are all holo at the start of the row). */
+.tcard.holo { width: 150px; margin: 0; perspective: none; touch-action: auto; }
 .bd-grid .tcard.holo { width: auto; }
 .cr-fan .tcard.holo { width: 34px; margin-left: -16px; }
 .cr-fan .tcard.holo:first-child { margin-left: 0; }

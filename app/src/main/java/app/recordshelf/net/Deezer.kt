@@ -83,20 +83,53 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
     /** A square photo (500 px) of the artist with this name; null if Deezer has none. */
     fun artistPhoto(name: String): String? = findArtist(name)?.photo?.ifEmpty { null }
 
-    /** The cover of the album song [title] by [artist] is on, as Deezer has it; null if it doesn't know the song. */
-    fun trackCover(artist: String, title: String): String? {
-        val want = Text.normLoose(title)
+    /**
+     * The cover of the album song [title] by [artist] is on, as Deezer has it; null if it doesn't know the song. A
+     * guest named in the title doesn't matter ("Forgive" finds "Forgive feat. Washed Out"), nor what stands in
+     * brackets.
+     */
+    fun trackCover(artist: String, title: String): String? = songCover(artist, title, null, true)
+
+    /**
+     * The cover of [album] by [artist], found through its song [song]: Deezer's album search misses some albums it
+     * has, and lists some under another artist ("Sting & The Police"). The release of the song that is this album
+     * (its title, an edition of it, or a longer title ending in it: "Expedition Vol. 20: One Will"); else, with
+     * [anyRelease], the first release Deezer shows the song on. Null if there is none.
+     */
+    fun albumCoverBySong(artist: String, album: String, song: String, anyRelease: Boolean): String? = songCover(artist, song, album, anyRelease)
+
+    private fun songCover(artist: String, title: String, album: String?, anyRelease: Boolean): String? {
+        val song = Text.plain(Text.withoutGuest(title))
+        val want = Text.normLoose(song)
         val who = Text.norm(artist).removePrefix("the ")
-        fun pick(asked: String): String? {
-            val data = get("/search/track?q=${q("artist:\"$asked\" track:\"$title\"")}&limit=15").optJSONArray("data") ?: return null
-            return (0 until data.length()).map { data.getJSONObject(it) }.firstOrNull {
-                val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
-                Text.normLoose(it.optString("title")) == want && (a == who || who.startsWith("$a ") || a.startsWith("$who "))
-            }?.optJSONObject("album")?.optString("cover_big")?.takeIf { it.startsWith("https://") }
+        val onAlbum = album?.let { Text.normLoose(it) }
+        var other: String? = null
+        fun pick(query: String): String? {
+            val data = get("/search/track?q=${q(query)}&limit=15").optJSONArray("data") ?: return null
+            for (i in 0 until data.length()) {
+                val t = data.getJSONObject(i)
+                val a = Text.norm(t.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
+                if (Text.normLoose(Text.withoutGuest(t.optString("title"))) != want || !sameArtist(a, who)) continue
+                val on = t.optJSONObject("album") ?: continue
+                val cover = on.optString("cover_big").takeIf { it.startsWith("https://") } ?: continue
+                if (onAlbum == null) return cover
+                val name = Text.normLoose(on.optString("title"))
+                if (name == onAlbum || sameButEdition(name, onAlbum) || name.endsWith(" $onAlbum")) return cover
+                if (other == null) other = cover
+            }
+            return if (anyRelease) other else null
         }
-        // A credit naming several is often filed under the first alone.
-        return pick(artist) ?: Text.leadArtist(artist, pairs = true)?.let { pick(it) }
+        // By its fields, which Deezer's search finds nothing with for some songs it has; then in plain words. A credit
+        // naming several is often filed under the first alone.
+        return pick("artist:\"$artist\" track:\"$song\"") ?: pick("$artist $song")
+            ?: Text.leadArtist(artist, pairs = true)?.let { pick("artist:\"$it\" track:\"$song\"") }
     }
+
+    /**
+     * Whether Deezer's artist [a] is the one asked for ([who]; both normalized, without a leading "the"): that name,
+     * or one going on from it or ending in it ("Yusuf / Cat Stevens" for Cat Stevens).
+     */
+    private fun sameArtist(a: String, who: String) = a == who || who.startsWith("$a ") || a.startsWith("$who ") || a.endsWith(" $who")
 
     /** Artists without a photo come with an empty image id: ".../images/artist//500x500-...". */
     private fun hasPhoto(url: String) = url.startsWith("https://") && !url.contains("/artist//")
@@ -147,20 +180,24 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
     private fun searchAlbum(artist: String, title: String): JSONObject? {
         val want = Text.normLoose(title)
         val who = Text.norm(artist).removePrefix("the ")
+        val asked = HashSet<String>()
         fun pick(query: String): JSONObject? {
+            if (!asked.add(query)) return null
             val data = get("/search/album?q=${q(query)}&limit=25").optJSONArray("data") ?: return null
             val theirs = (0 until data.length()).map { data.getJSONObject(it) }.filter {
-                val a = Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the ")
-                a == who || who.startsWith("$a ") || a.startsWith("$who ")
+                sameArtist(Text.norm(it.optJSONObject("artist")?.optString("name").orEmpty()).removePrefix("the "), who)
             }
             // The same title; else the same one with an edition's words added or left out ("Rumours Super Deluxe").
             return bestRelease(theirs.filter { Text.normLoose(it.optString("title")) == want })
                 ?: bestRelease(theirs.filter { sameButEdition(Text.normLoose(it.optString("title")), want) })
         }
-        // Deezer has Black Messiah by "D'Angelo", where Last.fm has "D'Angelo & The Vanguard": the first artist of a
-        // credit naming several is asked last.
+        // As it is named; then without what a music app adds to the title ("(Special Version)", "EP"), which Deezer's
+        // search finds nothing with. Deezer has Black Messiah by "D'Angelo", where Last.fm has "D'Angelo & The
+        // Vanguard": the first artist of a credit naming several is asked last.
+        val core = coreTitle(title)
         return pick("artist:\"$artist\" album:\"$title\"") ?: pick("$artist $title")
-            ?: Text.leadArtist(artist, pairs = true)?.let { pick("artist:\"$it\" album:\"$title\"") }
+            ?: pick("artist:\"$artist\" album:\"$core\"") ?: pick("$artist $core")
+            ?: Text.leadArtist(artist, pairs = true)?.let { pick("artist:\"$it\" album:\"$core\"") }
     }
 
     /** One album with its tracklist, label and genres. */
@@ -185,7 +222,18 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
 private val EDITION = setOf(
     "deluxe", "super", "edition", "expanded", "remaster", "remastered", "anniversary", "version", "bonus", "tracks",
     "special", "collector", "collectors", "mono", "stereo", "reissue", "complete", "legacy", "edit", "mix", "the",
+    "ep", "lp", "single",
 )
+
+/**
+ * An album's [title] as Deezer's search finds it best: nothing in brackets or after a " - ", and no edition words at
+ * its end ("The Moustache Mozart Affaire" for "The Moustache Mozart Affaire EP").
+ */
+internal fun coreTitle(title: String): String {
+    val words = Text.plain(title).split(' ').toMutableList()
+    while (words.size > 1 && Text.norm(words.last()) in EDITION) words.removeAt(words.size - 1)
+    return words.joinToString(" ")
+}
 
 /** A year or an ordinal ("2011", "50th"). */
 private val YEARISH = Regex("""\d{1,4}(th|st|nd|rd)?""")

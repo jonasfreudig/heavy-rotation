@@ -174,6 +174,9 @@ class Stats(
         const val AGE_MIN_PLAYS = 25
         /** The world map places this many of your most played artists. */
         const val MAP_ARTISTS = 300
+
+        /** An album you played at most this many songs from can show the cover of its most played song (see [albumSong]). */
+        const val STAND_IN_SONGS = 2
     }
 
     private val rules = zone.rules
@@ -193,7 +196,17 @@ class Stats(
         if (key in h.singlePlays) return null
         return h.editionOf[key]?.let { albumIndex[it] }?.let { h.albumTitles[it] }
     }
-    private val artistIndex: Map<String, Int> by lazy { h.artistNames.withIndex().associate { (i, n) -> Text.norm(n) to i } }
+    /** Every artist by normalized name; a name that counts for another artist ([History.sameAs]) finds that one. */
+    private val artistIndex: Map<String, Int> by lazy {
+        val m = h.artistNames.withIndex().associate { (i, n) -> Text.norm(n) to i }
+        m + h.sameAs.mapNotNull { (old, name) -> m[Text.norm(name)]?.let { old to it } }
+    }
+
+    /** The artist a credit counts for, as the history names them: the main one of several, and a renamed band by its name now. */
+    private fun creditedAs(artist: String): String {
+        val main = Artists.main(artist, artistIndex.keys)
+        return artistIndex[Text.norm(main)]?.let { h.artistNames[it] } ?: main
+    }
     private val historyStart get() = if (h.size > 0) h.ts[0] else nowSec
 
     /** First play of each artist, over the whole history. */
@@ -659,7 +672,7 @@ class Stats(
         val ob = obsessions(i0, i1)
         if (ob.length() > 0) {
             val want = HashMap<Int, Long>()
-            for (k in 0 until ob.length()) ob.getJSONObject(k).let { o -> trackIndex[Hidden.key(o.getString("artist"), o.getString("track"))]?.let { want[it] = day(o.getLong("week") / 1000) } }
+            for (k in 0 until ob.length()) ob.getJSONObject(k).let { o -> trackIndex[songKey(o.getString("artist"), o.getString("track"))]?.let { want[it] = day(o.getLong("week") / 1000) } }
             val perDay = HashMap<Pair<Int, Long>, Int>()
             for (i in i0 until i1) {
                 val wk = want[h.track[i]] ?: continue
@@ -2281,8 +2294,9 @@ class Stats(
         val m1 = date(nowSec).let { it.year * 12 + it.monthValue - 1 }
         val busiest = months.maxByOrNull { it.value }!!
         fun monthStart(mk: Int) = ms(LocalDate.of(mk / 12, mk % 12 + 1, 1))
-        val key = Text.norm(name)
-        val owned = collection.filter { Text.norm(it.artist) == key || Text.norm(it.artist).startsWith("$key ") }.distinctBy { it.releaseId }
+        // Their records on the shelf, under any name of theirs.
+        val keys = Text.norm(h.artistNames[a]).let { now -> h.sameAs.filterValues { Text.norm(it) == now }.keys + now + Text.norm(name) }
+        val owned = collection.filter { c -> Text.norm(c.artist).let { n -> keys.any { n == it || n.startsWith("$it ") } } }.distinctBy { it.releaseId }
         val rank = if (inRange[a] > 0) inRange.count { it > inRange[a] } + 1 else 0
         val o = weeksJson(JSONObject(), weeks)
             .put("name", h.artistNames[a]).put("plays", plays).put("days", days).put("photo", artistPhoto(h.artistNames[a]))
@@ -2329,7 +2343,17 @@ class Stats(
     // ---- one track, one album ----
 
     private val trackIndex: Map<String, Int> by lazy {
-        h.trackTitles.indices.associateBy { Hidden.key(h.artistNames[h.trackArtist[it]], h.trackTitles[it]) }
+        h.trackTitles.indices.associateBy { songKey(h.artistNames[h.trackArtist[it]], h.trackTitles[it]) }
+    }
+
+    /** What finds a song of an artist, as the history tells songs apart (see [Text.songKey]). */
+    private fun songKey(artist: String, title: String) = Text.norm(artist) + "\u0000" + Text.songKey(title)
+
+    /** The songs an artist is the guest on, by [songKey] with the guest's name: their page lists them, and they open from there. */
+    private val guestTracks: Map<String, Int> by lazy {
+        val m = HashMap<String, Int>()
+        for (i in 0 until h.size) if (h.also[i] >= 0) m.getOrPut(songKey(h.artistNames[h.also[i]], h.trackTitles[h.track[i]])) { h.track[i] }
+        m
     }
 
     /** The title of the album [tr] was last scrobbled with, "" if none. */
@@ -2342,9 +2366,10 @@ class Stats(
 
     /** A track as a player or Last.fm credits it ("A feat. B", "Song (Remastered)", other spellings); -1 if it isn't in the history. */
     fun findTrack(artist: String, title: String): Int {
-        trackIndex[Hidden.key(artist, title)]?.let { return it }
-        val main = Artists.main(artist, artistIndex.keys)
-        trackIndex[Hidden.key(main, title)]?.let { return it }
+        trackIndex[songKey(artist, title)]?.let { return it }
+        val main = creditedAs(artist)
+        trackIndex[songKey(main, title)]?.let { return it }
+        (guestTracks[songKey(artist, title)] ?: guestTracks[songKey(main, title)])?.let { return it }
         val a = artistIndex[Text.norm(main)] ?: return -1
         val loose = Text.normLoose(title)
         return h.trackTitles.indices.firstOrNull { h.trackArtist[it] == a && Text.normLoose(h.trackTitles[it]) == loose } ?: -1
@@ -2360,8 +2385,23 @@ class Stats(
         return findAlbum(artist, title).let { if (it < 0) 0 else albumPlays[it] }
     }
 
+    /**
+     * For finding the cover of the album [artist] – [title] through a song: the one you played most from it, and
+     * whether that song's cover on another release may stand for the album. It may where you played no more than
+     * [STAND_IN_SONGS] songs from it: that is a single, or a compilation you know a song or two of, and what you see
+     * of either is the song. On an album you know more of, another release's cover would be the wrong one. Null for
+     * an album that isn't in the history.
+     */
+    fun albumSong(artist: String, title: String): Pair<String, Boolean>? {
+        val al = findAlbum(artist, title).takeIf { it >= 0 } ?: return null
+        val n = HashMap<Int, Int>()
+        for (i in 0 until h.size) if (h.album[i] == al) n.merge(h.track[i], 1, Int::plus)
+        val top = n.maxByOrNull { it.value } ?: return null
+        return h.trackTitles[top.key] to (albumSongs[al] <= STAND_IN_SONGS)
+    }
+
     private fun findAlbum(artist: String, title: String): Int =
-        albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(Artists.main(artist, artistIndex.keys), title)]
+        albumIndex[Text.albumKey(artist, title)] ?: albumIndex[Text.albumKey(creditedAs(artist), title)]
             ?: (if (Text.norm(artist).startsWith("various")) albumByTitle[Text.normLoose(title)] else null) ?: -1
 
     /** Albums by title alone, for titles only one album has: how a compilation (Discogs' "Various") finds its plays. */

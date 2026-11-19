@@ -596,6 +596,11 @@ object Core {
                     }
                     // Lookups began to try the first artist of a credit naming several ("D'Angelo & The Vanguard"):
                     // the pictures and discographies none was found for come again as pages need them.
+                    // Lookups began to ask Deezer in more ways, and to take a song's cover where its album isn't listed.
+                    if (!prefs.missesRechecked) {
+                        db.dropMissedImages(Long.MAX_VALUE)
+                        prefs.missesRechecked = true
+                    }
                     if (!prefs.creditsRechecked) {
                         db.dropMissedImages(Long.MAX_VALUE)
                         runCatching {
@@ -3895,7 +3900,7 @@ object Core {
         for ((artist, album, key) in missing) {
             if (key in tried) continue
             try {
-                db.saveImage(key, deezer.albumCover(artist, album).orEmpty())
+                db.saveImage(key, lookUpCover(artist, album))
                 any = true
             } catch (_: Exception) {
                 break
@@ -3904,6 +3909,17 @@ object Core {
         if (any && tell) picturesArrived(after)
         return any
     }
+
+    /**
+     * An album's cover from Deezer, "" when it has none: the album as its search finds it, else as the song you
+     * played most from it leads to it, else for a single or a compilation the cover Deezer shows for that song (see
+     * [Stats.albumSong]). A compilation is filed under "Various Artists" there and not under the artist you played
+     * from it, and a single is often listed only with the album its song is on. On [historyExec].
+     */
+    private fun lookUpCover(artist: String, album: String): String =
+        deezer.albumCover(artist, album)
+            ?: currentStats()?.albumSong(artist, album)?.let { (song, standsIn) -> deezer.albumCoverBySong(artist, album, song, standsIn) }
+            ?: ""
 
     /** The binder's request whose covers are being looked up: a binder opened anew starts its own. */
     @Volatile private var cardsReq = 0
@@ -3920,7 +3936,7 @@ object Core {
         for ((artist, album, key) in missing.take(CARD_COVER_LOT)) {
             if (key in tried) continue
             try {
-                val url = deezer.albumCover(artist, album).orEmpty()
+                val url = lookUpCover(artist, album)
                 db.saveImage(key, url)
                 looked = true
                 if (url.isNotEmpty()) found.put(JSONObject().put("artist", artist).put("album", album).put("cover", url))
@@ -4223,7 +4239,7 @@ object Core {
             webExec.execute {
                 val owned = collection.firstOrNull { Text.albumKey(it.artist, it.title) == key }?.let { faceOf(it) }
                 val url = owned ?: db.images()[key] ?: try {
-                    deezer.albumCover(artist, album).orEmpty().also {
+                    (deezer.albumCover(artist, album) ?: n.optString("title").takeIf { it.isNotEmpty() }?.let { deezer.trackCover(artist, it) }).orEmpty().also {
                         db.saveImage(key, it)
                         refreshPictures()
                     }

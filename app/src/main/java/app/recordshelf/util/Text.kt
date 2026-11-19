@@ -12,6 +12,7 @@ object Text {
     private val bandOrGuest = """\s*,\s+|\s+(?:&|and|\+)\s+the\s+|\s*\(?\b(?:feat\.?|ft\.|featuring)\s+"""
     private val firstOfTwo = Regex("""$bandOrGuest|\s+(?:&|and|\+)\s+""", RegexOption.IGNORE_CASE)
     private val firstOfBand = Regex(bandOrGuest, RegexOption.IGNORE_CASE)
+    private val guest = Regex("""\s*[(\[](?:feat\.?|ft\.?|featuring)\s[^)\]]*[)\]]|\s+(?:feat\.|ft\.|featuring)\s.*$""", RegexOption.IGNORE_CASE)
 
     /** Lowercase, no accents, one kind of quote, "&" as "and", punctuation as single spaces. */
     fun norm(s: String): String {
@@ -27,6 +28,18 @@ object Text {
         val cut = s.replace(brackets, " ").substringBefore(" - ")
         return norm(cut.ifBlank { s })
     }
+
+    /** [s] without what stands in brackets and after a " - ": "Invaders Must Die" for "Invaders Must Die (Special Version)". */
+    fun plain(s: String): String = s.replace(brackets, " ").substringBefore(" - ").trim().replace(spaces, " ").ifEmpty { s }
+
+    /** A song's [title] without the guest it names: "Forgive" for "Forgive (feat. Washed Out)" and "Forgive feat. Washed Out". */
+    fun withoutGuest(title: String): String = title.replace(guest, "").trim().ifEmpty { title }
+
+    /**
+     * What tells one song of an artist from their others: [norm], with a guest named in the title left out. A player
+     * names the guest on one release of a song and not on another, and both are that song.
+     */
+    fun songKey(title: String): String = norm(withoutGuest(title))
 
     /**
      * The first artist of a credit naming several: "D'Angelo" for "D'Angelo & The Vanguard", "D'Angelo, The Vanguard"
